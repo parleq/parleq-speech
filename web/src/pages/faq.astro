@@ -1,0 +1,206 @@
+---
+import Layout from '../layouts/Layout.astro';
+
+const repoUrl = 'https://github.com/parleq/parleq-speech';
+
+// Seeded FAQ questions, grouped by section. Each entry is { q, a }
+// where `a` may contain Astro JSX (links, code, etc.). Answers are
+// kept under ~120 words and avoid speculative claims.
+const sections = [
+  {
+    title: 'Privacy & data flow',
+    items: [
+      {
+        q: 'Does my audio leave my Mac?',
+        a: `No. Speech recognition runs entirely on-device using Apple's Neural Engine — Parleq bundles the Parakeet TDT v3 model (~150 MB, downloaded once on first launch from Hugging Face) and feeds your audio into it via a local HTTP sidecar bound to 127.0.0.1. The model itself never makes outbound network calls; audio bytes never appear in any cloud log, S3 bucket, or vendor analytics pipeline. They live in process memory for the duration of one dictation and disappear when it's done.`,
+      },
+      {
+        q: 'What does the cloud cleanup provider see, and what gets logged on my Mac?',
+        a: `The cleanup provider receives only the transcript — the same words the on-device speech model emitted, plus any custom-dictionary hints you've configured. It never receives audio. On your Mac, Parleq writes three files under \`~/.parleq/\`: \`config.json\` (your settings), \`usage.jsonl\` (one line per cleanup call — timestamp, model, token counts, latency — metadata only, no transcript text), and \`app.log\` (a diagnostic log that records lengths and timing, e.g. "post-utterance 87 ms, 142 chars / 28 words", but never the words themselves). Cleaned text is held in memory during the overlay session and kept in a 20-entry in-memory list for the menu bar's Recent Dictations submenu — wiped on app quit, never written to disk.`,
+      },
+      {
+        q: 'Will my prompts and responses be used to train someone\'s model?',
+        a: `Depends on the provider you pick. Direct Google AI Studio on the free tier — yes, by default; paid tier is excluded. AWS Bedrock — no; prompts and completions stay inside your AWS account boundary, per Amazon's published policy. Google Vertex AI — no; governed by your GCP organization's enterprise terms. Azure OpenAI — no; Microsoft's documented data privacy commitments exclude foundation-model training. If training opt-out matters for your work, pick Vertex, Bedrock, or Azure. The relevant policy link is in each provider's docs page.`,
+      },
+      {
+        q: 'Where are my API keys stored?',
+        a: `In the macOS Keychain — \`KeychainStore\` writes them to the user's login keychain via SecItem APIs. Never in \`~/.parleq/config.json\` or any other plaintext file on disk. This applies to every provider's secrets: Gemini API key, Bedrock API key, AWS static IAM credentials, Vertex service-account JSON (the whole JSON is one Keychain item), and the Azure resource API key.`,
+      },
+    ],
+  },
+  {
+    title: 'Choosing a provider',
+    items: [
+      {
+        q: 'Which cleanup provider should I pick?',
+        a: `For personal use with no compliance constraints: **Gemini direct** — five-minute setup, a free tier you can sign up for without a credit card, no infrastructure to think about. For work where you have an existing cloud relationship: pick the one your team already uses (**Bedrock** for AWS, **Vertex** for GCP, **Azure** for Microsoft). All four produce comparable cleanup quality on the short text Parleq generates. The provider choice mostly comes down to where you want the bill to land and whose contract you're operating under.`,
+      },
+      {
+        q: 'Can I switch providers later?',
+        a: `Yes. Open Settings → LLM → Provider, pick the one you want, and click **Finish & Restart** when prompted (the provider is read once at app launch, so a relaunch is needed for the switch to take effect). Every provider's credentials are stored independently, so switching back later doesn't lose anything you'd configured.`,
+      },
+      {
+        q: 'Can I run cleanup entirely locally, with no cloud at all?',
+        a: `Not yet — but you can skip cleanup entirely. Open Settings → LLM → Provider and pick **None — paste raw ASR (skip cleanup)**. Parleq will paste exactly what the on-device speech model emitted, with no punctuation/casing pass. The result is rougher but fully local and zero-cost. A future build may add a local-LLM cleanup option for users with the GPU/RAM headroom; not committed.`,
+      },
+      {
+        q: 'Can I use a model that isn\'t in the dropdown?',
+        a: `Yes. Each provider's Model picker has a **Custom (enter below)** option that reveals a free-form text field — paste any model identifier the provider supports. (For Azure, this is replaced by a Model family picker since Azure routes by deployment name; pick Standard or Reasoning to match the underlying model your deployment serves.) Custom IDs are saved alongside everything else; if the provider rejects the model, the cleanup overlay surfaces the error and dictation falls back to raw ASR.`,
+      },
+    ],
+  },
+  {
+    title: 'Hardware & setup',
+    items: [
+      {
+        q: 'What Macs does Parleq work on?',
+        a: `Apple Silicon (M1 / M2 / M3 / M4) running macOS 14 (Sonoma) or later. Latency targets assume the Apple Neural Engine, which Apple Silicon has. Intel Macs may technically run the app under Rosetta but the Parakeet model isn't tuned for non-ANE devices — not recommended and not tested.`,
+      },
+      {
+        q: 'Can I pick which microphone Parleq uses?',
+        a: `Yes — and in two places. The menu-bar Parleq icon has a **Microphone** submenu listing System Default plus every connected input device, with a checkmark on the active one — useful for switching mid-session (laptop mic at home, USB mic at the desk, AirPods on the go). The same picker is in **Settings → Audio** for set-and-forget configuration. Selections are persisted by the device's Core Audio UID, so unplugging and reconnecting a USB mic later restores it. If your saved device isn't currently connected, Parleq falls back to System Default and surfaces a "Selected microphone disconnected" hint until the device reconnects.`,
+      },
+      {
+        q: 'Does it work with Bluetooth headphones?',
+        a: `Yes, but by default Parleq forces input to the built-in mic when the system default is Bluetooth — otherwise BT headphones drop from A2DP (high-quality stereo output) to HFP/SCO (low-quality bidirectional) the moment recording starts, and your music pauses or sounds awful for the duration of the dictation. **Settings → Audio → "Keep music playing while dictating"** controls this; default is on. Disable it if you actually want to record from your BT headset's mic and don't mind the audio-quality drop.`,
+      },
+      {
+        q: 'How long does first launch take?',
+        a: `About 30–60 seconds on Apple Silicon. Parleq downloads the Parakeet TDT v3 speech model (~150 MB) from Hugging Face on first launch, then warms it up. The menu-bar icon switches from a download glyph to a microphone when ready. Subsequent launches are under 5 seconds.`,
+      },
+      {
+        q: 'Why does Parleq need Microphone *and* Accessibility permissions?',
+        a: `Microphone is for capturing audio (obviously). Accessibility is for two things: (1) reading which app currently has keyboard focus when you press the hotkey, so the cleaned text pastes back into that app even if your focus drifts mid-dictation; (2) synthesizing the paste keystrokes via \`CGEventTap\` — macOS's standard mechanism for system-wide hotkey + paste apps. Parleq doesn't use Accessibility for any kind of screen reading, keystroke logging, or window inspection beyond identifying the originally-focused app's bundle ID.`,
+      },
+    ],
+  },
+  {
+    title: 'Customization',
+    items: [
+      {
+        q: 'Can I change the hotkey?',
+        a: `Yes — Settings → Hotkey → Binding. Default is right-Option (⌥), chosen because it's globally available, doesn't conflict with any standard macOS shortcut, and is comfortable to hold. Other options include left-Option, either Control, either Command, either Shift, or Fn. Pick one that doesn't fight a shortcut you already use.`,
+      },
+      {
+        q: 'Can I teach Parleq names and terms it gets wrong?',
+        a: `Yes — **Settings → Custom Dictionary**. Add terms Parleq commonly mis-transcribes (people's names, project codenames, technical jargon), with optional aliases for variant spellings the speech model often emits (e.g. "Parlay" / "Parlez" → canonical "Parleq") and an optional context blurb that helps the LLM judge whether the surrounding speech topic actually matches. Each entry has a per-term toggle for STT-side biasing — leave on for terms with distinctive phonetics, turn off when a term's sounds overlap a common word and trigger false positives.`,
+      },
+      {
+        q: 'Can I customize the cleanup style (more formal, more terse, etc.)?',
+        a: `Not through Settings today. The cleanup prompt is curated to produce light edits — punctuation, capitalization, light filler removal, common ASR misrecognitions — without rewriting your voice. If you want a heavier-handed pass, use the refinement loop instead: hold the hotkey again while the overlay is open and say what you want different ("make it more professional", "shorter, end with a question mark"). The cleanup prompt itself lives in \`SystemPrompts.swift\` if you want to fork.`,
+      },
+    ],
+  },
+  {
+    title: 'Cost & workplace use',
+    items: [
+      {
+        q: 'Is Parleq free? What does cleanup actually cost?',
+        a: `Parleq itself is free and open-source under Apache-2.0. The cleanup pass costs whatever your chosen provider charges per token. Cleanup prompts are short (a few hundred input tokens, a few hundred output tokens), so a typical day of personal dictation runs to single-digit cents. Direct Gemini has a free tier you can sign up for without a credit card; whether your usage stays inside the current per-minute and per-day quotas depends on how heavily you dictate. Bedrock / Vertex / Azure bill per token to your existing cloud account at that provider's published rates. **Settings → Usage** shows running totals.`,
+      },
+      {
+        q: 'Can I use Parleq at work?',
+        a: `Probably yes, but it depends on your company's policies. Parleq has no Parleq-side backend — calls flow through whichever cloud account you point it at, governed by that cloud's contract. If your organization has already approved AWS Bedrock, GCP Vertex, or Azure OpenAI for other work, Parleq fits inside that existing approval; there's no separate vendor to onboard. If your work hasn't approved any of those, the question shifts to whether you can sanction direct calls to Google AI Studio (consumer terms — usually not appropriate for sensitive work), which is the only configuration that doesn't lean on your org's existing cloud relationships.`,
+      },
+    ],
+  },
+  {
+    title: 'Comparisons & alternatives',
+    items: [
+      {
+        q: 'How does Parleq compare to macOS\'s built-in dictation?',
+        a: `macOS built-in dictation also runs on-device (since Sonoma) and is integrated wherever a text field appears. It's free, well-tuned for short messages, and needs no setup. Parleq's differences: (1) the cleanup pass — punctuation, capitalization, filler removal, smart proper-noun handling — is doing work the system dictation doesn't; (2) the refinement loop lets you say "make it more professional" or "shorter" and watch the text change without typing; (3) the custom vocabulary feature handles names and jargon the system dictation can't be configured for. Built-in dictation is the right choice for short messages into a chat app. Parleq is built for longer-form composition and voice-driven editing.`,
+      },
+    ],
+  },
+  {
+    title: 'Open source',
+    items: [
+      {
+        q: 'Where can I read the source, report a bug, or contribute?',
+        a: `On GitHub at <a href="${repoUrl}" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">parleq/parleq-speech</a>, under Apache-2.0. Issues are open for bugs and feature requests; PRs are welcome — small, targeted fixes are easier to review than sweeping refactors. The README has a developer setup section if you want to build from source.`,
+      },
+    ],
+  },
+];
+
+// Helper to render `**bold**` and backtick-code in the answer text.
+// Astro's HTML rendering doesn't process Markdown by default in
+// inline strings, so we do a tiny safe substitution here for the
+// two cases the FAQ actually uses. Keeps the questions readable in
+// the source frontmatter without forcing every answer into JSX.
+function renderInline(text: string): string {
+  return text
+    .replace(/`([^`]+)`/g, '<code class="rounded bg-[color:var(--color-bg)] px-1 font-mono text-[13px]">$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong class="text-[color:var(--color-text)] font-semibold">$1</strong>');
+}
+---
+
+<Layout title="FAQ — Parleq" description="Common questions about Parleq's privacy posture, provider choice, hardware support, customization, cost, and workplace use.">
+  <header class="mx-auto flex max-w-5xl items-center justify-between px-6 pt-8">
+    <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/'} class="flex items-center gap-3 text-lg font-semibold tracking-tight">
+      <span class="font-display text-2xl">Parleq</span>
+    </a>
+    <nav class="flex items-center gap-6 text-sm font-medium text-[color:var(--color-text-muted)]">
+      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/'} class="transition-colors hover:text-[color:var(--color-text)]">Home</a>
+      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/how-it-works/'} class="transition-colors hover:text-[color:var(--color-text)]">How it works</a>
+      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/'} class="transition-colors hover:text-[color:var(--color-text)]">Docs</a>
+      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/faq/'} class="text-[color:var(--color-text)]">FAQ</a>
+      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/about/'} class="transition-colors hover:text-[color:var(--color-text)]">About</a>
+      <a href={repoUrl} class="transition-colors hover:text-[color:var(--color-text)]">GitHub →</a>
+    </nav>
+  </header>
+
+  <article class="mx-auto max-w-3xl px-6 pt-20 pb-24">
+    <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">FAQ</p>
+    <h1 class="mt-4 font-display text-4xl leading-[1.1] font-medium tracking-tight sm:text-5xl">
+      Frequently asked questions.
+    </h1>
+    <p class="mt-6 text-lg leading-relaxed text-[color:var(--color-text-muted)]">
+      Quick answers to the questions that come up most. If something here doesn't match what you're seeing, or if you have a question that should be added, <a href={`${repoUrl}/issues/new`} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">open an issue</a>.
+    </p>
+
+    {sections.map((section) => (
+      <section class="mt-16">
+        <h2 class="font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+          {section.title}
+        </h2>
+        <div class="mt-6 space-y-8">
+          {section.items.map((item) => (
+            <div>
+              <h3 class="font-display text-lg font-semibold tracking-tight text-[color:var(--color-text)]">
+                {item.q}
+              </h3>
+              <p
+                class="mt-3 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]"
+                set:html={renderInline(item.a)}
+              />
+            </div>
+          ))}
+        </div>
+      </section>
+    ))}
+
+    <section class="mt-16 rounded-xl border border-[color:var(--color-border-subtle)] bg-[color:var(--color-surface)] p-6">
+      <h2 class="font-display text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Question not here?</h2>
+      <p class="mt-3 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
+        File an issue on GitHub — answers that come up more than once tend to land in this FAQ. For provider-specific setup questions, the <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/'} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">docs</a> are usually the better starting point.
+      </p>
+    </section>
+  </article>
+
+  <footer class="border-t border-[color:var(--color-border-subtle)]">
+    <div class="mx-auto flex max-w-5xl flex-col items-start justify-between gap-4 px-6 py-10 text-sm text-[color:var(--color-text-subtle)] sm:flex-row sm:items-center">
+      <div class="flex items-center gap-3">
+        <span class="font-display text-base font-semibold text-[color:var(--color-text)]">Parleq</span>
+        <span>·</span>
+        <span>Apache-2.0</span>
+      </div>
+      <div class="flex items-center gap-6">
+        <a href={repoUrl} class="hover:text-[color:var(--color-text)]">GitHub</a>
+        <a href={`${repoUrl}/releases`} class="hover:text-[color:var(--color-text)]">Releases</a>
+        <a href={`${repoUrl}/blob/main/THIRD_PARTY_LICENSES.md`} class="hover:text-[color:var(--color-text)]">Licenses</a>
+      </div>
+    </div>
+  </footer>
+</Layout>

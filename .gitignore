@@ -1,0 +1,44 @@
+# Go
+bin/
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work.sum
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Xcode (future)
+xcuserdata/
+*.xcuserstate
+DerivedData/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Benchmark outputs (generated, not committed)
+benchmarks/**/results/
+benchmarks/**/recorder.log
+
+# Vendored third-party source (cloned by scripts/setup-whisper.sh).
+# Default: ignore everything under third_party/, but keep our own
+# fluidaudio-sidecar source — it's first-party code that just happens
+# to live in this directory because it consumes the FluidAudio
+# package. .build/ and .swiftpm/ inside it stay ignored.
+third_party/*
+!third_party/fluidaudio-sidecar/
+third_party/fluidaudio-sidecar/.build/
+third_party/fluidaudio-sidecar/.swiftpm/
+
+# Local environment
+.env
+.env.local

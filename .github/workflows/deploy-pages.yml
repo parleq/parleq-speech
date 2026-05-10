@@ -1,0 +1,75 @@
+# Deploy the Astro site under web/ to GitHub Pages on every push
+# to main that touches site sources, plus a manual trigger from the
+# Actions tab so you can re-deploy without an empty commit.
+#
+# Concurrency=pages with cancel-in-progress=true means a new push
+# while a deploy is mid-flight cancels the in-flight one — better
+# than serializing because the latest commit is what we want live.
+#
+# When the repo moves to the parleq org, this file moves with it
+# and keeps working — only the Astro config's `site` URL needs
+# updating to match the new deployed URL.
+
+name: Deploy site to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'web/**'
+      - '.github/workflows/deploy-pages.yml'
+  # Re-deploy whenever a release is published so the site's
+  # build-time fetch of the latest .dmg URL + version picks it up.
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build site
+        run: npm run build
+        env:
+          # Lets src/lib/release.ts authenticate against the GitHub
+          # API so the latest-release fetch isn't subject to the 60-
+          # req/hour unauthenticated limit.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,108 @@
+---
+import Layout from '../layouts/Layout.astro';
+
+const repoUrl = 'https://github.com/parleq/parleq-speech';
+const speekUrl = 'https://github.com/jstruzik/Speek';
+---
+
+<Layout title="About — Parleq">
+  <header class="mx-auto flex max-w-5xl items-center justify-between px-6 pt-8">
+    <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/'} class="flex items-center gap-3 text-lg font-semibold tracking-tight">
+      <span class="font-display text-2xl">Parleq</span>
+    </a>
+    <nav class="flex items-center gap-6 text-sm font-medium text-[color:var(--color-text-muted)]">
+      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/'} class="transition-colors hover:text-[color:var(--color-text)]">Home</a>
+      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/how-it-works/'} class="transition-colors hover:text-[color:var(--color-text)]">How it works</a>
+      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/'} class="transition-colors hover:text-[color:var(--color-text)]">Docs</a>
+      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/faq/'} class="transition-colors hover:text-[color:var(--color-text)]">FAQ</a>
+      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/about/'} class="text-[color:var(--color-text)]">About</a>
+      <a href={repoUrl} class="transition-colors hover:text-[color:var(--color-text)]">GitHub →</a>
+    </nav>
+  </header>
+
+  <article class="mx-auto max-w-2xl px-6 pt-20 pb-24">
+    <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">
+      About
+    </p>
+    <h1 class="mt-4 font-display text-4xl leading-[1.1] font-medium tracking-tight sm:text-5xl">
+      Why Parleq exists.
+    </h1>
+
+    <div class="mt-12 space-y-6 text-[17px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      <p>
+        I'm a software engineer at <a href="https://posit.co" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Posit</a>, where I work on <a href="https://posit.co/products/enterprise/package-manager/" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Posit Package Manager</a> — an enterprise product for managing R and Python packages inside large organizations. I've been writing code professionally for a long time, mostly in Go, and the intersection of speech and AI tooling is where I find myself spending more and more of my curiosity these days.
+      </p>
+
+      <p>
+        Parleq started, like a lot of these projects, as a workaround.
+      </p>
+
+      <p>
+        I'd been a happy user of an AI dictation app on macOS — the kind that listens, cleans up your speech with an LLM, and pastes the result wherever your cursor is. It worked well. Then I tried to use it at work, and ran into a wall: the app routes audio and transcripts through its own SaaS backend, and my employer's policies — like a lot of companies' — require that the infrastructure and models I send work through are on a pre-approved list. A new vendor that hadn't been through that review wasn't something I could keep using day-to-day, no matter how nice the product was.
+      </p>
+
+      <p>
+        So I started thinking about what an open-source, local-first version would look like — and what it would take to make it actually pleasant to use, not just defensible on a compliance review.
+      </p>
+
+      <h2 class="mt-12 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+        Two things I really wanted.
+      </h2>
+
+      <p>
+        <strong class="font-semibold text-[color:var(--color-text)]">Low latency.</strong> Dictation falls apart the moment you have to wait for it. If there's a noticeable pause between releasing the hotkey and seeing your text, you stop trusting the tool, and the rhythm of writing-by-speaking breaks. Parleq runs the speech model entirely on the Apple Neural Engine, locally, with no network round-trip. The cleanup pass is the only step that touches a remote service, and even that is optional — you can skip it and just paste the raw transcript if you want.
+      </p>
+
+      <p>
+        <strong class="font-semibold text-[color:var(--color-text)]">Post-processing that listens to me.</strong> Raw speech-to-text output is rarely what you want pasted into Slack. You want punctuation, capitalization, the right spelling of names you keep saying, the "ums" and "uhs" cleaned up, half-sentences finished. An AI cleanup pass is great at this — but the moment it misreads your intent, you need a way to <em>tell it</em> what to do, not click a fix-it button. So Parleq lets you re-trigger the hotkey while the cleaned text is still on screen and just <em>say</em> what to change. "Make it more professional." "Shorter." "Add a question mark and end with thanks." The overlay shows you the result before it pastes, so you can keep refining until it lands.
+      </p>
+
+      <p>
+        That overlay-and-iterate loop is the part of Parleq I'm proudest of. It treats the cleaned text as a draft you talk to, not a final output you accept or reject.
+      </p>
+
+      <h2 class="mt-12 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+        Open-source, bring your own LLM.
+      </h2>
+
+      <p>
+        Parleq doesn't have a backend. There's no Parleq cloud, no Parleq account, no Parleq subscription, no Parleq SaaS to audit. Speech recognition is on-device. Cleanup runs against an LLM provider you configure — Gemini, Vertex AI, AWS Bedrock, or Azure OpenAI — using your own credentials, your organization's existing cloud accounts, and (where it matters) the same identity and access controls you've already vetted for everything else.
+      </p>
+
+      <p>
+        I built it that way partly because it sidesteps a lot of complexity I didn't want to take on, and partly because it's the most honest answer for compliance-sensitive work I could come up with. If your security team has already approved your laptop hitting Bedrock or Vertex directly, then Parleq fits inside that approval — no separate vendor review, no separate data-flow diagram, no new place where transcripts pile up.
+      </p>
+
+      <p>
+        The whole thing is <a href={repoUrl} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">on GitHub</a> under Apache-2.0. Audio never leaves your Mac. Logs carry length-only diagnostics, never transcript content. API keys live in the macOS Keychain.
+      </p>
+
+      <h2 class="mt-12 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+        Thanks.
+      </h2>
+
+      <p>
+        A particular thanks to Jake Struzik, whose <a href={speekUrl} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Speek</a> showed me what a clean, local-first dictation tool on macOS could feel like. Parleq's design owes a debt to it.
+      </p>
+
+      <p class="text-[15px] text-[color:var(--color-text-subtle)]">
+        — Jon
+      </p>
+    </div>
+  </article>
+
+  <footer class="border-t border-[color:var(--color-border-subtle)]">
+    <div class="mx-auto flex max-w-5xl flex-col items-start justify-between gap-4 px-6 py-10 text-sm text-[color:var(--color-text-subtle)] sm:flex-row sm:items-center">
+      <div class="flex items-center gap-3">
+        <span class="font-display text-base font-semibold text-[color:var(--color-text)]">Parleq</span>
+        <span>·</span>
+        <span>Apache-2.0</span>
+      </div>
+      <div class="flex items-center gap-6">
+        <a href={repoUrl} class="hover:text-[color:var(--color-text)]">GitHub</a>
+        <a href={`${repoUrl}/releases`} class="hover:text-[color:var(--color-text)]">Releases</a>
+        <a href={`${repoUrl}/blob/main/THIRD_PARTY_LICENSES.md`} class="hover:text-[color:var(--color-text)]">Licenses</a>
+      </div>
+    </div>
+  </footer>
+</Layout>

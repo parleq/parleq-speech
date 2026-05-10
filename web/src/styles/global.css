@@ -1,0 +1,88 @@
+@import "tailwindcss";
+
+/*
+ * Parleq design tokens. Custom theme rather than Tailwind's defaults
+ * so the site reads like a Parleq site, not a Tailwind site:
+ *
+ *   - Fraunces (variable serif, optical sizing) for headings —
+ *     reads as "writerly" without being precious. Ties to Parleq's
+ *     core promise: voice in, written word out.
+ *   - Inter for body — reliable, neutral, lets Fraunces carry the
+ *     personality.
+ *   - Warm white background (#fafaf7) instead of pure white — softer
+ *     on the eye, less of a default-Tailwind feel.
+ *   - Amber accent (#d97706) — warm, friendly, distinct from the
+ *     blues that dominate developer-tool sites in 2026.
+ *   - Sound-bar motif color matches the in-app SoundWaveBars view's
+ *     accent so the website feels continuous with the product.
+ */
+@theme {
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-serif: 'Fraunces', ui-serif, Georgia, serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --color-bg: #fafaf7;
+  --color-surface: #ffffff;
+  --color-text: #0f172a;
+  --color-text-muted: #475569;
+  --color-text-subtle: #64748b;
+  --color-border: #e2e8f0;
+  --color-border-subtle: #f1f5f9;
+  --color-accent: #d97706;
+  --color-accent-hover: #b45309;
+  --color-accent-soft: #fef3c7;
+  --color-wave: #d97706;
+}
+
+html {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* Inter's stylistic-set tweaks: cv11 = single-storey "a", ss01 =
+     contextual alternates. Subtle but worth the bytes for body text. */
+  font-feature-settings: 'cv11', 'ss01';
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+/* Headings reach for the serif. Fraunces' variable opsz axis lets
+   us scale optical sizing with the visual size, so big display
+   headlines pick up sharper terminals while inline use stays cozy. */
+.font-display {
+  font-family: var(--font-serif);
+  font-variation-settings: 'opsz' 144, 'SOFT' 50, 'WONK' 0;
+  letter-spacing: -0.02em;
+}
+
+/* Sound-bar hero motif. Five vertical bars that idle-pulse, the
+   same visual language as the in-app capture overlay. The phase
+   offsets give the wave a left-to-right travel without needing JS. */
+.wave-bar {
+  display: inline-block;
+  width: 6px;
+  height: 56px;
+  margin: 0 3px;
+  background: var(--color-wave);
+  border-radius: 3px;
+  transform-origin: center;
+  animation: wave 1.4s ease-in-out infinite;
+}
+.wave-bar:nth-child(1) { animation-delay: 0s; }
+.wave-bar:nth-child(2) { animation-delay: 0.1s; }
+.wave-bar:nth-child(3) { animation-delay: 0.2s; }
+.wave-bar:nth-child(4) { animation-delay: 0.3s; }
+.wave-bar:nth-child(5) { animation-delay: 0.4s; }
+
+@keyframes wave {
+  0%, 100% { transform: scaleY(0.25); opacity: 0.85; }
+  50%      { transform: scaleY(1.0);  opacity: 1.0;  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wave-bar { animation: none; transform: scaleY(0.6); }
+}

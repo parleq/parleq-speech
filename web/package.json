@@ -1,0 +1,17 @@
+{
+  "name": "parleq-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Marketing site for Parleq — built with Astro, deployed to GitHub Pages.",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview"
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "^4.0.0",
+    "astro": "^5.0.0",
+    "tailwindcss": "^4.0.0"
+  }
+}

@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/parleq/parleq-speech/security/advisories/new
+    about: Security issues should not be filed as public issues — use GitHub Security Advisories.
+  - name: Setup help
+    url: https://parleq.app/docs/
+    about: Per-provider setup walkthroughs for Gemini, Vertex AI, AWS Bedrock, and Azure OpenAI.
+  - name: FAQ
+    url: https://parleq.app/faq/
+    about: Common questions about privacy, providers, hardware, customization, and cost.

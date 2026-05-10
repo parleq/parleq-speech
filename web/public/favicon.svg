@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <rect width="64" height="64" rx="14" fill="#fafaf7"/>
+  <!-- Five capsule bars in the same amber accent + rounded-pill shape
+       as the in-app SoundWaveBars view, frozen at varied heights so
+       the favicon reads as a single moment of speech rather than a
+       symmetric icon. Tallest in the middle, asymmetric falloff. -->
+  <rect x="6"  y="22" width="8" height="20" rx="4" fill="#d97706"/>
+  <rect x="17" y="14" width="8" height="36" rx="4" fill="#d97706"/>
+  <rect x="28" y="8"  width="8" height="48" rx="4" fill="#d97706"/>
+  <rect x="39" y="17" width="8" height="30" rx="4" fill="#d97706"/>
+  <rect x="50" y="11" width="8" height="42" rx="4" fill="#d97706"/>
+</svg>

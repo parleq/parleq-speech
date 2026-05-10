@@ -1,0 +1,10 @@
+.build/
+.swiftpm/
+DerivedData/
+*.xcodeproj
+# Output of scripts/make-app.sh — built Parleq.app
+build/
+# Package.resolved is intentionally tracked (see top-level note in
+# CLAUDE.md) — fresh clones build against the same dependency
+# versions we tested, supply-chain bumps require an explicit
+# `swift package update` + reviewable commit.

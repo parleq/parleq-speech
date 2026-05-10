@@ -1,0 +1,314 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { fetchLatestRelease } from '../lib/release';
+
+const release = await fetchLatestRelease();
+const releasesUrl = release.releasePageUrl;
+const repoUrl = 'https://github.com/parleq/parleq-speech';
+
+// Direct .dmg URL when the release fetch succeeded; falls back to
+// the Releases page URL if the API was unreachable. Either way the
+// CTA still works — tester just sees the page instead of a direct
+// download in the fallback case.
+const downloadUrl = release.downloadUrl;
+
+const highlights = [
+  {
+    title: 'Speech recognition runs on your Mac',
+    body: 'Your audio never goes to the cloud. Parleq bundles Parakeet TDT v3 — a small, fast speech model — and runs it locally on Apple Silicon\'s Neural Engine. No cloud transcription bill, no per-call latency, and after first launch, no warm-up wait.',
+  },
+  {
+    title: 'Use the AI you already have',
+    body: 'Plug in whichever AI provider fits your situation: Google Gemini for personal use, AWS Bedrock (Claude or GPT-OSS) for an AWS shop, Google Vertex AI for a GCP shop, or Azure OpenAI for a Microsoft shop. Or skip cleanup entirely and paste the raw transcript. Each provider works with both pasted API keys and the same sign-in your other tools use — gcloud, az login, AWS SSO, IAM keys, or scoped Bedrock API keys.',
+  },
+  {
+    title: 'Teach it the words it gets wrong',
+    body: 'Names, jargon, and project codenames the speech model commonly mishears go in the custom dictionary. Add the alternate spellings the model usually emits, an optional context blurb to help the AI judge whether a topic actually matches, and a per-term toggle for cases where biasing the speech recognition itself causes false positives.',
+  },
+  {
+    title: 'Pastes where you started, not where you ended',
+    body: 'The app you were in when you pressed the hotkey is captured at that moment. If your attention drifts mid-dictation, the cleaned text still lands in the right window. Per-app overrides skip the trailing space for terminals and other apps that handle their own spacing.',
+  },
+  {
+    title: 'Compliance-friendly by default',
+    body: 'Audio is never written to disk — it lives in memory only, for the few seconds a dictation takes. Logs record metrics (latency, token counts) but never the text itself. Provider API keys live in the macOS Keychain. Cloud sign-in modes (AWS SSO, gcloud, az login) delegate to your existing CLI session, so Parleq never stores long-lived AWS, GCP, or Azure session tokens directly.',
+  },
+  {
+    title: 'Recovery built in',
+    body: 'The last 20 cleaned dictations are kept in memory and surfaced in the menu bar — click any entry to copy it back to the clipboard. Useful when a paste lands in the wrong app. Wiped on quit; never written to disk.',
+  },
+];
+---
+
+<Layout title="Parleq — Local-first AI dictation for macOS">
+  <!-- Header: wordmark on left, nav links on right. -->
+  <header class="mx-auto flex max-w-5xl items-center justify-between px-6 pt-8">
+    <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/'} class="flex items-center gap-3 text-lg font-semibold tracking-tight">
+      <span class="font-display text-2xl">Parleq</span>
+    </a>
+    <nav class="flex items-center gap-6 text-sm font-medium text-[color:var(--color-text-muted)]">
+      <span class="text-[color:var(--color-text)]">Home</span>
+      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/how-it-works/'} class="transition-colors hover:text-[color:var(--color-text)]">How it works</a>
+      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/'} class="transition-colors hover:text-[color:var(--color-text)]">Docs</a>
+      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/faq/'} class="transition-colors hover:text-[color:var(--color-text)]">FAQ</a>
+      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/about/'} class="transition-colors hover:text-[color:var(--color-text)]">About</a>
+      <a href={repoUrl} class="transition-colors hover:text-[color:var(--color-text)]">GitHub →</a>
+    </nav>
+  </header>
+
+  <!-- Hero. Centered headline + waveform motif + dual CTA. The wave
+       bars idle-pulse to suggest the live audio visualization users
+       see in the app while dictating. -->
+  <section class="mx-auto max-w-3xl px-6 pt-24 pb-20 text-center sm:pt-32 sm:pb-28">
+    <div aria-hidden="true" class="mb-10 flex h-16 items-end justify-center">
+      <span class="wave-bar"></span>
+      <span class="wave-bar"></span>
+      <span class="wave-bar"></span>
+      <span class="wave-bar"></span>
+      <span class="wave-bar"></span>
+    </div>
+
+    <h1 class="font-display text-5xl leading-[1.05] font-medium tracking-tight sm:text-6xl md:text-7xl">
+      Press a key.<br />Speak. Paste.
+    </h1>
+
+    <p class="mx-auto mt-8 max-w-2xl text-lg leading-relaxed text-[color:var(--color-text-muted)] sm:text-xl">
+      <span class="text-[color:var(--color-text)]">Parleq</span> <span class="font-mono text-base text-[color:var(--color-text-subtle)]">/PAR-lek/</span> is a local-first AI dictation app for macOS. Hold a global hotkey, talk, and watch your words appear — cleaned up, punctuated, and pasted into whatever app was focused. Audio stays on your Mac.
+    </p>
+
+    <div class="mt-12 flex flex-col items-center justify-center gap-3 sm:flex-row sm:gap-4">
+      <a
+        href={downloadUrl}
+        class="inline-flex items-center gap-2 rounded-full bg-[color:var(--color-accent)] px-7 py-3 text-base font-semibold text-white shadow-sm transition-colors hover:bg-[color:var(--color-accent-hover)]"
+      >
+        Download for macOS{release.version && ` ${release.version}`}
+      </a>
+      <a
+        href={repoUrl}
+        class="inline-flex items-center gap-2 rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-7 py-3 text-base font-semibold text-[color:var(--color-text)] transition-colors hover:border-[color:var(--color-text-muted)]"
+      >
+        View source
+      </a>
+    </div>
+
+    <p class="mt-6 text-sm text-[color:var(--color-text-subtle)]">
+      Apache-2.0 · macOS 14+ · Apple Silicon recommended
+    </p>
+  </section>
+
+  <!-- Refinement showcase. The differentiator most worth dwelling on:
+       once the overlay is open, you can keep talking to it. Each
+       hotkey press treats your speech as an edit instruction over
+       the current text rather than a new dictation. Two compact
+       chains — one workplace-email, one code-review — show the
+       loop in two contexts users will recognize. -->
+  <section class="border-t border-[color:var(--color-border-subtle)]">
+    <div class="mx-auto max-w-3xl px-6 py-20 sm:py-24">
+      <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">
+        Refinement
+      </p>
+      <h2 class="mt-4 font-display text-3xl leading-[1.1] font-medium tracking-tight sm:text-4xl">
+        Talk it into shape.
+      </h2>
+      <p class="mt-6 text-lg leading-relaxed text-[color:var(--color-text-muted)]">
+        Most dictation tools clean up your words once and you're stuck with whatever they decide. Parleq lets you keep talking. While the overlay is open, hold the hotkey again — your next sentence becomes an edit instruction over the text you already have. Change tone, restructure, add context, switch formats, all without touching the keyboard. When it's right, tap the hotkey to paste.
+      </p>
+
+      <!-- Example 1: a quick status update being elevated into a proper email.
+           Single-refinement chain — keeps this example tight so the
+           page introduces the loop with a low-load case. -->
+      <div class="mt-14">
+        <p class="text-[11px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">
+          For your inbox
+        </p>
+        <p class="mt-2 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
+          You're at your desk; you want to send your manager a status update. Talk first, polish second.
+        </p>
+
+        <div class="mt-6 space-y-3">
+          <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5">
+            <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-text-subtle)]">
+              You dictate
+            </p>
+            <p class="mt-2 font-mono text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">
+              "wanted to give you a quick update on the q3 numbers we're tracking ahead of plan on revenue but a little behind on new accounts"
+            </p>
+            <p class="mt-5 text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">
+              Parleq cleans →
+            </p>
+            <p class="mt-2 text-[15px] leading-relaxed text-[color:var(--color-text)]">
+              "Wanted to give you a quick update on the Q3 numbers. We're tracking ahead of plan on revenue but a little behind on new accounts."
+            </p>
+          </div>
+
+          <div class="rounded-xl border border-[color:var(--color-accent-soft)] bg-[color:var(--color-accent-soft)]/15 p-5">
+            <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">
+              You hold ⌥ and say
+            </p>
+            <p class="mt-2 font-display italic text-[16px] leading-relaxed text-[color:var(--color-text)]">
+              "make it a proper email starting with hi cynthia, and ask for a 15-minute check-in this week"
+            </p>
+          </div>
+
+          <div class="rounded-xl border-2 border-[color:var(--color-accent-soft)] bg-[color:var(--color-accent-soft)]/30 p-5">
+            <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">
+              Parleq refines →
+            </p>
+            <p class="mt-2 text-[15px] leading-relaxed text-[color:var(--color-text)]">
+              "Hi Cynthia, I wanted to share a quick Q3 update. We're tracking ahead of plan on revenue but a little behind on new accounts. Could we set up a 15-minute check-in this week to review priorities?"
+            </p>
+            <p class="mt-3 font-mono text-[10px] uppercase tracking-[0.16em] text-[color:var(--color-accent)]">
+              ↳ tap ⌥ — pasted
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Example 2: a developer talking through a code-review thought,
+           then reshaping it across two refinement passes. The
+           multi-step chain shows the iterative nature of the loop —
+           you don't have to nail it on the first refine. -->
+      <div class="mt-14">
+        <p class="text-[11px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">
+          For your code reviews
+        </p>
+        <p class="mt-2 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
+          Mid-review, you spot a bug. Talk through what you found, tighten the wording, then reshape it for the right audience — all without typing.
+        </p>
+
+        <div class="mt-6 space-y-3">
+          <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5">
+            <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-text-subtle)]">
+              You dictate
+            </p>
+            <p class="mt-2 font-mono text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">
+              "hey can you take another look at the auth middleware pr i think there's a bug in the token refresh path where we're not handling the 401 retry correctly"
+            </p>
+            <p class="mt-5 text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">
+              Parleq cleans →
+            </p>
+            <p class="mt-2 text-[15px] leading-relaxed text-[color:var(--color-text)]">
+              "Hey, can you take another look at the auth middleware PR? I think there's a bug in the token refresh path where we're not handling the 401 retry correctly."
+            </p>
+          </div>
+
+          <div class="rounded-xl border border-[color:var(--color-accent-soft)] bg-[color:var(--color-accent-soft)]/15 p-5">
+            <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">
+              You hold ⌥ and say
+            </p>
+            <p class="mt-2 font-display italic text-[16px] leading-relaxed text-[color:var(--color-text)]">
+              "shorter, drop the hedge"
+            </p>
+          </div>
+
+          <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5">
+            <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">
+              Parleq refines →
+            </p>
+            <p class="mt-2 text-[15px] leading-relaxed text-[color:var(--color-text)]">
+              "Can you re-review the auth middleware PR? The 401 retry on token refresh is broken."
+            </p>
+          </div>
+
+          <div class="rounded-xl border border-[color:var(--color-accent-soft)] bg-[color:var(--color-accent-soft)]/15 p-5">
+            <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">
+              You hold ⌥ and say
+            </p>
+            <p class="mt-2 font-display italic text-[16px] leading-relaxed text-[color:var(--color-text)]">
+              "rewrite as a slack message tagging at sarah, and add that I'll add a regression test"
+            </p>
+          </div>
+
+          <div class="rounded-xl border-2 border-[color:var(--color-accent-soft)] bg-[color:var(--color-accent-soft)]/30 p-5">
+            <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">
+              Parleq refines →
+            </p>
+            <p class="mt-2 text-[15px] leading-relaxed text-[color:var(--color-text)]">
+              "@sarah can you re-review the auth middleware PR? The 401 retry on token refresh is broken — I'll add a regression test."
+            </p>
+            <p class="mt-3 font-mono text-[10px] uppercase tracking-[0.16em] text-[color:var(--color-accent)]">
+              ↳ tap ⌥ — pasted into Slack
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <p class="mt-12 text-sm leading-relaxed text-[color:var(--color-text-subtle)]">
+        Each refinement runs against the visible text, not from scratch. Tone changes, format swaps ("rewrite as bullets", "turn it into a commit message"), corrections, or building up a longer thought across several presses — all the same loop, all driven by your voice.
+      </p>
+    </div>
+  </section>
+
+  <!-- Highlights grid. 3-up on desktop, single column on phone. Each
+       card is just a <h3> + <p>; no icons because they tend to feel
+       generic on developer-tool sites unless you draw them yourself. -->
+  <section class="mx-auto max-w-5xl px-6 pb-24">
+    <div class="grid gap-12 sm:grid-cols-2 sm:gap-x-10 sm:gap-y-14 lg:grid-cols-3">
+      {highlights.map((h) => (
+        <div>
+          <h3 class="font-display text-xl font-semibold tracking-tight">
+            {h.title}
+          </h3>
+          <p class="mt-3 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
+            {h.body}
+          </p>
+        </div>
+      ))}
+    </div>
+  </section>
+
+  <!-- Install section. Tester-readable so a non-engineer can follow it. -->
+  <section class="border-t border-[color:var(--color-border-subtle)]">
+    <div class="mx-auto max-w-3xl px-6 py-20 sm:py-24">
+      <h2 class="font-display text-3xl font-medium tracking-tight sm:text-4xl">
+        Get Parleq
+      </h2>
+      <ol class="mt-10 space-y-5 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
+        <li class="flex gap-4">
+          <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums">1.</span>
+          <div>
+            <a href={downloadUrl} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Download Parleq{release.version && ` ${release.version}`}</a>{release.sha256Url ? (
+              <>{' '}— <a href={release.sha256Url} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">SHA-256</a> available alongside for verification.</>
+            ) : (
+              <>{' '}from the <a href={releasesUrl} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">releases page</a>.</>
+            )}
+          </div>
+        </li>
+        <li class="flex gap-4">
+          <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums">2.</span>
+          <div>Open the DMG and drag <strong class="font-semibold text-[color:var(--color-text)]">Parleq.app</strong> onto the Applications folder.</div>
+        </li>
+        <li class="flex gap-4">
+          <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums">3.</span>
+          <div>Launch from Applications. Grant <strong class="font-semibold text-[color:var(--color-text)]">Microphone</strong> + <strong class="font-semibold text-[color:var(--color-text)]">Accessibility</strong> permissions on first launch.</div>
+        </li>
+        <li class="flex gap-4">
+          <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums">4.</span>
+          <div>The setup wizard walks you through picking a cleanup provider (or skipping cleanup entirely). Re-runnable from the menu bar's <strong class="font-semibold text-[color:var(--color-text)]">Run Setup…</strong> entry at any time.</div>
+        </li>
+        <li class="flex gap-4">
+          <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums">5.</span>
+          <div>Hold <kbd class="rounded border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-2 py-0.5 font-mono text-sm">right Option</kbd> to dictate. Release to clean and paste.</div>
+        </li>
+      </ol>
+      <p class="mt-10 text-sm text-[color:var(--color-text-subtle)]">
+        First launch downloads the speech model (~150 MB). The menu-bar icon switches from a download glyph to a microphone when ready — typically 30–60 seconds on first run, under 5 seconds on subsequent launches.
+      </p>
+    </div>
+  </section>
+
+  <footer class="border-t border-[color:var(--color-border-subtle)]">
+    <div class="mx-auto flex max-w-5xl flex-col items-start justify-between gap-4 px-6 py-10 text-sm text-[color:var(--color-text-subtle)] sm:flex-row sm:items-center">
+      <div class="flex items-center gap-3">
+        <span class="font-display text-base font-semibold text-[color:var(--color-text)]">Parleq</span>
+        <span>·</span>
+        <span>Apache-2.0</span>
+      </div>
+      <div class="flex items-center gap-6">
+        <a href={repoUrl} class="hover:text-[color:var(--color-text)]">GitHub</a>
+        <a href={releasesUrl} class="hover:text-[color:var(--color-text)]">Releases</a>
+        <a href={`${repoUrl}/blob/main/THIRD_PARTY_LICENSES.md`} class="hover:text-[color:var(--color-text)]">Licenses</a>
+      </div>
+    </div>
+  </footer>
+</Layout>

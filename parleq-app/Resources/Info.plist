@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleDisplayName</key>
+    <string>Parleq</string>
+    <key>CFBundleExecutable</key>
+    <string>ParleqApp</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.parleq.app</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>Parleq</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.6.0</string>
+    <key>CFBundleSignature</key>
+    <string>????</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>14.0</string>
+    <!-- Accessory app: no Dock icon, no main menu bar. The hotkey
+         listener runs in the background and the overlay panel is the
+         only visible UI. -->
+    <key>LSUIElement</key>
+    <true/>
+    <!-- Opt out of macOS automatic termination. Without this, the
+         system will silently kill an LSUIElement app that has no
+         visible windows after a short idle period. We have a hotkey
+         listener and a supervised child sidecar process that must
+         keep running until the user explicitly quits via the menu
+         bar. The supervisor relies on applicationWillTerminate to
+         clean up the sidecar; an automatic termination skips that
+         hook and orphans the child. -->
+    <key>NSSupportsAutomaticTermination</key>
+    <false/>
+    <!-- Sudden termination is the "OS may SIGKILL us during shutdown
+         or low-memory conditions" policy. Same reason as above: we
+         need our applicationWillTerminate to fire so the sidecar
+         child gets SIGTERM and releases port 8767. -->
+    <key>NSSupportsSuddenTermination</key>
+    <false/>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSPrincipalClass</key>
+    <string>NSApplication</string>
+    <!-- Mic permission prompt copy. Shown on first capture. -->
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Parleq listens to your voice when you press the configured hotkey, transcribes locally, and pastes the result into the active app.</string>
+</dict>
+</plist>

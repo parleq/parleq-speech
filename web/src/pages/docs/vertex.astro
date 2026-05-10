@@ -1,0 +1,224 @@
+---
+import Layout from '../../layouts/Layout.astro';
+
+const repoUrl = 'https://github.com/parleq/parleq-speech';
+---
+
+<Layout title="Vertex AI setup — Parleq" description="Set up Google Vertex AI as Parleq's cleanup provider. Two auth modes: gcloud ADC, or service-account JSON.">
+  <header class="mx-auto flex max-w-5xl items-center justify-between px-6 pt-8">
+    <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/'} class="flex items-center gap-3 text-lg font-semibold tracking-tight">
+      <span class="font-display text-2xl">Parleq</span>
+    </a>
+    <nav class="flex items-center gap-6 text-sm font-medium text-[color:var(--color-text-muted)]">
+      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/'} class="transition-colors hover:text-[color:var(--color-text)]">Home</a>
+      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/how-it-works/'} class="transition-colors hover:text-[color:var(--color-text)]">How it works</a>
+      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/'} class="text-[color:var(--color-text)]">Docs</a>
+      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/faq/'} class="transition-colors hover:text-[color:var(--color-text)]">FAQ</a>
+      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/about/'} class="transition-colors hover:text-[color:var(--color-text)]">About</a>
+      <a href={repoUrl} class="transition-colors hover:text-[color:var(--color-text)]">GitHub →</a>
+    </nav>
+  </header>
+
+  <article class="mx-auto max-w-2xl px-6 pt-16 pb-24">
+    <p class="text-sm">
+      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/'} class="text-[color:var(--color-text-subtle)] hover:text-[color:var(--color-text-muted)]">← Docs</a>
+    </p>
+
+    <p class="mt-8 text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">Vertex AI</p>
+    <h1 class="mt-4 font-display text-4xl leading-[1.1] font-medium tracking-tight sm:text-5xl">
+      Google Vertex AI
+    </h1>
+    <p class="mt-6 text-[17px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      Vertex AI is Google's enterprise-flavored access to its Gemini models. The models themselves are identical to what the direct Google AI API serves — same Gemini 2.5 Flash, same response quality — but the calls run through your organization's Google Cloud (GCP) project instead of through a personal AI Studio account. That brings with it the IAM controls, audit logs, regional deployment guarantees, and contract terms most companies require to actually use an AI service for work. If your team already uses GCP, Vertex is usually the right answer.
+    </p>
+
+    <div class="mt-8 rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6">
+      <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-text-subtle)]">At a glance</p>
+      <ul class="mt-3 space-y-2 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
+        <li><strong class="text-[color:var(--color-text)]">Auth modes (two):</strong> gcloud Application Default Credentials (uses your existing CLI session — easiest on developer machines), or service-account JSON (a dedicated identity for Parleq, no <code class="rounded bg-[color:var(--color-bg)] px-1 font-mono text-[13px]">gcloud</code> install required).</li>
+        <li><strong class="text-[color:var(--color-text)]">Default model:</strong> <code class="rounded bg-[color:var(--color-bg)] px-1 font-mono text-[13px]">gemini-2.5-flash</code> — the same model the direct Gemini API serves.</li>
+        <li><strong class="text-[color:var(--color-text)]">Region:</strong> Pick the closest one offering the model. <code class="rounded bg-[color:var(--color-bg)] px-1 font-mono text-[13px]">us-central1</code> carries every Gemini variant; <code class="rounded bg-[color:var(--color-bg)] px-1 font-mono text-[13px]">europe-west4</code> is a common EU choice.</li>
+        <li><strong class="text-[color:var(--color-text)]">IAM role required:</strong> <code class="rounded bg-[color:var(--color-bg)] px-1 font-mono text-[13px]">Vertex AI User</code> (<code class="rounded bg-[color:var(--color-bg)] px-1 font-mono text-[13px]">roles/aiplatform.user</code>) on the project — for your user (ADC mode) or the service account (JSON mode).</li>
+        <li><strong class="text-[color:var(--color-text)]">Compliance:</strong> Vertex traffic is governed by your GCP organization's terms — prompts and completions are not used for model training, and Cloud Audit Logging captures every call.</li>
+      </ul>
+    </div>
+
+    <h2 class="mt-12 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+      Before you start
+    </h2>
+    <ol class="mt-6 space-y-7 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      <li class="flex gap-4">
+        <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums">1.</span>
+        <div>
+          <p class="text-[color:var(--color-text)] font-medium">Have a GCP project with the Vertex AI API enabled.</p>
+          <p class="mt-2">
+            In <a href="https://console.cloud.google.com/apis/library/aiplatform.googleapis.com" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Cloud Console → APIs &amp; Services → Vertex AI API</a>, click <strong class="text-[color:var(--color-text)]">Enable</strong>. Note the <strong class="text-[color:var(--color-text)]">Project ID</strong> (not the project name — the ID, like <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">my-team-prod-1234</code>) — Parleq needs it.
+          </p>
+        </div>
+      </li>
+      <li class="flex gap-4">
+        <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums">2.</span>
+        <div>
+          <p class="text-[color:var(--color-text)] font-medium">Pick a region with Gemini 2.5 Flash available.</p>
+          <p class="mt-2">
+            <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">us-central1</code> (Parleq's default) carries every Gemini variant. <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">europe-west4</code> is a common EU choice. Pick the closest region to you for latency. The region you pick goes into the URL twice (subdomain + path), so the model has to be deployed in that exact region — not a multi-region.
+          </p>
+        </div>
+      </li>
+      <li class="flex gap-4">
+        <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums">3.</span>
+        <div>
+          <p class="text-[color:var(--color-text)] font-medium">Decide who's calling: you or a service account.</p>
+          <p class="mt-2">
+            <strong class="text-[color:var(--color-text)]">gcloud ADC</strong> is right when Parleq runs on your developer machine and you want calls billed and audit-logged as you. <strong class="text-[color:var(--color-text)]">Service-account JSON</strong> is right when you can't (or don't want to) install gcloud locally, when you want a dedicated identity for Parleq's calls, or when your org policy prefers service accounts for tool-driven traffic.
+          </p>
+        </div>
+      </li>
+    </ol>
+
+    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+      Mode 1: gcloud Application Default Credentials
+    </h2>
+    <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      <p>
+        Parleq shells out to <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">gcloud auth application-default print-access-token</code> on each token refresh, getting back a fresh OAuth bearer minted from your existing CLI session. The same auth path you already use for any other GCP-touching tool on your machine.
+      </p>
+      <p>
+        First-time setup (one-shot):
+      </p>
+      <pre class="overflow-x-auto rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4 text-[13px] leading-relaxed font-mono text-[color:var(--color-text)]"><code>{`# Install gcloud if you haven't:
+brew install --cask google-cloud-sdk
+
+# Sign in (opens browser):
+gcloud auth application-default login
+
+# Tell ADC which project to bill the calls against:
+gcloud auth application-default set-quota-project my-team-prod-1234`}</code></pre>
+      <p>
+        In Parleq's Setup Wizard, pick <strong class="text-[color:var(--color-text)]">Google Vertex AI</strong>, leave <strong class="text-[color:var(--color-text)]">Auth mode</strong> on <strong class="text-[color:var(--color-text)]">gcloud (ADC)</strong>, fill in <strong class="text-[color:var(--color-text)]">Project</strong> + <strong class="text-[color:var(--color-text)]">Region</strong>, click <strong class="text-[color:var(--color-text)]">Continue</strong>, then <strong class="text-[color:var(--color-text)]">Finish &amp; Restart</strong>.
+      </p>
+      <p class="text-[14px] text-[color:var(--color-text-subtle)]">
+        Parleq augments PATH at process launch to include <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[12px]">/opt/homebrew/bin</code> and <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[12px]">/usr/local/bin</code>, so a Homebrew-installed gcloud is found even when launched from Spotlight, the Dock, or as a login item — paths that <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[12px]">launchd</code> doesn't normally include.
+      </p>
+    </div>
+
+    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+      Mode 2: Service-account JSON
+    </h2>
+    <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      <p>
+        Parleq mints OAuth bearer tokens on its own by signing a JWT with the service account's RSA private key and exchanging it at Google's token endpoint. No gcloud install needed — useful on locked-down workstations where you can't install dev tools, or for users on personal Macs who want a dedicated GCP identity for Parleq.
+      </p>
+      <p>
+        Setup:
+      </p>
+      <ol class="mt-3 space-y-3 list-decimal list-inside marker:font-semibold marker:text-[color:var(--color-text)]">
+        <li>
+          In <a href="https://console.cloud.google.com/iam-admin/serviceaccounts" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Cloud Console → IAM &amp; Admin → Service Accounts</a>, create a service account named something like <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">parleq-cleanup</code>.
+        </li>
+        <li>
+          On the new service account: <strong class="text-[color:var(--color-text)]">Permissions</strong> → grant the <strong class="text-[color:var(--color-text)]">Vertex AI User</strong> role (<code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">roles/aiplatform.user</code>) on this project. That's the minimum role for calling <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">streamGenerateContent</code> on Gemini publishers.
+        </li>
+        <li>
+          On the service account's <strong class="text-[color:var(--color-text)]">Keys</strong> tab: <strong class="text-[color:var(--color-text)]">Add Key → Create new key → JSON</strong>. The browser downloads a JSON file. Open it in a text editor and copy the entire contents.
+        </li>
+        <li>
+          In Parleq's Setup Wizard, pick <strong class="text-[color:var(--color-text)]">Google Vertex AI</strong>, switch <strong class="text-[color:var(--color-text)]">Auth mode</strong> to <strong class="text-[color:var(--color-text)]">Service account JSON</strong>, fill in <strong class="text-[color:var(--color-text)]">Project</strong> + <strong class="text-[color:var(--color-text)]">Region</strong>, paste the full JSON into the multi-line field, then <strong class="text-[color:var(--color-text)]">Finish &amp; Restart</strong>.
+        </li>
+      </ol>
+      <p class="mt-2">
+        The JSON contents are stored in the macOS Keychain — never in <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">~/.parleq/config.json</code>. Parleq only reads two fields from it: <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">client_email</code> and <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">private_key</code>.
+      </p>
+      <p class="text-[14px] text-[color:var(--color-text-subtle)]">
+        Service-account keys never expire on their own — they're valid until you delete or disable them. Rotate by creating a new key, pasting it into Parleq's Settings (replaces the old value in the Keychain), and deleting the old key from the GCP console.
+      </p>
+    </div>
+
+    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+      Choosing a model
+    </h2>
+    <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      <p>
+        <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">gemini-2.5-flash</code> is the default and is the right choice for almost every dictation use case — same model as the direct Gemini API, just running on your GCP project. Cleanup is a low-stakes, low-token task; Flash matches Pro for it at a fraction of the latency.
+      </p>
+      <p>
+        To pick a different model, open <strong class="text-[color:var(--color-text)]">Settings… → LLM</strong>. The <strong class="text-[color:var(--color-text)]">Model</strong> dropdown carries the recommended Gemini variants — <strong class="text-[color:var(--color-text)]">Flash</strong> (default), <strong class="text-[color:var(--color-text)]">Flash-Lite</strong> (faster + cheaper), and <strong class="text-[color:var(--color-text)]">Pro</strong> (long, technical transcripts). Pick <strong class="text-[color:var(--color-text)]">Custom (enter below)</strong> to type any other Vertex-supported model identifier, e.g. a regional preview model or a publisher model your project has access to. Make sure the chosen model is offered in the configured region.
+      </p>
+      <p class="text-[14px] text-[color:var(--color-text-subtle)]">
+        Power-user note: every Settings field maps to a key in <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">~/.parleq/config.json</code> and can also be edited there directly. Settings is the recommended path for most users.
+      </p>
+    </div>
+
+    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+      Pricing &amp; quotas
+    </h2>
+    <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      <p>
+        Vertex pricing matches the direct Gemini API at the per-token level. The difference is billing: charges land on the GCP project's billing account, with full <strong class="text-[color:var(--color-text)]">Cloud Billing</strong> reporting and BigQuery export, rather than on a personal AI Studio account.
+      </p>
+      <p>
+        Vertex enforces per-region, per-model QPM (queries-per-minute) quotas separately from the direct API. Default quotas are generous — single-user dictation use will not hit them. If you do, request a quota increase in <strong class="text-[color:var(--color-text)]">Cloud Console → Quotas &amp; System Limits</strong>.
+      </p>
+    </div>
+
+    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+      Compliance notes
+    </h2>
+    <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      <p>
+        Vertex traffic is governed by your GCP organization's terms of service. Per Google's <a href="https://cloud.google.com/terms/service-terms" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Cloud Service Terms</a>, prompts and completions on Vertex are not used to train Google models. Audit logs (Cloud Audit Logging → <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">aiplatform.googleapis.com</code>) capture every call with caller identity, timestamp, and resource. VPC Service Controls work normally if you've already perimeterized your GCP environment.
+      </p>
+      <p>
+        Audio never reaches Google. Only the text transcript output by Parleq's on-device speech model is sent.
+      </p>
+      <p>
+        If you're choosing between direct Gemini and Vertex: pick Vertex when you need IAM roles, audit logs, data-residency commitments, or your org has already invested in GCP. Pick the direct API when you want zero setup overhead and the consumer terms are acceptable.
+      </p>
+    </div>
+
+    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+      Troubleshooting
+    </h2>
+    <div class="mt-6 space-y-6 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      <div>
+        <p class="font-medium text-[color:var(--color-text)]"><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">PERMISSION_DENIED</code> — caller does not have <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">aiplatform.endpoints.predict</code></p>
+        <p class="mt-2">
+          The identity Parleq is using doesn't have the <strong class="text-[color:var(--color-text)]">Vertex AI User</strong> role on the configured project. For ADC, this is <em>your</em> identity — check the IAM page for your user. For service-account auth, it's the SA's email — make sure the role was granted on the right project.
+        </p>
+      </div>
+      <div>
+        <p class="font-medium text-[color:var(--color-text)]"><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">FAILED_PRECONDITION</code> — Vertex AI API not enabled</p>
+        <p class="mt-2">
+          Enable the API on the project at <a href="https://console.cloud.google.com/apis/library/aiplatform.googleapis.com" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Cloud Console → API Library</a>.
+        </p>
+      </div>
+      <div>
+        <p class="font-medium text-[color:var(--color-text)]">"Could not obtain an access token" / <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">gcloud: command not found</code></p>
+        <p class="mt-2">
+          Parleq couldn't find <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">gcloud</code> on PATH. Most likely cause: you installed gcloud somewhere outside <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">/opt/homebrew/bin</code> / <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">/usr/local/bin</code> (e.g., a custom directory referenced from your shell rc only). Either symlink the binary into <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">/usr/local/bin</code>, or switch to the service-account JSON path which doesn't need gcloud at all.
+        </p>
+      </div>
+      <div>
+        <p class="font-medium text-[color:var(--color-text)]">"That doesn't look like a service account JSON"</p>
+        <p class="mt-2">
+          Parleq validates the pasted JSON against the SA-key shape (must have <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">type</code>, <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">client_email</code>, <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">private_key</code>). If you accidentally pasted an OAuth client JSON or a Workload Identity config, this fires. Re-download the SA key from <strong class="text-[color:var(--color-text)]">IAM → Service Accounts → your SA → Keys → Add Key → JSON</strong>.
+        </p>
+      </div>
+    </div>
+  </article>
+
+  <footer class="border-t border-[color:var(--color-border-subtle)]">
+    <div class="mx-auto flex max-w-5xl flex-col items-start justify-between gap-4 px-6 py-10 text-sm text-[color:var(--color-text-subtle)] sm:flex-row sm:items-center">
+      <div class="flex items-center gap-3">
+        <span class="font-display text-base font-semibold text-[color:var(--color-text)]">Parleq</span>
+        <span>·</span>
+        <span>Apache-2.0</span>
+      </div>
+      <div class="flex items-center gap-6">
+        <a href={repoUrl} class="hover:text-[color:var(--color-text)]">GitHub</a>
+        <a href={`${repoUrl}/releases`} class="hover:text-[color:var(--color-text)]">Releases</a>
+        <a href={`${repoUrl}/blob/main/THIRD_PARTY_LICENSES.md`} class="hover:text-[color:var(--color-text)]">Licenses</a>
+      </div>
+    </div>
+  </footer>
+</Layout>

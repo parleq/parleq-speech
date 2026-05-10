@@ -1,0 +1,107 @@
+Parleq
+Copyright 2026 Jon Yoder
+
+This product is licensed under the Apache License, Version 2.0 (see
+LICENSE for the full text). It includes software developed by the
+projects below; their original NOTICE files (where present) are
+reproduced after this header in summary form. Full per-package
+license texts ship in the source archives at
+`*/.build/checkouts/<name>/LICENSE*` and are listed alongside their
+versions and source URLs in THIRD_PARTY_LICENSES.md.
+
+============================================================
+Apple Swift open source projects
+============================================================
+
+This product includes the following Apple Swift open-source projects,
+each "Copyright (c) Apple Inc. and the Swift project authors" and
+licensed under Apache License 2.0:
+
+  * SwiftNIO                       https://github.com/apple/swift-nio
+  * SwiftNIO Extras                https://github.com/apple/swift-nio-extras
+  * SwiftNIO HTTP/2                https://github.com/apple/swift-nio-http2
+  * SwiftNIO SSL                   https://github.com/apple/swift-nio-ssl
+  * SwiftNIO Transport Services    https://github.com/apple/swift-nio-transport-services
+  * Swift HTTP Types               https://github.com/apple/swift-http-types
+  * Swift HTTP Structured Headers  https://github.com/apple/swift-http-structured-headers
+  * Swift Algorithms               https://github.com/apple/swift-algorithms
+  * Swift Async Algorithms         https://github.com/apple/swift-async-algorithms
+  * Swift Atomics                  https://github.com/apple/swift-atomics
+  * Swift Collections              https://github.com/apple/swift-collections
+  * Swift Numerics                 https://github.com/apple/swift-numerics
+  * Swift System                   https://github.com/apple/swift-system
+  * Swift Configuration            https://github.com/apple/swift-configuration
+  * Swift Crypto                   https://github.com/apple/swift-crypto
+  * Swift Certificates             https://github.com/apple/swift-certificates
+  * Swift ASN.1                    https://github.com/apple/swift-asn1
+  * Swift Log                      https://github.com/apple/swift-log
+  * Swift Metrics                  https://github.com/apple/swift-metrics
+  * Swift Service Context          https://github.com/apple/swift-service-context
+  * Swift Distributed Tracing      https://github.com/apple/swift-distributed-tracing
+
+SwiftNIO is heavily influenced by the Netty project. SwiftNIO's
+`Sources/CNIOLLHTTP/` vendors `llhttp` (https://github.com/nodejs/llhttp)
+under the MIT License, Copyright Fedor Indutny, 2018. The MIT license
+text is preserved at `swift-nio/Sources/CNIOLLHTTP/LICENSE` in the
+upstream checkout.
+
+============================================================
+Swift Server Workgroup
+============================================================
+
+This product includes the following swift-server projects, each
+Apache License 2.0:
+
+  * AsyncHTTPClient            https://github.com/swift-server/async-http-client
+  * Swift Service Lifecycle    https://github.com/swift-server/swift-service-lifecycle
+
+============================================================
+Soto
+============================================================
+
+This product uses Soto for AWS, Copyright 2017-2024 Adam Fowler and
+the Soto project authors, licensed under Apache License 2.0.
+
+  * Soto         https://github.com/soto-project/soto
+  * Soto Core    https://github.com/soto-project/soto-core
+
+Soto's source files are generated using HummingbirdMustache (Apache-2.0).
+
+============================================================
+Hummingbird
+============================================================
+
+This product uses Hummingbird, Copyright 2024 The Hummingbird Project,
+licensed under Apache License 2.0.
+
+  * Hummingbird  https://github.com/hummingbird-project/hummingbird
+
+Hummingbird contains code from swift-foundation, licensed under MIT.
+
+============================================================
+JMESPath.swift
+============================================================
+
+  * JMESPath.swift  https://github.com/jmespath/jmespath.swift
+    Apache License 2.0.
+
+============================================================
+FluidAudio
+============================================================
+
+This product uses FluidAudio (FluidInference, Apache-2.0) for local
+speech recognition on Apple Neural Engine.
+
+  * FluidAudio  https://github.com/FluidInference/FluidAudio
+
+FluidAudio downloads CoreML model weights at runtime from
+Hugging Face (FluidInference's published Parakeet TDT v3 and CTC
+checkpoints). The model weights are not redistributed inside the
+.app bundle and are governed by the upstream NVIDIA NeMo model
+license terms posted at the corresponding Hugging Face repositories.
+See THIRD_PARTY_LICENSES.md § "Model weights" for details.
+
+============================================================
+
+For the complete list of dependencies (including transitive
+versions and direct source URLs), see THIRD_PARTY_LICENSES.md.

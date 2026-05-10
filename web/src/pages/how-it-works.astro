@@ -1,0 +1,313 @@
+---
+import Layout from '../layouts/Layout.astro';
+
+const repoUrl = 'https://github.com/parleq/parleq-speech';
+
+const stages = [
+  {
+    n: '1',
+    title: 'Capture',
+    where: 'on-device',
+    summary:
+      'AVAudioEngine taps the system microphone at the hardware sample rate and converts each buffer in-line to 16 kHz mono Int16 — the format the local ASR model expects. Audio is accumulated as raw samples in process memory; nothing is ever written to disk.',
+    detail: [
+      ['Bluetooth-aware', 'When the system default input is Bluetooth, Parleq overrides to the built-in mic so your music stays in A2DP instead of dropping to HFP/SCO mid-dictation.'],
+      ['Pre-warm', 'The audio unit is instantiated at app launch and a 250 ms silent capture cycle runs once after the speech model finishes loading. This pays the cold-start cost so your first real dictation isn\'t a 90 ms first-buffer stub.'],
+      ['Live level meter', 'Per-buffer RMS is computed on the audio thread and pushed to the overlay so the sound-wave bars animate with your actual voice.'],
+    ],
+  },
+  {
+    n: '2',
+    title: 'Transcribe',
+    where: 'on-device · Apple Neural Engine',
+    summary:
+      'WAV bytes are POSTed to a sidecar process that runs Parakeet TDT v3 (CoreML) on the Apple Neural Engine. Typical latency is ~64 ms for a 5-second clip after the model is warm. The model resides at ~150 MB and downloads from Hugging Face on first launch.',
+    detail: [
+      ['Custom dictionary biasing', 'Terms you\'ve added in Settings travel as a base64-JSON header to the sidecar, which runs an extra CTC keyword-spotting + rescoring pass after the TDT transcription. Aliases for variant spellings ("parlay", "parlez") all match the canonical "Parleq" — the rescorer always emits the canonical form.'],
+      ['Per-term opt-out', 'A term whose phonetics overlap a common word (and so triggers false positives at the speech-recognition layer) can be marked LLM-only. The transcribe stage skips it; the LLM hint still applies.'],
+      ['Local-only', 'No cloud transcription. No per-call cost. No cold-start delay once the model has loaded. Audio bytes never leave your Mac.'],
+    ],
+  },
+  {
+    n: '3',
+    title: 'Clean up',
+    where: 'cloud LLM (or skipped)',
+    summary:
+      'The raw transcript streams to a configurable AI provider that lightly cleans the text — capitalization, punctuation, filler-word removal, common transcription errors, and spoken numbers turned into digits when context is technical. Cleaned words stream into the overlay as they arrive.',
+    detail: [
+      ['Pluggable providers across four paths', 'Five options: Google Gemini direct API (default — free tier, ~500–700 ms TTFT), Google Vertex AI (same Gemini models on GCP for IAM + audit logs + data residency), AWS Bedrock (Anthropic Claude or OpenAI GPT-OSS), Azure OpenAI (GPT-4o + gpt-5 family on Microsoft\'s contract), or skip cleanup entirely and paste raw ASR. The choice is made in Settings or via the first-run setup wizard.'],
+      ['Auth flexibility per provider', 'Each cloud supports both pasted API keys (stored in the macOS Keychain) and your existing CLI session — gcloud Application Default Credentials for Vertex (or service-account JSON), AWS SSO / static IAM keys / scoped Bedrock API keys for Bedrock, az login or resource keys for Azure. Parleq never stores long-lived cloud session tokens directly; the AWS/GCP/Azure CLIs handle refresh through their own caches.'],
+      ['Skippable', 'Pick "None — paste raw ASR (skip cleanup)" from the Settings provider list. Parleq will paste the raw transcript exactly as the on-device speech model emitted it. Useful when transcript content must never leave the device.'],
+      ['Custom dictionary hint', 'Your dictionary feeds a smart-vocabulary addendum to the cleanup prompt — terms with optional context blurbs and aliases. The LLM judges topic alignment and prefers your canonical spellings without force-correcting genuine homophones.'],
+      ['Refinement', 'When the overlay is already open, the next hotkey press re-runs this stage with a different system prompt that takes your speech as an edit instruction over the existing text. Walked through in detail in the section below.'],
+    ],
+  },
+  {
+    n: '4',
+    title: 'Paste',
+    where: 'on-device',
+    summary:
+      'On accept (auto-timer or manual hotkey tap), the cleaned text pastes into whatever app was focused when you pressed the hotkey originally — not whatever happens to be focused at accept time. CGEventTap synthesizes the keystrokes; the trailing-space heuristic adds a space after the pasted text by default.',
+    detail: [
+      ['Focused-app capture', 'The original target is captured at hotkey-down. If your focus drifted while dictating, the paste still lands in the right window.'],
+      ['Trailing-space override', 'Specific apps (your terminal, terminal-based editors, anything that handles its own spacing) skip the trailing space. Configurable per-app in Settings.'],
+      ['Recent Dictations', 'The last 20 cleaned dictations are kept in process memory and surfaced under the menu bar. Click any entry to copy it back to the clipboard if a paste landed somewhere unexpected. Never written to disk; wiped on app quit.'],
+    ],
+  },
+];
+---
+
+<Layout
+  title="How Parleq works — local-first AI dictation"
+  description="The four stages of a Parleq dictation: capture, transcribe, clean up, paste. What happens locally vs in the cloud. What gets stored vs what doesn't."
+>
+  <!-- Header. Same layout as the landing page header, with one extra
+       nav link active so the user knows where they are. -->
+  <header class="mx-auto flex max-w-5xl items-center justify-between px-6 pt-8">
+    <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/'} class="flex items-center gap-3 text-lg font-semibold tracking-tight">
+      <span class="font-display text-2xl">Parleq</span>
+    </a>
+    <nav class="flex items-center gap-6 text-sm font-medium text-[color:var(--color-text-muted)]">
+      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/'} class="transition-colors hover:text-[color:var(--color-text)]">Home</a>
+      <span class="text-[color:var(--color-text)]">How it works</span>
+      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/'} class="transition-colors hover:text-[color:var(--color-text)]">Docs</a>
+      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/faq/'} class="transition-colors hover:text-[color:var(--color-text)]">FAQ</a>
+      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/about/'} class="transition-colors hover:text-[color:var(--color-text)]">About</a>
+      <a href={repoUrl} class="transition-colors hover:text-[color:var(--color-text)]">GitHub →</a>
+    </nav>
+  </header>
+
+  <!-- Page intro. -->
+  <section class="mx-auto max-w-3xl px-6 pt-20 pb-12 sm:pt-24">
+    <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">
+      How it works
+    </p>
+    <h1 class="mt-4 font-display text-4xl leading-[1.1] font-medium tracking-tight sm:text-5xl">
+      A press, a sentence, a paste.
+    </h1>
+    <p class="mt-6 text-lg leading-relaxed text-[color:var(--color-text-muted)]">
+      When you hold the hotkey, four stages run in sequence. Three of them stay on your Mac. The middle one — LLM cleanup — talks to a cloud provider you configure (or skip entirely). This page walks each stage and what gets persisted versus what doesn't.
+    </p>
+  </section>
+
+  <!-- Pipeline overview: a concrete data-transformation strip. The
+       monospace boxes show what's actually flowing between stages,
+       with a real example utterance — gives the reader something
+       solid to pin the abstract pipeline to. -->
+  <section class="mx-auto max-w-4xl px-6 pb-16">
+    <div class="rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6 sm:p-8">
+      <p class="text-xs font-medium uppercase tracking-[0.16em] text-[color:var(--color-text-subtle)]">
+        Example flow
+      </p>
+      <div class="mt-4 grid gap-4 text-sm sm:grid-cols-[1fr_auto_1fr_auto_1fr_auto_1fr] sm:items-center sm:gap-3">
+        <div class="rounded-lg border border-[color:var(--color-border-subtle)] bg-[color:var(--color-bg)] p-3">
+          <p class="text-[10px] font-medium uppercase tracking-wider text-[color:var(--color-text-subtle)]">Audio</p>
+          <p class="mt-1 font-mono text-[12px] text-[color:var(--color-text-muted)]">~3 s WAV<br/>16 kHz mono</p>
+        </div>
+        <span class="hidden text-[color:var(--color-text-subtle)] sm:inline" aria-hidden="true">→</span>
+
+        <div class="rounded-lg border border-[color:var(--color-border-subtle)] bg-[color:var(--color-bg)] p-3">
+          <p class="text-[10px] font-medium uppercase tracking-wider text-[color:var(--color-text-subtle)]">Transcript</p>
+          <p class="mt-1 font-mono text-[12px] text-[color:var(--color-text)]">"lets go to the beach this weekend"</p>
+        </div>
+        <span class="hidden text-[color:var(--color-text-subtle)] sm:inline" aria-hidden="true">→</span>
+
+        <div class="rounded-lg border border-[color:var(--color-border-subtle)] bg-[color:var(--color-bg)] p-3">
+          <p class="text-[10px] font-medium uppercase tracking-wider text-[color:var(--color-text-subtle)]">Cleaned</p>
+          <p class="mt-1 font-mono text-[12px] text-[color:var(--color-text)]">"Let's go to the beach this weekend."</p>
+        </div>
+        <span class="hidden text-[color:var(--color-text-subtle)] sm:inline" aria-hidden="true">→</span>
+
+        <div class="rounded-lg border border-[color:var(--color-accent-soft)] bg-[color:var(--color-accent-soft)]/30 p-3">
+          <p class="text-[10px] font-medium uppercase tracking-wider text-[color:var(--color-accent)]">Pasted</p>
+          <p class="mt-1 font-mono text-[12px] text-[color:var(--color-text)]">into the focused app</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Stage cards. Numbered down the left in display serif, each card
+       a self-contained explanation of what happens at that stage,
+       where it runs, and the secondary details that matter for trust
+       (why is it on-device, what gets sent to the cloud, etc.). -->
+  <section class="mx-auto max-w-3xl px-6 pb-20">
+    <ol class="space-y-12 sm:space-y-16">
+      {stages.map((stage) => (
+        <li class="grid gap-6 sm:grid-cols-[auto_1fr] sm:gap-8">
+          <div class="font-display text-5xl font-semibold tabular-nums text-[color:var(--color-accent)] leading-none sm:text-6xl">
+            {stage.n}
+          </div>
+          <div>
+            <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <h2 class="font-display text-2xl font-semibold tracking-tight sm:text-3xl">
+                {stage.title}
+              </h2>
+              <span class="font-mono text-xs uppercase tracking-wider text-[color:var(--color-text-subtle)]">
+                {stage.where}
+              </span>
+            </div>
+            <p class="mt-4 leading-relaxed text-[color:var(--color-text-muted)]">
+              {stage.summary}
+            </p>
+            <dl class="mt-6 space-y-4 border-l border-[color:var(--color-border)] pl-5">
+              {stage.detail.map(([term, body]) => (
+                <div>
+                  <dt class="text-sm font-semibold text-[color:var(--color-text)]">
+                    {term}
+                  </dt>
+                  <dd class="mt-1 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
+                    {body}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        </li>
+      ))}
+    </ol>
+  </section>
+
+  <!-- Refinement loop. Stages 3 and 4 don't have to run once: while
+       the overlay is open, each subsequent hotkey press re-runs
+       stage 3 with a different system prompt that treats your speech
+       as an edit instruction over the existing text. Stage 4 only
+       fires when you tap to accept. The chain below shows what that
+       looks like in practice. -->
+  <section class="border-t border-[color:var(--color-border-subtle)]">
+    <div class="mx-auto max-w-3xl px-6 py-20">
+      <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">
+        The loop
+      </p>
+      <h2 class="mt-4 font-display text-3xl font-medium tracking-tight sm:text-4xl">
+        Refine until it's right.
+      </h2>
+      <p class="mt-6 text-lg leading-relaxed text-[color:var(--color-text-muted)]">
+        Stages 3 and 4 don't have to run once. While the overlay is open, each subsequent hotkey press re-runs stage 3 with a different system prompt — a refine prompt that takes the existing text plus your new utterance as an edit instruction and produces the smallest change that fully accomplishes it. Stage 4 only fires when you tap to accept.
+      </p>
+      <p class="mt-4 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
+        It's a voice undo/redo loop. The visible text is the working state; each press replaces it with the LLM's edit. Tone, format, length, structure — anything you can describe in a sentence is a valid edit.
+      </p>
+
+      <div class="mt-12 space-y-3">
+        <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5">
+          <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-text-subtle)]">
+            After stage 3 (initial cleanup)
+          </p>
+          <p class="mt-2 text-[15px] leading-relaxed text-[color:var(--color-text)]">
+            "Yeah, we should probably move the meeting to next Thursday because too many people are out this week."
+          </p>
+        </div>
+
+        <div class="rounded-xl border border-[color:var(--color-accent-soft)] bg-[color:var(--color-accent-soft)]/15 p-5">
+          <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">
+            You press ⌥ and say
+          </p>
+          <p class="mt-2 font-display italic text-[16px] leading-relaxed text-[color:var(--color-text)]">
+            "make it more professional"
+          </p>
+        </div>
+
+        <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5">
+          <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-text-subtle)]">
+            Refine pass — same LLM, different prompt
+          </p>
+          <p class="mt-2 text-[15px] leading-relaxed text-[color:var(--color-text)]">
+            "I'd like to move our meeting to next Thursday — too many team members are out this week."
+          </p>
+        </div>
+
+        <div class="rounded-xl border border-[color:var(--color-accent-soft)] bg-[color:var(--color-accent-soft)]/15 p-5">
+          <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">
+            You press ⌥ and say
+          </p>
+          <p class="mt-2 font-display italic text-[16px] leading-relaxed text-[color:var(--color-text)]">
+            "shorter, end with a question mark"
+          </p>
+        </div>
+
+        <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5">
+          <p class="mt-2 text-[15px] leading-relaxed text-[color:var(--color-text)]">
+            "Could we move our meeting to next Thursday?"
+          </p>
+        </div>
+
+        <div class="rounded-xl border border-[color:var(--color-accent-soft)] bg-[color:var(--color-accent-soft)]/15 p-5">
+          <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">
+            You press ⌥ and say
+          </p>
+          <p class="mt-2 font-display italic text-[16px] leading-relaxed text-[color:var(--color-text)]">
+            "add 'attendance has been thin lately' as the reason"
+          </p>
+        </div>
+
+        <div class="rounded-xl border-2 border-[color:var(--color-accent-soft)] bg-[color:var(--color-accent-soft)]/30 p-5">
+          <p class="text-[15px] leading-relaxed text-[color:var(--color-text)]">
+            "Could we move our meeting to next Thursday? Attendance has been thin lately."
+          </p>
+          <p class="mt-3 font-mono text-[10px] uppercase tracking-[0.16em] text-[color:var(--color-accent)]">
+            ↳ tap ⌥ — stage 4 runs, text pastes
+          </p>
+        </div>
+      </div>
+
+      <p class="mt-10 text-sm leading-relaxed text-[color:var(--color-text-subtle)]">
+        Implementation note: the refine prompt lives in <code class="rounded bg-[color:var(--color-border-subtle)] px-1.5 py-0.5 font-mono text-[12px] text-[color:var(--color-text)]">SystemPrompts.swift</code> alongside the cleanup prompt. Both run through the same streaming LLM provider; the only differences are the system prompt text and the user-message shape (refine includes the prior text + edit instruction in a single user message).
+      </p>
+    </div>
+  </section>
+
+  <!-- Privacy posture: an explicit kept/not-kept table. This is the
+       part testers and security-reviewers usually want to skim, so
+       it's its own section with a clear visual rhythm rather than
+       being buried in stage 4's detail. -->
+  <section class="border-t border-[color:var(--color-border-subtle)]">
+    <div class="mx-auto max-w-3xl px-6 py-20">
+      <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">
+        Privacy posture
+      </p>
+      <h2 class="mt-4 font-display text-3xl font-medium tracking-tight sm:text-4xl">
+        What stays on your Mac.
+      </h2>
+
+      <div class="mt-10 grid gap-8 sm:grid-cols-2">
+        <div>
+          <h3 class="font-display text-lg font-semibold">Persisted</h3>
+          <ul class="mt-3 space-y-3 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
+            <li><code class="rounded bg-[color:var(--color-border-subtle)] px-1.5 py-0.5 font-mono text-[13px] text-[color:var(--color-text)]">~/.parleq/config.json</code> — settings + custom dictionary, user-authored.</li>
+            <li><code class="rounded bg-[color:var(--color-border-subtle)] px-1.5 py-0.5 font-mono text-[13px] text-[color:var(--color-text)]">~/.parleq/usage.jsonl</code> — one line per LLM call: timestamp, model, token counts, latency. <strong class="font-semibold text-[color:var(--color-text)]">Metadata only.</strong></li>
+            <li><code class="rounded bg-[color:var(--color-border-subtle)] px-1.5 py-0.5 font-mono text-[13px] text-[color:var(--color-text)]">~/.parleq/app.log</code> — diagnostic log. ASR/LLM metrics are length-only ("post-utterance 87 ms, 142 chars / 28 words"); never the transcript itself.</li>
+            <li>Provider secrets in the macOS <strong class="font-semibold text-[color:var(--color-text)]">Keychain</strong> — Gemini API key, Bedrock API key, AWS static credentials, Vertex service-account JSON, Azure resource API key. Whichever you've configured.</li>
+          </ul>
+        </div>
+        <div>
+          <h3 class="font-display text-lg font-semibold">Never on disk</h3>
+          <ul class="mt-3 space-y-3 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
+            <li><strong class="font-semibold text-[color:var(--color-text)]">Audio bytes.</strong> WAV / PCM stays in process memory only. The HTTP body to the sidecar is in-memory; there's no <code class="rounded bg-[color:var(--color-border-subtle)] px-1.5 py-0.5 font-mono text-[13px] text-[color:var(--color-text)]">/tmp/parleq-*.wav</code>.</li>
+            <li><strong class="font-semibold text-[color:var(--color-text)]">Transcripts.</strong> Raw ASR output stays in memory.</li>
+            <li><strong class="font-semibold text-[color:var(--color-text)]">Cleaned text.</strong> Held in the overlay during cleanup, then in a 20-entry in-memory ring for the menu's Recent Dictations submenu, then gone on app quit. Never serialized.</li>
+            <li><strong class="font-semibold text-[color:var(--color-text)]">Cloud session tokens (AWS / GCP / Azure).</strong> CLI-session auth modes delegate token refresh to the official AWS / gcloud / az CLI caches at <code class="rounded bg-[color:var(--color-border-subtle)] px-1.5 py-0.5 font-mono text-[13px] text-[color:var(--color-text)]">~/.aws/sso/cache/</code>, <code class="rounded bg-[color:var(--color-border-subtle)] px-1.5 py-0.5 font-mono text-[13px] text-[color:var(--color-text)]">~/.config/gcloud/</code>, and <code class="rounded bg-[color:var(--color-border-subtle)] px-1.5 py-0.5 font-mono text-[13px] text-[color:var(--color-text)]">~/.azure/</code>. Parleq stores no long-lived session tokens directly.</li>
+          </ul>
+        </div>
+      </div>
+
+      <p class="mt-10 text-sm text-[color:var(--color-text-subtle)]">
+        Read the full enterprise-review packet in <a href={`${repoUrl}/blob/main/docs/SECURITY_REVIEW.md`} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">SECURITY_REVIEW.md</a>.
+      </p>
+    </div>
+  </section>
+
+  <footer class="border-t border-[color:var(--color-border-subtle)]">
+    <div class="mx-auto flex max-w-5xl flex-col items-start justify-between gap-4 px-6 py-10 text-sm text-[color:var(--color-text-subtle)] sm:flex-row sm:items-center">
+      <div class="flex items-center gap-3">
+        <span class="font-display text-base font-semibold text-[color:var(--color-text)]">Parleq</span>
+        <span>·</span>
+        <span>Apache-2.0</span>
+      </div>
+      <div class="flex items-center gap-6">
+        <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/'} class="hover:text-[color:var(--color-text)]">Home</a>
+        <a href={repoUrl} class="hover:text-[color:var(--color-text)]">GitHub</a>
+        <a href={`${repoUrl}/releases`} class="hover:text-[color:var(--color-text)]">Releases</a>
+      </div>
+    </div>
+  </footer>
+</Layout>

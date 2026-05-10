@@ -1,0 +1,268 @@
+---
+import Layout from '../../layouts/Layout.astro';
+
+const repoUrl = 'https://github.com/parleq/parleq-speech';
+---
+
+<Layout title="Azure OpenAI setup — Parleq" description="Set up Azure OpenAI as Parleq's cleanup provider. Two auth modes: API key, or Microsoft Entra ID via az login.">
+  <header class="mx-auto flex max-w-5xl items-center justify-between px-6 pt-8">
+    <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/'} class="flex items-center gap-3 text-lg font-semibold tracking-tight">
+      <span class="font-display text-2xl">Parleq</span>
+    </a>
+    <nav class="flex items-center gap-6 text-sm font-medium text-[color:var(--color-text-muted)]">
+      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/'} class="transition-colors hover:text-[color:var(--color-text)]">Home</a>
+      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/how-it-works/'} class="transition-colors hover:text-[color:var(--color-text)]">How it works</a>
+      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/'} class="text-[color:var(--color-text)]">Docs</a>
+      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/faq/'} class="transition-colors hover:text-[color:var(--color-text)]">FAQ</a>
+      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/about/'} class="transition-colors hover:text-[color:var(--color-text)]">About</a>
+      <a href={repoUrl} class="transition-colors hover:text-[color:var(--color-text)]">GitHub →</a>
+    </nav>
+  </header>
+
+  <article class="mx-auto max-w-2xl px-6 pt-16 pb-24">
+    <p class="text-sm">
+      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/'} class="text-[color:var(--color-text-subtle)] hover:text-[color:var(--color-text-muted)]">← Docs</a>
+    </p>
+
+    <p class="mt-8 text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">Azure OpenAI</p>
+    <h1 class="mt-4 font-display text-4xl leading-[1.1] font-medium tracking-tight sm:text-5xl">
+      Azure OpenAI
+    </h1>
+    <p class="mt-6 text-[17px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      Azure OpenAI is Microsoft's hosted version of OpenAI's GPT-4o family and the newer gpt-5 reasoning models. The models are the same ones OpenAI ships, but the calls run through Microsoft's infrastructure on your organization's Azure subscription — billed alongside other Azure services and governed by Microsoft's enterprise contracts and data privacy commitments rather than OpenAI's consumer terms. If your team already uses Azure for other workloads, an Azure OpenAI resource generally slips through procurement and IT review the same way any other Azure resource would.
+    </p>
+
+    <div class="mt-8 rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6">
+      <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-text-subtle)]">At a glance</p>
+      <ul class="mt-3 space-y-2 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
+        <li><strong class="text-[color:var(--color-text)]">Auth modes (two):</strong> Resource API key (simpler — paste a key from the portal), or Microsoft Entra ID (uses <code class="rounded bg-[color:var(--color-bg)] px-1 font-mono text-[13px]">az login</code> — no key to paste, refreshes automatically).</li>
+        <li><strong class="text-[color:var(--color-text)]">Model family setting:</strong> <strong class="text-[color:var(--color-text)]">Standard</strong> (gpt-4o, gpt-4) or <strong class="text-[color:var(--color-text)]">Reasoning</strong> (gpt-5, o-series). Picked once in Settings to tell Parleq which request shape to send — Azure routes by deployment name, so the model itself is configured in the Azure portal, not Parleq.</li>
+        <li><strong class="text-[color:var(--color-text)]">Region:</strong> Model availability varies by region. <code class="rounded bg-[color:var(--color-bg)] px-1 font-mono text-[13px]">eastus2</code>, <code class="rounded bg-[color:var(--color-bg)] px-1 font-mono text-[13px]">swedencentral</code>, and <code class="rounded bg-[color:var(--color-bg)] px-1 font-mono text-[13px]">westus3</code> tend to carry the broadest selection.</li>
+        <li><strong class="text-[color:var(--color-text)]">IAM role for Entra ID auth:</strong> <code class="rounded bg-[color:var(--color-bg)] px-1 font-mono text-[13px]">Cognitive Services OpenAI User</code> on the resource (data-plane role — Owner / Contributor on the subscription is <em>not</em> sufficient).</li>
+        <li><strong class="text-[color:var(--color-text)]">Routing quirk:</strong> Azure routes by <em>deployment name</em>, not model name. Pick a deployment name when you deploy the model in the portal; that's what Parleq calls.</li>
+      </ul>
+    </div>
+
+    <h2 class="mt-12 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+      Before you start
+    </h2>
+    <ol class="mt-6 space-y-7 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      <li class="flex gap-4">
+        <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums">1.</span>
+        <div>
+          <p class="text-[color:var(--color-text)] font-medium">Create an Azure OpenAI (or AI Foundry) resource.</p>
+          <p class="mt-2">
+            Go to <a href="https://portal.azure.com/#create/Microsoft.CognitiveServicesOpenAI" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Azure portal → Create an Azure OpenAI resource</a>. Pick a subscription, resource group, and a region — <strong class="text-[color:var(--color-text)]">model availability varies by region</strong>, so check the <a href="https://learn.microsoft.com/azure/ai-foundry/openai/concepts/models" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">model availability matrix</a> first. <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">eastus2</code>, <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">swedencentral</code>, and <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">westus3</code> tend to carry the broadest selection.
+          </p>
+          <p class="mt-2 text-[14px] text-[color:var(--color-text-subtle)]">
+            New resources use the AI Foundry hostname pattern <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[12px]">*.cognitiveservices.azure.com</code>; older Azure-OpenAI-specific resources use <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[12px]">*.openai.azure.com</code>. Parleq accepts either — see the Resource field section below.
+          </p>
+        </div>
+      </li>
+      <li class="flex gap-4">
+        <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums">2.</span>
+        <div>
+          <p class="text-[color:var(--color-text)] font-medium">Deploy a model under the resource.</p>
+          <p class="mt-2">
+            In <strong class="text-[color:var(--color-text)]">Azure AI Foundry</strong> (or "Azure OpenAI Studio" on older resources): <strong class="text-[color:var(--color-text)]">Deployments → Deploy model</strong>. Recommended starting point is <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">gpt-4o-mini</code> for low latency and predictable behavior; <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">gpt-5-mini</code> works too if you have access to the reasoning family in your subscription.
+          </p>
+          <p class="mt-2">
+            <strong class="text-[color:var(--color-text)]">The deployment name is what Parleq calls.</strong> Azure's API routes requests by deployment name, not model name. You'll typically name the deployment after the model (e.g. <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">gpt-4o-mini</code>), but anything works — just paste the deployment name into Parleq's <strong class="text-[color:var(--color-text)]">Deployment</strong> field.
+          </p>
+          <p class="mt-2 text-[14px] text-[color:var(--color-text-subtle)]">
+            New subscriptions sometimes have zero quota for the model you want — the deployment dialog will say "no capacity in this region." Either pick a different region (revisit step 1), or request a quota increase from <strong class="text-[color:var(--color-text-muted)]">Quotas</strong> in the Azure portal.
+          </p>
+        </div>
+      </li>
+    </ol>
+
+    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+      Mode 1: Resource API key
+    </h2>
+    <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      <p>
+        Simplest path. Each Azure OpenAI resource exposes two interchangeable API keys (Key 1 and Key 2 — for rotation). Parleq sends whichever you pasted in the <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">api-key</code> header.
+      </p>
+      <p>
+        Setup:
+      </p>
+      <ol class="mt-3 space-y-3 list-decimal list-inside marker:font-semibold marker:text-[color:var(--color-text)]">
+        <li>
+          On your resource's portal page → <strong class="text-[color:var(--color-text)]">Keys and Endpoint</strong>. Copy <strong class="text-[color:var(--color-text)]">Key 1</strong> and the <strong class="text-[color:var(--color-text)]">Endpoint</strong>.
+        </li>
+        <li>
+          In Parleq's Setup Wizard, pick <strong class="text-[color:var(--color-text)]">Azure OpenAI</strong>, leave <strong class="text-[color:var(--color-text)]">Auth mode</strong> on <strong class="text-[color:var(--color-text)]">API key</strong>, fill in:
+          <ul class="mt-2 ml-4 space-y-1 list-disc list-inside marker:text-[color:var(--color-text-subtle)]">
+            <li><strong class="text-[color:var(--color-text)]">Resource</strong>: see the next section.</li>
+            <li><strong class="text-[color:var(--color-text)]">Deployment</strong>: the deployment name you picked in step 2 above.</li>
+            <li><strong class="text-[color:var(--color-text)]">API Key</strong>: paste Key 1.</li>
+          </ul>
+        </li>
+        <li>
+          <strong class="text-[color:var(--color-text)]">Continue → Finish &amp; Restart</strong>.
+        </li>
+      </ol>
+    </div>
+
+    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+      Mode 2: Microsoft Entra ID (az login)
+    </h2>
+    <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      <p>
+        Parleq mints a short-lived OAuth bearer token from your <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">az login</code> session and sends it as <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">Authorization: Bearer &lt;token&gt;</code>. No API key to paste, no secrets in the Keychain — auth flows entirely through your existing Azure CLI session and refreshes via <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">az account get-access-token</code>.
+      </p>
+      <p>
+        Setup:
+      </p>
+      <pre class="overflow-x-auto rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4 text-[13px] leading-relaxed font-mono text-[color:var(--color-text)]"><code>{`# Install the Azure CLI if you haven't:
+brew install azure-cli
+
+# Sign in (opens browser):
+az login
+
+# If you have multiple subscriptions, set the right one as default:
+az account set --subscription "My Team Subscription"`}</code></pre>
+      <p>
+        <strong class="text-[color:var(--color-text)]">Critical IAM step.</strong> Owner / Contributor on the subscription is <em>not</em> enough — those are control-plane roles, and Azure OpenAI requires the data-plane role <strong class="text-[color:var(--color-text)]">Cognitive Services OpenAI User</strong> (<code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">a97b65f3-24c7-4388-baec-2e87135dc908</code>) on the resource itself.
+      </p>
+      <p>
+        Grant it: <strong class="text-[color:var(--color-text)]">Resource → Access control (IAM) → Add → Add role assignment → Cognitive Services OpenAI User → assign to your user</strong>. Wait ~1 minute for the assignment to propagate before testing.
+      </p>
+      <p>
+        Then in Parleq's Setup Wizard, pick <strong class="text-[color:var(--color-text)]">Azure OpenAI</strong>, switch <strong class="text-[color:var(--color-text)]">Auth mode</strong> to <strong class="text-[color:var(--color-text)]">Microsoft Entra ID</strong>, fill in <strong class="text-[color:var(--color-text)]">Resource</strong> + <strong class="text-[color:var(--color-text)]">Deployment</strong>, then <strong class="text-[color:var(--color-text)]">Finish &amp; Restart</strong>. No API key field appears in this mode.
+      </p>
+      <p class="text-[14px] text-[color:var(--color-text-subtle)]">
+        Parleq augments PATH at process launch to include <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[12px]">/opt/homebrew/bin</code> and <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[12px]">/usr/local/bin</code>, so a Homebrew-installed <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[12px]">az</code> is reachable even when launched from Spotlight or as a login item.
+      </p>
+    </div>
+
+    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+      The Resource field
+    </h2>
+    <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      <p>
+        Parleq accepts three input shapes in the <strong class="text-[color:var(--color-text)]">Resource</strong> field, so you can paste whatever the Azure portal shows you:
+      </p>
+      <ul class="mt-3 space-y-3 list-disc list-inside marker:text-[color:var(--color-text-subtle)]">
+        <li>
+          <strong class="text-[color:var(--color-text)]">Bare resource name</strong> — <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">my-openai</code>. Parleq builds the URL as <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">my-openai.openai.azure.com</code>. Use this for classic Azure OpenAI resources.
+        </li>
+        <li>
+          <strong class="text-[color:var(--color-text)]">Full hostname</strong> — <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">my-openai.cognitiveservices.azure.com</code> or <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">my-openai.services.ai.azure.com</code>. Use this for newer AI Foundry resources where the hostname uses a different domain.
+        </li>
+        <li>
+          <strong class="text-[color:var(--color-text)]">Full URL</strong> — <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">https://my-openai.cognitiveservices.azure.com/openai/responses?api-version=...</code>. Parleq strips the scheme and path and uses just the hostname. Convenient when you copy-paste the full Endpoint URL from the portal.
+        </li>
+      </ul>
+      <p class="mt-4 text-[14px] text-[color:var(--color-text-subtle)]">
+        Detection rule: if the value contains a dot, it's treated as a hostname; otherwise as a bare resource name. Azure resource names are alphanumeric + hyphens, no dots, so this is unambiguous.
+      </p>
+    </div>
+
+    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+      Model family (and the API version)
+    </h2>
+    <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      <p>
+        Azure's API routes calls by <em>deployment name</em>, not model name — there is no per-call model identifier on the wire, only the deployment you pick in the URL. So Parleq's Settings doesn't ask for a model name; instead, it asks for a <strong class="text-[color:var(--color-text)]">Model family</strong>:
+      </p>
+      <ul class="mt-3 space-y-2 list-disc list-inside marker:text-[color:var(--color-text-subtle)]">
+        <li><strong class="text-[color:var(--color-text)]">Standard</strong> — pick this when your deployment serves <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">gpt-4o-mini</code>, <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">gpt-4o</code>, <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">gpt-4</code>, <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">gpt-3.5-turbo</code>, or any non-reasoning model. Parleq sends <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">max_tokens</code> + an explicit temperature.</li>
+        <li><strong class="text-[color:var(--color-text)]">Reasoning</strong> — pick this when your deployment serves <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">gpt-5</code>, <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">gpt-5-mini</code>, or any o-series model (<code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">o1</code>, <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">o3</code>, <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">o4</code>, <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">o5</code>). These models reject <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">max_tokens</code> in favor of <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">max_completion_tokens</code> and refuse any temperature other than 1.0, so Parleq has to send a different request shape.</li>
+      </ul>
+      <p class="mt-4">
+        Default is <strong class="text-[color:var(--color-text)]">Standard</strong>. If you mismatch (e.g., picked Standard but deployed a gpt-5 model), Azure responds with a clear 400 error message that names the offending parameter — flip the family in Settings and dictate again.
+      </p>
+      <p>
+        <strong class="text-[color:var(--color-text)]">API version.</strong> Defaults to <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">2025-04-01-preview</code>, which supports gpt-5-series models. If your deployment requires a different version, override in Settings.
+      </p>
+      <p class="text-[14px] text-[color:var(--color-text-subtle)]">
+        Reasoning models are noticeably slower than the gpt-4o family — they think before responding. Worth it if you've tuned the cleanup style toward gpt-5; otherwise the gpt-4o-mini path wins on latency.
+      </p>
+    </div>
+
+    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+      Pricing &amp; quotas
+    </h2>
+    <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      <p>
+        Per-token pricing per <a href="https://azure.microsoft.com/pricing/details/cognitive-services/openai-service/" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Azure's published rates</a>, plus regional capacity (TPM — tokens per minute) granted per deployment. Cleanup traffic is short-prompt + short-response, so single-user dictation use is well below default TPM caps.
+      </p>
+      <p>
+        Charges land on the Azure subscription that owns the resource, alongside everything else your org bills there.
+      </p>
+      <p>
+        <strong class="text-[color:var(--color-text)]">Cleaning up after testing.</strong> Idle Azure OpenAI resources don't incur compute charges — there's no provisioned capacity to pay for unless you've explicitly purchased it. You can leave the resource in place between sessions; if you want to remove it entirely, delete the deployment first, then the resource, both from the Azure portal.
+      </p>
+    </div>
+
+    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+      Compliance notes
+    </h2>
+    <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      <p>
+        Azure OpenAI traffic is governed by your Microsoft Customer Agreement / EA terms, not OpenAI's. Per Microsoft's <a href="https://learn.microsoft.com/legal/cognitive-services/openai/data-privacy" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">documented data privacy commitments</a>, prompts and completions are not used to train or improve OpenAI's or Microsoft's foundation models. Data stays in the Azure region you deployed to. Activity logs (Azure Monitor → Diagnostic settings on the resource) capture call metadata for audit.
+      </p>
+      <p>
+        Audio never reaches Azure. Only the text transcript output by Parleq's on-device speech model is sent.
+      </p>
+    </div>
+
+    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+      Troubleshooting
+    </h2>
+    <div class="mt-6 space-y-6 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      <div>
+        <p class="font-medium text-[color:var(--color-text)]"><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">404 Resource not found</code> on first dictation</p>
+        <p class="mt-2">
+          The URL Parleq built doesn't match a real deployment. Check three things in order: (1) the <strong class="text-[color:var(--color-text)]">Resource</strong> field — for an AI Foundry resource, paste the full hostname (<code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">*.cognitiveservices.azure.com</code>) rather than the bare name; (2) the <strong class="text-[color:var(--color-text)]">Deployment</strong> name — it's case-sensitive and has to match exactly; (3) the API version — bump to <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">2025-04-01-preview</code> or later if you're calling gpt-5-series.
+        </p>
+      </div>
+      <div>
+        <p class="font-medium text-[color:var(--color-text)]"><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">401 PermissionDenied</code> in Entra ID mode</p>
+        <p class="mt-2">
+          Your <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">az login</code> identity doesn't have the data-plane role. Even Owner on the resource isn't enough — Azure OpenAI specifically requires <strong class="text-[color:var(--color-text)]">Cognitive Services OpenAI User</strong>. Grant it on the resource (not the resource group) and wait ~1 minute for propagation.
+        </p>
+      </div>
+      <div>
+        <p class="font-medium text-[color:var(--color-text)]"><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">400 max_tokens not supported</code> / "use 'max_completion_tokens'"</p>
+        <p class="mt-2">
+          Family mismatch. Your deployment serves a reasoning model but Parleq is configured as Standard. Open Settings → LLM → switch <strong class="text-[color:var(--color-text)]">Model family</strong> to <strong class="text-[color:var(--color-text)]">Reasoning (gpt-5, o-series)</strong>, then dictate again.
+        </p>
+      </div>
+      <div>
+        <p class="font-medium text-[color:var(--color-text)]"><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">400 unsupported parameter: 'max_completion_tokens'</code></p>
+        <p class="mt-2">
+          The reverse mismatch: Parleq is in Reasoning mode but your deployment serves a standard model. Switch <strong class="text-[color:var(--color-text)]">Model family</strong> back to <strong class="text-[color:var(--color-text)]">Standard</strong> and try again.
+        </p>
+      </div>
+      <div>
+        <p class="font-medium text-[color:var(--color-text)]"><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">az: command not found</code></p>
+        <p class="mt-2">
+          Parleq couldn't find <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">az</code> on PATH. Most likely cause: you installed the Azure CLI somewhere outside <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">/opt/homebrew/bin</code> / <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">/usr/local/bin</code>. Symlink it into <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">/usr/local/bin</code>, or switch to API-key mode.
+        </p>
+      </div>
+      <div>
+        <p class="font-medium text-[color:var(--color-text)]"><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">429 Too Many Requests</code></p>
+        <p class="mt-2">
+          You've hit the deployment's TPM quota. Either wait for the per-minute window to reset, or in the Azure portal increase the deployment's TPM allocation under <strong class="text-[color:var(--color-text)]">Deployments → your deployment → Edit</strong>.
+        </p>
+      </div>
+    </div>
+  </article>
+
+  <footer class="border-t border-[color:var(--color-border-subtle)]">
+    <div class="mx-auto flex max-w-5xl flex-col items-start justify-between gap-4 px-6 py-10 text-sm text-[color:var(--color-text-subtle)] sm:flex-row sm:items-center">
+      <div class="flex items-center gap-3">
+        <span class="font-display text-base font-semibold text-[color:var(--color-text)]">Parleq</span>
+        <span>·</span>
+        <span>Apache-2.0</span>
+      </div>
+      <div class="flex items-center gap-6">
+        <a href={repoUrl} class="hover:text-[color:var(--color-text)]">GitHub</a>
+        <a href={`${repoUrl}/releases`} class="hover:text-[color:var(--color-text)]">Releases</a>
+        <a href={`${repoUrl}/blob/main/THIRD_PARTY_LICENSES.md`} class="hover:text-[color:var(--color-text)]">Licenses</a>
+      </div>
+    </div>
+  </footer>
+</Layout>
