@@ -71,6 +71,19 @@ else
     echo "WARNING: AppIcon.icns not found at $APP_DIR/Resources/AppIcon.icns; bundle will use generic icon" >&2
 fi
 
+# LaunchAgent plist for "Open at Login" via SMAppService.mainApp.
+# macOS looks for this file at Contents/Library/LaunchAgents/<bundle-id>.plist
+# and reports `SMAppService.mainApp.status == .notFound` (with no path
+# to recover) if it's absent. The file has to be in place *before*
+# codesign runs — adding it later would invalidate the signature.
+LAUNCH_AGENT_SOURCE="$APP_DIR/Resources/LaunchAgents/com.parleq.app.plist"
+if [[ -f "$LAUNCH_AGENT_SOURCE" ]]; then
+    mkdir -p "$APP_BUNDLE/Contents/Library/LaunchAgents"
+    cp "$LAUNCH_AGENT_SOURCE" "$APP_BUNDLE/Contents/Library/LaunchAgents/com.parleq.app.plist"
+else
+    echo "WARNING: LaunchAgent plist not found at $LAUNCH_AGENT_SOURCE; Open at Login will not work" >&2
+fi
+
 # Auto-bump CFBundleVersion (the build number) from the git commit
 # count. CFBundleShortVersionString (the marketing version) stays
 # whatever's in the source Info.plist — bump that intentionally via

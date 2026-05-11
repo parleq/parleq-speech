@@ -86,6 +86,12 @@ struct ParleqApp {
         let recorderBox = RecorderBox()
         recorderBox.value = recorder
         logStderr("[parleq] audio: continue_other_audio=\(config.continueOtherAudio)")
+        // One-shot diagnostic: dump every input device with its
+        // identifying properties and which filter (if any) excluded
+        // it from the Microphone submenu. Cheap (a few HAL queries),
+        // runs once per launch, helps triage "weird mic option
+        // showing up" reports without needing a debug build.
+        logInputDeviceDiagnostics()
         // Pre-create the input AudioUnit + apply the device override
         // now so the first hotkey press doesn't have to do HAL routing
         // under user pressure (which is what was causing music to
