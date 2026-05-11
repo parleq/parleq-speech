@@ -24,7 +24,6 @@ import AppKit
 final class MenuBar: NSObject {
     private let statusItem: NSStatusItem
     private let statusMenuItem: NSMenuItem
-    private let loginItemMenuItem: NSMenuItem
     /// Submenu listing recent dictations. Items are rebuilt
     /// on every menu open via `NSMenuDelegate.menuNeedsUpdate(_:)`
     /// so the user always sees the current state of
@@ -81,11 +80,6 @@ final class MenuBar: NSObject {
         // width — what most well-behaved menu-bar apps use.
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusMenuItem = NSMenuItem(title: "Status: Idle", action: nil, keyEquivalent: "")
-        loginItemMenuItem = NSMenuItem(
-            title: "Open at Login",
-            action: #selector(toggleLoginItem),
-            keyEquivalent: ""
-        )
         recentMenuItem = NSMenuItem(
             title: "Recent Dictations",
             action: nil,
@@ -111,9 +105,6 @@ final class MenuBar: NSObject {
         )
         hotkeyItem.isEnabled = false
 
-        loginItemMenuItem.target = self
-        refreshLoginItemMenu()
-
         let settingsItem = NSMenuItem(
             title: "Settings…",
             action: #selector(openSettings),
@@ -127,17 +118,6 @@ final class MenuBar: NSObject {
             keyEquivalent: ""
         )
         runSetupItem.target = self
-        // The login-item toggle elsewhere in this menu uses item-state,
-        // which makes AppKit reserve a state column for every item in
-        // the menu — including ones that don't toggle. Without an
-        // image, the title would look indented relative to other
-        // items. `wand.and.stars` is SF Symbols' nearest match for
-        // "setup wizard" + sets it apart from the other items as a
-        // first-run / re-run flow rather than a regular preference.
-        runSetupItem.image = NSImage(
-            systemSymbolName: "wand.and.stars",
-            accessibilityDescription: nil
-        )
 
         let restartSidecarItem = NSMenuItem(
             title: "Restart Sidecar",
@@ -167,7 +147,6 @@ final class MenuBar: NSObject {
         menu.addItem(microphoneMenuItem)
         menu.addItem(settingsItem)
         menu.addItem(runSetupItem)
-        menu.addItem(loginItemMenuItem)
         menu.addItem(.separator())
         menu.addItem(restartSidecarItem)
         menu.addItem(recentMenuItem)
@@ -265,53 +244,6 @@ final class MenuBar: NSObject {
 
     @objc private func quit() {
         NSApp.terminate(nil)
-    }
-
-    @objc private func toggleLoginItem() {
-        if !LoginItem.isSupported {
-            // SMAppService can't manage this build — typically
-            // because we're signed with an Apple Development cert
-            // rather than a Developer ID Application cert. Send the
-            // user to System Settings → Login Items where they can
-            // add Parleq manually with the + button.
-            LoginItem.openLoginItemsSettings()
-            return
-        }
-        let nowEnabled = !LoginItem.isEnabled
-        do {
-            try LoginItem.setEnabled(nowEnabled)
-        } catch {
-            let msg = "[parleq] login-item: \(nowEnabled ? "register" : "unregister") failed: \(error)\n"
-            FileHandle.standardError.write(msg.data(using: .utf8) ?? Data())
-        }
-        refreshLoginItemMenu()
-    }
-
-    private func refreshLoginItemMenu() {
-        if LoginItem.isSupported {
-            loginItemMenuItem.title = "Open at Login"
-            loginItemMenuItem.state = LoginItem.isEnabled ? .on : .off
-            loginItemMenuItem.image = nil
-        } else {
-            // Fallback path: clicking opens System Settings → Login
-            // Items so the user can add Parleq manually. The "…"
-            // suffix matches macOS HIG for menu items that open a
-            // separate window/dialog.
-            //
-            // The leading `gear` icon fills the menu's reserved
-            // checkmark column intentionally — without it, the
-            // title looks indented relative to the no-state items
-            // (Settings…, About, Quit) because AppKit reserves the
-            // checkmark slot menu-wide whenever any item uses
-            // state, and this fallback doesn't have toggle
-            // semantics to justify the slot.
-            loginItemMenuItem.title = "Open Login Items Settings…"
-            loginItemMenuItem.state = .off
-            loginItemMenuItem.image = NSImage(
-                systemSymbolName: "gear",
-                accessibilityDescription: nil
-            )
-        }
     }
 
     private func applyIcon(active: Bool) {
