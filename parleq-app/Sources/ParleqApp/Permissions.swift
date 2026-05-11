@@ -172,6 +172,20 @@ enum Permissions {
 
     // MARK: - System Settings deep-links
 
+    /// Open System Settings directly to the Microphone Privacy pane.
+    /// Used by the `.notSupported` row branch and by power users who
+    /// want to revoke without going through Parleq's TCC request
+    /// pathway.
+    static func openMicrophoneSettings() {
+        openSystemSettings(privacyPane: "Privacy_Microphone")
+    }
+
+    /// Open System Settings directly to the Accessibility Privacy
+    /// pane. Same role as `openMicrophoneSettings` for Accessibility.
+    static func openAccessibilitySettings() {
+        openSystemSettings(privacyPane: "Privacy_Accessibility")
+    }
+
     /// Open System Settings directly to a specific Privacy & Security
     /// sub-pane. `pane` is the suffix that comes after
     /// `com.apple.preference.security?` — e.g. `Privacy_Microphone`,

@@ -187,7 +187,7 @@ func microphoneDescriptor(state: PermissionState) -> PermissionDescriptor {
             actionLabel: "Open System Settings…",
             actionDisabled: false,
             actionPrimary: false,
-            onAction: { Permissions.requestMicrophone() }
+            onAction: { Permissions.openMicrophoneSettings() }
         )
     }
 }
@@ -230,7 +230,7 @@ func accessibilityDescriptor(state: PermissionState) -> PermissionDescriptor {
             actionLabel: "Open System Settings…",
             actionDisabled: false,
             actionPrimary: false,
-            onAction: { Permissions.requestAccessibility() }
+            onAction: { Permissions.openAccessibilitySettings() }
         )
     }
 }
