@@ -8,6 +8,8 @@
     <string>Parleq</string>
     <key>CFBundleExecutable</key>
     <string>ParleqApp</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundleIdentifier</key>
     <string>com.parleq.app</string>
     <key>CFBundleInfoDictionaryVersion</key>

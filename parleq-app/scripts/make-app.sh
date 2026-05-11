@@ -60,6 +60,17 @@ cp "$APP_DIR/Resources/Info.plist" "$APP_BUNDLE/Contents/Info.plist"
 cp "$BINARY" "$APP_BUNDLE/Contents/MacOS/ParleqApp"
 chmod +x "$APP_BUNDLE/Contents/MacOS/ParleqApp"
 
+# App icon — Info.plist's CFBundleIconFile points at "AppIcon" which
+# macOS resolves to Contents/Resources/AppIcon.icns. The same .icns
+# drives the Dock tile, the Finder Get Info pane, and the standard
+# About panel. Regenerate via scripts/generate-app-icon.sh when the
+# favicon design changes.
+if [[ -f "$APP_DIR/Resources/AppIcon.icns" ]]; then
+    cp "$APP_DIR/Resources/AppIcon.icns" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
+else
+    echo "WARNING: AppIcon.icns not found at $APP_DIR/Resources/AppIcon.icns; bundle will use generic icon" >&2
+fi
+
 # Auto-bump CFBundleVersion (the build number) from the git commit
 # count. CFBundleShortVersionString (the marketing version) stays
 # whatever's in the source Info.plist — bump that intentionally via
