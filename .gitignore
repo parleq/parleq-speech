@@ -49,7 +49,8 @@ third_party/fluidaudio-sidecar/.swiftpm/
 # local config stays local.
 .roborev.toml
 
-# Superpowers brainstorming companion — mockups and session state
-# the browser-based design helper writes during a brainstorm.
-# Useful local-only working artifacts; not part of the codebase.
+# Superpowers brainstorming + spec output — mockups, session state,
+# and design specs the browser-based design helper produces. Useful
+# local-only working artifacts; not part of the codebase.
 .superpowers/
+docs/superpowers/

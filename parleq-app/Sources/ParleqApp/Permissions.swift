@@ -3,8 +3,6 @@
 // the Setup wizard's Permissions step: Microphone, Accessibility, and
 // Open at Login.
 //
-// Design: docs/superpowers/specs/2026-05-11-permissions-section-design.md
-//
 // Each probe is a single API call that returns immediately — no async,
 // no blocking, safe to call from any UI refresh cycle. The probes are
 // the *read* path; the click handlers in this file are the *write*

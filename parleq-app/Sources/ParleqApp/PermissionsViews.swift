@@ -9,8 +9,6 @@
 // three rows via the descriptor builders in PermissionRow.swift — by
 // construction, anything that changes the row UI lands in both
 // surfaces simultaneously.
-//
-// Design: docs/superpowers/specs/2026-05-11-permissions-section-design.md
 
 import SwiftUI
 

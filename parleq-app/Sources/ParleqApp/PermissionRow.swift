@@ -2,9 +2,7 @@
 // in the Permissions Settings section and in the Setup wizard's
 // Permissions step.
 //
-// Design: docs/superpowers/specs/2026-05-11-permissions-section-design.md
-//
-// Layout (matches the assembled mockup):
+// Layout:
 //   [ icon ] [ title / subtitle ] [ flexible spacer ] [ status pill ] [ button ]
 //
 // The pill carries the at-a-glance state (green ✓ Granted / amber ⚠ Required
