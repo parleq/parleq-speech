@@ -42,3 +42,9 @@ third_party/fluidaudio-sidecar/.swiftpm/
 # Local environment
 .env
 .env.local
+
+# RoboRev per-developer review config. Re-created on demand by
+# `roborev init` (which also installs the post-commit hook); no
+# repo-specific overrides we need to share, so each developer's
+# local config stays local.
+.roborev.toml
