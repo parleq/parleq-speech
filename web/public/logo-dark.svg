@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 80" fill="none">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 80" fill="none" role="img" aria-label="Parleq">
   <!--
     Parleq logo, dark-mode variant. Same as logo.svg but the
     wordmark uses warm-white (#fafaf7) instead of slate — for
@@ -6,11 +6,14 @@
     theme, dark GitHub README banner, etc.). Bars stay amber;
     the amber contrasts cleanly with both light and dark
     backgrounds.
+
+    See logo.svg for notes on the font fallback stack — same
+    reasoning applies (no @import; ui-serif gracefully degrades
+    when Fraunces isn't available, e.g. GitHub Camo).
   -->
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&amp;display=swap');
     .wordmark {
-      font-family: 'Fraunces', Georgia, 'Times New Roman', serif;
+      font-family: 'Fraunces', ui-serif, 'Source Serif Pro', Georgia, 'Times New Roman', serif;
       font-size: 56px;
       font-weight: 600;
       font-variation-settings: 'opsz' 96;
@@ -19,7 +22,7 @@
     }
   </style>
 
-  <g transform="translate(8, 8)">
+  <g transform="translate(8, 8)" aria-hidden="true">
     <rect x="0"  y="20" width="7" height="20" rx="3.5" fill="#d97706"/>
     <rect x="10" y="12" width="7" height="36" rx="3.5" fill="#d97706"/>
     <rect x="20" y="6"  width="7" height="48" rx="3.5" fill="#d97706"/>
@@ -27,5 +30,5 @@
     <rect x="40" y="9"  width="7" height="42" rx="3.5" fill="#d97706"/>
   </g>
 
-  <text x="78" y="58" class="wordmark">Parleq</text>
+  <text x="78" y="58" class="wordmark" aria-hidden="true">Parleq</text>
 </svg>

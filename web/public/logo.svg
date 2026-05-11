@@ -1,24 +1,29 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 80" fill="none">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 80" fill="none" role="img" aria-label="Parleq">
   <!--
     Parleq logo, horizontal lockup.
 
-    Left: five amber capsule bars matching the favicon's
-    rhythm (varied heights, asymmetric falloff). No container
-    background, so the mark sits cleanly on any surface.
+    Left: five amber capsule bars matching the favicon's rhythm
+    (varied heights, asymmetric falloff). No container background,
+    so the mark sits cleanly on any surface.
 
-    Right: "Parleq" wordmark in Fraunces, semibold, slate
-    text color matching the website body text.
+    Right: "Parleq" wordmark in Fraunces, semibold, slate. When the
+    SVG is rendered inside a page that already serves Fraunces
+    (e.g. parleq.app), the wordmark uses it. Off-page consumers
+    (GitHub README banner via Camo, social cards, embedders) don't
+    fetch the font — earlier revisions of this file `@import`ed
+    Fraunces from fonts.googleapis.com, but GitHub's image proxy
+    strips that, and fetching it elsewhere would leak the viewer's
+    IP to Google Fonts. The fallback stack below picks ui-serif so
+    macOS gets New York and Windows/Linux get a reasonable serif.
 
-    Vertical alignment: the bar block's center aligns with
-    the wordmark's cap-height center (around y=38 for
-    Fraunces at 56pt semibold) — both elements share an
-    optical center rather than each being centered
-    separately in the viewBox.
+    Vertical alignment: the bar block's center aligns with the
+    wordmark's cap-area center — both elements share an optical
+    center rather than each being centered separately in the
+    viewBox.
   -->
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&amp;display=swap');
     .wordmark {
-      font-family: 'Fraunces', Georgia, 'Times New Roman', serif;
+      font-family: 'Fraunces', ui-serif, 'Source Serif Pro', Georgia, 'Times New Roman', serif;
       font-size: 56px;
       font-weight: 600;
       font-variation-settings: 'opsz' 96;
@@ -27,7 +32,7 @@
     }
   </style>
 
-  <g transform="translate(8, 8)">
+  <g transform="translate(8, 8)" aria-hidden="true">
     <rect x="0"  y="20" width="7" height="20" rx="3.5" fill="#d97706"/>
     <rect x="10" y="12" width="7" height="36" rx="3.5" fill="#d97706"/>
     <rect x="20" y="6"  width="7" height="48" rx="3.5" fill="#d97706"/>
@@ -35,5 +40,5 @@
     <rect x="40" y="9"  width="7" height="42" rx="3.5" fill="#d97706"/>
   </g>
 
-  <text x="78" y="58" class="wordmark">Parleq</text>
+  <text x="78" y="58" class="wordmark" aria-hidden="true">Parleq</text>
 </svg>
