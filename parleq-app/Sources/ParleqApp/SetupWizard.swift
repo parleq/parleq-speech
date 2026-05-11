@@ -85,16 +85,18 @@ final class SetupWizardController {
 /// Wizard step machine. Each enum case is a screen.
 private enum WizardStep: Int, CaseIterable {
     case welcome
+    case permissions
     case pickProvider
     case configureProvider
     case done
 
     /// Short label used in the wizard's step-pill indicator.
-    /// Three-or-fewer words so the four pills + dividers fit on
+    /// Three-or-fewer words so the five pills + dividers fit on
     /// one line at the wizard's standard width.
     var displayName: String {
         switch self {
         case .welcome:           return "Welcome"
+        case .permissions:       return "Permissions"
         case .pickProvider:      return "Pick provider"
         case .configureProvider: return "Configure"
         case .done:              return "Done"
@@ -227,6 +229,11 @@ private final class WizardModel: ObservableObject {
 private struct SetupWizardView: View {
     let onFinish: () -> Void
     @StateObject private var model = WizardModel()
+    /// Observed so `canAdvance` and the Continue button label
+    /// re-evaluate every time a permission state changes (e.g. the
+    /// user grants Mic, comes back, snapshot republishes, Continue
+    /// flips from disabled to enabled).
+    @ObservedObject private var permissionsModel: PermissionsModel = .shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -247,6 +254,8 @@ private struct SetupWizardView: View {
                     switch model.step {
                     case .welcome:
                         WelcomeStep()
+                    case .permissions:
+                        PermissionsWizardStep()
                     case .pickProvider:
                         PickProviderStep(model: model)
                     case .configureProvider:
@@ -297,7 +306,7 @@ private struct SetupWizardView: View {
                     .keyboardShortcut(.defaultAction)
                     .buttonStyle(.borderedProminent)
                 } else {
-                    Button("Continue") {
+                    Button(continueButtonLabel) {
                         advance()
                     }
                     .keyboardShortcut(.defaultAction)
@@ -359,9 +368,27 @@ private struct SetupWizardView: View {
             )
     }
 
+    /// Continue-button label. Normally just "Continue", but on the
+    /// `.permissions` step we surface the specific blocking reason
+    /// in the label itself so the user is never confused about why
+    /// the button is disabled.
+    private var continueButtonLabel: String {
+        guard model.step == .permissions else { return "Continue" }
+        let snap = permissionsModel.snapshot
+        if snap.microphone != .granted    { return "Continue (grant Microphone first)" }
+        if snap.accessibility != .granted { return "Continue (grant Accessibility first)" }
+        return "Continue"
+    }
+
     private var canAdvance: Bool {
         switch model.step {
         case .welcome: return true
+        case .permissions:
+            // Mic + Accessibility are load-bearing — Parleq's hotkey
+            // does nothing useful without them. Open at Login stays
+            // optional (the row is in the step but doesn't gate).
+            let snap = permissionsModel.snapshot
+            return snap.microphone == .granted && snap.accessibility == .granted
         case .pickProvider: return !model.pickedProvider.isEmpty
         case .configureProvider:
             // Vertex needs a project (and SA JSON when in SA mode);
@@ -395,6 +422,8 @@ private struct SetupWizardView: View {
     private func advance() {
         switch model.step {
         case .welcome:
+            model.step = .permissions
+        case .permissions:
             model.step = .pickProvider
         case .pickProvider:
             // For "none" provider, skip the per-provider config screen.
