@@ -100,9 +100,16 @@ enum Permissions {
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
         case .notDetermined:
             AVCaptureDevice.requestAccess(for: .audio) { _ in
-                // No-op: PermissionsModel's didBecomeActive observer
-                // will pick up the new state when the user returns
-                // from the OS prompt.
+                // The TCC microphone prompt is an in-process alert
+                // that doesn't reliably round-trip the app through
+                // resignActive/becomeActive on every macOS version,
+                // so we can't depend on PermissionsModel's
+                // didBecomeActive observer to refresh after this.
+                // Refresh explicitly from the completion so the row
+                // flips to green the moment the user clicks "Allow".
+                Task { @MainActor in
+                    PermissionsModel.shared.refresh()
+                }
             }
         case .denied, .restricted:
             openSystemSettings(privacyPane: "Privacy_Microphone")
@@ -137,8 +144,18 @@ enum Permissions {
     /// row's button label changes per state — this function applies
     /// the inverse of the current state when supported, and falls
     /// back to the manual System Settings flow otherwise.
+    ///
+    /// Special case: when SMAppService is `.requiresApproval` (user
+    /// previously called `.register()` but hasn't approved in System
+    /// Settings yet), `isEnabled` returns false. Re-registering here
+    /// would be a no-op — what the user actually needs is the System
+    /// Settings → Login Items pane open so they can flip the toggle.
     static func toggleOpenAtLogin() {
         guard LoginItem.isSupported else {
+            LoginItem.openLoginItemsSettings()
+            return
+        }
+        if LoginItem.requiresApproval {
             LoginItem.openLoginItemsSettings()
             return
         }
@@ -212,12 +229,17 @@ final class PermissionsModel: ObservableObject {
     // MainActor (where the observer was registered) and run into
     // Swift 6 isolation rules for non-Sendable NSObjectProtocol.
 
-    /// Re-poll all three probes and republish if anything changed.
-    /// The `@Published` setter's Equatable check (via `PermissionsSnapshot`
-    /// conforming to Equatable) prevents redundant SwiftUI invalidations
-    /// when nothing moved.
+    /// Re-poll all three probes and republish only if something
+    /// actually changed. `@Published` itself fires on every set —
+    /// it does NOT Equatable-dedup — so the explicit guard here
+    /// matters: a screen sitting idle with no permission changes
+    /// won't get spurious objectWillChange traffic when the user
+    /// ⌘-tabs in and out repeatedly.
     func refresh() {
-        snapshot = Permissions.snapshot
+        let next = Permissions.snapshot
+        if next != snapshot {
+            snapshot = next
+        }
     }
 }
 
