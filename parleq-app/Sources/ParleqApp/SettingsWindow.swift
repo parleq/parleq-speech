@@ -652,30 +652,32 @@ struct SettingsView: View {
     /// detail-pane view (`hotkeySection`, `audioSection`, …) and
     /// carries a label + SF Symbol for the sidebar List.
     private enum SettingsSection: String, Hashable, CaseIterable, Identifiable {
-        case hotkey, audio, behavior, paste, cleanup, dictionary, usage, advanced
+        case hotkey, audio, behavior, paste, cleanup, dictionary, usage, permissions, advanced
         var id: String { rawValue }
         var label: String {
             switch self {
-            case .hotkey:     return "Hotkey"
-            case .audio:      return "Audio"
-            case .behavior:   return "Behavior"
-            case .paste:      return "Paste"
-            case .cleanup:    return "Cleanup"
-            case .dictionary: return "Dictionary"
-            case .usage:      return "Usage"
-            case .advanced:   return "Advanced"
+            case .hotkey:      return "Hotkey"
+            case .audio:       return "Audio"
+            case .behavior:    return "Behavior"
+            case .paste:       return "Paste"
+            case .cleanup:     return "Cleanup"
+            case .dictionary:  return "Dictionary"
+            case .usage:       return "Usage"
+            case .permissions: return "Permissions"
+            case .advanced:    return "Advanced"
             }
         }
         var icon: String {
             switch self {
-            case .hotkey:     return "keyboard"
-            case .audio:      return "speaker.wave.2"
-            case .behavior:   return "slider.horizontal.3"
-            case .paste:      return "doc.on.clipboard"
-            case .cleanup:    return "wand.and.sparkles"
-            case .dictionary: return "character.book.closed"
-            case .usage:      return "chart.bar"
-            case .advanced:   return "gearshape.2"
+            case .hotkey:      return "keyboard"
+            case .audio:       return "speaker.wave.2"
+            case .behavior:    return "slider.horizontal.3"
+            case .paste:       return "doc.on.clipboard"
+            case .cleanup:     return "wand.and.sparkles"
+            case .dictionary:  return "character.book.closed"
+            case .usage:       return "chart.bar"
+            case .permissions: return "lock.shield"
+            case .advanced:    return "gearshape.2"
             }
         }
     }
@@ -810,14 +812,15 @@ struct SettingsView: View {
                     .padding(.bottom, 4)
 
                 switch selection {
-                case .hotkey:     hotkeySection
-                case .audio:      audioSection
-                case .behavior:   behaviorSection
-                case .paste:      pasteSection
-                case .cleanup:    cleanupSection
-                case .dictionary: dictionarySection
-                case .usage:      usageSection
-                case .advanced:   advancedSection
+                case .hotkey:      hotkeySection
+                case .audio:       audioSection
+                case .behavior:    behaviorSection
+                case .paste:       pasteSection
+                case .cleanup:     cleanupSection
+                case .dictionary:  dictionarySection
+                case .usage:       usageSection
+                case .permissions: permissionsSection
+                case .advanced:    advancedSection
                 }
             }
             .padding(.horizontal, 28)
@@ -1265,6 +1268,11 @@ struct SettingsView: View {
             }
             SettingsCaption("Ledger lives at ~/.parleq/usage.jsonl. \(pricingFreshnessLine) Tiered context-length pricing isn't modeled yet — verify against the provider's pricing page if amounts feel off.")
         }
+    }
+
+    @ViewBuilder
+    private var permissionsSection: some View {
+        PermissionsSectionContent()
     }
 
     @ViewBuilder
