@@ -247,14 +247,63 @@ final class MenuBar: NSObject {
     }
 
     private func applyIcon(active: Bool) {
-        let symbolName = active ? "mic.fill" : "mic"
-        let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: "Parleq")
-        // Template images get auto-tinted by the menu bar (white in
-        // dark mode, black in light mode). System symbols default to
-        // template when loaded this way, but set isTemplate explicitly
-        // so we don't rely on that.
-        image?.isTemplate = true
-        statusItem.button?.image = image
+        statusItem.button?.image = Self.barIcon(active: active)
+    }
+
+    /// Render the 5-bar brand mark as a template `NSImage`. The mark
+    /// is the same shape the favicon and the wordmark lockup carry —
+    /// drawn here in monochrome black on transparent so AppKit's
+    /// template-image machinery tints it to match the menu bar
+    /// background (white-on-dark in dark mode, black-on-light in light
+    /// mode) without per-appearance asset variants.
+    ///
+    /// Two states:
+    ///   - Idle: bars at the favicon's rhythm (20/36/48/30/42 normalized).
+    ///   - Active: bars in a peak shape with the tallest bar in the
+    ///     center, signalling "listening / capturing audio." Distinct
+    ///     enough from idle that a glance at the menu bar tells the
+    ///     user whether Parleq is in flight.
+    ///
+    /// Drawn via NSImage(size:flipped:drawingHandler:) so AppKit
+    /// re-rasterizes on demand at the target backing scale — crisp on
+    /// Retina without shipping @2x assets.
+    private static func barIcon(active: Bool) -> NSImage {
+        let size = NSSize(width: 18, height: 18)
+        let image = NSImage(size: size, flipped: false) { rect in
+            let barWidth: CGFloat = 2
+            let gap: CGFloat = 1
+            let barCount: CGFloat = 5
+            let totalWidth = barCount * barWidth + (barCount - 1) * gap // 14
+            let xStart = (rect.width - totalWidth) / 2
+            let yMidline = rect.height / 2
+
+            // Heights chosen so each pair shares the favicon's
+            // asymmetric rhythm (idle) or telescopes to a centered
+            // peak (active). All values fit in the 14pt usable
+            // vertical band (1pt padding top/bottom from the 18pt
+            // canvas), so the icon optically lines up with adjacent
+            // menu-bar items.
+            let heights: [CGFloat] = active
+                ? [8, 10, 14, 10, 8]
+                : [5, 9, 14, 7, 11]
+
+            NSColor.black.setFill() // template — AppKit tints this.
+
+            for (i, h) in heights.enumerated() {
+                let x = xStart + CGFloat(i) * (barWidth + gap)
+                let y = yMidline - h / 2
+                let bar = NSBezierPath(
+                    roundedRect: NSRect(x: x, y: y, width: barWidth, height: h),
+                    xRadius: barWidth / 2,
+                    yRadius: barWidth / 2
+                )
+                bar.fill()
+            }
+            return true
+        }
+        image.isTemplate = true
+        image.accessibilityDescription = "Parleq"
+        return image
     }
 
     /// Distinct glyph while the sidecar is still loading the model
