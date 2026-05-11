@@ -499,7 +499,7 @@ func availableInputDevices() -> [InputDeviceInfo] {
 /// silently dropped.
 private func isSystemAggregateUID(_ uid: String) -> Bool {
     let systemPrefixes = [
-        "CADefault",            // "CADefaultDevice…", "CADefaultInputAggregate…"
+        "CADefaultDevice",      // "CADefaultDeviceAggregate", "CADefaultDeviceInputAggregate"
         "CADeviceDefault",      // "CADeviceDefaultAggregate" (the case in #9)
         "AppleAggregateDevice", // Older naming, pre-Sequoia
     ]
@@ -708,20 +708,28 @@ func logInputDeviceDiagnostics() {
         mScope: kAudioObjectPropertyScopeGlobal,
         mElement: kAudioObjectPropertyElementMain
     )
-    AudioObjectGetPropertyDataSize(
+    let sizeStatus = AudioObjectGetPropertyDataSize(
         AudioObjectID(kAudioObjectSystemObject),
         &listAddr, 0, nil, &size
     )
+    guard sizeStatus == noErr else {
+        logStderr("[parleq] audio[devices]: device-list size query failed (OSStatus=\(sizeStatus))")
+        return
+    }
     let count = Int(size) / MemoryLayout<AudioDeviceID>.size
     guard count > 0 else {
         logStderr("[parleq] audio[devices]: no audio devices found")
         return
     }
     var ids = [AudioDeviceID](repeating: 0, count: count)
-    AudioObjectGetPropertyData(
+    let dataStatus = AudioObjectGetPropertyData(
         AudioObjectID(kAudioObjectSystemObject),
         &listAddr, 0, nil, &size, &ids
     )
+    guard dataStatus == noErr else {
+        logStderr("[parleq] audio[devices]: device-list read failed (OSStatus=\(dataStatus))")
+        return
+    }
     for id in ids {
         guard deviceHasInputStreams(id) else { continue }
         let tt = transportType(of: id)
@@ -739,6 +747,13 @@ func logInputDeviceDiagnostics() {
             hit = "isPrivate"
         } else if tt == kAudioDeviceTransportTypeAggregate, isSystemAggregateUID(uid) {
             hit = "systemUID"
+        } else if uid.isEmpty {
+            // Mirrors availableInputDevices()'s guard — devices
+            // without a stable UID can't be persisted in the
+            // microphone-selection config, so the submenu drops
+            // them. Report it here so the forensic log doesn't
+            // mis-classify them as kept.
+            hit = "noUID"
         } else {
             hit = "kept"
         }
