@@ -23,7 +23,6 @@ struct PermissionDescriptor {
     let icon: String
     let title: String
     let subtitle: String
-    let state: PermissionState
     /// Pill copy. Caller knows whether this row is Microphone vs Open
     /// at Login etc. and picks the right phrasing ("Required" vs "Off"
     /// vs "Manual" vs "Granted" / "On").
@@ -117,21 +116,26 @@ private struct PermissionPill: View {
     }
 
     private var backgroundColor: Color {
+        // System semantic .green / .orange tinted at low opacity. They
+        // adapt for dark mode automatically (macOS shifts both colors
+        // and how opacity composes on top of the dark window chrome),
+        // so the pill stays legible in both appearances without
+        // hand-rolled dynamic providers per channel.
         switch style {
-        // Tailwind-ish stand-ins for the green/amber/grey accents the
-        // mockup used. SwiftUI doesn't ship semantic warning/success
-        // colors, and rolling our own keeps the pill consistent in
-        // light + dark modes without depending on accentColor.
-        case .granted:   return Color(red: 0.86, green: 0.99, blue: 0.91)
-        case .attention: return Color(red: 1.00, green: 0.95, blue: 0.78)
+        case .granted:   return Color.green.opacity(0.18)
+        case .attention: return Color.orange.opacity(0.18)
         case .neutral:   return Color(NSColor.quaternaryLabelColor).opacity(0.5)
         }
     }
 
     private var foregroundColor: Color {
+        // System .green / .orange darkened/brightened by the system
+        // for the current appearance — they render with enough
+        // contrast on the matching low-opacity background in both
+        // light and dark modes.
         switch style {
-        case .granted:   return Color(red: 0.09, green: 0.39, blue: 0.21)
-        case .attention: return Color(red: 0.58, green: 0.28, blue: 0.05)
+        case .granted:   return Color.green
+        case .attention: return Color.orange
         case .neutral:   return Color(NSColor.secondaryLabelColor)
         }
     }
@@ -149,7 +153,6 @@ func microphoneDescriptor(state: PermissionState) -> PermissionDescriptor {
             icon: "mic",
             title: "Microphone",
             subtitle: "Required to capture your speech.",
-            state: state,
             pillLabel: "✓ Granted",
             pillStyle: .granted,
             actionLabel: "Manage…",
@@ -162,7 +165,6 @@ func microphoneDescriptor(state: PermissionState) -> PermissionDescriptor {
             icon: "mic",
             title: "Microphone",
             subtitle: "Required to capture your speech.",
-            state: state,
             pillLabel: "⚠ Required",
             pillStyle: .attention,
             actionLabel: "Allow…",
@@ -171,9 +173,22 @@ func microphoneDescriptor(state: PermissionState) -> PermissionDescriptor {
             onAction: { Permissions.requestMicrophone() }
         )
     case .notSupported:
-        // Microphone has no .notSupported state — render same as
-        // .missing to avoid a crash if the enum is ever extended.
-        return microphoneDescriptor(state: .missing)
+        // Microphone can't reach .notSupported via Permissions.microphone
+        // today — it only emits .granted or .missing. The handler exists
+        // for exhaustiveness, and degrades to an inert row that opens
+        // System Settings rather than silently mis-firing requestAccess
+        // on an environment where TCC isn't available.
+        return PermissionDescriptor(
+            icon: "mic",
+            title: "Microphone",
+            subtitle: "Manage in System Settings → Privacy & Security → Microphone.",
+            pillLabel: "Manual",
+            pillStyle: .neutral,
+            actionLabel: "Open System Settings…",
+            actionDisabled: false,
+            actionPrimary: false,
+            onAction: { Permissions.requestMicrophone() }
+        )
     }
 }
 
@@ -185,7 +200,6 @@ func accessibilityDescriptor(state: PermissionState) -> PermissionDescriptor {
             icon: "accessibility",
             title: "Accessibility",
             subtitle: "Reads the focused app and synthesizes the paste keystroke — never reads your screen.",
-            state: state,
             pillLabel: "✓ Granted",
             pillStyle: .granted,
             actionLabel: "Manage…",
@@ -198,7 +212,6 @@ func accessibilityDescriptor(state: PermissionState) -> PermissionDescriptor {
             icon: "accessibility",
             title: "Accessibility",
             subtitle: "Reads the focused app and synthesizes the paste keystroke — never reads your screen.",
-            state: state,
             pillLabel: "⚠ Required",
             pillStyle: .attention,
             actionLabel: "Allow…",
@@ -207,7 +220,18 @@ func accessibilityDescriptor(state: PermissionState) -> PermissionDescriptor {
             onAction: { Permissions.requestAccessibility() }
         )
     case .notSupported:
-        return accessibilityDescriptor(state: .missing)
+        // Same reasoning as microphone's .notSupported branch.
+        return PermissionDescriptor(
+            icon: "accessibility",
+            title: "Accessibility",
+            subtitle: "Manage in System Settings → Privacy & Security → Accessibility.",
+            pillLabel: "Manual",
+            pillStyle: .neutral,
+            actionLabel: "Open System Settings…",
+            actionDisabled: false,
+            actionPrimary: false,
+            onAction: { Permissions.requestAccessibility() }
+        )
     }
 }
 
@@ -219,7 +243,6 @@ func openAtLoginDescriptor(state: PermissionState) -> PermissionDescriptor {
             icon: "arrow.right.circle",
             title: "Open at Login",
             subtitle: "Launch Parleq automatically when you log in.",
-            state: state,
             pillLabel: "On",
             pillStyle: .granted,
             actionLabel: "Turn off",
@@ -232,7 +255,6 @@ func openAtLoginDescriptor(state: PermissionState) -> PermissionDescriptor {
             icon: "arrow.right.circle",
             title: "Open at Login",
             subtitle: "Launch Parleq automatically when you log in.",
-            state: state,
             pillLabel: "Off",
             pillStyle: .neutral,
             actionLabel: "Turn on",
@@ -245,7 +267,6 @@ func openAtLoginDescriptor(state: PermissionState) -> PermissionDescriptor {
             icon: "arrow.right.circle",
             title: "Open at Login",
             subtitle: "This build can't auto-register. Add Parleq manually in System Settings.",
-            state: state,
             pillLabel: "Manual",
             pillStyle: .neutral,
             actionLabel: "Open Login Items Settings…",
