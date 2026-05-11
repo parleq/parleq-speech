@@ -6,6 +6,28 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 (no changes yet)
 
+## [0.8.0] - 2026-05-11
+
+Permissions section, brand polish, and several menu-bar fixes.
+
+### Added
+
+- **Permissions section in Settings** — a new "Permissions" sidebar entry (between Usage and Advanced) surfacing the current state of Microphone, Accessibility, and "Open at Login" with at-a-glance status pills and a primary action per row. Replaces the menu-bar "Open Login Items Settings…" entry that was removed in 0.7.0's chrome cleanup.
+- **Permissions step in the Setup wizard** — first-run users now see the same three rows on a new wizard step (between Welcome and Pick Provider). The Continue button is gated on Microphone + Accessibility being granted and surfaces the blocking reason inline ("Continue (grant Microphone first)") so the user is never confused about why it's disabled. Open at Login stays optional.
+- **System Settings deep-links** for the missing-permission rows — clicking "Allow…" routes directly to the right Privacy & Security pane rather than dumping the user at the top of System Settings.
+- **SMAppService `.notFound` fallback** for Open at Login — when the underlying API can't manage the current build (unnotarized installs, `swift run`, etc.), the row degrades to a "Manual" pill plus an "Open Login Items Settings…" button. The functionality the old menu entry provided is preserved inside its new Permissions home.
+
+### Changed
+
+- **Brand the menu-bar status icon.** The status item near the clock now renders Parleq's five-bar mark instead of the generic SF Symbol microphone — same shape as the favicon, app icon, and wordmark. Two states: bars at the favicon's asymmetric rhythm (idle) and bars in a centered peak (active / capture in flight). Drawn as a template image so AppKit auto-tints for light/dark menu bars and re-rasterizes at Retina scale.
+- **Microphone submenu now hides system-internal aggregates.** Filters cover three signals: `kAudioDevicePropertyIsHidden`, `kAudioDeviceTransportTypeAutoAggregate`, and (for transport-Aggregate devices) `kAudioAggregateDevicePropertyIsPrivate`. User-created aggregates from Audio MIDI Setup and Virtual devices (BlackHole, Audio Hijack, Loopback) stay visible. One known gap on macOS Sequoia where `CADeviceDefaultAggregate` still leaks through is tracked at [#9](https://github.com/parleq/parleq-speech/issues/9).
+- **"Settings…" menu item is text-only.** Renamed the underlying action selector away from `openSettings` (the canonical macOS Ventura+ "Open Settings" responder action) so AppKit no longer auto-decorates the item with a gearshape SF Symbol. ⌘, continues to work.
+
+### Internal
+
+- Permissions detection wraps `AVCaptureDevice.authorizationStatus`, `AXIsProcessTrusted()`, and `LoginItem.{isEnabled, isSupported, requiresApproval}` behind a synchronous probe API. A shared `PermissionsModel` observes `NSApplication.didBecomeActiveNotification` and republishes the snapshot only when something actually changed, so the UI updates the moment a user returns from System Settings without churning on every ⌘-tab.
+- New `PermissionRow` SwiftUI component plus three descriptor builders so the Settings section and the wizard step render the same content from the same source of truth.
+
 ## [0.7.0] - 2026-05-10
 
 Initial public release.
@@ -60,5 +82,6 @@ Press a global hotkey, speak, see post-processed text in a floating overlay, acc
 - **Apple Silicon** (M1 / M2 / M3 / M4) running **macOS 14 (Sonoma) or later**.
 - **Apache-2.0 licensed**. Source at [github.com/parleq/parleq-speech](https://github.com/parleq/parleq-speech).
 
-[Unreleased]: https://github.com/parleq/parleq-speech/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/parleq/parleq-speech/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/parleq/parleq-speech/releases/tag/v0.8.0
 [0.7.0]: https://github.com/parleq/parleq-speech/releases/tag/v0.7.0
