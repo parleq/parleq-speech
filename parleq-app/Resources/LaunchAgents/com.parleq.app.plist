@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  LaunchAgent plist for Parleq's "Open at Login" support.
+
+  SMAppService.mainApp looks for a plist with this exact name
+  (`<bundle-id>.plist`) inside `Contents/Library/LaunchAgents/`.
+  Without it, `SMAppService.mainApp.status` reports `.notFound`
+  forever — register() can't transition the state because there's
+  no service description to register. macOS doesn't auto-synthesize
+  one for `mainApp`; it's the developer's responsibility to ship.
+
+  The plist itself is intentionally minimal:
+    - Label: matches the bundle ID (Apple's convention for mainApp
+      Login Items).
+    - BundleProgram: relative path to the executable inside the
+      bundle. macOS resolves it from wherever the .app currently
+      lives, so moving the app between /Applications and ~/Applications
+      doesn't break the registration.
+    - RunAtLoad: triggers launchd to start Parleq when the user
+      logs in (the whole point of Login Items).
+    - AssociatedBundleIdentifiers: tells launchd which bundle this
+      agent belongs to, so it shows up grouped under "Parleq" in
+      System Settings → General → Login Items rather than as an
+      anonymous "com.parleq.app" entry.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.parleq.app</string>
+    <key>BundleProgram</key>
+    <string>Contents/MacOS/ParleqApp</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>AssociatedBundleIdentifiers</key>
+    <array>
+        <string>com.parleq.app</string>
+    </array>
+</dict>
+</plist>
