@@ -107,7 +107,14 @@ final class MenuBar: NSObject {
 
         let settingsItem = NSMenuItem(
             title: "Settings…",
-            action: #selector(openSettings),
+            // Deliberately not `openSettings`: that selector name is
+            // the canonical macOS Ventura+ "Open Settings" responder
+            // action, which AppKit auto-decorates with a gearshape
+            // SF Symbol next to the menu item title. We want a
+            // text-only menu (consistent with the rest of the menu's
+            // styling) so we route through a uniquely-named selector
+            // that AppKit doesn't recognize.
+            action: #selector(presentSettings),
             keyEquivalent: ","
         )
         settingsItem.target = self
@@ -158,7 +165,7 @@ final class MenuBar: NSObject {
         applyIcon(active: false)
     }
 
-    @objc private func openSettings() {
+    @objc private func presentSettings() {
         onOpenSettings?()
     }
 

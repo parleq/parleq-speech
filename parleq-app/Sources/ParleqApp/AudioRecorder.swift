@@ -445,7 +445,7 @@ func availableInputDevices() -> [InputDeviceInfo] {
     var out: [InputDeviceInfo] = []
     for id in ids {
         guard deviceHasInputStreams(id) else { continue }
-        // Match macOS's own input-device picker behavior. Two filters:
+        // Match macOS's own input-device picker behavior. Three filters:
         //   1. Devices that set kAudioDevicePropertyIsHidden = true are
         //      flagged by their owners as "not for end users" (sidecar
         //      processes, helper aggregates, ScreenCaptureKit shims).
@@ -455,17 +455,27 @@ func availableInputDevices() -> [InputDeviceInfo] {
         //      capture topology that doesn't have a single physical
         //      backing device (e.g. screen + mic recording). Always
         //      transient, never a thing the user picked.
-        // User-created aggregates (kAudioDeviceTransportTypeAggregate)
-        // and Virtual devices (BlackHole, Audio Hijack, Loopback) stay
-        // visible — those represent real user choices.
+        //   3. Aggregate-transport devices flagged as private (the
+        //      kAudioAggregateDevicePropertyIsPrivate bit) are
+        //      system-created aggregates — the canonical one is
+        //      CADeviceDefaultAggregate that ships on macOS Sequoia.
+        //      macOS doesn't always set IsHidden on these even though
+        //      Sound prefs hides them; the private-aggregate flag is
+        //      the reliable signal.
+        // User-created aggregates (made in Audio MIDI Setup) report
+        // IsPrivate == false and stay visible. Same for Virtual
+        // devices (BlackHole, Audio Hijack, Loopback) — those
+        // represent real user choices.
         if isHidden(id) { continue }
-        if transportType(of: id) == kAudioDeviceTransportTypeAutoAggregate { continue }
+        let tt = transportType(of: id)
+        if tt == kAudioDeviceTransportTypeAutoAggregate { continue }
+        if tt == kAudioDeviceTransportTypeAggregate, isPrivateAggregate(id) { continue }
         guard let uid = deviceUID(of: id), !uid.isEmpty else { continue }
         let name = deviceName(of: id) ?? "Unnamed input"
         out.append(InputDeviceInfo(
             uid: uid,
             name: name,
-            transportLabel: transportLabel(for: transportType(of: id))
+            transportLabel: transportLabel(for: tt)
         ))
     }
     return out
@@ -610,6 +620,37 @@ private func builtInMicDeviceID() -> AudioDeviceID? {
 private func isHidden(_ deviceID: AudioDeviceID) -> Bool {
     var addr = AudioObjectPropertyAddress(
         mSelector: kAudioDevicePropertyIsHidden,
+        mScope: kAudioObjectPropertyScopeGlobal,
+        mElement: kAudioObjectPropertyElementMain
+    )
+    guard AudioObjectHasProperty(deviceID, &addr) else { return false }
+    var value: UInt32 = 0
+    var size = UInt32(MemoryLayout<UInt32>.size)
+    let status = AudioObjectGetPropertyData(deviceID, &addr, 0, nil, &size, &value)
+    return status == noErr && value != 0
+}
+
+/// Read kAudioAggregateDevicePropertyIsPrivate. Only meaningful when
+/// the device's transport type is kAudioDeviceTransportTypeAggregate —
+/// the property is on AudioAggregateDevice, not on every AudioObject.
+/// System-created aggregates (CADeviceDefaultAggregate, the helpers
+/// AVAudioEngine voice-processing IO spins up behind a real mic) set
+/// this bit; user-created aggregates from Audio MIDI Setup don't.
+///
+/// The constant isn't auto-imported into Swift as of macOS 14 SDK, so
+/// we declare the fourcc selector ('priv') inline. Returns false for
+/// devices that don't expose the property (the common case — every
+/// non-aggregate device), which is the safe default — we only want
+/// to *exclude* on a positive match.
+private func isPrivateAggregate(_ deviceID: AudioDeviceID) -> Bool {
+    // 'priv' fourcc — kAudioAggregateDevicePropertyIsPrivate.
+    let selector: AudioObjectPropertySelector =
+        AudioObjectPropertySelector(("p" as Character).asciiValue!) << 24 |
+        AudioObjectPropertySelector(("r" as Character).asciiValue!) << 16 |
+        AudioObjectPropertySelector(("i" as Character).asciiValue!) << 8 |
+        AudioObjectPropertySelector(("v" as Character).asciiValue!)
+    var addr = AudioObjectPropertyAddress(
+        mSelector: selector,
         mScope: kAudioObjectPropertyScopeGlobal,
         mElement: kAudioObjectPropertyElementMain
     )
