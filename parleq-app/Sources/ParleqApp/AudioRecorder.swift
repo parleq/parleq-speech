@@ -445,32 +445,41 @@ func availableInputDevices() -> [InputDeviceInfo] {
     var out: [InputDeviceInfo] = []
     for id in ids {
         guard deviceHasInputStreams(id) else { continue }
-        // Match macOS's own input-device picker behavior. Three filters:
-        //   1. Devices that set kAudioDevicePropertyIsHidden = true are
-        //      flagged by their owners as "not for end users" (sidecar
-        //      processes, helper aggregates, ScreenCaptureKit shims).
-        //      macOS Sound prefs honor this flag; so do we.
-        //   2. kAudioDeviceTransportTypeAutoAggregate is the runtime-
-        //      created aggregate macOS spins up when an app asks for a
-        //      capture topology that doesn't have a single physical
-        //      backing device (e.g. screen + mic recording). Always
-        //      transient, never a thing the user picked.
-        //   3. Aggregate-transport devices flagged as private (the
-        //      kAudioAggregateDevicePropertyIsPrivate bit) are
-        //      system-created aggregates — the canonical one is
-        //      CADeviceDefaultAggregate that ships on macOS Sequoia.
-        //      macOS doesn't always set IsHidden on these even though
-        //      Sound prefs hides them; the private-aggregate flag is
-        //      the reliable signal.
-        // User-created aggregates (made in Audio MIDI Setup) report
-        // IsPrivate == false and stay visible. Same for Virtual
-        // devices (BlackHole, Audio Hijack, Loopback) — those
-        // represent real user choices.
+        // Match macOS's own input-device picker behavior. Four filters
+        // applied in order of cost (cheapest first):
+        //   1. kAudioDevicePropertyIsHidden — devices that mark
+        //      themselves "not for end users" (ScreenCaptureKit shims,
+        //      VoiceProcessing IO helpers, third-party driver
+        //      auxiliaries). macOS Sound prefs honors this flag too.
+        //   2. kAudioDeviceTransportTypeAutoAggregate — runtime-
+        //      created aggregates macOS spins up for capture
+        //      topologies that need a virtual composite (screen +
+        //      mic recording etc.). Always transient.
+        //   3. kAudioAggregateDevicePropertyIsPrivate on
+        //      Aggregate-transport devices — IsPrivate is the
+        //      documented signal for "system-created aggregate."
+        //      Caveat: on macOS Sequoia (#9) some system aggregates
+        //      ship with IsPrivate=false anyway, which is what filter
+        //      4 catches.
+        //   4. UID-prefix check for known Apple-internal aggregate
+        //      naming patterns ("CADefault", "CADeviceDefault",
+        //      "AppleAggregateDevice"). System aggregates whose
+        //      IsPrivate bit happens to be unset still carry these
+        //      Core Audio convention UIDs, and macOS Sound prefs
+        //      filters them by the same signature. The prefix list
+        //      is conservative — extend it (rather than broadening
+        //      the pattern) if a new system-internal aggregate shows
+        //      up in the wild.
+        // User-created aggregates (made in Audio MIDI Setup) get UIDs
+        // chosen by the user, so the prefix filter doesn't touch
+        // them. Same for Virtual devices (BlackHole, Audio Hijack,
+        // Loopback).
         if isHidden(id) { continue }
         let tt = transportType(of: id)
         if tt == kAudioDeviceTransportTypeAutoAggregate { continue }
         if tt == kAudioDeviceTransportTypeAggregate, isPrivateAggregate(id) { continue }
         guard let uid = deviceUID(of: id), !uid.isEmpty else { continue }
+        if tt == kAudioDeviceTransportTypeAggregate, isSystemAggregateUID(uid) { continue }
         let name = deviceName(of: id) ?? "Unnamed input"
         out.append(InputDeviceInfo(
             uid: uid,
@@ -479,6 +488,25 @@ func availableInputDevices() -> [InputDeviceInfo] {
         ))
     }
     return out
+}
+
+/// Apple Core Audio uses a small set of UID conventions for the
+/// aggregates it creates internally. macOS Sound prefs hides devices
+/// matching any of them. The list is conservative — only patterns
+/// we've directly observed in the wild are here; broaden by adding
+/// a new prefix rather than relaxing existing ones, because a
+/// user-created aggregate with an unfortunate name shouldn't get
+/// silently dropped.
+private func isSystemAggregateUID(_ uid: String) -> Bool {
+    let systemPrefixes = [
+        "CADefault",            // "CADefaultDevice…", "CADefaultInputAggregate…"
+        "CADeviceDefault",      // "CADeviceDefaultAggregate" (the case in #9)
+        "AppleAggregateDevice", // Older naming, pre-Sequoia
+    ]
+    for prefix in systemPrefixes {
+        if uid.hasPrefix(prefix) { return true }
+    }
+    return false
 }
 
 /// Resolve a persisted UID back to a live `AudioDeviceID`. Returns
@@ -659,6 +687,83 @@ private func isPrivateAggregate(_ deviceID: AudioDeviceID) -> Bool {
     var size = UInt32(MemoryLayout<UInt32>.size)
     let status = AudioObjectGetPropertyData(deviceID, &addr, 0, nil, &size, &value)
     return status == noErr && value != 0
+}
+
+/// Dump every input device's identifying properties to app.log so
+/// we have forensic data if a future user reports a system-internal
+/// device leaking into the Microphone submenu. Runs once at app
+/// startup; one line per input device.
+///
+/// Format (whitespace-separated, prefix-quoted strings):
+///   [parleq] audio[devices]: id=<N> tt=<fourcc> hidden=<0|1>
+///       priv=<0|1> uid="<uid>" name="<name>" hit=<filter|kept>
+///
+/// `hit` reports which filter (if any) excluded the device, or
+/// `kept` if it survives all filters. Easy to grep when triaging
+/// "weird mic option showing up" reports.
+func logInputDeviceDiagnostics() {
+    var size: UInt32 = 0
+    var listAddr = AudioObjectPropertyAddress(
+        mSelector: kAudioHardwarePropertyDevices,
+        mScope: kAudioObjectPropertyScopeGlobal,
+        mElement: kAudioObjectPropertyElementMain
+    )
+    AudioObjectGetPropertyDataSize(
+        AudioObjectID(kAudioObjectSystemObject),
+        &listAddr, 0, nil, &size
+    )
+    let count = Int(size) / MemoryLayout<AudioDeviceID>.size
+    guard count > 0 else {
+        logStderr("[parleq] audio[devices]: no audio devices found")
+        return
+    }
+    var ids = [AudioDeviceID](repeating: 0, count: count)
+    AudioObjectGetPropertyData(
+        AudioObjectID(kAudioObjectSystemObject),
+        &listAddr, 0, nil, &size, &ids
+    )
+    for id in ids {
+        guard deviceHasInputStreams(id) else { continue }
+        let tt = transportType(of: id)
+        let ttFourcc = fourccString(tt)
+        let hidden = isHidden(id) ? 1 : 0
+        let priv = (tt == kAudioDeviceTransportTypeAggregate && isPrivateAggregate(id)) ? 1 : 0
+        let uid = deviceUID(of: id) ?? ""
+        let name = deviceName(of: id) ?? ""
+        let hit: String
+        if hidden == 1 {
+            hit = "isHidden"
+        } else if tt == kAudioDeviceTransportTypeAutoAggregate {
+            hit = "AutoAggregate"
+        } else if priv == 1 {
+            hit = "isPrivate"
+        } else if tt == kAudioDeviceTransportTypeAggregate, isSystemAggregateUID(uid) {
+            hit = "systemUID"
+        } else {
+            hit = "kept"
+        }
+        logStderr(
+            "[parleq] audio[devices]: id=\(id) tt=\(ttFourcc) " +
+            "hidden=\(hidden) priv=\(priv) uid=\"\(uid)\" name=\"\(name)\" " +
+            "hit=\(hit)"
+        )
+    }
+}
+
+/// Render a four-character-code UInt32 (the format Core Audio uses
+/// for transport types, property selectors, etc.) as a printable
+/// string. Returns the raw hex value if any byte is non-printable.
+private func fourccString(_ value: UInt32) -> String {
+    let bytes: [UInt8] = [
+        UInt8((value >> 24) & 0xff),
+        UInt8((value >> 16) & 0xff),
+        UInt8((value >>  8) & 0xff),
+        UInt8( value        & 0xff),
+    ]
+    if bytes.allSatisfy({ $0 >= 0x20 && $0 < 0x7f }) {
+        return String(bytes: bytes, encoding: .ascii) ?? String(format: "0x%08x", value)
+    }
+    return String(format: "0x%08x", value)
 }
 
 private func deviceHasInputStreams(_ deviceID: AudioDeviceID) -> Bool {
