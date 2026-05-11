@@ -445,6 +445,21 @@ func availableInputDevices() -> [InputDeviceInfo] {
     var out: [InputDeviceInfo] = []
     for id in ids {
         guard deviceHasInputStreams(id) else { continue }
+        // Match macOS's own input-device picker behavior. Two filters:
+        //   1. Devices that set kAudioDevicePropertyIsHidden = true are
+        //      flagged by their owners as "not for end users" (sidecar
+        //      processes, helper aggregates, ScreenCaptureKit shims).
+        //      macOS Sound prefs honor this flag; so do we.
+        //   2. kAudioDeviceTransportTypeAutoAggregate is the runtime-
+        //      created aggregate macOS spins up when an app asks for a
+        //      capture topology that doesn't have a single physical
+        //      backing device (e.g. screen + mic recording). Always
+        //      transient, never a thing the user picked.
+        // User-created aggregates (kAudioDeviceTransportTypeAggregate)
+        // and Virtual devices (BlackHole, Audio Hijack, Loopback) stay
+        // visible — those represent real user choices.
+        if isHidden(id) { continue }
+        if transportType(of: id) == kAudioDeviceTransportTypeAutoAggregate { continue }
         guard let uid = deviceUID(of: id), !uid.isEmpty else { continue }
         let name = deviceName(of: id) ?? "Unnamed input"
         out.append(InputDeviceInfo(
@@ -583,6 +598,26 @@ private func builtInMicDeviceID() -> AudioDeviceID? {
         }
     }
     return nil
+}
+
+/// Read kAudioDevicePropertyIsHidden. Devices set this flag to signal
+/// "hide me from end-user pickers" — Apple uses it for the auxiliary
+/// devices ScreenCaptureKit and Voice Processing IO Unit instantiate
+/// at capture time, and third-party drivers use it for their internal
+/// helpers (e.g. a wrapper aggregate around a USB mic). Returns false
+/// for devices that don't expose the property (the common case) and
+/// for devices that expose it as zero.
+private func isHidden(_ deviceID: AudioDeviceID) -> Bool {
+    var addr = AudioObjectPropertyAddress(
+        mSelector: kAudioDevicePropertyIsHidden,
+        mScope: kAudioObjectPropertyScopeGlobal,
+        mElement: kAudioObjectPropertyElementMain
+    )
+    guard AudioObjectHasProperty(deviceID, &addr) else { return false }
+    var value: UInt32 = 0
+    var size = UInt32(MemoryLayout<UInt32>.size)
+    let status = AudioObjectGetPropertyData(deviceID, &addr, 0, nil, &size, &value)
+    return status == noErr && value != 0
 }
 
 private func deviceHasInputStreams(_ deviceID: AudioDeviceID) -> Bool {
