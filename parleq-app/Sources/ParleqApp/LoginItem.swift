@@ -39,10 +39,22 @@ enum LoginItem {
     ///     ID Application: Gatekeeper rejects the app for execution
     ///     trust, and SMAppService follows the same trust model and
     ///     returns .notFound.
-    /// In the second case the menu falls back to "Open Login Items
-    /// in System Settings…" so the user can add Parleq manually.
+    /// In the second case the Permissions section falls back to
+    /// "Open Login Items Settings…" so the user can add Parleq
+    /// manually.
     static var isSupported: Bool {
         SMAppService.mainApp.status != .notFound
+    }
+
+    /// True when SMAppService accepted a `.register()` call but macOS
+    /// still wants the user to flip the toggle in System Settings →
+    /// Login Items before the registration becomes effective. In this
+    /// state `isEnabled` returns false (since `.status` is not
+    /// `.enabled`) but a follow-up `register()` is a no-op — the user
+    /// must visit System Settings to make progress, so callers should
+    /// route there instead of re-registering.
+    static var requiresApproval: Bool {
+        SMAppService.mainApp.status == .requiresApproval
     }
 
     /// Toggle registration. Throws if SMAppService rejects the call.

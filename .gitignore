@@ -48,3 +48,9 @@ third_party/fluidaudio-sidecar/.swiftpm/
 # repo-specific overrides we need to share, so each developer's
 # local config stays local.
 .roborev.toml
+
+# Superpowers brainstorming + spec output — mockups, session state,
+# and design specs the browser-based design helper produces. Useful
+# local-only working artifacts; not part of the codebase.
+.superpowers/
+docs/superpowers/
