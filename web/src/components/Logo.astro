@@ -1,0 +1,46 @@
+---
+// Parleq logo lockup: bars + wordmark. Inlined as raw SVG (rather
+// than <img src="/logo.svg">) so the wordmark renders with the
+// page's already-loaded Fraunces font. Browsers don't fetch
+// external font resources for SVGs loaded via <img>; inline SVG
+// shares the document's font context, so Fraunces just works.
+//
+// `dark` prop swaps the wordmark from slate to warm-white for
+// dark-mode contexts. Bars are amber in both variants — amber
+// contrasts cleanly with both light and dark backgrounds.
+
+interface Props {
+  /** Height in px or any CSS length. Width auto-scales (3.5:1 ratio). */
+  height?: string;
+  /** Use the warm-white wordmark variant (for dark backgrounds). */
+  dark?: boolean;
+  /** Additional classes on the wrapping <svg>. */
+  class?: string;
+}
+
+const { height = '36', dark = false, class: className = '' } = Astro.props;
+const wordmarkFill = dark ? '#fafaf7' : '#0f172a';
+---
+
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 280 80"
+  fill="none"
+  height={height}
+  class={className}
+  role="img"
+  aria-label="Parleq"
+>
+  <g transform="translate(8, 8)">
+    <rect x="0"  y="20" width="7" height="20" rx="3.5" fill="#d97706"/>
+    <rect x="10" y="12" width="7" height="36" rx="3.5" fill="#d97706"/>
+    <rect x="20" y="6"  width="7" height="48" rx="3.5" fill="#d97706"/>
+    <rect x="30" y="15" width="7" height="30" rx="3.5" fill="#d97706"/>
+    <rect x="40" y="9"  width="7" height="42" rx="3.5" fill="#d97706"/>
+  </g>
+  <text
+    x="78"
+    y="58"
+    style={`font-family: 'Fraunces', Georgia, serif; font-size: 56px; font-weight: 600; font-variation-settings: 'opsz' 96; letter-spacing: -0.015em; fill: ${wordmarkFill};`}
+  >Parleq</text>
+</svg>

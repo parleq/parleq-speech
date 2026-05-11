@@ -1,13 +1,14 @@
 ---
 import Layout from '../../layouts/Layout.astro';
+import Logo from '../../components/Logo.astro';
 
 const repoUrl = 'https://github.com/parleq/parleq-speech';
 ---
 
 <Layout title="Vertex AI setup — Parleq" description="Set up Google Vertex AI as Parleq's cleanup provider. Two auth modes: gcloud ADC, or service-account JSON.">
   <header class="mx-auto flex max-w-5xl items-center justify-between px-6 pt-8">
-    <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/'} class="flex items-center gap-3 text-lg font-semibold tracking-tight">
-      <span class="font-display text-2xl">Parleq</span>
+    <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/'} class="inline-flex items-center">
+      <Logo height="36" />
     </a>
     <nav class="flex items-center gap-6 text-sm font-medium text-[color:var(--color-text-muted)]">
       <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/'} class="transition-colors hover:text-[color:var(--color-text)]">Home</a>

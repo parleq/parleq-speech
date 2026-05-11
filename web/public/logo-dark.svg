@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 80" fill="none">
+  <!--
+    Parleq logo, dark-mode variant. Same as logo.svg but the
+    wordmark uses warm-white (#fafaf7) instead of slate — for
+    use on dark surfaces (Settings sidebar, dark-mode website
+    theme, dark GitHub README banner, etc.). Bars stay amber;
+    the amber contrasts cleanly with both light and dark
+    backgrounds.
+  -->
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&amp;display=swap');
+    .wordmark {
+      font-family: 'Fraunces', Georgia, 'Times New Roman', serif;
+      font-size: 56px;
+      font-weight: 600;
+      font-variation-settings: 'opsz' 96;
+      letter-spacing: -0.015em;
+      fill: #fafaf7;
+    }
+  </style>
+
+  <g transform="translate(8, 8)">
+    <rect x="0"  y="20" width="7" height="20" rx="3.5" fill="#d97706"/>
+    <rect x="10" y="12" width="7" height="36" rx="3.5" fill="#d97706"/>
+    <rect x="20" y="6"  width="7" height="48" rx="3.5" fill="#d97706"/>
+    <rect x="30" y="15" width="7" height="30" rx="3.5" fill="#d97706"/>
+    <rect x="40" y="9"  width="7" height="42" rx="3.5" fill="#d97706"/>
+  </g>
+
+  <text x="78" y="58" class="wordmark">Parleq</text>
+</svg>

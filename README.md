@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="web/public/logo-dark.svg">
+    <img src="web/public/logo.svg" alt="Parleq" height="80">
+  </picture>
+</p>
+
 # Parleq
 
 Open-source, voice-driven text composition for macOS.

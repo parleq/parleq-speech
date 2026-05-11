@@ -1,5 +1,6 @@
 ---
 import Layout from '../layouts/Layout.astro';
+import Logo from '../components/Logo.astro';
 import { fetchLatestRelease } from '../lib/release';
 
 const release = await fetchLatestRelease();
@@ -43,8 +44,8 @@ const highlights = [
 <Layout title="Parleq — Local-first AI dictation for macOS">
   <!-- Header: wordmark on left, nav links on right. -->
   <header class="mx-auto flex max-w-5xl items-center justify-between px-6 pt-8">
-    <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/'} class="flex items-center gap-3 text-lg font-semibold tracking-tight">
-      <span class="font-display text-2xl">Parleq</span>
+    <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/'} class="inline-flex items-center">
+      <Logo height="36" />
     </a>
     <nav class="flex items-center gap-6 text-sm font-medium text-[color:var(--color-text-muted)]">
       <span class="text-[color:var(--color-text)]">Home</span>
