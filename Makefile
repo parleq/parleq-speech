@@ -29,7 +29,7 @@ CODESIGN_IDENTITY :=
 NOTARY_PROFILE    := parleq-notarize
 
 .DEFAULT_GOAL := help
-.PHONY: help build build-debug install run clean notarize dmg dmg-preview release set-version show-version
+.PHONY: help build build-debug install run clean notarize dmg dmg-preview release release-precheck set-version show-version
 
 help:
 	@echo "Parleq build & install"
@@ -211,20 +211,29 @@ dmg: notarize
 #
 # The output lives in $(APP_DIR)/build/release/ — a single directory
 # you can `gh release create vYYYY.MM.DD <files>` against. We don't
-# call `gh release create` ourselves: tagging + release notes are
-# human decisions and the artifact is the same either way.
 # Atomic release: build the DMG, create the GitHub release with the
 # DMG + SHA256 attached, and dispatch the website-redeploy workflow.
 # Single command, single round-trip.
 #
+# The flow is split into two recipes:
+#
+#   release-precheck — Four guard conditions, runs FIRST (no prereqs)
+#     so a bad release notes file or unpushed branch fails before the
+#     ~20-second DMG build instead of after.
+#   release         — Depends on release-precheck + dmg. Composes the
+#     release-output RELEASE_NOTES.txt, runs gh release create with
+#     assets attached, dispatches the site-redeploy workflow.
+#
 # Pre-checks (all fail fast with an instructive message):
 #   1. RELEASE_NOTES.txt at the repo root exists and its first line
-#      references "Parleq $VERSION" — so the release notes can't drift
-#      out of sync with the version being shipped.
-#   2. Local HEAD is reachable on origin (the branch has been pushed).
-#      gh release create's --target uses the local SHA, which must
-#      exist server-side. Failing here is much friendlier than getting
-#      a 404 from gh halfway through.
+#      starts with "Parleq $VERSION" (anchored — "Parleq 0.8.1" alone
+#      does not satisfy a 0.8.10 release) so the release notes can't
+#      drift out of sync with the version being shipped.
+#   2. Current branch has an upstream and its local HEAD is an
+#      ancestor of (or equal to) origin/<branch>. gh release create's
+#      --target uses the local SHA, which must exist server-side;
+#      failing here is much friendlier than getting a 404 from gh
+#      halfway through.
 #   3. Working tree is clean. A surprise dirty file in the release
 #      build is almost always a mistake; bail rather than ship it.
 #
@@ -243,12 +252,20 @@ dmg: notarize
 #     environment protection rule that rejects release-event-triggered
 #     runs from tag refs.
 #
+# Both recipes run under `set -e` so any single failing command
+# aborts the chain and propagates a non-zero exit to make. This
+# matters most in `release` — without set -e, a failed
+# `gh release create` would silently fall through to the workflow
+# dispatch and make would report success on a release that didn't
+# actually ship.
+#
 # `gh` must be authenticated (run `gh auth login` once on a new
 # machine). `gh release create` requires `repo` scope, which the
 # default gh login provides.
-release: dmg
-	@VERSION=$$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" \
-		"$(APP_BUNDLE)/Contents/Info.plist" 2>/dev/null || echo "0.0.0"); \
+release-precheck:
+	@set -e; \
+	VERSION=$$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" \
+		"$(APP_DIR)/Resources/Info.plist" 2>/dev/null || echo "0.0.0"); \
 	NOTES_SRC="RELEASE_NOTES.txt"; \
 	if [ ! -f "$$NOTES_SRC" ]; then \
 		echo "ERROR: $$NOTES_SRC not found at repo root."; \
@@ -256,17 +273,21 @@ release: dmg
 		exit 1; \
 	fi; \
 	NOTES_FIRST=$$(head -n 1 "$$NOTES_SRC"); \
-	if ! echo "$$NOTES_FIRST" | grep -q "Parleq $$VERSION"; then \
-		echo "ERROR: $$NOTES_SRC first line doesn't reference 'Parleq $$VERSION'."; \
+	if ! echo "$$NOTES_FIRST" | grep -qE "^Parleq $$VERSION([^0-9]|$$)"; then \
+		echo "ERROR: $$NOTES_SRC first line doesn't start with 'Parleq $$VERSION'."; \
 		echo "       Got: $$NOTES_FIRST"; \
 		echo "       Update $$NOTES_SRC for the new version before running make release."; \
 		exit 1; \
 	fi; \
-	SHA=$$(git rev-parse --short HEAD); \
-	FULL_SHA=$$(git rev-parse HEAD); \
-	if [ -z "$$(git branch -r --contains "$$FULL_SHA" 2>/dev/null)" ]; then \
-		echo "ERROR: local HEAD ($$SHA) is not on any remote branch."; \
-		echo "       Push your branch to origin before running make release."; \
+	UPSTREAM=$$(git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null || true); \
+	if [ -z "$$UPSTREAM" ]; then \
+		echo "ERROR: current branch has no upstream — can't verify it's pushed."; \
+		echo "       Push your branch (git push -u origin <branch>) before running make release."; \
+		exit 1; \
+	fi; \
+	if ! git merge-base --is-ancestor HEAD "$$UPSTREAM"; then \
+		echo "ERROR: local HEAD is ahead of $$UPSTREAM."; \
+		echo "       Push your latest commits before running make release."; \
 		exit 1; \
 	fi; \
 	if [ -n "$$(git status --porcelain)" ]; then \
@@ -274,6 +295,14 @@ release: dmg
 		git status --short; \
 		exit 1; \
 	fi; \
+	echo "release-precheck OK (version $$VERSION, upstream $$UPSTREAM)"
+
+release: release-precheck dmg
+	@set -e; \
+	VERSION=$$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" \
+		"$(APP_BUNDLE)/Contents/Info.plist" 2>/dev/null || echo "0.0.0"); \
+	SHA=$$(git rev-parse --short HEAD); \
+	FULL_SHA=$$(git rev-parse HEAD); \
 	OUT="$(APP_DIR)/build/release"; \
 	NAME="Parleq-$$VERSION-$$SHA.dmg"; \
 	mkdir -p "$$OUT"; \
@@ -282,7 +311,7 @@ release: dmg
 	(cd "$$OUT" && shasum -a 256 "$$NAME" > "$$NAME.sha256"); \
 	{ \
 		echo "Parleq $$VERSION ($$SHA) — $$(date -u +%Y-%m-%d)"; \
-		tail -n +2 "$$NOTES_SRC"; \
+		tail -n +2 RELEASE_NOTES.txt; \
 	} > "$$OUT/RELEASE_NOTES.txt"; \
 	echo ""; \
 	echo "Release artifacts ready in $$OUT/:"; \
