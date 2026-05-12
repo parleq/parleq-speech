@@ -44,7 +44,9 @@ help:
 	@echo "                feedback loop for verifying the create-dmg layout"
 	@echo "  dmg           notarize + bundle the stapled .app in a signed,"
 	@echo "                notarized, stapled DMG (drag-to-Applications layout)"
-	@echo "  release       dmg + named/hashed copy + RELEASE_NOTES.txt stub"
+	@echo "  release       dmg + create GitHub release with assets + dispatch site redeploy."
+	@echo "                Requires RELEASE_NOTES.txt at repo root with first line"
+	@echo "                referencing 'Parleq <version>'. Branch must be pushed."
 	@echo "  show-version  Print the current marketing version + build number"
 	@echo "  set-version   Set marketing version. Usage: make set-version VERSION=0.5.0"
 	@echo "  clean         Remove build artifacts"
@@ -211,10 +213,67 @@ dmg: notarize
 # you can `gh release create vYYYY.MM.DD <files>` against. We don't
 # call `gh release create` ourselves: tagging + release notes are
 # human decisions and the artifact is the same either way.
+# Atomic release: build the DMG, create the GitHub release with the
+# DMG + SHA256 attached, and dispatch the website-redeploy workflow.
+# Single command, single round-trip.
+#
+# Pre-checks (all fail fast with an instructive message):
+#   1. RELEASE_NOTES.txt at the repo root exists and its first line
+#      references "Parleq $VERSION" — so the release notes can't drift
+#      out of sync with the version being shipped.
+#   2. Local HEAD is reachable on origin (the branch has been pushed).
+#      gh release create's --target uses the local SHA, which must
+#      exist server-side. Failing here is much friendlier than getting
+#      a 404 from gh halfway through.
+#   3. Working tree is clean. A surprise dirty file in the release
+#      build is almost always a mistake; bail rather than ship it.
+#
+# After pre-checks succeed:
+#   - Build DMG (dmg prereq).
+#   - Compose the release-output RELEASE_NOTES.txt by replacing the
+#     repo-root file's first line with `Parleq $VERSION ($SHA) — $DATE`
+#     and keeping the rest verbatim. The augmented first line carries
+#     the build-time provenance (sha + UTC date) that the source file
+#     doesn't carry on its own.
+#   - Run `gh release create` directly with the DMG + .sha256 attached
+#     and --target=$SHA so the release tag points at the exact local
+#     commit (handy when you cut a release pre-merge from a branch).
+#   - Dispatch deploy-pages.yml from main so the website rebuilds and
+#     picks up the new release listing. Bypasses the github-pages
+#     environment protection rule that rejects release-event-triggered
+#     runs from tag refs.
+#
+# `gh` must be authenticated (run `gh auth login` once on a new
+# machine). `gh release create` requires `repo` scope, which the
+# default gh login provides.
 release: dmg
 	@VERSION=$$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" \
 		"$(APP_BUNDLE)/Contents/Info.plist" 2>/dev/null || echo "0.0.0"); \
-	SHA=$$(git rev-parse --short HEAD 2>/dev/null || echo "nogit"); \
+	NOTES_SRC="RELEASE_NOTES.txt"; \
+	if [ ! -f "$$NOTES_SRC" ]; then \
+		echo "ERROR: $$NOTES_SRC not found at repo root."; \
+		echo "       Create it (first line: 'Parleq $$VERSION ...') before running make release."; \
+		exit 1; \
+	fi; \
+	NOTES_FIRST=$$(head -n 1 "$$NOTES_SRC"); \
+	if ! echo "$$NOTES_FIRST" | grep -q "Parleq $$VERSION"; then \
+		echo "ERROR: $$NOTES_SRC first line doesn't reference 'Parleq $$VERSION'."; \
+		echo "       Got: $$NOTES_FIRST"; \
+		echo "       Update $$NOTES_SRC for the new version before running make release."; \
+		exit 1; \
+	fi; \
+	SHA=$$(git rev-parse --short HEAD); \
+	FULL_SHA=$$(git rev-parse HEAD); \
+	if [ -z "$$(git branch -r --contains "$$FULL_SHA" 2>/dev/null)" ]; then \
+		echo "ERROR: local HEAD ($$SHA) is not on any remote branch."; \
+		echo "       Push your branch to origin before running make release."; \
+		exit 1; \
+	fi; \
+	if [ -n "$$(git status --porcelain)" ]; then \
+		echo "ERROR: working tree is dirty. Commit, stash, or revert before running make release."; \
+		git status --short; \
+		exit 1; \
+	fi; \
 	OUT="$(APP_DIR)/build/release"; \
 	NAME="Parleq-$$VERSION-$$SHA.dmg"; \
 	mkdir -p "$$OUT"; \
@@ -223,34 +282,25 @@ release: dmg
 	(cd "$$OUT" && shasum -a 256 "$$NAME" > "$$NAME.sha256"); \
 	{ \
 		echo "Parleq $$VERSION ($$SHA) — $$(date -u +%Y-%m-%d)"; \
-		echo ""; \
-		echo "## What's new"; \
-		echo "- TODO"; \
-		echo ""; \
-		echo "## Install"; \
-		echo "1. Download $$NAME"; \
-		echo "2. (Optional) Verify the SHA-256:"; \
-		echo "   shasum -a 256 -c $$NAME.sha256"; \
-		echo "3. Open the DMG and drag Parleq.app onto the Applications folder."; \
-		echo "4. Eject the DMG, then launch Parleq from Applications."; \
-		echo "5. On first launch, grant Microphone + Accessibility permissions."; \
-		echo ""; \
-		echo "First launch downloads the speech model (~150 MB) — give it"; \
-		echo "30–60 seconds before pressing the hotkey. The menu-bar icon"; \
-		echo "switches from a download glyph to a microphone when ready."; \
-		echo ""; \
-		echo "See README.md for hotkey, LLM provider setup (Gemini / Bedrock),"; \
-		echo "and custom-dictionary configuration."; \
+		tail -n +2 "$$NOTES_SRC"; \
 	} > "$$OUT/RELEASE_NOTES.txt"; \
 	echo ""; \
 	echo "Release artifacts ready in $$OUT/:"; \
 	ls -lh "$$OUT/$$NAME" "$$OUT/$$NAME.sha256" "$$OUT/RELEASE_NOTES.txt" | awk '{print "  " $$NF " (" $$5 ")"}'; \
 	echo ""; \
-	echo "Edit RELEASE_NOTES.txt, then upload with:"; \
-	echo "  gh release create v$$VERSION \\"; \
-	echo "    --title \"Parleq $$VERSION\" \\"; \
-	echo "    --notes-file $$OUT/RELEASE_NOTES.txt \\"; \
-	echo "    $$OUT/$$NAME $$OUT/$$NAME.sha256"
+	echo "==> Creating GitHub release v$$VERSION (target $$SHA)..."; \
+	gh release create "v$$VERSION" \
+		--target "$$FULL_SHA" \
+		--title "Parleq $$VERSION" \
+		--notes-file "$$OUT/RELEASE_NOTES.txt" \
+		"$$OUT/$$NAME" "$$OUT/$$NAME.sha256"; \
+	echo ""; \
+	echo "==> Dispatching website redeploy (workflow_dispatch on main)..."; \
+	gh workflow run deploy-pages.yml --ref main; \
+	echo ""; \
+	echo "Done."; \
+	echo "  Release:  https://github.com/parleq/parleq-speech/releases/tag/v$$VERSION"; \
+	echo "  Workflow: https://github.com/parleq/parleq-speech/actions/workflows/deploy-pages.yml"
 
 # Show the current marketing version + projected build number.
 # Build number comes from `git rev-list --count HEAD` exactly the
