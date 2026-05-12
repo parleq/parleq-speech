@@ -18,10 +18,28 @@ on:
     paths:
       - 'web/**'
       - '.github/workflows/deploy-pages.yml'
-  # Re-deploy whenever a release is published so the site's
-  # build-time fetch of the latest .dmg URL + version picks it up.
-  release:
-    types: [published]
+  # No `release: types: [published]` trigger. Two reasons it's a
+  # bad fit and was removed:
+  #
+  #   1. The `github-pages` deployment environment has a protection
+  #      rule restricting deploys to ref `main`. A release-triggered
+  #      run executes in the context of the release tag (e.g.
+  #      `refs/tags/v0.8.1`), so the deploy step gets rejected with
+  #      "Tag <vX.Y.Z> is not allowed to deploy to github-pages due
+  #      to environment protection rules." That rejection is the
+  #      whole reason this trigger never produced a useful run.
+  #
+  #   2. Even if the environment rule were relaxed, the timing races
+  #      with `make release`'s explicit `gh workflow run deploy-pages.yml
+  #      --ref main` dispatch: `gh release create` fires the release
+  #      event ~1 second after the Makefile's dispatch, the
+  #      `cancel-in-progress: true` concurrency rule below cancels
+  #      the (correct) dispatch run in favor of the (broken)
+  #      release-event run, and the website never updates.
+  #
+  # The Makefile's `gh workflow run --ref main` after `gh release create`
+  # is now the sole post-release trigger. It runs as `workflow_dispatch`
+  # on main, which the environment rule allows.
   workflow_dispatch:
 
 permissions:
