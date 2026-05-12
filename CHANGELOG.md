@@ -6,6 +6,20 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 (no changes yet)
 
+## [0.8.1] - 2026-05-11
+
+Two follow-on fixes to v0.8.0's Permissions work, plus a more atomic release flow internally.
+
+### Fixed
+
+- **Open at Login now actually registers.** The v0.8.0 bundle was missing the LaunchAgent plist that macOS's `SMAppService.mainApp` API looks for at `Contents/Library/LaunchAgents/<bundle-id>.plist`; without it, `SMAppService.mainApp.status` reported `.notFound` forever and `register()` had no service description to register. The plist now ships inside the bundle, so the toggle transitions through "Off → On" cleanly with macOS's standard "Parleq added items that can run in the background" approval prompt the first time.
+- **`CADeviceDefaultAggregate` no longer leaks into the Microphone submenu** on macOS Sequoia. The discriminator is a UID-prefix filter for Apple's Core Audio system-aggregate naming conventions (`CADefaultDevice`, `CADeviceDefault`, `AppleAggregateDevice`), applied only to transport-Aggregate devices so user-created aggregates from Audio MIDI Setup are unaffected. Closes [#9](https://github.com/parleq/parleq-speech/issues/9).
+
+### Internal
+
+- New input-device diagnostic in `~/.parleq/app.log` at launch. One line per input device, recording transport type fourcc, IsHidden flag, IsPrivate flag, UID, name, and which filter (if any) excluded it from the Microphone submenu. Cheap (a handful of HAL queries), runs once per launch, gives us forensic data the next time a system-internal device leaks through without needing a debug build.
+- `make release` is now atomic: validates `RELEASE_NOTES.txt`'s first line references the current version, builds the DMG, creates the GitHub release with assets attached, and dispatches the website redeploy in a single command. Requires the local branch to be pushed first. Companion `RELEASE_NOTES.txt` now lives at the repo root and is updated as part of the version-bump PR.
+
 ## [0.8.0] - 2026-05-11
 
 Permissions section, brand polish, and several menu-bar fixes.
@@ -82,6 +96,7 @@ Press a global hotkey, speak, see post-processed text in a floating overlay, acc
 - **Apple Silicon** (M1 / M2 / M3 / M4) running **macOS 14 (Sonoma) or later**.
 - **Apache-2.0 licensed**. Source at [github.com/parleq/parleq-speech](https://github.com/parleq/parleq-speech).
 
-[Unreleased]: https://github.com/parleq/parleq-speech/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/parleq/parleq-speech/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/parleq/parleq-speech/releases/tag/v0.8.1
 [0.8.0]: https://github.com/parleq/parleq-speech/releases/tag/v0.8.0
 [0.7.0]: https://github.com/parleq/parleq-speech/releases/tag/v0.7.0

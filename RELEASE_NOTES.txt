@@ -1,0 +1,27 @@
+Parleq 0.8.1
+
+Two follow-on fixes to v0.8.0's Permissions work.
+
+### Fixed
+
+- Open at Login now actually works. The v0.8.0 build was missing the LaunchAgent plist that macOS's SMAppService API looks for at Contents/Library/LaunchAgents/<bundle-id>.plist; without it, the API reported `.notFound` forever and the toggle in Permissions never had a chance to register. The plist now ships inside the bundle, and after upgrading you should see the Open at Login row transition through "Off → On" cleanly (with macOS surfacing its standard "Parleq added items that can run in the background" approval prompt the first time).
+- Microphone submenu hides the CADeviceDefaultAggregate device that leaked through on macOS Sequoia. The discriminator is a UID-prefix filter for Apple's Core Audio system-aggregate naming conventions, applied only to transport-Aggregate devices so user-created aggregates from Audio MIDI Setup are unaffected.
+
+### Internal
+
+- On launch, Parleq now writes a one-line-per-device diagnostic block to `~/.parleq/app.log` with each input device's transport type, IsHidden flag, IsPrivate flag, UID, name, and which filter (if any) excluded it from the Microphone submenu. Cheap (a few Core Audio HAL queries), runs once per launch, and gives us forensic data the next time a system-internal device leaks through — no debug build needed.
+
+## Install
+
+1. Download the .dmg attached to this release.
+2. (Optional) Verify the SHA-256: `shasum -a 256 -c Parleq-0.8.1-<sha>.dmg.sha256`
+3. Open the DMG and drag Parleq.app onto the Applications folder.
+4. Eject the DMG, then launch Parleq from Applications.
+5. On first launch, grant Microphone + Accessibility permissions.
+
+First launch downloads the speech model (~150 MB) — give it
+30–60 seconds before pressing the hotkey. The menu-bar icon
+switches from a download glyph to the bar mark when ready.
+
+See README.md for hotkey, LLM provider setup (Gemini / Bedrock /
+Vertex AI / Azure OpenAI), and custom-dictionary configuration.
