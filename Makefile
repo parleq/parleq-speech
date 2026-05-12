@@ -21,6 +21,16 @@
 
 APP_DIR           := parleq-app
 APP_BUNDLE        := $(APP_DIR)/build/Parleq.app
+# Canonical source for CFBundleShortVersionString. The built bundle's
+# Info.plist is a copy of this, so reading from the source rather than
+# the bundle guarantees release-precheck and release see the same value
+# even if a stale bundle from a prior version lingers in build/.
+SOURCE_INFO_PLIST := $(APP_DIR)/Resources/Info.plist
+# Source of truth for the GitHub release body. The version-bump PR
+# updates this alongside CHANGELOG.md; `make release` validates its
+# first line against SOURCE_INFO_PLIST's CFBundleShortVersionString
+# before doing anything destructive.
+RELEASE_NOTES     := RELEASE_NOTES.txt
 INSTALL_DEST      := /Applications/Parleq.app
 CODESIGN_IDENTITY :=
 # Keychain profile name for `xcrun notarytool`. Created once via
@@ -265,18 +275,17 @@ dmg: notarize
 release-precheck:
 	@set -e; \
 	VERSION=$$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" \
-		"$(APP_DIR)/Resources/Info.plist" 2>/dev/null || echo "0.0.0"); \
-	NOTES_SRC="RELEASE_NOTES.txt"; \
-	if [ ! -f "$$NOTES_SRC" ]; then \
-		echo "ERROR: $$NOTES_SRC not found at repo root."; \
+		"$(SOURCE_INFO_PLIST)" 2>/dev/null || echo "0.0.0"); \
+	if [ ! -f "$(RELEASE_NOTES)" ]; then \
+		echo "ERROR: $(RELEASE_NOTES) not found at repo root."; \
 		echo "       Create it (first line: 'Parleq $$VERSION ...') before running make release."; \
 		exit 1; \
 	fi; \
-	NOTES_FIRST=$$(head -n 1 "$$NOTES_SRC"); \
+	NOTES_FIRST=$$(head -n 1 "$(RELEASE_NOTES)"); \
 	if ! echo "$$NOTES_FIRST" | grep -qE "^Parleq $$VERSION([^0-9]|$$)"; then \
-		echo "ERROR: $$NOTES_SRC first line doesn't start with 'Parleq $$VERSION'."; \
+		echo "ERROR: $(RELEASE_NOTES) first line doesn't start with 'Parleq $$VERSION'."; \
 		echo "       Got: $$NOTES_FIRST"; \
-		echo "       Update $$NOTES_SRC for the new version before running make release."; \
+		echo "       Update $(RELEASE_NOTES) for the new version before running make release."; \
 		exit 1; \
 	fi; \
 	UPSTREAM=$$(git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null || true); \
@@ -300,7 +309,7 @@ release-precheck:
 release: release-precheck dmg
 	@set -e; \
 	VERSION=$$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" \
-		"$(APP_BUNDLE)/Contents/Info.plist" 2>/dev/null || echo "0.0.0"); \
+		"$(SOURCE_INFO_PLIST)" 2>/dev/null || echo "0.0.0"); \
 	SHA=$$(git rev-parse --short HEAD); \
 	FULL_SHA=$$(git rev-parse HEAD); \
 	OUT="$(APP_DIR)/build/release"; \
@@ -311,7 +320,7 @@ release: release-precheck dmg
 	(cd "$$OUT" && shasum -a 256 "$$NAME" > "$$NAME.sha256"); \
 	{ \
 		echo "Parleq $$VERSION ($$SHA) — $$(date -u +%Y-%m-%d)"; \
-		tail -n +2 RELEASE_NOTES.txt; \
+		tail -n +2 "$(RELEASE_NOTES)"; \
 	} > "$$OUT/RELEASE_NOTES.txt"; \
 	echo ""; \
 	echo "Release artifacts ready in $$OUT/:"; \
