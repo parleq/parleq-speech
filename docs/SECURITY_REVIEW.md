@@ -4,8 +4,8 @@ This document is the starting point for an enterprise security / cloudops review
 
 The intended audience is a security reviewer who needs to decide whether deploying Parleq on a managed workstation meets the organization's policy. We've tried to make every claim grep-able to a specific file in the source tree, so anything here can be verified independently.
 
-**Last reviewed:** 2026-05-07
-**Source:** [github.com/parleq/parleq-speech](https://github.com/parleq/parleq-speech) at commit `6d64646` or later
+**Last reviewed:** 2026-05-13 (in-process FluidAudio consolidation; v0.9.0 retired the bundled HTTP sidecar — the document was updated alongside that change so any sidecar references that survive grepping should be reported as bugs)
+**Source:** [github.com/parleq/parleq-speech](https://github.com/parleq/parleq-speech) at v0.9.0 or later
 **Review trigger / context:** [docs/SETUP.md](SETUP.md) covers end-user installation; this document covers the security model.
 
 ---
@@ -14,7 +14,7 @@ The intended audience is a security reviewer who needs to decide whether deployi
 
 Parleq is an open-source macOS dictation utility. The user holds a global hotkey (right Option), speaks, and a cleaned-up transcript appears in a floating overlay; on accept, the cleaned text pastes into whatever app was focused. Two passes:
 
-1. **Speech-to-text (ASR):** local FluidAudio Parakeet TDT v3 inference on the Apple Neural Engine via a bundled HTTP sidecar. Audio never leaves the device.
+1. **Speech-to-text (ASR):** local FluidAudio Parakeet TDT v3 inference on the Apple Neural Engine, **in-process** (no separate sidecar, no listening sockets). Audio never leaves the device.
 2. **LLM cleanup:** the raw transcript goes to a configurable LLM provider (Google Gemini direct API, or AWS Bedrock — `ConverseStream` against Anthropic Claude or OpenAI GPT-OSS). Cleanup output streams into the overlay; on accept it pastes and is forgotten.
 
 There is no server-side storage of audio or transcripts. Parleq's only persistent state is local user configuration (settings, the user's custom dictionary, a metadata-only LLM-call ledger) under `~/.parleq/`.
@@ -30,25 +30,26 @@ There is no server-side storage of audio or transcripts. Parleq's only persisten
    ┌──────────────────────────────────────────────┐
    │              macOS user device               │
    │                                              │
-   │   ParleqApp ──── audio in memory ────► FluidAudio sidecar
-   │       │              (POST /inference,           │
-   │       │               localhost-only,            │
-   │       │               bearer-token authed)       │
-   │       │                                          │
-   │       │ ◄──── transcript text ───────────────────┘
-   │       │
-   │       │
-   │       ▼ transcript text only
-   └─────────┬─────────────────────────────────────┘
-             │
-             │  (HTTPS, bearer/SigV4 authed)
-             │
-             ▼
+   │   ParleqApp (single process)                 │
+   │     ├── AudioRecorder ── PCM in memory ──┐   │
+   │     │                                    ▼   │
+   │     │                     LocalASR (in-process)
+   │     │                     FluidAudio Parakeet TDT v3
+   │     │                     on the Apple Neural Engine
+   │     │                                    │   │
+   │     ◄────────── transcript text ─────────┘   │
+   │     │                                        │
+   │     ▼ transcript text only                   │
+   └─────┬────────────────────────────────────────┘
+         │
+         │  (HTTPS, API key / SigV4 authed)
+         │
+         ▼
    ┌──────────────────────┐         ┌──────────────────────┐
    │   Gemini API         │   OR    │   AWS Bedrock        │
    │   generativelanguage │         │   bedrock-runtime    │
    │   .googleapis.com    │         │   .<region>.amazon-  │
-   │   ?key=<api-key>     │         │   aws.com            │
+   │                      │         │   aws.com            │
    └──────────────────────┘         └──────────────────────┘
                                               │
                                               ▼ (cleaned text)
@@ -58,12 +59,14 @@ There is no server-side storage of audio or transcripts. Parleq's only persisten
    └──────────────────────────────────────────────────────┘
 ```
 
+**No listening sockets.** Parleq's default ASR path runs in-process. Earlier builds (≤ v0.8.x) hosted FluidAudio inside a bundled HTTP sidecar on `127.0.0.1:8767`; v0.9.0 retired that boundary. Audio buffers move between AudioRecorder and LocalASR as a Swift `Data` value within the same process — no socket, no IPC, no bearer-token negotiation between two halves of the same install. Users who explicitly configure a custom `asr.endpoint` to point at their own external server (Sherpa-ONNX, faster-whisper) opt into a localhost HTTP path; that's the only scenario in which any local socket is involved, and the server's lifecycle and auth are the user's responsibility.
+
 ### Data classifications
 
 | Data | Where it exists | When |
 |---|---|---|
 | Raw audio (16 kHz mono WAV) | Process memory only | During a single dictation; freed at end of `AppState.finalizeCapture` |
-| Raw ASR transcript | Process memory only | From sidecar response until paste; never written to disk |
+| Raw ASR transcript | Process memory only | From `LocalASR.transcribe` return value until paste; never written to disk |
 | Cleaned transcript | Process memory + paste destination app | In overlay during accept; held in `TranscriptHistory` ring buffer (cap 20, in memory only) for the rest of the session; pasted into target app |
 | AWS credentials | macOS-managed AWS CLI cache (`~/.aws/sso/cache/`) | Per the user's existing AWS CLI setup — Parleq does not store these |
 | Gemini API key | macOS Keychain (Parleq-managed) | Persistent until user removes |
@@ -76,27 +79,24 @@ Parleq trusts:
 - The user's macOS user account (process isolation, Keychain ACLs, AWS CLI session cache integrity).
 - The configured LLM provider's HTTPS endpoint (Google Gemini or AWS Bedrock).
 - LiteLLM's community pricing JSON (`raw.githubusercontent.com/BerriAI/litellm/...`) — used for cost reporting only; not load-bearing for any user-facing functionality. **Disable-able via env var.**
-- The bundled FluidAudio sidecar process (signed with the same Developer ID as the main app; runs in a localhost-only HTTP server with bearer-token auth).
+- The FluidAudio model artifacts in `~/Library/Application Support/FluidAudio/Models/` (downloaded by FluidAudio's own loader from `huggingface.co` on first run; their integrity is FluidAudio's responsibility, not Parleq's).
 
 Parleq does **not** trust:
-- Other processes on the user's device (sidecar requires bearer token; Keychain is per-app via service identifier).
+- Other processes on the user's device (Keychain is per-app via service identifier; no listening sockets to attack in the first place — see §3.1).
 - Network attackers between the user and AWS / Google (HTTPS via the system trust store; no certificate pinning, but no plaintext fallback either).
-- The user's own custom `asr.endpoint` setting (no shared secret with external servers; user manages their own server's auth).
+- The user's own custom `asr.endpoint` setting if set (no shared secret with external servers; user manages their own server's auth).
 
 ---
 
 ## 3. Authentication & authorization
 
-### 3.1 Sidecar bearer token
+### 3.1 No listening sockets on the default ASR path
 
-`SidecarSupervisor.swift` generates a 256-bit random token (`SecRandomCopyBytes`, fallback to UUIDs) at app launch and passes it to the spawned sidecar via the `PARLEQ_SIDECAR_TOKEN` env var. The sidecar (`FluidAudioSidecar.swift`) requires `Authorization: Bearer <token>` on every `POST /inference`; missing or wrong → HTTP 401.
+Parleq's bundled ASR path has no network exposure of any kind. `LocalASR` calls FluidAudio's `AsrManager.transcribe(_:decoderState:)` in-process; the audio buffer is a Swift `Data` value that never crosses a process or socket boundary.
 
-- Token is freshly generated per app launch — never persisted to disk.
-- `/health` (readiness probe) is intentionally unauthenticated: it returns no sensitive state and is needed before token negotiation.
-- ASRClient sends the header for the bundled-sidecar path only. External `asr.endpoint` configurations get no token — the user manages their external server's auth themselves.
-- The supervisor's warmup probe also sends the header, so it exercises the same auth path as real dictations.
+This replaces the bearer-token-authed `127.0.0.1:8767` HTTP sidecar that earlier builds (≤ v0.8.x) used. The sidecar's bearer token was generated fresh per launch and required on every `POST /inference`, which adequately protected the local endpoint from other processes on the same machine — but v0.9.0 dropped the boundary entirely on the principle that the strongest "no other process can submit audio against the user's loaded models" guarantee is no listening socket to send audio to.
 
-If the env var is unset (e.g., `swift run fluidaudio-sidecar` for local development), auth is disabled with a clear stderr log line. **Production builds always set the env, so production sidecars always require auth.**
+**The only scenario in which a local socket is involved at all** is when the user explicitly sets `asr.endpoint` in `~/.parleq/config.json` to a non-default value. In that case ASRClient POSTs WAV bytes to whatever URL the user configured (typically a Sherpa-ONNX or faster-whisper server they're running locally). Parleq sends no Authorization header on that path — there's no shared secret to use — and the server's lifecycle, bind address, and access control are entirely the user's responsibility. The bundled in-process FluidAudio engine is then never initialized, so its model isn't loaded and its memory isn't paid for.
 
 ### 3.2 LLM provider authentication
 
@@ -131,9 +131,9 @@ Parleq does **not** store AWS credentials of any kind. All AWS-credential materi
 
 Today, Soto's SSO credential provider invokes the standard AWS Identity Center token-refresh flow against `oidc.<region>.amazonaws.com` to exchange the cached SSO token for short-lived `AccessKeyId`/`SecretAccessKey`/`SessionToken` triples for each Bedrock call. These short-lived credentials live in the Soto client's in-memory rotating cache and are never persisted by Parleq. When multi-mode auth lands (#21) the same in-memory pattern applies: any pasted Bedrock API keys or static IAM credentials would live in the macOS Keychain (alongside the existing Gemini key) rather than on disk in a Parleq-owned file.
 
-### 4.3 Sidecar bearer token
+### 4.3 ASR auth tokens
 
-Generated fresh per app launch, passed to the sidecar via env, never written to disk by Parleq. Lifetime is bounded by the supervisor process; on app quit the token is gone.
+None. The bundled ASR path runs in-process and has no auth surface (§3.1). The optional external `asr.endpoint` path sends no Authorization header — the user-run server's auth is the user's responsibility.
 
 ---
 
@@ -146,12 +146,11 @@ Parleq writes the following files. Audited against the enterprise rule "no input
 | `~/.parleq/config.json` | Settings: hotkey, dictionary terms, AWS profile name, model selection, etc. | User-authored config. No transcripts, no audio, no API keys. |
 | `~/.parleq/usage.jsonl` | One JSON line per LLM call: timestamp, kind (cleanup/refine), provider, model, input/output token counts, latency, target-app bundle ID. | **Metadata only.** No transcript or cleanup-output content. |
 | `~/.parleq/pricing-cache.json` | LiteLLM JSON snapshot (public reference data). | Not user data. Disable-able via `PARLEQ_DISABLE_LIVE_PRICING=1`. |
-| `~/.parleq/app.log` | Stderr-redirected diagnostics: phase transitions, ASR latency + length, LLM token counts, supervisor lifecycle messages, error stack traces. Capped at 10 MB; truncates to last 5 MB on launch when over the cap. | **No transcript content, no audio, no auth values.** Same redaction discipline as the rest of the codebase. Skipped in dev mode (when stderr is a TTY). |
+| `~/.parleq/app.log` | Stderr-redirected diagnostics: phase transitions, ASR latency + length, LLM token counts, model-load progress, error stack traces. Capped at 10 MB; truncates to last 5 MB on launch when over the cap. | **No transcript content, no audio, no auth values.** Same redaction discipline as the rest of the codebase. Skipped in dev mode (when stderr is a TTY). |
 | `~/Library/Application Support/FluidAudio/Models/` | Downloaded Parakeet TDT v3 + CTC vocab encoder model weights. | Public model artifacts, not user data. |
-| `/tmp/parleq-sidecar.log` | Sidecar startup messages, occasional errors, count-only `[vocab] applied N replacement(s)` lines. | **No transcript content by default.** Per-replacement detail is opt-in via `PARLEQ_VOCAB_TRACE=1`. |
 
 **Explicitly NOT written to disk:**
-- Audio bytes (WAV or PCM). `AudioRecorder.stop()` returns `Data` in memory; `ASRClient` POSTs via `request.httpBody` (in-memory), not `httpBodyStream` (potentially file-backed). Hummingbird in the sidecar collects request bodies in memory (`request.body.collect(upTo:)`).
+- Audio bytes (WAV or PCM). `AudioRecorder.stop()` returns `Data` in memory; the bundled `LocalASR` decodes that buffer to Float samples in-process and hands them to FluidAudio without touching the filesystem. When the user has configured a custom `asr.endpoint`, `ASRClient` POSTs via `request.httpBody` (in-memory), not `httpBodyStream` (potentially file-backed).
 - Transcript text. `AppState`'s ASR diagnostic logs `(N chars / W words)` — length only.
 - Cleanup output text **on disk**. Held in process memory only — first in the overlay during cleanup, then in the `TranscriptHistory` ring buffer (see § 5.1 below) for the rest of the session, then gone on app quit. Never serialized to a file.
 
@@ -186,7 +185,7 @@ All network calls are HTTPS via URLSession or Soto, both using the system trust 
 | `oidc.<region>.amazonaws.com` | SSO token refresh (Bedrock path) | Periodic, when token nears expiry | N/A (managed by Soto) |
 | `portal.sso.<region>.amazonaws.com` | SSO GetRoleCredentials (Bedrock path) | Periodic | N/A (managed by Soto) |
 | `raw.githubusercontent.com/BerriAI/litellm/...` | LiteLLM pricing JSON | Once per 24 h, on launch | `PARLEQ_DISABLE_LIVE_PRICING=1` |
-| `127.0.0.1:8767` | Local sidecar HTTP | Per dictation | N/A (loopback only) |
+| `huggingface.co` (FluidAudio's loader) | First-run model download (Parakeet TDT v3 ≈ 150 MB; CTC encoder ≈ 97 MB if custom dictionary used) | Once per machine, then cached at `~/Library/Application Support/FluidAudio/Models/` | N/A — bundled ASR requires the models. Switch to a custom `asr.endpoint` to skip. |
 
 **Outbound data classifications:**
 - Transcript text → LLM provider on cleanup (intentional, the entire point).
@@ -201,13 +200,12 @@ All network calls are HTTPS via URLSession or Soto, both using the system trust 
 | Dependency | Use | Pin | Source |
 |---|---|---|---|
 | Soto (`SotoBedrockRuntime`) | AWS SigV4, ConverseStream, SSO credential resolution | `"7.14.0"..<"7.15.0"` | `soto-project/soto` |
-| FluidAudio | ASR + custom-vocab boosting | `from: "0.12.4"` (sidecar package) | `FluidInference/FluidAudio` |
-| Hummingbird | Sidecar HTTP server | `from: "2.0.0"` | `hummingbird-project/hummingbird` |
-| swift-nio, swift-crypto, swift-certificates | Transitive | (Soto deps) | Apple |
+| FluidAudio | In-process ASR (Parakeet TDT v3) + CTC custom-vocab boosting | `"0.14.3"..<"0.15.0"` | `FluidInference/FluidAudio` |
+| swift-nio, swift-crypto, swift-certificates | Transitive | (Soto / FluidAudio deps) | Apple |
 
 `Package.resolved` is **committed** to the repository — fresh clones build against the exact dependency graph we tested. Bumping a dependency requires an explicit `swift package update` + reviewable commit diff. See [CLAUDE.md § Dependency upgrade policy](../CLAUDE.md) for the periodic-upgrade ritual.
 
-The sidecar's `Package.swift` is separate and uses looser pins; it pulls only Hummingbird + FluidAudio.
+There is no longer a separate sidecar `Package.swift` to track. The retired sidecar package's only direct deps (Hummingbird, FluidAudio) collapsed into the main app target as part of v0.9.0 — Hummingbird is gone, FluidAudio is pinned above.
 
 ---
 
@@ -217,7 +215,7 @@ The following items were identified during an internal security audit and have b
 
 | # | Item | Severity | Status |
 |---|---|---|---|
-| 1 | Sidecar `/inference` had no authentication; any local process could submit audio. | HIGH | **FIXED** — bearer token auth (§3.1). |
+| 1 | Sidecar `/inference` had no authentication; any local process could submit audio. | HIGH | **OBSOLETE** — first remediated in 2026-05-06 (`6d64646`) with bearer-token auth, then dropped entirely in v0.9.0 by retiring the sidecar boundary (§3.1). No listening socket means nothing to authenticate. |
 | 2 | Gemini API key resolved from a plaintext-on-disk fallback path. | HIGH | **FIXED** — Keychain is the only on-disk store; the plaintext fallback was removed entirely (§4.1). Closes [#18](https://github.com/parleq/parleq-speech/issues/18). |
 | 3 | Soto package pinned `from: "7.0.0"` allowed any 7.x at resolve time. | MEDIUM | **FIXED** — pinned to `"7.14.0"..<"7.15.0"`, `Package.resolved` committed (§7). |
 | 4 | LiteLLM JSON download was not user-controllable. | MEDIUM | **FIXED** — `PARLEQ_DISABLE_LIVE_PRICING=1` env var (§6). |
@@ -258,13 +256,12 @@ For reviewers who want to verify the claims above against code:
 
 | Concern | File(s) |
 |---|---|
-| Audio in memory only | `parleq-app/Sources/ParleqApp/AudioRecorder.swift`, `ASRClient.swift` |
-| Sidecar bearer token | `parleq-app/Sources/ParleqApp/SidecarSupervisor.swift`, `third_party/fluidaudio-sidecar/Sources/FluidAudioSidecar.swift` |
-| Sidecar binds 127.0.0.1 only | `third_party/fluidaudio-sidecar/Sources/FluidAudioSidecar.swift` (search "hostname") |
+| Audio in memory only | `parleq-app/Sources/ParleqApp/AudioRecorder.swift`, `LocalASR.swift`, `ASRClient.swift` |
+| No listening sockets on the default path | `parleq-app/Sources/ParleqApp/LocalASR.swift` (FluidAudio called as a Swift function, not over HTTP); confirm with `lsof -i -nP -p <pid>` on a running Parleq |
 | Keychain for Gemini key | `parleq-app/Sources/ParleqApp/KeychainStore.swift`, `LLMClient.swift:resolveAPIKey()` |
 | AWS SSO via Soto | `parleq-app/Sources/ParleqApp/BedrockProvider.swift` |
 | Length-only ASR diagnostic | `parleq-app/Sources/ParleqApp/AppState.swift` (search "ASR batch") |
-| Count-only sidecar vocab log | `third_party/fluidaudio-sidecar/Sources/FluidAudioSidecar.swift` (search "[vocab]") |
+| Count-only vocab log | `parleq-app/Sources/ParleqApp/LocalASR.swift` (search "[vocab]") |
 | Usage ledger schema (metadata-only) | `parleq-app/Sources/ParleqApp/UsageLedger.swift` |
 | Hardened Runtime entitlements | `parleq-app/Resources/Parleq.entitlements` |
 | Recent Dictations in-memory history | `parleq-app/Sources/ParleqApp/TranscriptHistory.swift`, `MenuBar.swift` (`menuNeedsUpdate` rebuild) |
@@ -279,11 +276,14 @@ For reviewers who want to verify the claims above against code:
 If you have 15 minutes, verify the high-impact claims by running these from a checkout of the repo:
 
 ```bash
-# 1. Confirm sidecar binds localhost-only (not 0.0.0.0).
-grep "hostname" third_party/fluidaudio-sidecar/Sources/FluidAudioSidecar.swift
+# 1. Confirm there is no longer a sidecar package or supervisor.
+test ! -d third_party/fluidaudio-sidecar && echo "OK: sidecar package removed"
+test ! -f parleq-app/Sources/ParleqApp/SidecarSupervisor.swift && echo "OK: supervisor removed"
 
-# 2. Confirm /inference requires Authorization.
-grep -n "expectedAuth\|PARLEQ_SIDECAR_TOKEN" third_party/fluidaudio-sidecar/Sources/FluidAudioSidecar.swift
+# 2. Confirm no listening sockets are bound by a running Parleq.
+#    (Launch /Applications/Parleq.app first; replace the pgrep target
+#    with `pidof ParleqApp` if pgrep doesn't match.)
+lsof -i -nP -p "$(pgrep -n ParleqApp)" | grep LISTEN || echo "OK: no LISTEN sockets"
 
 # 3. Confirm no /tmp/parleq-*.wav writes (audio in memory).
 grep -rn "/tmp/parleq-" parleq-app/Sources/

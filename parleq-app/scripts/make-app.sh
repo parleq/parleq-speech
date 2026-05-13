@@ -106,27 +106,12 @@ if BUILD_NUMBER=$(git -C "$APP_DIR" rev-list --count HEAD 2>/dev/null) && [[ -n 
     echo "    version: $SHORT_VERSION (build $BUILD_NUMBER)"
 fi
 
-# Build and embed the FluidAudio sidecar binary so the .app is
-# self-contained — no separate process to start manually. The
-# supervisor inside Parleq.app launches it at startup, watches for
-# crashes, and terminates it on quit.
-SIDECAR_DIR="$APP_DIR/../third_party/fluidaudio-sidecar"
-if [[ -d "$SIDECAR_DIR" ]]; then
-    echo "==> swift build -c release (sidecar)"
-    (cd "$SIDECAR_DIR" && swift build -c release)
-    SIDECAR_BIN_DIR=$(cd "$SIDECAR_DIR" && swift build -c release --show-bin-path)
-    SIDECAR_BIN="$SIDECAR_BIN_DIR/fluidaudio-sidecar"
-    if [[ -x "$SIDECAR_BIN" ]]; then
-        mkdir -p "$APP_BUNDLE/Contents/Resources/sidecar"
-        cp "$SIDECAR_BIN" "$APP_BUNDLE/Contents/Resources/sidecar/fluidaudio-sidecar"
-        chmod +x "$APP_BUNDLE/Contents/Resources/sidecar/fluidaudio-sidecar"
-        echo "    embedded sidecar: $(du -sh "$APP_BUNDLE/Contents/Resources/sidecar/fluidaudio-sidecar" | awk '{print $1}')"
-    else
-        echo "WARNING: sidecar binary not found at $SIDECAR_BIN; bundle will rely on an external sidecar at runtime" >&2
-    fi
-else
-    echo "WARNING: sidecar source not found at $SIDECAR_DIR; bundle will rely on an external sidecar at runtime" >&2
-fi
+# FluidAudio runs in-process now (see LocalASR.swift). Previously
+# this stage built a separate `fluidaudio-sidecar` binary, copied it
+# to Contents/Resources/sidecar/, and signed it independently. The
+# in-process consolidation drops the second SwiftPM build, the
+# Resources/sidecar directory, and the nested codesigning pass — the
+# bundle is now a single signed executable.
 
 # Pick a signing identity:
 #   1. Honor PARLEQ_CODESIGN_IDENTITY env var if set (lets the user
@@ -161,39 +146,18 @@ if [[ -z "$IDENTITY" ]]; then
 else
     echo "==> codesign --sign \"$IDENTITY\""
 fi
-# Sign nested binaries first, then the outer bundle. Apple's
-# notarization rejects --deep'd nested binaries because --deep
-# doesn't reliably propagate --options runtime + --timestamp to
-# them — the embedded sidecar shows up as "not Hardened Runtime,
-# no secure timestamp, not Developer ID" in the notary log even
-# when the bundle's own signature looks fine.
-#
-# Sign innermost-first: the sidecar binary, then the .app bundle.
-# No --deep on the bundle call — the prior nested signatures stay
-# intact. --timestamp is required for notarization on every signing
-# call. The sidecar gets the same entitlements as the app; it
-# doesn't actually use audio-input or network.client, but
-# Hardened Runtime treats entitlements as upper bounds, not
-# requirements, so the extras are harmless.
+# Single signing pass on the bundle. Previously this stage signed a
+# nested sidecar binary first (Apple's notarization rejects --deep'd
+# nested binaries), then the outer bundle. With FluidAudio folded
+# into the main executable there's nothing nested to sign — one call
+# covers everything.
 ENTITLEMENTS_FILE="$APP_DIR/Resources/Parleq.entitlements"
-NESTED_BINS=(
-    "$APP_BUNDLE/Contents/Resources/sidecar/fluidaudio-sidecar"
-)
 if [[ "$IDENTITY" == "-" ]]; then
     # Ad-hoc: keep --deep, no Hardened Runtime — there's no path to
     # notarization from ad-hoc anyway and the simpler form keeps
     # local dev easy.
     codesign --force --deep --sign "$IDENTITY" "$APP_BUNDLE"
 else
-    for bin in "${NESTED_BINS[@]}"; do
-        if [[ -f "$bin" ]]; then
-            codesign --force --sign "$IDENTITY" \
-                --options runtime \
-                --entitlements "$ENTITLEMENTS_FILE" \
-                --timestamp \
-                "$bin"
-        fi
-    done
     codesign --force --sign "$IDENTITY" \
         --options runtime \
         --entitlements "$ENTITLEMENTS_FILE" \

@@ -1,0 +1,440 @@
+// LocalASR — in-process FluidAudio batch ASR (Parakeet TDT v3 on the
+// Apple Neural Engine) plus optional CTC vocabulary rescoring.
+//
+// Replaces the bundled HTTP sidecar that previously fronted these
+// same FluidAudio APIs over `http://127.0.0.1:8767/inference`. The
+// motivation for the in-process consolidation:
+//   - No local listening socket → no compliance-review surface for a
+//     bound port and no need for a bearer-token negotiation between
+//     two halves of the same install.
+//   - App and ASR share fate. A FluidAudio crash takes the menu-bar
+//     process down (visible failure) instead of leaving it alive with
+//     a black-hole sidecar. Likewise the user never sees a stale
+//     supervisor + orphan-sidecar mismatch after a hard crash.
+//   - One codesigning target, one Hardened Runtime configuration, no
+//     second SwiftPM build step inside `scripts/make-app.sh`.
+//
+// Trade-off: model RAM (~1.5 GB resident after first inference) lives
+// in the main process for the app's lifetime. `reset()` unloads and
+// reloads when the user invokes the menu's "Reset ASR" item — same
+// recovery UX the old "Restart Sidecar" item provided.
+//
+// Lifecycle:
+//   1. `start()` kicks off model download + load in a background
+//      Task. Returns immediately; the load takes 30-60s on first run
+//      (downloading ~150 MB) and 1-2s on subsequent launches.
+//   2. `isReady` flips to true once the TDT model finishes loading.
+//      `onReadyChanged` fires on transitions (wired to AppState gating
+//      and the menu-bar status icon).
+//   3. `transcribe(wav:vocabulary:)` accepts the same WAV bytes the
+//      old HTTP sidecar did (scans for RIFF, decodes to Float32
+//      samples) and returns the transcript. Vocabulary entries
+//      trigger an extra CTC keyword-spotting + rescoring pass.
+//   4. `reset()` drops the models, flips `isReady` to false, and
+//      reloads. Useful when FluidAudio gets into a degraded state
+//      (the long-running-session symptom the retired sidecar's
+//      "Restart Sidecar" menu item recovered from).
+//
+// External-endpoint coexistence: when the user has configured a
+// custom `asr.endpoint` (Sherpa-ONNX, faster-whisper, etc.),
+// `LocalASR` is never constructed — `ASRClient` falls through to its
+// HTTP code path and the FluidAudio models are never loaded, saving
+// the ~1.5 GB resident cost.
+
+@preconcurrency import AVFoundation
+import FluidAudio
+import Foundation
+
+@MainActor
+final class LocalASR {
+    /// True once the TDT model has finished loading. Hotkey presses
+    /// while false surface the "Initializing…" overlay instead of
+    /// starting a capture against an unloaded model. Flips back to
+    /// false during `reset()`.
+    private(set) var isReady = false {
+        didSet {
+            if oldValue != isReady { onReadyChanged?(isReady) }
+        }
+    }
+
+    /// Fires on every `isReady` transition. The menu bar uses this
+    /// to swap between the "Initializing…" glyph and the brand bars;
+    /// AppState uses it to dismiss any stale init overlay.
+    var onReadyChanged: (@MainActor (Bool) -> Void)?
+
+    /// When true, the CTC vocabulary-boosting models are downloaded
+    /// and loaded eagerly alongside the TDT model so the first
+    /// dictation with custom dictionary entries doesn't pay the
+    /// ~97 MB CTC download / load latency. Wired from
+    /// `config.customDictionary.isEmpty == false` at app launch.
+    var preloadVocab = false
+
+    private let asr = AsrBox()
+    private let vocab = VocabBox()
+
+    /// Kick off model download + load. Idempotent — repeat calls
+    /// while already loaded are no-ops; while loading, calls dedupe
+    /// to the in-flight task.
+    func start() {
+        guard !isReady, loadTask == nil else { return }
+        let preload = preloadVocab
+        loadTask = Task { [asr, vocab, weak self] in
+            do {
+                try await asr.loadModels()
+            } catch {
+                logStderr("[parleq] LocalASR: model load failed: \(error)")
+                await MainActor.run {
+                    self?.loadTask = nil
+                }
+                return
+            }
+            await MainActor.run {
+                self?.isReady = true
+                self?.loadTask = nil
+            }
+            if preload {
+                // Detached so the TDT-ready signal isn't gated on the
+                // CTC download. Vocabulary requests will block on
+                // this if it hasn't finished yet; plain requests
+                // never touch it.
+                Task.detached {
+                    do {
+                        try await vocab.ensureLoaded()
+                    } catch {
+                        logStderr("[parleq] LocalASR: CTC pre-load failed: \(error). Vocabulary boosting will load lazily on first request.")
+                    }
+                }
+            }
+        }
+    }
+
+    /// Drop the loaded models and reload them. Replaces the retired
+    /// "Restart Sidecar" recovery path. UI gates capture on
+    /// `isReady`, which flips off here and back on after reload.
+    func reset() {
+        guard isReady || loadTask != nil else { return }
+        isReady = false
+        loadTask?.cancel()
+        loadTask = nil
+        Task { [asr, vocab, weak self] in
+            await asr.unload()
+            await vocab.unload()
+            await MainActor.run { self?.start() }
+        }
+    }
+
+    /// Same wire contract as the retired sidecar's `/inference`:
+    /// accepts a 16 kHz mono 16-bit WAV buffer (the format
+    /// `AudioRecorder` emits), scans for the RIFF header, decodes
+    /// to Float32 samples, runs Parakeet TDT v3, and optionally
+    /// rescores against the user's custom dictionary.
+    ///
+    /// Throws `ASRError.notReady` if called before `isReady` flips
+    /// true; callers should gate via `AppState.isSystemReady` so
+    /// this path is never exercised from real dictation flow.
+    func transcribe(
+        wav data: Data,
+        vocabulary: [VocabularyEntry]
+    ) async throws -> String {
+        guard let wavStart = Self.findRIFFOffset(in: data) else {
+            throw ASRError.malformedResponse
+        }
+        // WAV total length = 8 + chunkSize (chunkSize at offset 4-8).
+        guard wavStart + 12 <= data.count else {
+            throw ASRError.malformedResponse
+        }
+        let chunkSize = data
+            .subdata(in: (wavStart + 4)..<(wavStart + 8))
+            .withUnsafeBytes { $0.load(as: UInt32.self) }
+        let wavEnd = min(wavStart + 8 + Int(chunkSize), data.count)
+        let wavBytes = data.subdata(in: wavStart..<wavEnd)
+        guard let samples = Self.wavToFloatSamples(wavBytes) else {
+            throw ASRError.malformedResponse
+        }
+
+        let asrResult = try await asr.transcribeFull(samples: samples)
+        var finalText = asrResult.text
+
+        guard !vocabulary.isEmpty,
+              let timings = asrResult.tokenTimings,
+              !timings.isEmpty else {
+            return finalText
+        }
+        do {
+            let rescored = try await vocab.rescore(
+                samples: samples,
+                transcript: asrResult.text,
+                tokenTimings: timings,
+                entries: vocabulary
+            )
+            if let rescored, rescored.wasModified {
+                finalText = rescored.text
+                let applied = rescored.replacements.filter { $0.shouldReplace }
+                // Compliance #17: count-only by default — the per-
+                // replacement detail contains user-utterance fragments
+                // (the original word that got replaced) and is gated
+                // behind PARLEQ_VOCAB_TRACE=1 for development. The
+                // retired sidecar exposed the same env var; mirror
+                // the contract so dev workflows continue to work.
+                let traceVocab = ProcessInfo.processInfo.environment["PARLEQ_VOCAB_TRACE"] == "1"
+                if traceVocab {
+                    for r in applied {
+                        let to = r.replacementWord ?? "<nil>"
+                        logStderr("[parleq] LocalASR vocab replaced '\(r.originalWord)' → '\(to)' [\(r.reason)]")
+                    }
+                } else {
+                    logStderr("[parleq] LocalASR vocab applied \(applied.count) replacement(s)")
+                }
+            }
+        } catch {
+            // Vocabulary boosting is best-effort. A CTC load failure
+            // or rescoring error must NOT lose the user's
+            // transcription — log and fall through with unrescored
+            // text.
+            logStderr("[parleq] LocalASR vocab rescore failed (returning unrescored text): \(error)")
+        }
+        return finalText
+    }
+
+    /// In-flight model-load task. Nil when no load is running. Used
+    /// so a `reset()` mid-load can cancel the prior task cleanly
+    /// before kicking off a replacement.
+    private var loadTask: Task<Void, Never>?
+
+    // MARK: - WAV decoding
+
+    /// Read a 16-bit mono 16 kHz WAV body and return Float32 samples
+    /// in [-1.0, 1.0]. Strips the 44-byte WAV header.
+    static func wavToFloatSamples(_ data: Data) -> [Float]? {
+        guard data.count > 44 else { return nil }
+        let pcm = data.dropFirst(44)
+        let count = pcm.count / 2
+        var samples = [Float](repeating: 0, count: count)
+        pcm.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
+            let ints = raw.bindMemory(to: Int16.self)
+            for i in 0..<count {
+                samples[i] = Float(ints[i]) / 32768.0
+            }
+        }
+        return samples
+    }
+
+    /// Locate the "RIFF" + "WAVE" magic. Lifted from the retired
+    /// sidecar — `AudioRecorder` always emits a RIFF-prefixed buffer
+    /// today, but the scan keeps us robust to any future multipart
+    /// wrapping a third-party endpoint might require.
+    static func findRIFFOffset(in data: Data) -> Int? {
+        let needle: [UInt8] = [0x52, 0x49, 0x46, 0x46] // "RIFF"
+        if data.count < 12 { return nil }
+        for i in 0..<(data.count - 11) {
+            if data[i] == needle[0]
+                && data[i + 1] == needle[1]
+                && data[i + 2] == needle[2]
+                && data[i + 3] == needle[3] {
+                // Verify "WAVE" at offset 8.
+                if data[i + 8] == 0x57
+                    && data[i + 9] == 0x41
+                    && data[i + 10] == 0x56
+                    && data[i + 11] == 0x45 {
+                    return i
+                }
+            }
+        }
+        return nil
+    }
+}
+
+// MARK: - Actor boxes for the FluidAudio managers
+
+/// Owns the Parakeet TDT v3 batch transcription pipeline. Lives in
+/// an `actor` so concurrent transcribe calls (a rare overlap during
+/// rapid hotkey-tap retries) serialize cleanly without explicit
+/// locking — FluidAudio's `AsrManager.transcribe` is not safe to
+/// call concurrently with the same decoder state.
+actor AsrBox {
+    private var manager: AsrManager?
+
+    /// Idempotent. First call downloads + loads Parakeet TDT v3
+    /// (~150 MB cached afterwards). Subsequent calls return
+    /// immediately.
+    func loadModels() async throws {
+        if manager != nil { return }
+        let models = try await AsrModels.downloadAndLoad(version: .v3)
+        let m = AsrManager(config: .default)
+        try await m.loadModels(models)
+        self.manager = m
+    }
+
+    /// Drop the manager so the next `loadModels()` call rebuilds
+    /// from disk. Used by `LocalASR.reset()` when the user wants to
+    /// recover from a degraded state.
+    func unload() async {
+        manager = nil
+    }
+
+    /// One-shot batch transcription. Fresh decoder state per call —
+    /// state doesn't carry across batch utterances.
+    func transcribeFull(samples: [Float]) async throws -> ASRResult {
+        guard let manager else { throw ASRError.notReady }
+        var state = try TdtDecoderState()
+        return try await manager.transcribe(samples, decoderState: &state)
+    }
+}
+
+// MARK: - File-private logging
+
+/// Mirrors the per-file-private `logStderr` pattern used in
+/// `AudioRecorder.swift`, `ParleqApp.swift`, and `Permissions.swift`.
+/// Same `[parleq]` prefix for grep parity across the combined log.
+private func logStderr(_ message: String) {
+    if let data = (message + "\n").data(using: .utf8) {
+        FileHandle.standardError.write(data)
+    }
+}
+
+/// Tuning knobs for the CTC vocabulary rescorer. Lifted verbatim
+/// from the retired sidecar so behavior is identical post-cutover.
+///
+/// FluidAudio's defaults are tuned for the dictation-with-known-
+/// terminology shape (medical, legal, brand names) where vocabulary
+/// terms are distinctive and false positives on common English are
+/// rare. Parleq's audience often has shorter, English-rhyming terms
+/// in their dictionary (e.g. "ultrathink" rhymes with "everything"
+/// at the /θɪŋk/ tail; default 0.50 similarity floor + 3.0 CBW boost
+/// is enough to flip "everything" → "ultrathink"). These tighter
+/// values reject low-similarity candidates earlier and require
+/// stronger acoustic evidence to override the original transcript.
+///
+/// If you find legit corrections being missed, lower minSimilarity
+/// toward 0.55. If you find new false positives, lower cbw toward
+/// 1.5 or raise minSimilarity toward 0.70.
+enum VocabTuning {
+    static let minSimilarity: Float = 0.65
+    static let cbw: Float = 2.0
+}
+
+/// Holds the optional CTC vocabulary-boosting models and rescorer.
+/// Lazy-loaded on first vocab-bearing request (or eagerly preloaded
+/// via `LocalASR.preloadVocab = true`). Caches the rescorer per
+/// dictionary content so repeat dictations with the same vocabulary
+/// don't re-tokenize on every call.
+actor VocabBox {
+    private var ctcModels: CtcModels?
+    private var spotter: CtcKeywordSpotter?
+    private var ctcTokenizer: CtcTokenizer?
+    private var ctcModelDirectory: URL?
+
+    private var cachedTermsKey: String?
+    private var cachedVocabulary: CustomVocabularyContext?
+    private var cachedRescorer: VocabularyRescorer?
+
+    /// Make sure the CTC encoder, tokenizer, and spotter are loaded.
+    /// First call downloads ~97 MB of model weight (cached on disk
+    /// afterwards). Subsequent calls are no-ops.
+    func ensureLoaded() async throws {
+        if spotter != nil { return }
+        let variant: CtcModelVariant = .ctc110m
+        let models = try await CtcModels.downloadAndLoad(variant: variant)
+        let tokenizer = try await CtcTokenizer.load(
+            from: CtcModels.defaultCacheDirectory(for: variant)
+        )
+        self.ctcModels = models
+        self.ctcTokenizer = tokenizer
+        self.ctcModelDirectory = CtcModels.defaultCacheDirectory(for: variant)
+        self.spotter = CtcKeywordSpotter(
+            models: models,
+            blankId: ContextBiasingConstants.defaultBlankId
+        )
+    }
+
+    /// Drop the loaded CTC models. Used by `LocalASR.reset()`.
+    func unload() async {
+        ctcModels = nil
+        spotter = nil
+        ctcTokenizer = nil
+        ctcModelDirectory = nil
+        cachedTermsKey = nil
+        cachedVocabulary = nil
+        cachedRescorer = nil
+    }
+
+    /// Run the spot + rescore passes for this audio against the
+    /// given vocabulary entries. Aliases are forwarded to
+    /// `CustomVocabularyTerm.aliases` so the rescorer emits the
+    /// canonical text when an alias matches the audio. Returns nil
+    /// when there's nothing to do (no terms after tokenization).
+    func rescore(
+        samples: [Float],
+        transcript: String,
+        tokenTimings: [TokenTiming],
+        entries: [VocabularyEntry]
+    ) async throws -> VocabularyRescorer.RescoreOutput? {
+        try await ensureLoaded()
+        guard let spotter, let ctcTokenizer else { return nil }
+
+        let cleanedEntries: [VocabularyEntry] = entries.compactMap { entry in
+            let term = entry.term.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !term.isEmpty else { return nil }
+            let aliases = entry.aliases
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+            return VocabularyEntry(term: term, aliases: aliases)
+        }
+        guard !cleanedEntries.isEmpty else { return nil }
+
+        // Cache key includes aliases so toggling aliases for an
+        // existing term forces a rebuild of the rescorer.
+        let key = cleanedEntries
+            .map { "\($0.term)\u{1F}\($0.aliases.joined(separator: "\u{1E}"))" }
+            .joined(separator: "\n")
+        let vocabulary: CustomVocabularyContext
+        let rescorer: VocabularyRescorer
+        if key == cachedTermsKey,
+           let cachedVocabulary,
+           let cachedRescorer {
+            vocabulary = cachedVocabulary
+            rescorer = cachedRescorer
+        } else {
+            let tokenized: [CustomVocabularyTerm] = cleanedEntries.compactMap { entry in
+                let ids = ctcTokenizer.encode(entry.term)
+                guard !ids.isEmpty else { return nil }
+                let aliases: [String]? = entry.aliases.isEmpty ? nil : entry.aliases
+                return CustomVocabularyTerm(
+                    text: entry.term,
+                    weight: nil,
+                    aliases: aliases,
+                    tokenIds: nil,
+                    ctcTokenIds: ids
+                )
+            }
+            guard !tokenized.isEmpty else { return nil }
+            vocabulary = CustomVocabularyContext(
+                terms: tokenized,
+                minSimilarity: VocabTuning.minSimilarity
+            )
+            rescorer = try await VocabularyRescorer.create(
+                spotter: spotter,
+                vocabulary: vocabulary,
+                config: .default,
+                ctcModelDirectory: ctcModelDirectory
+            )
+            cachedTermsKey = key
+            cachedVocabulary = vocabulary
+            cachedRescorer = rescorer
+        }
+
+        let spotted = try await spotter.spotKeywordsWithLogProbs(
+            audioSamples: samples,
+            customVocabulary: vocabulary
+        )
+        guard !spotted.logProbs.isEmpty else { return nil }
+        return rescorer.ctcTokenRescore(
+            transcript: transcript,
+            tokenTimings: tokenTimings,
+            logProbs: spotted.logProbs,
+            frameDuration: spotted.frameDuration,
+            cbw: VocabTuning.cbw,
+            minSimilarity: VocabTuning.minSimilarity
+        )
+    }
+}

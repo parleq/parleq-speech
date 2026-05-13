@@ -1,15 +1,24 @@
-// ASRClient — posts a WAV file to the FluidAudio sidecar's batch
-// /inference endpoint and returns the transcript.
+// ASRClient — runs batch ASR on a WAV buffer.
 //
-// The sidecar's /inference handler scans the request body for the
-// RIFF magic and extracts the WAV bytes from anywhere inside the
-// body, so we don't need to wrap the WAV in multipart/form-data the
-// way the Go benchmark runner does — we just POST the raw WAV bytes
-// with `Content-Type: audio/wav`. Same effective contract; less
-// boilerplate on this side.
+// Two code paths share the same caller-facing API. Which one is
+// active depends on whether ParleqApp.main constructed the client
+// with an in-process `LocalASR` reference:
 //
-// M1 uses /inference (batch Parakeet TDT v3). M4 will swap this
-// client for a streaming one that posts chunked PCM to /stream-nemo.
+//   - **Bundled (in-process FluidAudio).** Default. `LocalASR`
+//     decodes the WAV in-process, runs Parakeet TDT v3 on the Apple
+//     Neural Engine, and (when the user's dictionary is non-empty)
+//     runs an extra CTC rescoring pass. No network, no listening
+//     socket. The retired FluidAudio HTTP sidecar lived here.
+//   - **HTTP (custom asr.endpoint).** When the user has pointed
+//     `asr.endpoint` at their own OpenAI-compatible `/inference`
+//     server (e.g. Sherpa-ONNX, faster-whisper), `LocalASR` is nil
+//     and we POST WAV bytes to the configured URL exactly the same
+//     way the sidecar shipped. This is the only path that crosses a
+//     network boundary, and only when the user has explicitly opted
+//     out of the bundled ASR.
+//
+// `transcribe(wav:vocabulary:)` returns an `ASRTranscript` either way,
+// so AppState doesn't need to know which path is active.
 
 import Foundation
 
@@ -17,6 +26,13 @@ enum ASRError: Error, CustomStringConvertible {
     case badStatus(Int, String)
     case malformedResponse
     case ioError(Error)
+    /// `LocalASR` was asked to transcribe before its TDT model had
+    /// finished loading. Hotkey-driven dictation gates on
+    /// `AppState.isSystemReady`, so this should never surface in
+    /// real flow — it's here for completeness and to make a
+    /// developer mistake (calling transcribe before start()
+    /// completes) loud.
+    case notReady
 
     var description: String {
         switch self {
@@ -26,11 +42,13 @@ enum ASRError: Error, CustomStringConvertible {
             return "ASR response not JSON-shaped {\"text\": \"...\"}"
         case .ioError(let underlying):
             return "ASR IO: \(underlying)"
+        case .notReady:
+            return "ASR not ready (model still loading)"
         }
     }
 }
 
-struct ASRResult {
+struct ASRTranscript {
     let text: String
     let latency: TimeInterval
 }
@@ -51,49 +69,75 @@ struct VocabularyEntry: Sendable, Equatable, Codable {
     }
 }
 
-// ASRClient is Sendable: after init it holds only a stateless URL
-// and URLSession, both of which are Sendable themselves. Mark it so
-// the keyup callback can safely hand it across to a fire-and-forget
-// Task without Swift 6's strict-concurrency analysis flagging it.
-final class ASRClient: Sendable {
+// ASRClient is Sendable: after init it holds only a stateless URL,
+// a URLSession, and an optional `LocalASR` reference (which is
+// @MainActor-isolated, so Swift's strict-concurrency analysis
+// treats it as Sendable). The hotkey-up callback hands the client
+// across to a fire-and-forget Task without complaint.
+final class ASRClient: @unchecked Sendable {
     static let defaultEndpoint = URL(string: "http://127.0.0.1:8767/inference")!
 
     private let endpoint: URL
     private let session: URLSession
-    /// Bearer token shared with the supervised bundled sidecar.
-    /// When non-nil, every request carries `Authorization: Bearer
-    /// <token>`. Set to nil for external sidecars (custom
-    /// `asr.endpoint` configurations) — we have no shared secret
-    /// with a user-managed external server, so we send no auth and
-    /// let the user manage their own server's access controls.
-    private let bearerToken: String?
+    /// In-process FluidAudio engine. Non-nil iff the user's
+    /// `asr.endpoint` matches `Config.bundledASREndpoint` (the
+    /// default). When set, `transcribe(wav:vocabulary:)` calls into
+    /// it directly and the HTTP path is dormant.
+    private let local: LocalASR?
 
-    init(endpoint: URL = ASRClient.defaultEndpoint, bearerToken: String? = nil) {
+    init(
+        endpoint: URL = ASRClient.defaultEndpoint,
+        local: LocalASR? = nil
+    ) {
         self.endpoint = endpoint
         // Single-task tool — default URLSession is fine; explicit
         // configuration left for if we ever need keepalive / proxy
         // tuning.
         self.session = URLSession.shared
-        self.bearerToken = bearerToken
+        self.local = local
     }
 
-    /// POST the in-memory WAV bytes to the sidecar and return the
-    /// transcript along with the round-trip latency. Throws on HTTP
-    /// errors or malformed responses.
+    /// Run batch ASR on a 16 kHz mono 16-bit WAV buffer.
     ///
     /// `vocabulary` carries the user's custom-dictionary entries —
     /// each one is a canonical spelling plus an optional list of
     /// alternate spellings the ASR commonly produces. When non-
-    /// empty, the sidecar runs an extra CTC keyword-spotting +
-    /// rescoring pass over the TDT transcript; matches against the
-    /// canonical OR any alias produce the canonical form in the
-    /// output. Context blurbs and per-term biasing live in the LLM
-    /// cleanup path and aren't passed here. Empty array skips the
-    /// CTC pass entirely.
+    /// empty, an extra CTC keyword-spotting + rescoring pass runs
+    /// over the TDT transcript; matches against the canonical OR
+    /// any alias produce the canonical form in the output. Context
+    /// blurbs and per-term biasing live in the LLM cleanup path and
+    /// aren't passed here. Empty array skips the CTC pass.
+    ///
+    /// Routes through the bundled in-process `LocalASR` by default,
+    /// or POSTs WAV bytes to a user-configured `asr.endpoint`. Both
+    /// paths return the same `ASRTranscript` shape so callers don't
+    /// need to know which is active.
     func transcribe(
         wav data: Data,
         vocabulary: [VocabularyEntry] = []
-    ) async throws -> ASRResult {
+    ) async throws -> ASRTranscript {
+        if let local {
+            let started = Date()
+            let text = try await local.transcribe(
+                wav: data,
+                vocabulary: vocabulary
+            )
+            return ASRTranscript(text: text, latency: -started.timeIntervalSinceNow)
+        }
+        return try await transcribeHTTP(wav: data, vocabulary: vocabulary)
+    }
+
+    /// HTTP fallback for users with a custom `asr.endpoint`. Wire
+    /// format matches what the retired FluidAudio sidecar accepted:
+    /// raw WAV bytes with `Content-Type: audio/wav`, an optional
+    /// `X-Parleq-Vocabulary` header carrying base64-encoded JSON.
+    /// The endpoint owner (their Sherpa-ONNX or faster-whisper
+    /// server) handles its own access control; we send no
+    /// Authorization header — there's no shared secret to use.
+    private func transcribeHTTP(
+        wav data: Data,
+        vocabulary: [VocabularyEntry]
+    ) async throws -> ASRTranscript {
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
         request.setValue("audio/wav", forHTTPHeaderField: "Content-Type")
@@ -101,12 +145,10 @@ final class ASRClient: Sendable {
         if let header = ASRClient.encodeVocabularyHeader(vocabulary) {
             request.setValue(header, forHTTPHeaderField: "X-Parleq-Vocabulary")
         }
-        if let bearerToken {
-            request.setValue("Bearer \(bearerToken)", forHTTPHeaderField: "Authorization")
-        }
-        // Generous timeout — first call after sidecar warmup can be
-        // slow if the model isn't yet hot. Subsequent calls are well
-        // under a second.
+        // Generous timeout — a cold custom server may JIT-compile
+        // CoreML graphs on first request, same as the retired
+        // bundled sidecar did. Subsequent calls are well under a
+        // second.
         request.timeoutInterval = 30
 
         let started = Date()
@@ -127,7 +169,7 @@ final class ASRClient: Sendable {
         } catch {
             throw ASRError.malformedResponse
         }
-        return ASRResult(text: parsed.text, latency: elapsed)
+        return ASRTranscript(text: parsed.text, latency: elapsed)
     }
 
     /// Encode the vocabulary list for the X-Parleq-Vocabulary header.

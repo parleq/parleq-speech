@@ -2,7 +2,7 @@
 
 The Parleq macOS app. Swift 6 + SwiftPM, macOS 14+.
 
-This package is the user-facing app: hotkey listener, audio capture, overlay UI, paste, settings, LLM cleanup, and supervision of the bundled FluidAudio sidecar.
+This package is the user-facing app: hotkey listener, audio capture, overlay UI, paste, settings, LLM cleanup, and in-process FluidAudio speech recognition (Parakeet TDT v3 on the Apple Neural Engine).
 
 For end-user provider setup (Gemini, Vertex AI, Bedrock, Azure OpenAI), see [parleq.app/docs](https://parleq.app/docs/). AWS-specific operational notes are in [`docs/SETUP.md`](../docs/SETUP.md). For the architecture walkthrough, see [parleq.app/how-it-works](https://parleq.app/how-it-works/). For a security review packet, see [`docs/SECURITY_REVIEW.md`](../docs/SECURITY_REVIEW.md).
 
@@ -13,7 +13,7 @@ swift build              # debug build at .build/debug/ParleqApp
 swift run ParleqApp      # build + run (TCC prompts attribute to the terminal)
 ```
 
-For a real `.app` bundle (signed, with the bundled sidecar embedded, installable to `/Applications`), use the top-level Makefile:
+For a real `.app` bundle (signed, single binary, installable to `/Applications`), use the top-level Makefile:
 
 ```bash
 cd ..
@@ -27,11 +27,12 @@ make notarize            # build + Apple notarize + staple (requires keychain pr
 
 | File | What it does |
 |---|---|
-| `ParleqApp.swift` | `@main` entry. Wires recorder, ASR client, LLM provider, overlay, hotkey, supervisor. |
+| `ParleqApp.swift` | `@main` entry. Wires recorder, ASR client, LLM provider, overlay, hotkey, in-process speech engine. |
 | `AppState.swift` | `@MainActor` coordinator. Owns the per-utterance state machine; everything else hangs off it. |
 | `HotkeyListener.swift` | CGEventTap-based press-and-hold detector. Distinguishes left/right modifier keys via the device-dependent flag bit. |
 | `AudioRecorder.swift` | AVAudioEngine input → 16 kHz mono int16 → in-memory WAV `Data`. Audio never touches disk. |
-| `ASRClient.swift` | POSTs the WAV bytes to the sidecar's `/inference` endpoint, optionally with an `X-Parleq-Vocabulary` header for custom dictionary biasing. |
+| `LocalASR.swift` | In-process FluidAudio Parakeet TDT v3 + CTC vocab rescoring. No listening sockets, no separate process. Replaced the bundled HTTP sidecar in v0.9.0. |
+| `ASRClient.swift` | Routes batch ASR requests. Bundled path calls `LocalASR` in-process; HTTP path (used only when the user has configured a custom `asr.endpoint`) POSTs WAV bytes with an optional `X-Parleq-Vocabulary` header. |
 | `LLMProvider.swift` | Provider-agnostic streaming interface. `LLMMessage`, `LLMStreamEvent`, `LLMStreamSummary`, the `LLMProvider` protocol. |
 | `LLMClient.swift` + `LLMStreaming.swift` | Google Gemini direct-API implementation (streaming SSE). API key sent via the `x-goog-api-key` header (not URL query parameter) so the secret never lives in any URL string. |
 | `BedrockProvider.swift` | AWS Bedrock implementation via Soto's `ConverseStream`. Two auth modes: SSO via AWS CLI session cache, and static IAM credentials from the Keychain. |
@@ -41,7 +42,6 @@ make notarize            # build + Apple notarize + staple (requires keychain pr
 | `SystemPrompts.swift` | The cleanup and refine prompts. The cleanup prompt grows a smart-vocabulary addendum when the user's dictionary is non-empty. |
 | `OverlayWindow.swift` | Borderless `NSPanel` + SwiftUI content. Captures Enter/Esc without stealing app focus. |
 | `Paster.swift` | Captures frontmost app, sets pasteboard, simulates Cmd-V, restores previous pasteboard contents. |
-| `SidecarSupervisor.swift` | Forks + supervises the bundled FluidAudio sidecar. Watches for crashes, restarts, runs the warmup probe. Generates a per-launch bearer token shared with the sidecar via `PARLEQ_SIDECAR_TOKEN`. |
 | `SettingsWindow.swift` | NSWindow + SwiftUI Form. Provider picker, dictionary editor, Gemini API key (Keychain-backed) row, restart banner with one-click relaunch. |
 | `MenuBar.swift` | Status-item menu (capture toggle, settings, login item, **Recent Dictations** submenu, quit). |
 | `Config.swift` | `~/.parleq/config.json` loader/saver. |
@@ -61,7 +61,7 @@ make notarize            # build + Apple notarize + staple (requires keychain pr
    - `AudioRecorder.stop()` returns `Capture(wavData:durationSeconds:)`
    - overlay → `cleaning` state, "Pop" cue
    - background task:
-     - `ASRClient.transcribe(wav: data, vocabulary: ...)` → raw text
+     - `ASRClient.transcribe(wav: data, vocabulary: ...)` → raw text (routes through in-process `LocalASR` by default, or to a custom external `asr.endpoint` if configured)
      - `LLMProvider.generateStreaming(...)` → text chunks → `overlay.appendText`
    - overlay → `awaitingAccept`, auto-accept timer (if configured)
 3. **Enter** (or timer) → `AppState.accept`:
@@ -77,17 +77,20 @@ Non-obvious things that are easy to forget. Documented here so they survive futu
 2. **`additionalModelRequestFields = {"reasoning_effort": "low"}`** on every Bedrock `openai.gpt-oss-*` call. Drops the 220-token hidden reasoning channel to ~30 tokens, 2.5× faster TTFT.
 3. **Fresh stateless LLM call per refinement turn.** No server-side conversation history.
 4. **Audio is memory-only end-to-end.** `AudioRecorder.stop()` returns a `Data`; no `/tmp/parleq-*.wav`, no audio cache. Required for compliance with enterprise policies on Bedrock-using apps.
-5. **Logs carry length-only diagnostics.** ASR diagnostic shows `(N chars / W words)`, never the transcript text. Sidecar `[vocab]` log defaults to count-only; per-replacement detail is opt-in via `PARLEQ_VOCAB_TRACE=1`.
-6. **Audio never leaves the device** — ASR is the local FluidAudio sidecar only. Cleanup payloads (the transcript text) go to the configured LLM provider; that's the only network boundary input data crosses.
+5. **Logs carry length-only diagnostics.** ASR diagnostic shows `(N chars / W words)`, never the transcript text. `LocalASR`'s `[vocab]` log defaults to count-only; per-replacement detail is opt-in via `PARLEQ_VOCAB_TRACE=1`.
+6. **Audio never leaves the device** — ASR is in-process FluidAudio by default; no listening sockets, no IPC. Cleanup payloads (the transcript text) go to the configured LLM provider; that's the only network boundary input data crosses. Users who configure a custom `asr.endpoint` opt into a localhost HTTP path to their own server.
 
 ## Quick verification
 
 ```bash
-# Sidecar reachable?
-curl -s http://127.0.0.1:8767/health
-
 # App builds?
 swift build
+
+# Speech engine loaded? (Look for "ASR" / "LocalASR" lines.)
+grep -E "LocalASR|ASR" ~/.parleq/app.log | tail -10
+
+# No listening sockets on a running Parleq? (Should print "no LISTEN".)
+lsof -i -nP -p "$(pgrep -n ParleqApp)" | grep LISTEN || echo "no LISTEN"
 
 # Settings file written?
 cat ~/.parleq/config.json | jq

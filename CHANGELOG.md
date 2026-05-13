@@ -4,7 +4,18 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
-(no changes yet)
+### Changed
+
+- **FluidAudio runs in-process; the bundled HTTP sidecar is gone.** Earlier builds (≤ v0.8.x) hosted the speech recognizer in a separate `fluidaudio-sidecar` Swift package, supervised as a child process and reached over `127.0.0.1:8767` with bearer-token auth. v0.9.0 folds that pipeline into the main app target via a new `LocalASR` module. Wins: no listening sockets on the default ASR path (stronger compliance posture — "no local server" beats "local server with bearer auth"), single signed binary in the bundle, Hummingbird is dropped as a dependency, the app and the speech engine share fate (an ASR crash takes the app down loudly instead of leaving the menu bar alive but black-holed). The menu's **Restart Sidecar** item is now **Reset ASR** — same recovery affordance, but it unloads + reloads the FluidAudio model in-process instead of cycling a child process.
+- **`asr.endpoint`'s default value is now a sentinel, not a URL.** The string `http://127.0.0.1:8767/inference` is kept verbatim for back-compat with config files written by 0.7.x / 0.8.x builds — but in 0.9.0+ matching it triggers the in-process `LocalASR` path. Any other value continues to route through `ASRClient`'s HTTP code so existing Sherpa-ONNX / faster-whisper / custom-server users keep working without a config change.
+
+### Removed
+
+- `SidecarSupervisor.swift`, `SidecarHealth.swift`, and the entire `third_party/fluidaudio-sidecar/` Swift package.
+- The `PARLEQ_SIDECAR_TOKEN`, `PARLEQ_SUPERVISOR_PID`, `PARLEQ_VOCAB_PRELOAD`, and `FLUIDAUDIO_PORT` environment variables. `PARLEQ_VOCAB_TRACE=1` still works against `LocalASR`'s in-process vocab log lines.
+- The `/tmp/parleq-sidecar.log` file. Diagnostics now go to the main app log at `~/.parleq/app.log` like everything else.
+- Hummingbird dependency. FluidAudio is now a direct dependency of the main app target.
+- The second codesigning pass in `scripts/make-app.sh` — the bundle is now a single signed binary.
 
 ## [0.8.1] - 2026-05-11
 

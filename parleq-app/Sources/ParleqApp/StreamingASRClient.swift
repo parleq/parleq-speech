@@ -1,16 +1,19 @@
-// StreamingASRClient — pushes raw int16 LE PCM to the FluidAudio
-// sidecar's /stream-nemo endpoint over a chunked HTTP POST and
+// StreamingASRClient — pushes raw int16 LE PCM to an OpenAI-style
+// streaming `/stream-nemo` endpoint over a chunked HTTP POST and
 // returns the final transcript when the body closes.
 //
-// Why streaming: the sidecar's Nemotron 0.6B encoder is cache-aware
-// and processes audio chunks during the user's speech. By the time
-// the user releases the hotkey, most of the audio has already been
-// encoded; only the trailing chunk needs to be processed. This is
-// the post-utterance-latency win measured in our benchmarks
-// (48 ms p95 vs 110 ms for batch /inference).
+// **Currently dormant in default installs.** The bundled in-process
+// ASR path (`LocalASR.swift`) is batch-only — Parakeet TDT v3 runs
+// after the user releases the hotkey, not during the utterance. The
+// retired FluidAudio sidecar previously exposed this streaming
+// endpoint via Nemotron 0.6B, and this client is preserved for the
+// "user points `asr.endpoint` at their own streaming server"
+// scenario (a future custom-endpoint integration that supports SSE
+// partials).
 //
-// Wire format:
-//   - POST http://127.0.0.1:8767/stream-nemo
+// Wire format (matches what the retired sidecar accepted, kept
+// stable so any third-party server modelled on it stays compatible):
+//   - POST <user-configured base>/stream-nemo
 //   - Content-Type: audio/pcm-mono16-16k (informational)
 //   - Body: raw 16-bit signed LE PCM at 16 kHz mono, no WAV header
 //   - Body uses HTTP chunked transfer encoding (forced by leaving
@@ -21,14 +24,13 @@
 // pair an InputStream (consumed by URLSession) with an OutputStream
 // (written to by our pushPCM calls) via Stream.getBoundStreams. On
 // finish() we close the OutputStream, which signals end-of-body to
-// URLSession, which closes the request — and the sidecar finalizes
+// URLSession, which closes the request — and the server finalizes
 // and returns the JSON {"text": "..."} response.
 //
-// Phase B (current): the sidecar emits Server-Sent Events on
+// SSE wire shape: the server emits Server-Sent Events on
 // /stream-nemo. We parse incoming SSE `data: {...}` lines and call
 // onPartial(text) for each "partial" event and resolve finish()'s
-// continuation when the "final" event arrives. Old phase-A
-// behavior (final-only JSON) is no longer supported by the sidecar.
+// continuation when the "final" event arrives.
 
 import Foundation
 
@@ -100,9 +102,10 @@ final class StreamingASRSession: @unchecked Sendable {
     private var uploadedBytes = 0
     private var chunkCount = 0
     /// Optional partial-transcript callback. Fires once per SSE
-    /// "partial" event from the sidecar, with the cumulative
-    /// transcript text up to that point. Called on URLSession's
-    /// delegate queue, NOT MainActor — UI updates must hop.
+    /// "partial" event from the streaming server, with the
+    /// cumulative transcript text up to that point. Called on
+    /// URLSession's delegate queue, NOT MainActor — UI updates must
+    /// hop.
     var onPartial: (@Sendable (String) -> Void)?
 
     init(url: URL = URL(string: "http://127.0.0.1:8767/stream-nemo")!) {
@@ -137,10 +140,10 @@ final class StreamingASRSession: @unchecked Sendable {
         request.setValue("audio/pcm-mono16-16k", forHTTPHeaderField: "Content-Type")
         // Long-form dictation can run for minutes. The URLRequest
         // idle-timeout default is 60 s, which means a brief pause in
-        // SSE events from the sidecar (slow ASR chunk, GC, anything)
-        // can kill the connection mid-utterance — the symptom is
-        // "the dictation stops growing after a while". 1 hour gives
-        // plenty of headroom for any single utterance.
+        // SSE events from the streaming server (slow ASR chunk, GC,
+        // anything) can kill the connection mid-utterance — the
+        // symptom is "the dictation stops growing after a while".
+        // 1 hour gives plenty of headroom for any single utterance.
         request.timeoutInterval = 3600
         request.httpBodyStream = input
 
@@ -338,7 +341,7 @@ private final class StreamingASRDelegate: NSObject, URLSessionDataDelegate, @unc
         guard let raw = String(data: bytes, encoding: .utf8) else { return }
         // Each event might have multiple lines; we care about
         // `data:` lines. (SSE supports `event:`/`id:`/`retry:` too;
-        // sidecar doesn't use them.)
+        // the streaming server wire format doesn't use them.)
         for line in raw.split(separator: "\n", omittingEmptySubsequences: true) {
             guard line.hasPrefix("data: ") else { continue }
             let payload = line.dropFirst("data: ".count)
@@ -380,8 +383,8 @@ private final class StreamingASRDelegate: NSObject, URLSessionDataDelegate, @unc
             return
         }
         // Prefer the explicit final-event text; fall back to the
-        // last partial if the sidecar closed without a final
-        // (shouldn't happen, but defensive).
+        // last partial if the streaming server closed without a
+        // final (shouldn't happen, but defensive).
         let text = finalText ?? lastPartial
         resume(.success(text))
     }

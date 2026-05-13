@@ -47,7 +47,7 @@ To enable LLM cleanup, pick a provider in the first-run setup wizard or **Settin
 | Component | What it does | Where it lives |
 |---|---|---|
 | ParleqApp | Hotkey listener, audio capture, overlay UI, paste, settings, setup wizard | `parleq-app/Sources/ParleqApp/` |
-| FluidAudio sidecar | Local HTTP server wrapping Parakeet TDT v3 + CTC vocab boosting | `third_party/fluidaudio-sidecar/` |
+| LocalASR | In-process Parakeet TDT v3 (Apple Neural Engine) + CTC vocab boosting — no listening sockets, no separate process | `parleq-app/Sources/ParleqApp/LocalASR.swift` |
 | LLMProvider | Provider-agnostic streaming cleanup interface — implementations for Gemini, Vertex AI, Bedrock, Azure OpenAI | `parleq-app/Sources/ParleqApp/{LLMProvider,LLMClient,VertexProvider,BedrockProvider,BedrockBearerProvider,AzureOpenAIProvider}.swift` |
 | Custom dictionary | User-maintained term list biasing both ASR and LLM passes | `~/.parleq/config.json` |
 
@@ -67,9 +67,8 @@ A walkthrough of the four-stage pipeline (capture → transcribe → clean up �
 
 Parleq stands on the shoulders of several excellent open-source projects:
 
-- **[FluidAudio](https://github.com/FluidInference/FluidAudio)** for the CoreML pipeline that runs Parakeet TDT v3 and the CTC keyword spotter on the Apple Neural Engine.
+- **[FluidAudio](https://github.com/FluidInference/FluidAudio)** for the CoreML pipeline that runs Parakeet TDT v3 and the CTC keyword spotter on the Apple Neural Engine. Linked directly into the main app target since v0.9.0.
 - **[Soto](https://github.com/soto-project/soto)** for the Swift-native AWS SDK that powers the Bedrock cleanup path.
-- **[Hummingbird](https://github.com/hummingbird-project/hummingbird)** for the lightweight HTTP server inside the local ASR sidecar.
 - **[Apple's Swift open source projects](https://www.swift.org/)** — SwiftNIO, Swift Crypto, Swift Collections, and the rest of the swift-* family — for the foundation everything else builds on.
 
 The NeMo Parakeet TDT v3 checkpoint (CoreML-converted by FluidInference and downloaded from Hugging Face on first run) is what makes private, fast on-device transcription possible at all. Thanks to NVIDIA's NeMo team for the upstream model.

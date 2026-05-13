@@ -16,7 +16,7 @@ From the repo root:
 make install
 ```
 
-That runs `make-app.sh`, which builds release binaries for both the main app and the bundled FluidAudio sidecar, code-signs the bundle, and copies it to `/Applications/Parleq.app`. The script unlinks any prior install — macOS lets us replace a running .app's files; the running process keeps its mmap'd inode alive until quit. After install:
+That runs `make-app.sh`, which builds the release binary, code-signs the bundle, and copies it to `/Applications/Parleq.app`. The script unlinks any prior install — macOS lets us replace a running .app's files; the running process keeps its mmap'd inode alive until quit. After install:
 
 ```bash
 open /Applications/Parleq.app
@@ -37,7 +37,7 @@ If you grant both and then upgrade to a build signed with a different identity, 
 
 ### Model downloads
 
-On first dictation, the bundled FluidAudio sidecar downloads Parakeet TDT v3 (~600 MB) into `~/Library/Application Support/FluidAudio/Models/`. One-time. Subsequent launches reuse the cache. If you populate the custom dictionary feature, the sidecar additionally fetches the CTC vocabulary encoder (~97 MB) at first vocab-bearing dictation — also cached.
+On first launch, the in-process FluidAudio engine downloads Parakeet TDT v3 (~150 MB) into `~/Library/Application Support/FluidAudio/Models/`. One-time; the menu-bar icon shows the download glyph until ready. Subsequent launches reuse the cache. If you populate the custom dictionary feature, FluidAudio additionally fetches the CTC vocabulary encoder (~97 MB) — eagerly at startup when your dictionary is non-empty, or lazily on the first vocab-bearing dictation otherwise. Both are cached.
 
 ## LLM cleanup configuration
 
@@ -188,9 +188,8 @@ parleq-speech/
 │   └── SECURITY_REVIEW.md       ← data flows, trust boundaries, secrets
 ├── parleq-app/
 │   ├── Sources/ParleqApp/       ← the app itself (Swift, SwiftPM)
+│   │                              FluidAudio runs in-process via LocalASR.swift
 │   └── scripts/make-app.sh      ← build + sign + bundle
-├── third_party/
-│   └── fluidaudio-sidecar/      ← bundled HTTP server wrapping FluidAudio Parakeet
 ├── web/                         ← marketing site (Astro), deployed to parleq.app
 └── Makefile                     ← `make install`, `make notarize`, etc.
 ```

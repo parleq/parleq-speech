@@ -198,13 +198,17 @@ struct Config: Sendable {
     /// Default; the menu surfaces the saved selection as a
     /// disconnected placeholder until the device reconnects.
     var audioInputDeviceUID: String
-    /// HTTP endpoint Parleq's ASRClient POSTs WAV files to. Default
-    /// is the bundled FluidAudio sidecar (Parakeet TDT v3 on Apple
-    /// Neural Engine). Override to point at a different ASR
-    /// server — e.g., a Sherpa-ONNX or faster-whisper server you're
-    /// running locally. When the endpoint is
-    /// non-default, the SidecarSupervisor stops launching the
-    /// bundled sidecar (saves ~5 GB of resident memory).
+    /// HTTP endpoint Parleq's ASRClient POSTs WAV files to. The
+    /// default value matches `Config.bundledASREndpoint`, which is
+    /// a magic sentinel meaning "use in-process FluidAudio
+    /// (Parakeet TDT v3 on the Apple Neural Engine)" — the literal
+    /// URL string is the retired sidecar's old listen address,
+    /// kept for back-compat with config files written by earlier
+    /// builds. Override to any other value to swap in an
+    /// OpenAI-compatible `/inference` server (e.g. a Sherpa-ONNX
+    /// or faster-whisper server you're running locally); the
+    /// bundled FluidAudio engine is then never initialized
+    /// (saves ~1.5 GB of resident memory).
     var asrEndpoint: String
     /// User-maintained list of names/terms ("Parleq", "Acme",
     /// "FluidAudio", …) that ASR commonly mis-transcribes. Each entry
@@ -215,9 +219,13 @@ struct Config: Sendable {
     var customDictionary: [DictionaryEntry]
     var telemetryEnabled: Bool
 
-    /// The bundled-sidecar URL. SidecarSupervisor only launches the
-    /// in-bundle FluidAudio process when asrEndpoint matches this
-    /// exact value.
+    /// Sentinel value for `asr.endpoint` meaning "use in-process
+    /// FluidAudio." The literal string is the retired bundled
+    /// sidecar's old listen address — kept verbatim so config files
+    /// written by 0.7.x / 0.8.x builds keep working on the in-
+    /// process path without an explicit migration. ParleqApp.main
+    /// constructs `LocalASR` only when `asr.endpoint` equals this
+    /// value; anything else routes through `ASRClient`'s HTTP path.
     static let bundledASREndpoint = "http://127.0.0.1:8767/inference"
 
     static let `default` = Config(

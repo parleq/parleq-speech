@@ -1283,7 +1283,7 @@ struct SettingsView: View {
                     .font(.callout.weight(.medium))
                 TextField("Endpoint", text: bind(\.asrEndpoint))
                     .textFieldStyle(.roundedBorder)
-                SettingsCaption("HTTP endpoint Parleq sends WAV files to. Default \(Config.bundledASREndpoint) uses the bundled FluidAudio sidecar (Parakeet TDT v3 on Apple Neural Engine). Point at any OpenAI-compatible /inference server (e.g. Sherpa-ONNX or faster-whisper running locally) to swap the speech-recognition backend. The bundled sidecar is not launched when this is non-default. Restart to apply.")
+                SettingsCaption("Default uses in-process FluidAudio (Parakeet TDT v3 on the Apple Neural Engine) — no network, no local listening socket. To swap in your own speech backend, point at any OpenAI-compatible /inference server (e.g. Sherpa-ONNX or faster-whisper running locally). The bundled FluidAudio is not initialized when this is non-default, so the model's ~1.5 GB resident cost is not paid. Use the “Reset to default” button to return to the bundled endpoint sentinel \(Config.bundledASREndpoint). Restart to apply.")
                 HStack(spacing: 8) {
                     Button("Reset to default") {
                         model.asrEndpoint = Config.bundledASREndpoint

@@ -29,13 +29,13 @@ In your report, please include:
 
 In scope for this policy:
 
-- The Parleq macOS app (`parleq-app/`) and the bundled FluidAudio sidecar (`third_party/fluidaudio-sidecar/`).
+- The Parleq macOS app (`parleq-app/`) — single signed binary with FluidAudio running in-process (see `parleq-app/Sources/ParleqApp/LocalASR.swift`).
 - Build / signing / notarization scripts (`Makefile`, `parleq-app/scripts/`).
 - The website at [parleq.app](https://parleq.app) (`web/`).
 
 Out of scope:
 
-- Bugs in upstream dependencies (Soto, Hummingbird, FluidAudio, Apple Swift libraries) — please report those to their respective projects directly. If a Parleq-specific use of an upstream library introduces a vulnerability, that is in scope.
+- Bugs in upstream dependencies (Soto, FluidAudio, Apple Swift libraries) — please report those to their respective projects directly. If a Parleq-specific use of an upstream library introduces a vulnerability, that is in scope.
 - Issues that require already having full local access to the user's Mac (e.g., "if I have your unlocked machine, I can read your Keychain"). The threat model doesn't claim to defend against local-attacker scenarios.
 - Vulnerabilities in cloud LLM provider APIs (Google Gemini, Vertex AI, AWS Bedrock, Azure OpenAI) — report those to the respective vendor.
 
