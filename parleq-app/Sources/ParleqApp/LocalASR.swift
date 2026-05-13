@@ -57,10 +57,27 @@ final class LocalASR {
         }
     }
 
+    /// Set to true when the model load failed for a non-transient
+    /// reason (network down at first run, disk full, sandbox denial,
+    /// upstream Hugging Face 5xx, etc.) and a single auto-retry also
+    /// failed. The menu bar surfaces this via tooltip so the user
+    /// knows to click "Reset ASR" to retry — without this signal the
+    /// menu bar would sit at "Initializing speech model…" forever.
+    private(set) var loadFailed = false {
+        didSet {
+            if oldValue != loadFailed { onLoadFailedChanged?(loadFailed) }
+        }
+    }
+
     /// Fires on every `isReady` transition. The menu bar uses this
     /// to swap between the "Initializing…" glyph and the brand bars;
     /// AppState uses it to dismiss any stale init overlay.
     var onReadyChanged: (@MainActor (Bool) -> Void)?
+
+    /// Fires when `loadFailed` flips in either direction. The menu
+    /// bar uses this to surface a load-failure tooltip / error glyph
+    /// distinct from the (transient) "Initializing…" state.
+    var onLoadFailedChanged: (@MainActor (Bool) -> Void)?
 
     /// When true, the CTC vocabulary-boosting models are downloaded
     /// and loaded eagerly alongside the TDT model so the first
@@ -77,20 +94,50 @@ final class LocalASR {
     /// to the in-flight task.
     func start() {
         guard !isReady, loadTask == nil else { return }
+        loadFailed = false
         let preload = preloadVocab
+        // Bump the generation counter so the in-flight task can
+        // detect that `reset()` has invalidated it and skip its
+        // MainActor state mutations. Tasks are value types so we
+        // can't use `===` for identity — a monotonically-increasing
+        // counter is simpler than boxing the Task. Without this
+        // check a late-completing cancelled load can flip
+        // `isReady = true` over an unloaded model.
+        loadGeneration &+= 1
+        let myGeneration = loadGeneration
         loadTask = Task { [asr, vocab, weak self] in
             do {
                 try await asr.loadModels()
             } catch {
+                if Task.isCancelled { return }
                 logStderr("[parleq] LocalASR: model load failed: \(error)")
-                await MainActor.run {
-                    self?.loadTask = nil
+                // One-shot auto-retry ~10s after a first-load
+                // failure. Approximates what the retired
+                // SidecarSupervisor's exponential-backoff gave us
+                // for the load-failure case specifically: transient
+                // network blips at first run usually clear within a
+                // few seconds, and the user shouldn't have to dig
+                // into the menu to discover Reset ASR for those.
+                try? await Task.sleep(nanoseconds: 10_000_000_000)
+                if Task.isCancelled { return }
+                do {
+                    try await asr.loadModels()
+                } catch {
+                    if Task.isCancelled { return }
+                    logStderr("[parleq] LocalASR: model load retry failed: \(error). Use the menu's “Reset ASR” item to try again once the underlying issue is resolved.")
+                    await MainActor.run {
+                        guard let self, self.loadGeneration == myGeneration else { return }
+                        self.loadFailed = true
+                        self.loadTask = nil
+                    }
+                    return
                 }
-                return
             }
+            if Task.isCancelled { return }
             await MainActor.run {
-                self?.isReady = true
-                self?.loadTask = nil
+                guard let self, self.loadGeneration == myGeneration else { return }
+                self.isReady = true
+                self.loadTask = nil
             }
             if preload {
                 // Detached so the TDT-ready signal isn't gated on the
@@ -111,9 +158,13 @@ final class LocalASR {
     /// Drop the loaded models and reload them. Replaces the retired
     /// "Restart Sidecar" recovery path. UI gates capture on
     /// `isReady`, which flips off here and back on after reload.
+    /// Safe to call mid-load: the in-flight task is cancelled and
+    /// its late completion is ignored via the `loadGeneration`
+    /// check in `start()`.
     func reset() {
-        guard isReady || loadTask != nil else { return }
+        guard isReady || loadFailed || loadTask != nil else { return }
         isReady = false
+        loadFailed = false
         loadTask?.cancel()
         loadTask = nil
         Task { [asr, vocab, weak self] in
@@ -137,19 +188,24 @@ final class LocalASR {
         vocabulary: [VocabularyEntry]
     ) async throws -> String {
         guard let wavStart = Self.findRIFFOffset(in: data) else {
-            throw ASRError.malformedResponse
+            throw ASRError.malformedAudio
         }
         // WAV total length = 8 + chunkSize (chunkSize at offset 4-8).
         guard wavStart + 12 <= data.count else {
-            throw ASRError.malformedResponse
+            throw ASRError.malformedAudio
         }
+        // WAV chunk size is little-endian by spec. Apple Silicon
+        // and Intel macOS happen to also be little-endian so a raw
+        // `load(as: UInt32.self)` would produce the right number,
+        // but the explicit `littleEndian:` initializer documents the
+        // intent and makes any future port safe.
         let chunkSize = data
             .subdata(in: (wavStart + 4)..<(wavStart + 8))
-            .withUnsafeBytes { $0.load(as: UInt32.self) }
+            .withUnsafeBytes { UInt32(littleEndian: $0.load(as: UInt32.self)) }
         let wavEnd = min(wavStart + 8 + Int(chunkSize), data.count)
         let wavBytes = data.subdata(in: wavStart..<wavEnd)
         guard let samples = Self.wavToFloatSamples(wavBytes) else {
-            throw ASRError.malformedResponse
+            throw ASRError.malformedAudio
         }
 
         let asrResult = try await asr.transcribeFull(samples: samples)
@@ -201,10 +257,24 @@ final class LocalASR {
     /// before kicking off a replacement.
     private var loadTask: Task<Void, Never>?
 
+    /// Monotonically-increasing generation tag. Each `start()` bumps
+    /// it; the in-flight task captures the value at launch and
+    /// compares before mutating state on the MainActor. A `reset()`
+    /// → `start()` cycle while the original load is mid-flight bumps
+    /// the generation; the original task's late completion sees the
+    /// mismatch and skips its mutations, avoiding the
+    /// `isReady=true` over `manager=nil` race the code review
+    /// flagged. `&+=` is wrap-on-overflow which is fine here — we
+    /// only ever check equality with the captured value.
+    private var loadGeneration: UInt64 = 0
+
     // MARK: - WAV decoding
 
     /// Read a 16-bit mono 16 kHz WAV body and return Float32 samples
-    /// in [-1.0, 1.0]. Strips the 44-byte WAV header.
+    /// in [-1.0, 1.0]. Strips the 44-byte WAV header. WAV samples
+    /// are little-endian by spec; we decode via `Int16(littleEndian:)`
+    /// rather than a raw `load` so the byte-order intent is explicit
+    /// (same reasoning as the chunkSize decode in `transcribe`).
     static func wavToFloatSamples(_ data: Data) -> [Float]? {
         guard data.count > 44 else { return nil }
         let pcm = data.dropFirst(44)
@@ -213,7 +283,7 @@ final class LocalASR {
         pcm.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
             let ints = raw.bindMemory(to: Int16.self)
             for i in 0..<count {
-                samples[i] = Float(ints[i]) / 32768.0
+                samples[i] = Float(Int16(littleEndian: ints[i])) / 32768.0
             }
         }
         return samples

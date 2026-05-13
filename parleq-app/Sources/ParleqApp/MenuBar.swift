@@ -209,10 +209,30 @@ final class MenuBar: NSObject {
         refresh()
     }
 
+    /// `LocalASR` calls this when its model load fails after the
+    /// internal one-shot retry. The menu bar then surfaces an at-
+    /// a-glance signal that the user should pick "Reset ASR" once
+    /// they've fixed the underlying problem (typically network).
+    /// Cleared again on the next `setASRReady(true)`.
+    func setASRLoadFailed(_ failed: Bool) {
+        asrLoadFailed = failed
+        refresh()
+    }
+
     private var currentPhase: AppState.Phase = .idle
     private var asrReady: Bool = true
+    private var asrLoadFailed: Bool = false
 
     private func refresh() {
+        if asrLoadFailed {
+            applyInitializingIcon()
+            statusMenuItem.title = "Status: Speech model failed to load"
+            statusItem.button?.toolTip =
+                "Parleq couldn't load the speech model (network, disk, " +
+                "or sandbox issue). Pick “Reset ASR” to retry once " +
+                "the underlying issue is resolved."
+            return
+        }
         if !asrReady {
             applyInitializingIcon()
             statusMenuItem.title = "Status: Initializing speech model…"

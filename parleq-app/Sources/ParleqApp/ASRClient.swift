@@ -25,6 +25,13 @@ import Foundation
 enum ASRError: Error, CustomStringConvertible {
     case badStatus(Int, String)
     case malformedResponse
+    /// The WAV buffer handed to `LocalASR.transcribe(wav:vocabulary:)`
+    /// wasn't a valid RIFF/WAVE file (missing magic, truncated chunk,
+    /// header sample count not satisfying the bytes-per-sample math).
+    /// Distinct from `malformedResponse` (which describes a malformed
+    /// HTTP response from an external `asr.endpoint`) so log lines
+    /// point at the right side of the wire.
+    case malformedAudio
     case ioError(Error)
     /// `LocalASR` was asked to transcribe before its TDT model had
     /// finished loading. Hotkey-driven dictation gates on
@@ -40,6 +47,8 @@ enum ASRError: Error, CustomStringConvertible {
             return "ASR HTTP \(code): \(body)"
         case .malformedResponse:
             return "ASR response not JSON-shaped {\"text\": \"...\"}"
+        case .malformedAudio:
+            return "ASR input not a valid 16 kHz mono 16-bit WAV buffer"
         case .ioError(let underlying):
             return "ASR IO: \(underlying)"
         case .notReady:
@@ -69,12 +78,15 @@ struct VocabularyEntry: Sendable, Equatable, Codable {
     }
 }
 
-// ASRClient is Sendable: after init it holds only a stateless URL,
-// a URLSession, and an optional `LocalASR` reference (which is
-// @MainActor-isolated, so Swift's strict-concurrency analysis
-// treats it as Sendable). The hotkey-up callback hands the client
-// across to a fire-and-forget Task without complaint.
-final class ASRClient: @unchecked Sendable {
+// ASRClient is Sendable: after init it holds only an immutable
+// `URL`, a `URLSession` (Sendable), and an optional `LocalASR`
+// reference. `LocalASR` is `@MainActor`-isolated, which makes it
+// Sendable too — concurrent reads of the property are forced
+// through MainActor and there's no shared mutable state to race
+// on. The hotkey-up callback hands the client across to a fire-
+// and-forget Task; structural Sendable conformance keeps the
+// strict-concurrency analysis happy.
+final class ASRClient: Sendable {
     static let defaultEndpoint = URL(string: "http://127.0.0.1:8767/inference")!
 
     private let endpoint: URL

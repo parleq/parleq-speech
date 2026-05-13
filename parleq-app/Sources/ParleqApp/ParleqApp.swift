@@ -91,10 +91,32 @@ struct ParleqApp {
         // under user pressure (which is what was causing music to
         // briefly pause on the first capture only).
         recorder.prewarm()
-        let asrEndpointURL = URL(string: config.asrEndpoint) ?? ASRClient.defaultEndpoint
-        let useBundledASR = (config.asrEndpoint == Config.bundledASREndpoint)
-        if !useBundledASR {
-            logStderr("[parleq] ASR: using custom endpoint \(asrEndpointURL.absoluteString) (bundled FluidAudio will not be initialized)")
+        // Resolve the ASR endpoint into a (URL, useBundledPath) pair.
+        // Three cases:
+        //   1. asrEndpoint == bundledASREndpoint sentinel → bundled
+        //      in-process path. The URL is unused but we initialize
+        //      it to the sentinel string for log clarity.
+        //   2. asrEndpoint is a valid URL → custom HTTP path against
+        //      whatever the user pointed at.
+        //   3. asrEndpoint is non-default but malformed (someone
+        //      hand-edited `~/.parleq/config.json` to garbage) →
+        //      route to the bundled path with a clear log warning
+        //      instead of POSTing audio to a dead port-8767 fallback
+        //      that nobody listens on post-v0.9.0.
+        let useBundledASR: Bool
+        let asrEndpointURL: URL
+        if config.asrEndpoint == Config.bundledASREndpoint {
+            useBundledASR = true
+            asrEndpointURL = ASRClient.defaultEndpoint
+        } else if let parsed = URL(string: config.asrEndpoint),
+                  parsed.scheme != nil, parsed.host != nil {
+            useBundledASR = false
+            asrEndpointURL = parsed
+            logStderr("[parleq] ASR: using custom endpoint \(parsed.absoluteString) (bundled FluidAudio will not be initialized)")
+        } else {
+            useBundledASR = true
+            asrEndpointURL = ASRClient.defaultEndpoint
+            logStderr("[parleq] ASR: config has an unparseable asr.endpoint (\(config.asrEndpoint)); falling back to bundled in-process FluidAudio")
         }
         // In-process FluidAudio engine. Constructed only when the
         // user is on the bundled path so a custom `asr.endpoint`
@@ -391,7 +413,11 @@ struct ParleqApp {
                         stateBox.value?.notifySystemReady()
                     }
                 }
+                local.onLoadFailedChanged = { failed in
+                    menuBox.value?.setASRLoadFailed(failed)
+                }
                 menuBox.value?.setASRReady(local.isReady)
+                menuBox.value?.setASRLoadFailed(local.loadFailed)
                 menuBox.value?.onResetASR = { [weak local] in
                     local?.reset()
                 }
