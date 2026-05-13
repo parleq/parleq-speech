@@ -96,14 +96,13 @@ final class LocalASR {
         guard !isReady, loadTask == nil else { return }
         loadFailed = false
         let preload = preloadVocab
-        // Bump the generation counter so the in-flight task can
-        // detect that `reset()` has invalidated it and skip its
-        // MainActor state mutations. Tasks are value types so we
-        // can't use `===` for identity — a monotonically-increasing
-        // counter is simpler than boxing the Task. Without this
-        // check a late-completing cancelled load can flip
-        // `isReady = true` over an unloaded model.
-        loadGeneration &+= 1
+        // Capture the generation at task launch. `reset()` bumps the
+        // generation synchronously before its async unload Task is
+        // scheduled, so any prior load task's queued MainActor
+        // continuation that runs after reset() will see a mismatch
+        // and skip its mutations. Tasks are value types so we can't
+        // use `===` for identity — a monotonic counter is simpler
+        // than boxing the Task.
         let myGeneration = loadGeneration
         loadTask = Task { [asr, vocab, weak self] in
             do {
@@ -158,11 +157,21 @@ final class LocalASR {
     /// Drop the loaded models and reload them. Replaces the retired
     /// "Restart Sidecar" recovery path. UI gates capture on
     /// `isReady`, which flips off here and back on after reload.
-    /// Safe to call mid-load: the in-flight task is cancelled and
-    /// its late completion is ignored via the `loadGeneration`
-    /// check in `start()`.
+    ///
+    /// Safe to call mid-load. We bump `loadGeneration` synchronously
+    /// here — not inside the spawned unload task — so any MainActor
+    /// continuation already queued by the in-flight load task sees a
+    /// mismatched generation when it runs. The MainActor's FIFO
+    /// continuation order means a late-completing load that passed
+    /// its `if Task.isCancelled` check before reset() ran will still
+    /// have its `MainActor.run { ... }` block sandwiched between
+    /// `loadGeneration &+= 1` and the spawned unload Task — the
+    /// generation check inside that block then no-ops correctly,
+    /// avoiding the `isReady=true` over `manager=nil` race the prior
+    /// commit (e87b6da) didn't fully close.
     func reset() {
         guard isReady || loadFailed || loadTask != nil else { return }
+        loadGeneration &+= 1
         isReady = false
         loadFailed = false
         loadTask?.cancel()

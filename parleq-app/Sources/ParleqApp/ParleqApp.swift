@@ -109,14 +109,22 @@ struct ParleqApp {
             useBundledASR = true
             asrEndpointURL = ASRClient.defaultEndpoint
         } else if let parsed = URL(string: config.asrEndpoint),
-                  parsed.scheme != nil, parsed.host != nil {
+                  let scheme = parsed.scheme?.lowercased(),
+                  scheme == "http" || scheme == "https",
+                  parsed.host != nil {
             useBundledASR = false
             asrEndpointURL = parsed
             logStderr("[parleq] ASR: using custom endpoint \(parsed.absoluteString) (bundled FluidAudio will not be initialized)")
         } else {
+            // Covers both "URL(string:) returned nil" and "parses but
+            // isn't a usable HTTP/HTTPS endpoint with a host" — both
+            // get the same fallback treatment because the HTTP code
+            // path expects an OpenAI-style /inference server, and a
+            // file:// or scheme-typo URL is no more useful than a
+            // syntactically-broken one.
             useBundledASR = true
             asrEndpointURL = ASRClient.defaultEndpoint
-            logStderr("[parleq] ASR: config has an unparseable asr.endpoint (\(config.asrEndpoint)); falling back to bundled in-process FluidAudio")
+            logStderr("[parleq] ASR: config has an unusable asr.endpoint (\(config.asrEndpoint)); falling back to bundled in-process FluidAudio")
         }
         // In-process FluidAudio engine. Constructed only when the
         // user is on the bundled path so a custom `asr.endpoint`
