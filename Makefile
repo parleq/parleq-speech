@@ -137,6 +137,7 @@ dmg-preview: build
 	@rm -f $(APP_DIR)/build/Parleq-preview.dmg
 	create-dmg \
 		--volname "Parleq (preview)" \
+		--volicon "$(APP_DIR)/Resources/AppIcon.icns" \
 		--window-pos 200 120 \
 		--window-size 640 400 \
 		--icon-size 100 \
@@ -167,6 +168,13 @@ dmg-preview: build
 # symlink on the right, both at y=200 with 100px icons. No custom
 # background image yet — default white. We can swap in a branded
 # PNG later via --background.
+#
+# `--volicon` points create-dmg at the same AppIcon.icns the .app
+# bundle ships, so the mounted volume's Finder icon (the one shown
+# on the desktop) renders as the five-bar Parleq mark instead of
+# the generic disk-image glyph. Reusing AppIcon.icns is the
+# conventional shape for single-app DMGs and keeps us from
+# maintaining a second .icns asset.
 dmg: notarize
 	@command -v create-dmg >/dev/null 2>&1 || { \
 		echo ""; \
@@ -177,6 +185,7 @@ dmg: notarize
 	@rm -f $(APP_DIR)/build/Parleq.dmg
 	create-dmg \
 		--volname "Parleq" \
+		--volicon "$(APP_DIR)/Resources/AppIcon.icns" \
 		--window-pos 200 120 \
 		--window-size 640 400 \
 		--icon-size 100 \
