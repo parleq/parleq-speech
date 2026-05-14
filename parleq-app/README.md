@@ -89,8 +89,10 @@ swift build
 # Speech engine loaded? (Look for "ASR" / "LocalASR" lines.)
 grep -E "LocalASR|ASR" ~/.parleq/app.log | tail -10
 
-# No listening sockets on a running Parleq? (Should print "no LISTEN".)
-lsof -i -nP -p "$(pgrep -n ParleqApp)" | grep LISTEN || echo "no LISTEN"
+# No listening sockets on a running Parleq? (Should print "no LISTEN".
+# The -a flag is required — without it, lsof ORs -i and -p instead
+# of ANDing, dumping every listening socket on the machine.)
+lsof -i -nP -a -p "$(pgrep -n ParleqApp)" | grep LISTEN || echo "no LISTEN"
 
 # Settings file written?
 cat ~/.parleq/config.json | jq

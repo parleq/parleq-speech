@@ -257,7 +257,7 @@ For reviewers who want to verify the claims above against code:
 | Concern | File(s) |
 |---|---|
 | Audio in memory only | `parleq-app/Sources/ParleqApp/AudioRecorder.swift`, `LocalASR.swift`, `ASRClient.swift` |
-| No listening sockets on the default path | `parleq-app/Sources/ParleqApp/LocalASR.swift` (FluidAudio called as a Swift function, not over HTTP); confirm with `lsof -i -nP -p <pid>` on a running Parleq |
+| No listening sockets on the default path | `parleq-app/Sources/ParleqApp/LocalASR.swift` (FluidAudio called as a Swift function, not over HTTP); confirm with `lsof -i -nP -a -p <pid>` on a running Parleq (the `-a` flag is required — without it, lsof ORs the filters instead of ANDing) |
 | Keychain for Gemini key | `parleq-app/Sources/ParleqApp/KeychainStore.swift`, `LLMClient.swift:resolveAPIKey()` |
 | AWS SSO via Soto | `parleq-app/Sources/ParleqApp/BedrockProvider.swift` |
 | Length-only ASR diagnostic | `parleq-app/Sources/ParleqApp/AppState.swift` (search "ASR batch") |
@@ -282,8 +282,11 @@ test ! -f parleq-app/Sources/ParleqApp/SidecarSupervisor.swift && echo "OK: supe
 
 # 2. Confirm no listening sockets are bound by a running Parleq.
 #    (Launch /Applications/Parleq.app first; replace the pgrep target
-#    with `pidof ParleqApp` if pgrep doesn't match.)
-lsof -i -nP -p "$(pgrep -n ParleqApp)" | grep LISTEN || echo "OK: no LISTEN sockets"
+#    with `pidof ParleqApp` if pgrep doesn't match. The -a flag ANDs
+#    the -i and -p filters together — without it, lsof ORs them and
+#    you'll see every listening socket on the machine, not just the
+#    ones owned by Parleq.)
+lsof -i -nP -a -p "$(pgrep -n ParleqApp)" | grep LISTEN || echo "OK: no LISTEN sockets"
 
 # 3. Confirm no /tmp/parleq-*.wav writes (audio in memory).
 grep -rn "/tmp/parleq-" parleq-app/Sources/
