@@ -55,7 +55,7 @@ const sections = [
     items: [
       {
         q: 'What Macs does Parleq work on?',
-        a: `**Apple Silicon (M1 / M2 / M3 / M4) running macOS 14 (Sonoma) or later, required.** The shipping binary is built \`arm64\`-only — Intel Macs can mount the DMG and drag Parleq.app into Applications, but launching it will fail with macOS's "Bad CPU type" error since Rosetta only translates Intel→ARM, not the other way. Latency targets and the local-only speech-recognition pitch both depend on the Apple Neural Engine that Apple Silicon has and Intel Macs don't. Validating the Intel-Mac story more formally — including whether an x86_64 build slice would be worth shipping for users running OpenAI-compatible custom \`asr.endpoint\` servers and skipping the bundled model — is tracked in [issue #1](https://github.com/parleq/parleq-speech/issues/1).`,
+        a: `**Apple Silicon (M1 / M2 / M3 / M4) running macOS 14 (Sonoma) or later, required.** The shipping binary is built \`arm64\`-only — Intel Macs can mount the DMG and drag Parleq.app into Applications, but launching it will fail with macOS's "Bad CPU type" error since Rosetta only translates Intel→ARM, not the other way. Latency targets and the local-only speech-recognition pitch both depend on the Apple Neural Engine that Apple Silicon has and Intel Macs don't. Validating the Intel-Mac story more formally — including whether an x86_64 build slice would be worth shipping for users running OpenAI-compatible custom \`asr.endpoint\` servers and skipping the bundled model — is tracked in <a href="${repoUrl}/issues/1" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">issue #1</a>.`,
       },
       {
         q: 'Can I pick which microphone Parleq uses?',
