@@ -6,6 +6,18 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 (no changes yet)
 
+## [0.9.1] - 2026-05-14
+
+Polish release on top of v0.9.0's in-process consolidation. Two visible improvements; no behavior change to dictation.
+
+### Added
+
+- **Real progress bar in the initialization overlay.** When the user presses the dictation hotkey before the speech model has finished loading, the overlay now shows a linear progress bar with a phase label ("Listing model files…", "Downloading speech model (N of M)…", "Compiling joint-decoder.mlmodelc…") instead of a generic indeterminate spinner. Most users only ever see this on first launch, when the ~150 MB Parakeet TDT v3 download is in flight; on a slow connection the old spinner read as "the app is frozen." The progress bar isn't auto-popped — if the user doesn't try to dictate during init, they don't see this UI at all. Closes [#15](https://github.com/parleq/parleq-speech/issues/15).
+
+### Changed
+
+- **DMG mounts with the Parleq icon.** Passing `--volicon` to `create-dmg` so the mounted volume on the desktop / in the Finder sidebar renders with the five-bar Parleq mark instead of the generic disk-image glyph. Reuses the same `AppIcon.icns` the bundle already ships — no second asset to maintain.
+
 ## [0.9.0] - 2026-05-14
 
 Architectural simplification: FluidAudio now runs in-process, retiring the bundled HTTP sidecar that earlier builds spawned alongside the main app. No user-visible behavior change to dictation; visible UI change is the menu item formerly called "Restart Sidecar" is now "Reset ASR" and gains a clearer load-failure tooltip with a retry hint.
@@ -114,7 +126,8 @@ Press a global hotkey, speak, see post-processed text in a floating overlay, acc
 - **Apple Silicon** (M1 / M2 / M3 / M4) running **macOS 14 (Sonoma) or later**.
 - **Apache-2.0 licensed**. Source at [github.com/parleq/parleq-speech](https://github.com/parleq/parleq-speech).
 
-[Unreleased]: https://github.com/parleq/parleq-speech/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/parleq/parleq-speech/compare/v0.9.1...HEAD
+[0.9.1]: https://github.com/parleq/parleq-speech/releases/tag/v0.9.1
 [0.9.0]: https://github.com/parleq/parleq-speech/releases/tag/v0.9.0
 [0.8.1]: https://github.com/parleq/parleq-speech/releases/tag/v0.8.1
 [0.8.0]: https://github.com/parleq/parleq-speech/releases/tag/v0.8.0

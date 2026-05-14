@@ -1,67 +1,31 @@
-Parleq 0.9.0
+Parleq 0.9.1
 
-Architectural simplification: FluidAudio now runs in-process. Earlier
-builds hosted the speech recognizer in a separate child process
-(`fluidaudio-sidecar`) reached over a local HTTP socket on port 8767;
-this release folds that pipeline into the main app via a new in-process
-`LocalASR` module. For most users this is invisible — dictation works
-the same way it did before — but there are a few user-facing changes
-worth knowing about.
+Polish release on top of v0.9.0's in-process consolidation. Two
+visible improvements; no behavior change to dictation.
+
+### Added
+
+- **Real progress bar in the initialization overlay.** If you press
+  the dictation hotkey before the speech model has finished loading,
+  the overlay now shows a linear progress bar with a phase label
+  ("Downloading speech model (N of M)…", "Compiling joint-decoder.mlmodelc…",
+  etc.) instead of a generic indeterminate spinner. You'll mainly
+  see this on first launch, when the ~150 MB Parakeet TDT v3
+  download is in flight — on a slow connection the old spinner read
+  as "the app is frozen." If you don't try to dictate during init,
+  you won't see this UI at all. Closes #15.
 
 ### Changed
 
-- The menu item formerly called **Restart Sidecar** is now **Reset
-  ASR**. Same recovery affordance: pick it if long sessions get the
-  speech engine into a stuck state, and the model unloads and reloads.
-  In 0.9.0 the unload happens in-process instead of cycling a child
-  process, so it's faster.
-- **Model load failures now have a clearer recovery path.** If the
-  first-run model download fails (network blip, disk full, sandbox
-  issue), Parleq auto-retries once after about 10 seconds. If that
-  also fails, the menu bar surfaces "Speech model failed to load" and
-  points you at "Reset ASR" to try again once the underlying problem
-  is resolved. Pre-0.9.0 the menu just sat at "Initializing speech
-  model…" indefinitely.
-- **No local listening socket on the default ASR path.** Parleq no
-  longer binds 127.0.0.1:8767. If you have firewall rules, port-
-  conflict workarounds, or compliance documentation that referenced
-  the old local server, those references can be removed. If you've
-  configured a custom `asr.endpoint` to point at your own Sherpa-ONNX
-  or faster-whisper server, that path is unchanged — Parleq still
-  POSTs WAV bytes over HTTP exactly the way it did before.
-
-### Internal
-
-- ~900 lines of code removed: the entire `SidecarSupervisor`,
-  health-probe, restart-on-crash, bearer-token-auth, and HTTP-routing
-  machinery. The .app bundle is also smaller and single-binary; the
-  second codesigning pass that notarization required for the embedded
-  sidecar is gone.
-- Hummingbird is dropped as a dependency. FluidAudio is now a direct
-  dependency of the main app target instead of being pulled in via the
-  retired sidecar's own SwiftPM tree.
-- Several sidecar-era environment variables are no longer recognized:
-  `PARLEQ_SIDECAR_TOKEN`, `PARLEQ_SUPERVISOR_PID`,
-  `PARLEQ_VOCAB_PRELOAD`, `FLUIDAUDIO_PORT`. `PARLEQ_VOCAB_TRACE=1`
-  still works for opt-in per-replacement custom-dictionary log detail.
-
-## Compliance posture
-
-The "no local listening socket" change is the strongest version of the
-"audio never leaves the device" promise Parleq makes. Pre-0.9.0 the
-audio buffer transited an authenticated local HTTP socket between two
-halves of the same install; in 0.9.0 it's a Swift `Data` value passed
-to a function call inside the same process. Reviewers checking the
-security posture against `lsof -i -nP -a -p $(pgrep -n ParleqApp)`
-should see zero listening sockets and zero open network connections
-when Parleq is idle. The compliance section of `docs/SECURITY_REVIEW.md`
-has been updated to reflect this — that document is the canonical
-packet for enterprise security review.
+- **DMG mounts with the Parleq icon.** When you download the .dmg
+  and mount it, the volume on the desktop / in the Finder sidebar
+  now renders with the five-bar Parleq mark instead of the generic
+  disk-image glyph.
 
 ## Install
 
 1. Download the .dmg attached to this release.
-2. (Optional) Verify the SHA-256: `shasum -a 256 -c Parleq-0.9.0-<sha>.dmg.sha256`
+2. (Optional) Verify the SHA-256: `shasum -a 256 -c Parleq-0.9.1-<sha>.dmg.sha256`
 3. Open the DMG and drag Parleq.app onto the Applications folder.
 4. Eject the DMG, then launch Parleq from Applications.
 5. On first launch, grant Microphone + Accessibility permissions.
