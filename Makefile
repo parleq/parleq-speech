@@ -343,6 +343,16 @@ release-precheck:
 		echo "       without it, the recipe doesn't know where to put the entry."; \
 		exit 1; \
 	fi; \
+	BRANCH=$$(git symbolic-ref --short HEAD 2>/dev/null || true); \
+	if [ "$$BRANCH" != "main" ] && [ -z "$$PARLEQ_RELEASE_ALLOW_BRANCH" ]; then \
+		echo "ERROR: make release must run from main (currently on '$$BRANCH')."; \
+		echo "       The release recipe commits the appcast entry to the current"; \
+		echo "       branch and `gh release create --target` tags that SHA; off-main"; \
+		echo "       releases tag the wrong branch and the parleq.app website"; \
+		echo "       (which deploys from main) won't show the new version. Set"; \
+		echo "       PARLEQ_RELEASE_ALLOW_BRANCH=1 to override for exceptional cases."; \
+		exit 1; \
+	fi; \
 	UPSTREAM=$$(git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null || true); \
 	if [ -z "$$UPSTREAM" ]; then \
 		echo "ERROR: current branch has no upstream — can't verify it's pushed."; \
@@ -359,7 +369,7 @@ release-precheck:
 		git status --short; \
 		exit 1; \
 	fi; \
-	echo "release-precheck OK (version $$VERSION, upstream $$UPSTREAM)"
+	echo "release-precheck OK (version $$VERSION, branch $$BRANCH, upstream $$UPSTREAM)"
 
 release: release-precheck dmg
 	@set -e; \
@@ -393,12 +403,28 @@ release: release-precheck dmg
 	echo "==> Prepending v$$VERSION <item> to $(APPCAST)..."; \
 	PUBDATE=$$(date -u +"%a, %d %b %Y %H:%M:%S +0000"); \
 	APPCAST_ITEM="        <item>\n            <title>Version $$VERSION</title>\n            <pubDate>$$PUBDATE</pubDate>\n            <sparkle:version>$$BUILD</sparkle:version>\n            <sparkle:shortVersionString>$$VERSION</sparkle:shortVersionString>\n            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>\n            <sparkle:releaseNotesLink>$$RELEASE_NOTES_URL</sparkle:releaseNotesLink>\n            <enclosure\n                url=\"$$DMG_URL\"\n                sparkle:edSignature=\"$$ED_SIGNATURE\"\n                length=\"$$DMG_LENGTH\"\n                type=\"application/octet-stream\" />\n        </item>"; \
-	awk -v item="$$APPCAST_ITEM" '/PARLEQ_APPCAST_INSERT/ { gsub(/\\n/, "\n", item); print item } { print }' "$(APPCAST)" > "$(APPCAST).tmp" && mv "$(APPCAST).tmp" "$(APPCAST)"; \
+	awk -v item="$$APPCAST_ITEM" '{ print } /PARLEQ_APPCAST_INSERT/ { gsub(/\\n/, "\n", item); print item }' "$(APPCAST)" > "$(APPCAST).tmp" && mv "$(APPCAST).tmp" "$(APPCAST)"; \
+	echo "==> Validating $(APPCAST) is well-formed XML..."; \
+	xmllint --noout "$(APPCAST)" 2>&1 || { \
+		echo "ERROR: $(APPCAST) is no longer well-formed XML after the v$$VERSION insertion."; \
+		echo "       Likely cause: a special character in one of the interpolated"; \
+		echo "       fields (VERSION, URL, signature). Revert with:"; \
+		echo "         git checkout -- $(APPCAST)"; \
+		exit 1; \
+	}; \
 	echo ""; \
 	echo "==> Committing + pushing appcast update to main..."; \
+	PRE_COMMIT_SHA=$$(git rev-parse HEAD); \
 	git add "$(APPCAST)"; \
 	git commit -m "release: appcast entry for v$$VERSION"; \
-	git push; \
+	if ! git push; then \
+		echo ""; \
+		echo "ERROR: git push failed. The appcast commit is local-only."; \
+		echo "       To undo it and retry: git reset --hard $$PRE_COMMIT_SHA"; \
+		echo "       (The DMG + signature are already built, so a retry of"; \
+		echo "       make release after fixing the push issue will be fast.)"; \
+		exit 1; \
+	fi; \
 	FULL_SHA=$$(git rev-parse HEAD); \
 	SHA=$$(git rev-parse --short HEAD); \
 	echo ""; \

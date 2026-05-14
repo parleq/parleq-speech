@@ -19,10 +19,11 @@
   existing installs.
 
   Items are inserted by `make release`: see the Makefile's
-  release recipe for the sed insertion against the
+  release recipe for the awk insertion against the
   PARLEQ_APPCAST_INSERT marker below. The newest entry goes
-  immediately above the marker, so the top of the <channel>
-  is always the freshest release.
+  immediately AFTER the marker, so the top of the <channel>
+  is always the freshest release and older entries get pushed
+  downward.
 
   Empty channel ships in 0.10.0 (the release that introduces
   Sparkle). The first <item> gets emitted whenever the next
@@ -36,6 +37,8 @@
         <description>Updates to Parleq, the local-first AI dictation app for macOS.</description>
         <language>en</language>
         <!-- PARLEQ_APPCAST_INSERT — `make release` inserts new <item> blocks
-             on the line immediately above this marker. Don't remove. -->
+             on the line immediately below this marker, so the freshest
+             release lands at the top of the channel and older entries
+             get pushed downward. Don't remove. -->
     </channel>
 </rss>

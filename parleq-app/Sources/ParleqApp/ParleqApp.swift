@@ -319,6 +319,12 @@ struct ParleqApp {
                 userDriverDelegate: nil
             )
             updaterBox.value = updaterController
+            // Make the live updater visible to Settings → Updates so
+            // its toggle reads the real `automaticallyChecksForUpdates`
+            // state rather than an @AppStorage guess. SparkleHolder
+            // is a process-wide write-once shim; ParleqApp.main is
+            // the only writer.
+            SparkleHolder.controller = updaterController
             menuBar.onOpenSettings = { settings.show() }
             menuBar.onOpenWizard = { wizard.show() }
             menuBar.onCheckForUpdates = { [weak updaterController] in

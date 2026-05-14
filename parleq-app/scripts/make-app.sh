@@ -115,20 +115,26 @@ fi
 # Embed Sparkle.framework. SwiftPM's binary-target integration leaves
 # Sparkle.framework in .build/<triple>/<config>/, NOT inside the
 # .app's Contents/Frameworks/ where the runtime expects it — that
-# step is on the integrator. Skip silently if the framework isn't
-# present (e.g. someone running this script against a stale build);
-# the surface error at runtime would be a hard launch crash on
-# `dlopen Sparkle`, which is easier to diagnose than a subtle
-# half-embedded state.
+# step is on the integrator. A missing framework is a hard error,
+# not a warning: the main binary links Sparkle, so a build without
+# the framework produces a guaranteed-crash-on-launch bundle.
+# Failing here is much friendlier than getting a launch-time
+# `dlopen Sparkle` crash from a user.
 SPARKLE_BUILD_DIR=$(swift build -c "$CONFIG" --show-bin-path)
 SPARKLE_SRC="$SPARKLE_BUILD_DIR/Sparkle.framework"
-if [[ -d "$SPARKLE_SRC" ]]; then
-    mkdir -p "$APP_BUNDLE/Contents/Frameworks"
-    cp -R "$SPARKLE_SRC" "$APP_BUNDLE/Contents/Frameworks/Sparkle.framework"
-    echo "    embedded Sparkle.framework: $(du -sh "$APP_BUNDLE/Contents/Frameworks/Sparkle.framework" | awk '{print $1}')"
-else
-    echo "WARNING: Sparkle.framework not found at $SPARKLE_SRC — auto-update will crash on launch" >&2
+if [[ ! -d "$SPARKLE_SRC" ]]; then
+    echo "ERROR: Sparkle.framework not found at $SPARKLE_SRC." >&2
+    echo "       The main executable links Sparkle, so the .app would crash" >&2
+    echo "       on launch without the embedded framework. Try:" >&2
+    echo "         cd $APP_DIR && swift package resolve && swift build -c $CONFIG" >&2
+    echo "       If that doesn't repopulate the framework, clear the artifact" >&2
+    echo "       cache and rebuild:" >&2
+    echo "         rm -rf $APP_DIR/.build/artifacts && swift build -c $CONFIG" >&2
+    exit 1
 fi
+mkdir -p "$APP_BUNDLE/Contents/Frameworks"
+cp -R "$SPARKLE_SRC" "$APP_BUNDLE/Contents/Frameworks/Sparkle.framework"
+echo "    embedded Sparkle.framework: $(du -sh "$APP_BUNDLE/Contents/Frameworks/Sparkle.framework" | awk '{print $1}')"
 
 # Pick a signing identity:
 #   1. Honor PARLEQ_CODESIGN_IDENTITY env var if set (lets the user
@@ -186,12 +192,18 @@ if [[ "$IDENTITY" == "-" ]]; then
     codesign --force --deep --sign "$IDENTITY" "$APP_BUNDLE"
 else
     if [[ -d "$SPARKLE_FW" ]]; then
-        # Sparkle's nested helpers in dependency order.
+        # Sparkle's nested helpers in dependency order. Use the
+        # `Versions/Current` symlink rather than hard-coding
+        # `Versions/B`: a future Sparkle release that bumps to
+        # `Versions/C` (Apple convention when ABI breaks) would
+        # otherwise silently skip every signing step and ship an
+        # unsigned-nested-binary bundle that notarization rejects.
+        SPARKLE_CURRENT="$SPARKLE_FW/Versions/Current"
         for nested in \
-            "$SPARKLE_FW/Versions/B/XPCServices/Downloader.xpc" \
-            "$SPARKLE_FW/Versions/B/XPCServices/Installer.xpc" \
-            "$SPARKLE_FW/Versions/B/Updater.app" \
-            "$SPARKLE_FW/Versions/B/Autoupdate"; do
+            "$SPARKLE_CURRENT/XPCServices/Downloader.xpc" \
+            "$SPARKLE_CURRENT/XPCServices/Installer.xpc" \
+            "$SPARKLE_CURRENT/Updater.app" \
+            "$SPARKLE_CURRENT/Autoupdate"; do
             if [[ -e "$nested" ]]; then
                 codesign --force --sign "$IDENTITY" \
                     --options runtime \
