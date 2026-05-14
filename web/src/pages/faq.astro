@@ -13,7 +13,7 @@ const sections = [
     items: [
       {
         q: 'Does my audio leave my Mac?',
-        a: `No. Speech recognition runs entirely on-device using Apple's Neural Engine — Parleq bundles the Parakeet TDT v3 model (~150 MB, downloaded once on first launch from Hugging Face) and feeds your audio into it via a local HTTP sidecar bound to 127.0.0.1. The model itself never makes outbound network calls; audio bytes never appear in any cloud log, S3 bucket, or vendor analytics pipeline. They live in process memory for the duration of one dictation and disappear when it's done.`,
+        a: `No. Speech recognition runs entirely on-device using Apple's Neural Engine — Parleq bundles the Parakeet TDT v3 model (~150 MB, downloaded once on first launch from Hugging Face) and calls it in-process. There are no listening sockets on the default ASR path; the audio buffer is a Swift value handed directly to the speech model inside the same process, never across a process or network boundary. The model itself never makes outbound network calls; audio bytes never appear in any cloud log, S3 bucket, or vendor analytics pipeline. They live in process memory for the duration of one dictation and disappear when it's done. Reviewers can verify the no-listening-sockets claim with \`lsof -i -nP -a -p $(pgrep -n ParleqApp)\` on a running Parleq.`,
       },
       {
         q: 'What does the cloud cleanup provider see, and what gets logged on my Mac?',
