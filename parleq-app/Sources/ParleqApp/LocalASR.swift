@@ -409,11 +409,20 @@ actor AsrBox {
                 fraction: snapshot.fractionCompleted,
                 phaseLabel: Self.phaseLabel(for: snapshot.phase)
             )
-            // FluidAudio invokes the handler synchronously on whatever
-            // queue is doing the download work. Hop to MainActor so
-            // the SwiftUI overlay's @Published property observes a
-            // serialized stream of updates.
-            Task { @MainActor in progress(adapted) }
+            // FluidAudio invokes the handler synchronously on
+            // whatever queue is doing the download work. We need to
+            // get onto MainActor, and we need ordered delivery —
+            // an `Task { @MainActor in … }` per callback creates
+            // sibling unstructured tasks whose execution order
+            // against each other is not FIFO, so a later snapshot
+            // could land first and the UI would briefly regress its
+            // fraction. `DispatchQueue.main.async` is FIFO from a
+            // single producer thread, which is what FluidAudio gives
+            // us, so progress snapshots arrive on MainActor in the
+            // same order they were emitted.
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated { progress(adapted) }
+            }
         }
         let models = try await AsrModels.downloadAndLoad(
             version: .v3,
@@ -435,8 +444,14 @@ actor AsrBox {
             // FluidAudio reports per-file granularity (not per-byte).
             // Showing "3 of 7" gives the user a meaningful sense of
             // progress without falsely implying we have a byte-level
-            // counter.
-            return "Downloading speech model (\(completed) of \(total))…"
+            // counter. Guard total > 0 against the brief window
+            // before counts settle, where FluidAudio can emit
+            // `.downloading(0, 0)` — "Downloading speech model
+            // (0 of 0)…" reads as a bug to the user.
+            if total > 0 {
+                return "Downloading speech model (\(completed) of \(total))…"
+            }
+            return "Downloading speech model…"
         case .compiling(let modelName):
             return "Compiling \(modelName)…"
         }
