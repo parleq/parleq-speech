@@ -123,8 +123,23 @@ final class OverlayWindow {
     /// Show / update the overlay. Called on every state transition;
     /// the panel may already be visible, in which case we just update
     /// the model.
-    func show(state: OverlayState, text: String) {
-        model.update(state: state, text: text)
+    ///
+    /// `downloadProgress` is only consulted in the `.initializing`
+    /// state; other states ignore it. AppState passes the latest
+    /// `LocalASR.downloadProgress` snapshot so the init overlay can
+    /// render a real progress bar — and `notifyDownloadProgress`
+    /// calls `show(.initializing, …)` again with the same state but
+    /// a new snapshot to live-update while bytes are streaming in.
+    func show(
+        state: OverlayState,
+        text: String,
+        downloadProgress: ASRDownloadProgress? = nil
+    ) {
+        model.update(
+            state: state,
+            text: text,
+            downloadProgress: downloadProgress
+        )
         if !panel.isVisible {
             positionAtScreenBottom()
             panel.orderFrontRegardless()
@@ -245,13 +260,28 @@ private final class OverlayModel: ObservableObject {
     /// utterance so the bars start flat instead of carrying over
     /// the loudness from the previous capture.
     @Published var level: Float = 0
+    /// Latest model-load snapshot to render in the `.initializing`
+    /// state. `nil` means "no progress info yet" (the brief window
+    /// between hotkey press and FluidAudio's first progress
+    /// callback, or after a Reset ASR before the new load starts);
+    /// the view falls back to the indeterminate spinner in that
+    /// case. Cleared whenever the overlay leaves `.initializing`.
+    @Published var downloadProgress: ASRDownloadProgress?
 
-    func update(state: OverlayState, text: String) {
+    func update(
+        state: OverlayState,
+        text: String,
+        downloadProgress: ASRDownloadProgress? = nil
+    ) {
         self.state = state
         self.text = text
         if state != .capturing {
             level = 0
         }
+        // Only the `.initializing` state surfaces progress; clearing
+        // on other states keeps the published value from carrying
+        // stale data into the next show() that might omit it.
+        self.downloadProgress = (state == .initializing) ? downloadProgress : nil
     }
 
     func append(_ chunk: String) {
@@ -307,23 +337,44 @@ private struct OverlayContent: View {
     private var content: some View {
         switch model.state {
         case .initializing:
-            // ProgressView (rather than BlinkingDots) because the
-            // custom dot animation has been observed to render
-            // statically in the initializing state — likely a
+            // Two sub-states:
+            //   - No `downloadProgress` snapshot yet: indeterminate
+            //     spinner + the same generic caption we've shown
+            //     since v0.7. Used in the brief window between the
+            //     hotkey press and FluidAudio's first progress event.
+            //   - Snapshot present: linear ProgressView showing the
+            //     fraction filled, plus the phase label
+            //     ("Downloading speech model (3 of 7)…",
+            //     "Compiling joint-decoder.mlmodelc…", etc.) so the
+            //     user sees real movement instead of staring at a
+            //     spinner for 30–60 s on first launch.
+            //
+            // We still prefer SwiftUI's `ProgressView` over the
+            // custom `BlinkingDots` for the indeterminate case
+            // because the custom dot animation has been observed to
+            // render statically in this state — likely a
             // SwiftUI-in-NSPanel quirk with repeatForever-on-appear.
-            // ProgressView is the standard macOS spinner and always
-            // animates correctly.
             VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 8) {
-                    ProgressView()
-                        .progressViewStyle(.circular)
-                        .controlSize(.small)
-                    Text("Initializing speech model…")
+                if let progress = model.downloadProgress {
+                    Text(progress.phaseLabel)
                         .font(.system(size: 17))
+                    ProgressView(value: max(0, min(1, progress.fraction)))
+                        .progressViewStyle(.linear)
+                    Text("This is a first-time download; subsequent launches are <5 s. The overlay disappears automatically when ready.")
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                } else {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .progressViewStyle(.circular)
+                            .controlSize(.small)
+                        Text("Initializing speech model…")
+                            .font(.system(size: 17))
+                    }
+                    Text("First-time loading takes around 10–20 seconds. The overlay disappears automatically when ready.")
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
                 }
-                Text("First-time loading takes around 10–20 seconds. The overlay disappears automatically when ready.")
-                    .font(.system(size: 12))
-                    .foregroundColor(.secondary)
             }
         case .capturing:
             // While the user is speaking, AudioRecorder pushes the
