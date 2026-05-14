@@ -52,11 +52,14 @@ final class MenuBar: NSObject {
     /// wires this to a SettingsWindowController.show() call so the
     /// menu bar doesn't need to know about the window class directly.
     var onOpenSettings: (() -> Void)?
-    /// Closure invoked when the user picks "Restart Sidecar". Wired
-    /// to SidecarSupervisor.restart() in ParleqApp.main. Useful when
-    /// the FluidAudio Nemotron state-degradation bug (#5) hits and
-    /// long captures stop producing partials.
-    var onRestartSidecar: (() -> Void)?
+    /// Closure invoked when the user picks "Reset ASR". Wired to
+    /// `LocalASR.reset()` in ParleqApp.main — unloads and reloads
+    /// the FluidAudio Parakeet TDT v3 model in-process. Useful when
+    /// long sessions get the speech engine into a degraded state
+    /// (the FluidAudio Nemotron-era issue tracked as #5 in the
+    /// retired sidecar; the in-process consolidation kept the same
+    /// recovery affordance).
+    var onResetASR: (() -> Void)?
     /// Closure invoked when the user picks "Run Setup…". Opens the
     /// SetupWizardController; works regardless of whether the
     /// wizard already ran on first launch (#21 step 6).
@@ -126,12 +129,12 @@ final class MenuBar: NSObject {
         )
         runSetupItem.target = self
 
-        let restartSidecarItem = NSMenuItem(
-            title: "Restart Sidecar",
-            action: #selector(restartSidecar),
+        let resetASRItem = NSMenuItem(
+            title: "Reset ASR",
+            action: #selector(resetASR),
             keyEquivalent: ""
         )
-        restartSidecarItem.target = self
+        resetASRItem.target = self
 
         let aboutItem = NSMenuItem(
             title: "About Parleq",
@@ -155,7 +158,7 @@ final class MenuBar: NSObject {
         menu.addItem(settingsItem)
         menu.addItem(runSetupItem)
         menu.addItem(.separator())
-        menu.addItem(restartSidecarItem)
+        menu.addItem(resetASRItem)
         menu.addItem(recentMenuItem)
         menu.addItem(aboutItem)
         menu.addItem(.separator())
@@ -173,8 +176,8 @@ final class MenuBar: NSObject {
         onOpenWizard?()
     }
 
-    @objc private func restartSidecar() {
-        onRestartSidecar?()
+    @objc private func resetASR() {
+        onResetASR?()
     }
 
     @objc private func showAbout() {
@@ -188,28 +191,49 @@ final class MenuBar: NSObject {
 
     /// AppState calls this on every phase transition. We update the
     /// icon (filled when an utterance is in flight) and the status
-    /// string in the dropdown menu. When the supervisor reports the
-    /// sidecar is not yet ready, setSidecarReady(false) overrides
-    /// the phase-based label until readiness comes back.
+    /// string in the dropdown menu. When `LocalASR` reports the
+    /// speech engine is not yet ready, `setASRReady(false)`
+    /// overrides the phase-based label until readiness comes back.
     func setPhase(_ phase: AppState.Phase) {
         currentPhase = phase
         refresh()
     }
 
-    /// SidecarSupervisor calls this when /health transitions in or
-    /// out of OK. While not ready, the menu bar shows "Initializing…"
-    /// regardless of the underlying phase, since hotkey presses
-    /// during this window deliberately don't start a capture.
-    func setSidecarReady(_ ready: Bool) {
-        sidecarReady = ready
+    /// `LocalASR` calls this when its TDT model finishes loading
+    /// (true) or when `reset()` drops it (false). While not ready
+    /// the menu bar shows "Initializing…" regardless of the
+    /// underlying phase, since hotkey presses during this window
+    /// deliberately don't start a capture.
+    func setASRReady(_ ready: Bool) {
+        asrReady = ready
+        refresh()
+    }
+
+    /// `LocalASR` calls this when its model load fails after the
+    /// internal one-shot retry. The menu bar then surfaces an at-
+    /// a-glance signal that the user should pick "Reset ASR" once
+    /// they've fixed the underlying problem (typically network).
+    /// Cleared again on the next `setASRReady(true)`.
+    func setASRLoadFailed(_ failed: Bool) {
+        asrLoadFailed = failed
         refresh()
     }
 
     private var currentPhase: AppState.Phase = .idle
-    private var sidecarReady: Bool = true
+    private var asrReady: Bool = true
+    private var asrLoadFailed: Bool = false
 
     private func refresh() {
-        if !sidecarReady {
+        if asrLoadFailed {
+            applyInitializingIcon()
+            statusMenuItem.title = "Status: Speech model failed to load"
+            statusItem.button?.toolTip =
+                "Parleq couldn't load the speech model (network, disk, " +
+                "or sandbox issue). Pick “Reset ASR” to retry once " +
+                "the underlying issue is resolved."
+            return
+        }
+        if !asrReady {
             applyInitializingIcon()
             statusMenuItem.title = "Status: Initializing speech model…"
             // First-launch tooltip is the only at-a-glance signal a
@@ -313,9 +337,9 @@ final class MenuBar: NSObject {
         return image
     }
 
-    /// Distinct glyph while the sidecar is still loading the model
-    /// — visually different enough from the idle `mic` that a tester
-    /// glancing at the menu bar can tell the app isn't ready yet,
+    /// Distinct glyph while `LocalASR` is still loading the model —
+    /// visually different enough from the idle bars that a tester
+    /// glancing at the menu bar can tell the app isn't ready yet
     /// without having to click the icon to read the status.
     /// `arrow.down.circle.dotted` reads as "downloading" while
     /// matching the toolbar's monochrome aesthetic.

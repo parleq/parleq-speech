@@ -8,8 +8,7 @@ The user-facing site is at [parleq.app](https://parleq.app).
 
 - **Swift 6** (strict concurrency), **SwiftPM**, **macOS 14+**.
 - **Soto** for AWS Bedrock SigV4 (`SotoBedrockRuntime`); custom `BedrockBearerProvider` for the Bedrock-API-key path that bypasses Soto entirely.
-- **Hummingbird** (HTTP server) for the bundled FluidAudio sidecar.
-- **FluidAudio** for Parakeet TDT v3 + CTC vocabulary boosting on Apple Neural Engine.
+- **FluidAudio** for Parakeet TDT v3 + CTC vocabulary boosting on the Apple Neural Engine. **Runs in-process** (see `LocalASR.swift`); v0.9.0 retired the bundled HTTP sidecar that previously wrapped it.
 - **AVFoundation** for audio capture, **CoreGraphics CGEventTap** for the hotkey listener, **AppKit + SwiftUI** for the overlay, Settings, and Setup Wizard.
 
 ## Build commands
@@ -47,9 +46,8 @@ swift package show-dependencies    # walk the full tree
 When in doubt, leave it alone — Parleq dictation works today on the pinned versions. Drift only happens when someone touches the files. Worth checking after any update:
 
 - **Soto** — AWS service shape changes, eventstream parsing fixes, credential-provider improvements.
-- **FluidAudio** — Parakeet model versions, CTC vocab boosting tweaks, ANE performance.
-- **Hummingbird** — HTTP server used by the sidecar.
-- **swift-nio**, **swift-crypto**, **swift-certificates** — Apple-maintained, security-relevant.
+- **FluidAudio** — Parakeet model versions, CTC vocab boosting tweaks, ANE performance. Now a direct dependency of the main app target (not its retired sidecar package).
+- **swift-nio**, **swift-crypto**, **swift-certificates** — Apple-maintained, security-relevant. Pulled in transitively by Soto.
 
 ## Repository layout
 
@@ -60,8 +58,6 @@ parleq-speech/
 │   ├── Resources/                       ← Info.plist, entitlements
 │   ├── scripts/make-app.sh              ← bundle build + sign
 │   └── README.md                        ← per-module reference
-├── third_party/
-│   └── fluidaudio-sidecar/              ← bundled HTTP server (Swift)
 ├── docs/
 │   ├── SETUP.md                         ← end-user AWS Bedrock setup walkthrough
 │   └── SECURITY_REVIEW.md               ← data flows, trust boundaries, secrets
@@ -79,7 +75,8 @@ parleq-speech/
 | `HotkeyListener.swift` | CGEventTap. Distinguishes left/right modifier keys via device-dependent flag. |
 | `AudioRecorder.swift` | AVAudioEngine → 16 kHz mono int16 → in-memory `Data`. **No filesystem writes.** Honors explicit microphone selection by Core Audio device UID; falls through to the system default + auto-route heuristic when none is set. |
 | `ShellEnvironment.swift` | Builds an augmented PATH for spawned CLI tools (`/opt/homebrew/bin`, `/usr/local/bin`) so launchd-spawned Parleq can find user-installed `gcloud` / `az`. |
-| `ASRClient.swift` | `POST /inference` to the sidecar with WAV bytes + `X-Parleq-Vocabulary` header. |
+| `LocalASR.swift` | In-process FluidAudio batch ASR (Parakeet TDT v3) + CTC vocabulary rescoring. The bundled-path engine `ASRClient` routes to when `asr.endpoint` matches `Config.bundledASREndpoint`. |
+| `ASRClient.swift` | Two-headed: bundled path calls `LocalASR` in-process; HTTP path `POST`s WAV bytes + `X-Parleq-Vocabulary` header to a user-configured external `asr.endpoint` (Sherpa-ONNX, faster-whisper, …). |
 | `LLMProvider.swift` | Provider protocol + shared types (`LLMMessage`, `LLMStreamEvent`, `LLMStreamSummary`). |
 | `LLMClient.swift` + `LLMStreaming.swift` | Google Gemini direct-API impl (SSE streaming). |
 | `VertexProvider.swift` + `VertexServiceAccount.swift` | Google Vertex AI impl. Two auth modes: gcloud ADC (shells out for tokens) and service-account JSON (mints OAuth tokens via JWT-bearer / RS256). |
@@ -89,7 +86,6 @@ parleq-speech/
 | `SystemPrompts.swift` | Cleanup + refine prompts. `cleanup(dictionary:)` returns the prompt with an optional smart-vocabulary addendum. |
 | `OverlayWindow.swift` | Borderless `NSPanel` + SwiftUI. Captures Enter/Esc without stealing focus. |
 | `Paster.swift` | Pasteboard snapshot → set → activate target → simulate Cmd-V → restore. |
-| `SidecarSupervisor.swift` | Fork + supervise the bundled FluidAudio sidecar; warmup probe; PARLEQ_VOCAB_PRELOAD env when dictionary is non-empty. Passes its PID to the sidecar so the sidecar self-terminates on supervisor crash (kqueue NOTE_EXIT watch). |
 | `SettingsWindow.swift` | SwiftUI two-pane Settings. Sidebar with sections (Hotkey, Audio, Behavior, Paste, Cleanup, Dictionary, Usage, Advanced); per-section content cards. Always-center window, brand amber accent. |
 | `SetupWizard.swift` | First-run / re-runnable setup wizard. Step-pill progress indicator at top, per-provider configuration cards, matched palette to Settings. |
 | `MenuBar.swift` | Status-item menu (Microphone submenu, Settings, Run Setup, Open at Login, Recent Dictations, Quit). Microphone submenu rebuilds on open; selection posts `parleqMicrophoneSelectionChanged` so Settings reflects it. |
@@ -104,11 +100,11 @@ parleq-speech/
 These are non-obvious and worth flagging to anyone editing the codebase:
 
 1. **Audio is memory-only end-to-end.** `AudioRecorder.stop()` returns a `Data`. There is no URL-based path. **Do not** add `/tmp/parleq-*.wav` writes or any other audio-on-disk persistence — this is a load-bearing compliance promise.
-2. **Transcript content never lands in stderr / log files.** ASR diagnostic is length-only (`(N chars / W words)`). Sidecar `[vocab]` log is count-only by default; full detail is opt-in via `PARLEQ_VOCAB_TRACE=1` env.
+2. **Transcript content never lands in stderr / log files.** ASR diagnostic is length-only (`(N chars / W words)`). `LocalASR`'s `[vocab]` log is count-only by default; full per-replacement detail is opt-in via `PARLEQ_VOCAB_TRACE=1` env.
 3. **`thinkingConfig.thinkingBudget = 0`** on every Gemini call (`LLMClient.swift`, `LLMStreaming.swift`). Default-on thinking is 2-3× latency, 5-7× cost, no quality gain on cleanup.
 4. **`additionalModelRequestFields = {"reasoning_effort": "low"}`** on every Bedrock `openai.gpt-oss-*` call (`BedrockProvider.swift`). Drops the 220-token hidden reasoning channel to ~30 tokens.
 5. **Fresh stateless LLM call per refinement turn.** No server-side conversation history.
-6. **Audio never leaves the device.** Local FluidAudio sidecar only. Cleanup payloads (transcript text) go to the configured LLM provider; that's the only network boundary input data crosses.
+6. **Audio never leaves the device.** In-process FluidAudio is the only ASR path by default; no local listening socket, no IPC. Cleanup payloads (transcript text) go to the configured LLM provider; that's the only network boundary input data crosses. The optional user-configured `asr.endpoint` (Sherpa-ONNX / faster-whisper running locally) is also a localhost endpoint by convention but the user owns its lifecycle.
 
 ## Active gotchas (will trip new contributors)
 
@@ -117,7 +113,7 @@ These are non-obvious and worth flagging to anyone editing the codebase:
 - **Bedrock model access is per-region.** Same account can have GPT-OSS enabled in `us-east-2` and Claude Haiku enabled in `us-east-1` only. The `us.*` cross-region inference profile prefix doesn't change this.
 - **Azure routes by deployment name, not model name.** Parleq's Settings has a Model family picker (Standard vs Reasoning) instead of a model name field — that picker drives request-shape branching (`max_tokens` vs `max_completion_tokens`), since Parleq can't infer the family from the user-chosen deployment name.
 - **Restart-required settings** show an orange banner with a "Restart Now" button. Settings the runtime reads at launch (provider, model, region, profile, hotkey, audio routing) need a relaunch; settings re-read per-utterance (custom dictionary) don't.
-- **Sidecar is a separate Swift package** at `third_party/fluidaudio-sidecar/`. It builds independently. Changes to the wire protocol (`/inference` request shape, the `X-Parleq-Vocabulary` header) need coordinated edits in both places.
+- **`asr.endpoint`'s default value is a magic sentinel, not a real URL.** The string `http://127.0.0.1:8767/inference` was the retired sidecar's listen address and is kept verbatim so config files written by 0.7.x / 0.8.x builds keep working — but in 0.9.0+ matching this exact value triggers the in-process `LocalASR` path. Any other value routes through `ASRClient`'s HTTP code (Sherpa-ONNX, faster-whisper, etc.).
 - **Window centering bug class.** Setting `setContentSize(...)` BEFORE `center()` matters: SwiftUI hosts measure async, so calling `center()` before the content size is set centers a tiny default frame, after which SwiftUI grows the window from its bottom-left origin into the upper-right of the screen.
 
 ## Configuration shape
@@ -149,10 +145,8 @@ Schema is documented in source comments at the top of `Config.swift`. The Settin
 |---|---|
 | `GEMINI_API_KEY` | Google AI key for Gemini provider. Resolved at app launch; Keychain takes precedence in Settings UI. |
 | `AWS_PROFILE` / `AWS_REGION` | Fallbacks when Settings AWS profile/region are empty. Won't work for Finder launches (sparse launchd env). |
-| `PARLEQ_VOCAB_PRELOAD=1` | Set automatically by `SidecarSupervisor` when dictionary is non-empty — eager-loads the CTC vocab encoder at startup. |
-| `PARLEQ_VOCAB_TRACE=1` | Opt-in: restores per-replacement detail in the sidecar log. Off by default for compliance. |
+| `PARLEQ_VOCAB_TRACE=1` | Opt-in: restores per-replacement detail in the `LocalASR` `[vocab]` log lines (`replaced 'X' → 'Y' [reason]`). Off by default for compliance. |
 | `PARLEQ_BEDROCK_TRACE=1` | Opt-in: enables Soto's debug logger to stderr. Off by default. |
-| `PARLEQ_SUPERVISOR_PID` | Set by the supervisor on the sidecar process so the sidecar can arm a kqueue NOTE_EXIT watch and self-terminate when Parleq exits. |
 
 ## Commit conventions
 

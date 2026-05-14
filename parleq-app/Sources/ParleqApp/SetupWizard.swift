@@ -16,11 +16,11 @@
 // in two clicks.
 //
 // Important non-goals:
-//   - We do NOT block on STT model download. The sidecar takes
-//     care of downloading on first /inference request; the menu
-//     bar icon already surfaces "Initializing speech model…" via
-//     #11. The wizard mentions the download is happening but
-//     doesn't drive it explicitly.
+//   - We do NOT block on STT model download. `LocalASR.start()`
+//     kicks off the Parakeet TDT v3 download in the background at
+//     app launch; the menu-bar icon surfaces "Initializing speech
+//     model…" until it lands. The wizard mentions the download is
+//     happening but doesn't drive it explicitly.
 //   - We do NOT capture all of Settings. The wizard sets the
 //     handful of fields needed to make cleanup work; everything
 //     else (custom dictionary, hotkey binding, audio routing) is

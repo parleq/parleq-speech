@@ -102,12 +102,13 @@ final class AppState {
     private let noTrailingSpaceAppBundleIDs: Set<String>
 
     /// Predicate the app uses to gate hotkey-triggered captures on
-    /// sidecar readiness. Default returns true so unit tests and
-    /// dev paths work without wiring; ParleqApp.main replaces this
-    /// with a closure that reads SidecarSupervisor.isReady. When
-    /// false at hotkey-down time, we surface an "Initializing…"
-    /// overlay instead of starting a capture against a not-yet-warm
-    /// sidecar.
+    /// speech-engine readiness. Default returns true so unit tests
+    /// and dev paths work without wiring; ParleqApp.main replaces
+    /// this with a closure that reads `LocalASR.isReady` (or
+    /// constant-true when a custom external `asr.endpoint` is
+    /// configured). When false at hotkey-down time we surface an
+    /// "Initializing…" overlay instead of starting a capture
+    /// against an unloaded model.
     var isSystemReady: () -> Bool = { true }
     /// Pending refine timer. When the user taps the hotkey while
     /// the overlay is in awaitingAccept, the natural read is
@@ -125,11 +126,11 @@ final class AppState {
     private var initializingOverlayShowing = false
     /// One-shot guard so the audio-engine warmup capture in
     /// notifySystemReady() runs at most once per app launch — even
-    /// if the supervisor cycles isReady (e.g. sidecar restart). The
-    /// goal is to pay the cold-start cost once before the user's
-    /// first dictation; on a sidecar restart the audio engine has
-    /// already warmed once, so re-warming would just be a redundant
-    /// mic-indicator flash.
+    /// if `LocalASR` cycles `isReady` (e.g. user invoked "Reset
+    /// ASR" from the menu). The goal is to pay the audio cold-
+    /// start cost once before the user's first dictation; on a
+    /// reset the audio engine has already warmed once, so re-
+    /// warming would just be a redundant mic-indicator flash.
     private var audioWarmupAttempted = false
 
     init(
@@ -170,9 +171,9 @@ final class AppState {
 
     /// Hotkey was pressed (key-down). Behavior depends on current
     /// phase and the double-tap flag from the listener:
-    ///   - sidecar not ready: show the "Initializing…" overlay so
-    ///     the user has a clear "wait" signal instead of a black-
-    ///     hole capture against a not-yet-warm model.
+    ///   - speech engine not ready: show the "Initializing…"
+    ///     overlay so the user has a clear "wait" signal instead of
+    ///     a black-hole capture against an unloaded model.
     ///   - from IDLE + isDoubleTapHold: quick mode (paste directly,
     ///     no overlay).
     ///   - from IDLE: normal mode (overlay flow).
@@ -233,8 +234,8 @@ final class AppState {
         }
     }
 
-    /// Called by the supervisor when the sidecar finishes warming up
-    /// and isReady becomes true. If the user is currently looking at
+    /// Called by `LocalASR` when its TDT model finishes loading and
+    /// `isReady` flips true. If the user is currently looking at
     /// the "Initializing…" overlay, dismiss it — without this it
     /// stays on screen even though hotkey presses now work
     /// normally, which is what the user reported as "the overlay
@@ -244,9 +245,9 @@ final class AppState {
     /// audio engine's cold-start cost is paid here instead of
     /// stealing the first ~100 ms of the user's first dictation. We
     /// gate on the audio recorder being idle (phase == .idle) — if
-    /// the user happened to press the hotkey during sidecar warmup
-    /// and we're already mid-capture, skip; their press already
-    /// paid the cold-start tax once and the next press will be hot.
+    /// the user happened to press the hotkey during model load and
+    /// we're already mid-capture, skip; their press already paid
+    /// the cold-start tax once and the next press will be hot.
     func notifySystemReady() {
         if initializingOverlayShowing {
             initializingOverlayShowing = false
@@ -531,10 +532,10 @@ final class AppState {
                 // STT pass to avoid CTC false positives (issue #15).
                 // For each ASR-included entry we send the canonical
                 // term plus its aliases as a structured pair (issue
-                // #14): the sidecar passes the aliases into
-                // FluidAudio's CustomVocabularyTerm.aliases, which
-                // makes the rescorer emit the canonical spelling
-                // whenever any alias matches. The LLM cleanup pass
+                // #14): the aliases flow into FluidAudio's
+                // CustomVocabularyTerm.aliases, which makes the
+                // rescorer emit the canonical spelling whenever any
+                // alias matches. The LLM cleanup pass
                 // below still receives the full dictionary, including
                 // `.llmOnly` entries — the smart-vocab hint operates
                 // on every entry regardless of mode.

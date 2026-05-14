@@ -66,9 +66,6 @@ enum LogFile {
             return
         }
         // Make every subsequent write to fd 2 land in the file.
-        // The supervised sidecar's stderr is a different file
-        // descriptor (set by `Process.standardError`), so this
-        // doesn't affect the sidecar's own logging path.
         if dup2(fd, fileno(stderr)) < 0 {
             FileHandle.standardError.write(
                 "[parleq] log: dup2 failed (errno \(errno))\n"

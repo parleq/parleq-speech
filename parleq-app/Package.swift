@@ -27,12 +27,21 @@ let package = Package(
         // `swift package update`. See CLAUDE.md for the periodic-
         // upgrade policy.
         .package(url: "https://github.com/soto-project/soto.git", "7.14.0"..<"7.15.0"),
+        // FluidAudio — on-device speech recognition (Parakeet TDT v3
+        // on the Apple Neural Engine) plus CTC vocabulary boosting.
+        // Previously isolated in a bundled HTTP sidecar; folded into
+        // the main app in v0.9.0 to drop the local listening socket,
+        // simplify supervision, and shed the Hummingbird dependency.
+        // Same 0.14.x pin the retired sidecar used so first-run model
+        // downloads land on a known-good FluidAudio revision.
+        .package(url: "https://github.com/FluidInference/FluidAudio.git", "0.14.3"..<"0.15.0"),
     ],
     targets: [
         .executableTarget(
             name: "ParleqApp",
             dependencies: [
                 .product(name: "SotoBedrockRuntime", package: "soto"),
+                .product(name: "FluidAudio", package: "FluidAudio"),
             ],
             path: "Sources/ParleqApp"
         ),

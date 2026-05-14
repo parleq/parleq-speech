@@ -1,13 +1,14 @@
 // AudioRecorder — captures microphone audio between start() and stop()
-// and writes it as a 16-bit mono 16 kHz WAV file.
+// and returns it as a 16-bit mono 16 kHz WAV `Data` buffer.
 //
 // AVAudioEngine's input node delivers audio at the hardware's native
 // sample rate and channel count (typically 44.1 / 48 kHz, 1 or 2
-// channels) in Float32. The FluidAudio sidecar's /inference endpoint
-// expects 16-bit signed LE mono at 16 kHz. We use AVAudioConverter
-// to downsample / channel-mix / requantize each buffer in-line, then
-// accumulate the resulting int16 samples until stop(), where we
-// write a single .wav file with a standard 44-byte header.
+// channels) in Float32. `LocalASR` (and any user-configured external
+// `/inference` server) expects 16-bit signed LE mono at 16 kHz. We
+// use AVAudioConverter to downsample / channel-mix / requantize each
+// buffer in-line, then accumulate the resulting int16 samples until
+// stop(), where we wrap them in a standard 44-byte WAV header and
+// hand the in-memory `Data` to the caller.
 //
 // Real-time pacing for streaming ASR isn't relevant in M1 — we're
 // using batch /inference. M4 introduces the streaming client; the
@@ -52,8 +53,10 @@ final class AudioRecorder {
     /// When set, every captured-and-resampled int16 PCM chunk is
     /// also pushed to this callback in addition to being buffered
     /// for the WAV write at stop(). Used by the streaming ASR path
-    /// (StreamingASRSession) to forward chunks to the sidecar in
-    /// real time. Set to nil for batch-only mode.
+    /// (`StreamingASRSession`) to forward chunks to a streaming
+    /// server (a user-configured external `asr.endpoint` that
+    /// supports SSE partials — the bundled in-process path doesn't
+    /// stream). Set to nil for batch-only mode.
     var chunkHandler: (@Sendable (Data) -> Void)?
 
     /// When set, every audio buffer's normalized RMS level (0…1, after
@@ -89,8 +92,10 @@ final class AudioRecorder {
     var explicitInputDeviceUID: String = ""
 
     init() {
-        // 16 kHz mono int16 LE — matches what /inference expects
-        // after the sidecar strips the 44-byte WAV header.
+        // 16 kHz mono int16 LE — matches what `LocalASR` expects
+        // after stripping the 44-byte WAV header (and what any
+        // OpenAI-compatible `/inference` server expects on the
+        // user-configured external-endpoint path).
         outputFormat = AVAudioFormat(
             commonFormat: .pcmFormatInt16,
             sampleRate: AudioRecorder.targetSampleRate,
@@ -125,8 +130,9 @@ final class AudioRecorder {
     /// real capture isn't a 90 ms first-buffer-only stub.
     ///
     /// Synchronous on purpose: the only safe moment to call this is
-    /// right after sidecar warmup, when the app has just become
-    /// ready and the user has nothing to interact with yet. Blocking
+    /// right after `LocalASR` flips ready, when the app has just
+    /// become ready and the user has nothing to interact with yet.
+    /// Blocking
     /// MainActor here avoids the ugly race where a hotkey press
     /// arrives mid-warmup and calls start() on an engine that's
     /// already in a brief-test cycle. The orange mic indicator

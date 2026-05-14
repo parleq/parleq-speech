@@ -17,11 +17,6 @@ struct ParleqApp {
     static func main() {
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
-        // App delegate's only job today is to terminate the bundled
-        // sidecar child process when the user quits Parleq, so the
-        // sidecar doesn't survive as an orphan holding port 8767.
-        let appDelegate = ParleqAppDelegate()
-        app.delegate = appDelegate
 
         // Install a minimal NSApp.mainMenu (App + Edit submenus). The
         // menu bar isn't drawn for an LSUIElement app, but AppKit's
@@ -36,12 +31,11 @@ struct ParleqApp {
 
         // Signal handlers for SIGTERM and SIGINT. These cover the
         // cases where an external process (kill, system shutdown,
-        // logout) tries to terminate Parleq — AppKit's
-        // applicationWillTerminate hook does NOT fire on raw signals,
-        // so without this the sidecar would be orphaned and hold port
-        // 8767 across launches. The handler converts the signal into
-        // NSApp.terminate(nil), which goes through the normal
-        // delegate path and stops the supervisor.
+        // logout) tries to terminate Parleq. Default SIGTERM
+        // handling would rip the process down without giving AppKit
+        // a chance to tear down windows or in-flight LLM streams a
+        // chance to cancel. Routing through `NSApp.terminate(nil)`
+        // takes the same path the menu-bar Quit item uses.
         for sig in [SIGTERM, SIGINT] {
             signal(sig) { _ in
                 // signal handlers run on a non-main thread; route the
@@ -97,23 +91,57 @@ struct ParleqApp {
         // under user pressure (which is what was causing music to
         // briefly pause on the first capture only).
         recorder.prewarm()
-        let asrEndpointURL = URL(string: config.asrEndpoint) ?? ASRClient.defaultEndpoint
-        if config.asrEndpoint != Config.bundledASREndpoint {
-            logStderr("[parleq] ASR: using custom endpoint \(asrEndpointURL.absoluteString) (bundled sidecar will not be launched)")
+        // Resolve the ASR endpoint into a (URL, useBundledPath) pair.
+        // Three cases:
+        //   1. asrEndpoint == bundledASREndpoint sentinel → bundled
+        //      in-process path. The URL is unused but we initialize
+        //      it to the sentinel string for log clarity.
+        //   2. asrEndpoint is a valid URL → custom HTTP path against
+        //      whatever the user pointed at.
+        //   3. asrEndpoint is non-default but malformed (someone
+        //      hand-edited `~/.parleq/config.json` to garbage) →
+        //      route to the bundled path with a clear log warning
+        //      instead of POSTing audio to a dead port-8767 fallback
+        //      that nobody listens on post-v0.9.0.
+        let useBundledASR: Bool
+        let asrEndpointURL: URL
+        if config.asrEndpoint == Config.bundledASREndpoint {
+            useBundledASR = true
+            asrEndpointURL = ASRClient.defaultEndpoint
+        } else if let parsed = URL(string: config.asrEndpoint),
+                  let scheme = parsed.scheme?.lowercased(),
+                  scheme == "http" || scheme == "https",
+                  parsed.host != nil {
+            useBundledASR = false
+            asrEndpointURL = parsed
+            logStderr("[parleq] ASR: using custom endpoint \(parsed.absoluteString) (bundled FluidAudio will not be initialized)")
+        } else {
+            // Covers both "URL(string:) returned nil" and "parses but
+            // isn't a usable HTTP/HTTPS endpoint with a host" — both
+            // get the same fallback treatment because the HTTP code
+            // path expects an OpenAI-style /inference server, and a
+            // file:// or scheme-typo URL is no more useful than a
+            // syntactically-broken one.
+            useBundledASR = true
+            asrEndpointURL = ASRClient.defaultEndpoint
+            logStderr("[parleq] ASR: config has an unusable asr.endpoint (\(config.asrEndpoint)); falling back to bundled in-process FluidAudio")
         }
-        // Construct the supervisor early — we need its randomly-
-        // generated bearer token NOW so we can hand it to ASRClient.
-        // The supervisor's actual .start() happens later in this
-        // function, after the rest of the app is wired up.
-        let supervisor = SidecarSupervisor()
-        supervisor.manageBundledSidecar = (config.asrEndpoint == Config.bundledASREndpoint)
-        // Token only flows on the bundled-sidecar path. External
-        // ASR endpoints (custom asr.endpoint pointing at a user-
-        // managed Sherpa-ONNX or faster-whisper server) don't share
-        // our auth secret; the user manages their own server's
-        // access control.
-        let bearerToken: String? = supervisor.manageBundledSidecar ? supervisor.sidecarToken : nil
-        let asr = ASRClient(endpoint: asrEndpointURL, bearerToken: bearerToken)
+        // In-process FluidAudio engine. Constructed only when the
+        // user is on the bundled path so a custom `asr.endpoint`
+        // configuration doesn't pay the ~1.5 GB resident cost of an
+        // unused model load. `local.start()` is called below from
+        // MainActor context.
+        let local: LocalASR?
+        if useBundledASR {
+            let engine = MainActor.assumeIsolated { LocalASR() }
+            MainActor.assumeIsolated {
+                engine.preloadVocab = !config.customDictionary.isEmpty
+            }
+            local = engine
+        } else {
+            local = nil
+        }
+        let asr = ASRClient(endpoint: asrEndpointURL, local: local)
         // LLM cleanup is best-effort. If GEMINI_API_KEY isn't
         // available or any call fails, AppState falls back to
         // pasting the raw ASR transcript. The app must keep working
@@ -373,51 +401,43 @@ struct ParleqApp {
             exit(1)
         }
 
-        // Launch + supervise the bundled FluidAudio sidecar. Inside a
-        // .app bundle the sidecar binary lives at
-        //   Parleq.app/Contents/Resources/sidecar/fluidaudio-sidecar
-        // and the supervisor takes care of restart-on-crash. In dev
-        // mode (swift run, no .app bundle) it's a no-op and the user
-        // is expected to have started a sidecar manually.
-        // (`supervisor` was constructed earlier so ASRClient could
-        // capture its bearer token.)
+        // Kick off in-process FluidAudio model download + load (or
+        // skip everything when the user has chosen a custom
+        // `asr.endpoint`). The user's first dictation gates on
+        // `isReady`; until it flips true, hotkey presses surface the
+        // "Initializing…" overlay instead of starting a black-hole
+        // capture against an unloaded model.
         MainActor.assumeIsolated {
-            // Wire supervisor readiness → AppState gating + menu-bar
-            // label. While the sidecar is starting up (or restarting
-            // after a crash), hotkey presses surface the
-            // "Initializing…" overlay instead of starting a black-
-            // hole capture against a not-yet-warm model.
-            stateBox.value?.isSystemReady = { [weak supervisor] in
-                supervisor?.isReady ?? false
-            }
-            supervisor.onReadyChanged = { ready in
-                menuBox.value?.setSidecarReady(ready)
-                if ready {
-                    // Hide the "Initializing…" overlay if the user
-                    // pressed the hotkey during the warmup window.
-                    stateBox.value?.notifySystemReady()
+            if let local {
+                stateBox.value?.isSystemReady = { [weak local] in
+                    local?.isReady ?? false
                 }
-            }
-            menuBox.value?.setSidecarReady(supervisor.isReady)
-            menuBox.value?.onRestartSidecar = { [weak supervisor] in
-                supervisor?.restart()
-            }
-            supervisor.start()
-            appDelegate.sidecarSupervisor = supervisor
-        }
-
-        // Background health probe — separate from the supervisor's
-        // "is anything listening?" startup check. This one runs
-        // ~10s after launch (the sidecar's CoreML model load time)
-        // and prints a friendly message either way, so the user
-        // sees "sidecar reachable" or actionable startup
-        // instructions at a known point.
-        Task {
-            try? await Task.sleep(nanoseconds: 10_000_000_000)
-            if await !SidecarHealth.isHealthy() {
-                logStderr(SidecarHealth.startupInstructions)
+                local.onReadyChanged = { ready in
+                    menuBox.value?.setASRReady(ready)
+                    if ready {
+                        // Hide the "Initializing…" overlay if the
+                        // user pressed the hotkey during the load
+                        // window.
+                        stateBox.value?.notifySystemReady()
+                    }
+                }
+                local.onLoadFailedChanged = { failed in
+                    menuBox.value?.setASRLoadFailed(failed)
+                }
+                menuBox.value?.setASRReady(local.isReady)
+                menuBox.value?.setASRLoadFailed(local.loadFailed)
+                menuBox.value?.onResetASR = { [weak local] in
+                    local?.reset()
+                }
+                local.start()
             } else {
-                logStderr("[parleq] FluidAudio sidecar reachable (http://127.0.0.1:8767/health)")
+                // Custom asr.endpoint: user owns their external
+                // server's lifecycle. Mark ready immediately so the
+                // hotkey isn't gated; if the server isn't reachable,
+                // ASR calls will fail with a connection error that
+                // shows in the log.
+                stateBox.value?.isSystemReady = { true }
+                menuBox.value?.setASRReady(true)
             }
         }
 
@@ -475,19 +495,6 @@ private final class WizardBox: @unchecked Sendable {
 // route through.
 private final class RecorderBox: @unchecked Sendable {
     var value: AudioRecorder?
-}
-
-// ParleqAppDelegate exists solely to clean up the bundled sidecar
-// child process when the user quits Parleq. Without it, the sidecar
-// would survive parent death and hold port 8767, breaking the next
-// launch with a confusing "address already in use" failure.
-@MainActor
-private final class ParleqAppDelegate: NSObject, NSApplicationDelegate {
-    var sidecarSupervisor: SidecarSupervisor?
-
-    func applicationWillTerminate(_ notification: Notification) {
-        sidecarSupervisor?.stop()
-    }
 }
 
 private func logStderr(_ message: String) {

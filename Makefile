@@ -15,9 +15,9 @@
 #   make build CODESIGN_IDENTITY="Developer ID Application: My Name (XXXX)"
 #   make build CODESIGN_IDENTITY=-      # force ad-hoc
 #
-# Note: the FluidAudio sidecar (Nemotron streaming ASR HTTP server) is
-# still started manually. M5.2 will bundle it inside Parleq.app and
-# supervise it as a child process.
+# FluidAudio (Parakeet TDT v3 on the Apple Neural Engine) runs
+# in-process — no sidecar binary to build, supervise, or sign
+# separately. See LocalASR.swift for the in-process consolidation.
 
 APP_DIR           := parleq-app
 APP_BUNDLE        := $(APP_DIR)/build/Parleq.app
