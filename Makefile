@@ -332,6 +332,14 @@ release-precheck:
 		echo "       Override SPARKLE_SIGN_UPDATE if you've extracted it elsewhere."; \
 		exit 1; \
 	fi; \
+	if ! command -v xmllint >/dev/null 2>&1; then \
+		echo "ERROR: xmllint not found on PATH (used to validate the appcast"; \
+		echo "       after the release recipe inserts a new <item>). xmllint ships"; \
+		echo "       with macOS — if it's missing, the Command Line Tools may be"; \
+		echo "       misconfigured. Try:"; \
+		echo "         xcode-select --install"; \
+		exit 1; \
+	fi; \
 	if [ ! -f "$(APPCAST)" ]; then \
 		echo "ERROR: $(APPCAST) not found. The release flow needs the appcast skeleton"; \
 		echo "       to exist before it can insert a new <item>."; \
@@ -347,7 +355,7 @@ release-precheck:
 	if [ "$$BRANCH" != "main" ] && [ -z "$$PARLEQ_RELEASE_ALLOW_BRANCH" ]; then \
 		echo "ERROR: make release must run from main (currently on '$$BRANCH')."; \
 		echo "       The release recipe commits the appcast entry to the current"; \
-		echo "       branch and `gh release create --target` tags that SHA; off-main"; \
+		echo "       branch and 'gh release create --target' tags that SHA; off-main"; \
 		echo "       releases tag the wrong branch and the parleq.app website"; \
 		echo "       (which deploys from main) won't show the new version. Set"; \
 		echo "       PARLEQ_RELEASE_ALLOW_BRANCH=1 to override for exceptional cases."; \

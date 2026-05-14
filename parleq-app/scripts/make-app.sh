@@ -199,18 +199,32 @@ else
         # otherwise silently skip every signing step and ship an
         # unsigned-nested-binary bundle that notarization rejects.
         SPARKLE_CURRENT="$SPARKLE_FW/Versions/Current"
+        if [[ ! -L "$SPARKLE_FW/Versions/Current" ]]; then
+            echo "ERROR: $SPARKLE_FW/Versions/Current is not a symlink." >&2
+            echo "       Sparkle's framework layout is unexpected — the signing" >&2
+            echo "       loop below relies on Versions/Current pointing at the" >&2
+            echo "       active version directory. Has Sparkle changed its layout?" >&2
+            exit 1
+        fi
         for nested in \
             "$SPARKLE_CURRENT/XPCServices/Downloader.xpc" \
             "$SPARKLE_CURRENT/XPCServices/Installer.xpc" \
             "$SPARKLE_CURRENT/Updater.app" \
             "$SPARKLE_CURRENT/Autoupdate"; do
-            if [[ -e "$nested" ]]; then
-                codesign --force --sign "$IDENTITY" \
-                    --options runtime \
-                    --timestamp \
-                    --preserve-metadata=entitlements \
-                    "$nested"
+            if [[ ! -e "$nested" ]]; then
+                echo "ERROR: missing nested Sparkle helper at $nested." >&2
+                echo "       The framework layout is unexpected — all four nested" >&2
+                echo "       binaries (Downloader.xpc, Installer.xpc, Updater.app," >&2
+                echo "       Autoupdate) need to be signed with the Developer ID" >&2
+                echo "       identity or notarization will reject the bundle. Has" >&2
+                echo "       Sparkle dropped or renamed one of them?" >&2
+                exit 1
             fi
+            codesign --force --sign "$IDENTITY" \
+                --options runtime \
+                --timestamp \
+                --preserve-metadata=entitlements \
+                "$nested"
         done
         # Outer framework. No --preserve-metadata here; the framework
         # bundle itself doesn't carry entitlements.

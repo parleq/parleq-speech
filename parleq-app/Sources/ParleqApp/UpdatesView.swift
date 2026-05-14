@@ -93,6 +93,19 @@ struct UpdatesSectionContent: View {
     /// (ParleqApp.main writes the holder before any window opens)
     /// but the defensive fallback keeps the view harmless even if
     /// someone changes launch ordering later.
+    ///
+    /// Reactive only to writes through this binding. Sparkle's own
+    /// "do you want auto-updates?" first-launch prompt writes to
+    /// `automaticallyChecksForUpdates` from outside SwiftUI's
+    /// observation graph; if the user opens Settings → Updates,
+    /// then dismisses Sparkle's prompt, the toggle won't pick up
+    /// the prompt's answer until the next view redraw (close +
+    /// reopen Settings, or any other state change). Living with
+    /// this rather than wiring a KVO observer because the only
+    /// realistic concurrent writer is that first-launch prompt and
+    /// the only consequence is a brief out-of-date display, not a
+    /// wrong-behavior bug — the next check still respects whatever
+    /// is in UserDefaults at check time.
     private func automaticChecksBinding() -> Binding<Bool> {
         Binding(
             get: {
