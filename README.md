@@ -13,6 +13,8 @@ Press a global hotkey, speak, see post-processed text appear in a floating overl
 
 > **Status:** in active personal use. The bundled Mac path (FluidAudio Parakeet TDT v3 on the Apple Neural Engine for ASR + your choice of Gemini, Vertex AI, AWS Bedrock, or Azure OpenAI for cleanup) works end-to-end.
 
+> **Requirements:** macOS 14 (Sonoma) or later on **Apple Silicon** (M1 / M2 / M3 / M4). The binary is built `arm64`-only; Intel Macs can mount the DMG but won't be able to launch the app. Validating Intel-Mac behavior more formally is tracked in [#1](https://github.com/parleq/parleq-speech/issues/1).
+
 **Website:** <https://parleq.app> — landing page with an end-user-friendly download path. Source under [`web/`](web/), deployed by GitHub Actions on every push to `main`.
 
 ## What's distinctive
