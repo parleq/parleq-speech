@@ -37,6 +37,14 @@ extension Notification.Name {
     /// controller through SettingsModel just for one click handler.
     static let parleqRunSetupAgain = Notification.Name("ParleqRunSetupAgain")
 
+    /// Posted by Settings → Updates → "Check for Updates Now" and by
+    /// the menu-bar "Check for Updates…" item. ParleqApp's main-actor
+    /// block subscribes and forwards to the retained Sparkle
+    /// `SPUStandardUpdaterController.checkForUpdates(_:)`. Same
+    /// decoupling rationale as `parleqRunSetupAgain` — the Settings
+    /// UI doesn't need a reference to the updater controller.
+    static let parleqCheckForUpdates = Notification.Name("ParleqCheckForUpdates")
+
     /// Posted whenever the user changes their microphone selection
     /// from any UI surface (today: the menu-bar Microphone submenu
     /// and Settings → Audio). userInfo carries `["uid": String]` —

@@ -652,7 +652,7 @@ struct SettingsView: View {
     /// detail-pane view (`hotkeySection`, `audioSection`, …) and
     /// carries a label + SF Symbol for the sidebar List.
     private enum SettingsSection: String, Hashable, CaseIterable, Identifiable {
-        case hotkey, audio, behavior, paste, cleanup, dictionary, usage, permissions, advanced
+        case hotkey, audio, behavior, paste, cleanup, dictionary, usage, permissions, updates, advanced
         var id: String { rawValue }
         var label: String {
             switch self {
@@ -664,6 +664,7 @@ struct SettingsView: View {
             case .dictionary:  return "Dictionary"
             case .usage:       return "Usage"
             case .permissions: return "Permissions"
+            case .updates:     return "Updates"
             case .advanced:    return "Advanced"
             }
         }
@@ -677,6 +678,7 @@ struct SettingsView: View {
             case .dictionary:  return "character.book.closed"
             case .usage:       return "chart.bar"
             case .permissions: return "lock.shield"
+            case .updates:     return "arrow.down.circle"
             case .advanced:    return "gearshape.2"
             }
         }
@@ -820,6 +822,7 @@ struct SettingsView: View {
                 case .dictionary:  dictionarySection
                 case .usage:       usageSection
                 case .permissions: permissionsSection
+                case .updates:     updatesSection
                 case .advanced:    advancedSection
                 }
             }
@@ -1276,6 +1279,11 @@ struct SettingsView: View {
     }
 
     @ViewBuilder
+    private var updatesSection: some View {
+        UpdatesSectionContent()
+    }
+
+    @ViewBuilder
     private var advancedSection: some View {
         SettingsCard {
             VStack(alignment: .leading, spacing: 10) {
@@ -1346,7 +1354,10 @@ struct SettingsCard<Content: View>: View {
 /// Secondary explanatory text used below a control in a
 /// `SettingsCard`. Slightly looser leading and softer color than
 /// .secondary on its own — easier to read in long captions.
-private struct SettingsCaption: View {
+/// Internal (not private) so detail-pane content views split out
+/// of this file (e.g. `UpdatesSectionContent` in UpdatesView.swift)
+/// can reuse the same styling.
+struct SettingsCaption: View {
     let text: String
     init(_ text: String) { self.text = text }
 

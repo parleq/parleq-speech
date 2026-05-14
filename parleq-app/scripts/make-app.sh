@@ -109,9 +109,26 @@ fi
 # FluidAudio runs in-process now (see LocalASR.swift). Previously
 # this stage built a separate `fluidaudio-sidecar` binary, copied it
 # to Contents/Resources/sidecar/, and signed it independently. The
-# in-process consolidation drops the second SwiftPM build, the
-# Resources/sidecar directory, and the nested codesigning pass — the
-# bundle is now a single signed executable.
+# in-process consolidation drops the second SwiftPM build and the
+# Resources/sidecar directory.
+
+# Embed Sparkle.framework. SwiftPM's binary-target integration leaves
+# Sparkle.framework in .build/<triple>/<config>/, NOT inside the
+# .app's Contents/Frameworks/ where the runtime expects it — that
+# step is on the integrator. Skip silently if the framework isn't
+# present (e.g. someone running this script against a stale build);
+# the surface error at runtime would be a hard launch crash on
+# `dlopen Sparkle`, which is easier to diagnose than a subtle
+# half-embedded state.
+SPARKLE_BUILD_DIR=$(swift build -c "$CONFIG" --show-bin-path)
+SPARKLE_SRC="$SPARKLE_BUILD_DIR/Sparkle.framework"
+if [[ -d "$SPARKLE_SRC" ]]; then
+    mkdir -p "$APP_BUNDLE/Contents/Frameworks"
+    cp -R "$SPARKLE_SRC" "$APP_BUNDLE/Contents/Frameworks/Sparkle.framework"
+    echo "    embedded Sparkle.framework: $(du -sh "$APP_BUNDLE/Contents/Frameworks/Sparkle.framework" | awk '{print $1}')"
+else
+    echo "WARNING: Sparkle.framework not found at $SPARKLE_SRC — auto-update will crash on launch" >&2
+fi
 
 # Pick a signing identity:
 #   1. Honor PARLEQ_CODESIGN_IDENTITY env var if set (lets the user
@@ -146,18 +163,52 @@ if [[ -z "$IDENTITY" ]]; then
 else
     echo "==> codesign --sign \"$IDENTITY\""
 fi
-# Single signing pass on the bundle. Previously this stage signed a
-# nested sidecar binary first (Apple's notarization rejects --deep'd
-# nested binaries), then the outer bundle. With FluidAudio folded
-# into the main executable there's nothing nested to sign — one call
-# covers everything.
+# Sign innermost-first: Sparkle.framework's nested helpers, then
+# Sparkle.framework, then the outer .app bundle. Apple's notarization
+# rejects --deep'd nested binaries because --deep doesn't reliably
+# propagate --options runtime + --timestamp into them — every nested
+# binary gets its own codesign call, each with --options runtime and
+# --timestamp.
+#
+# The nested helpers (Updater.app, the two .xpc services, Autoupdate)
+# come pre-signed by the Sparkle project, but Apple's notary requires
+# every binary in the eventual .app tree to be signed by the SAME
+# Developer ID. `--force` replaces Sparkle's signature; we keep their
+# original entitlements via `--preserve-metadata=entitlements`
+# because those helpers need specific XPC client/service rights that
+# our app's entitlements file doesn't grant.
 ENTITLEMENTS_FILE="$APP_DIR/Resources/Parleq.entitlements"
+SPARKLE_FW="$APP_BUNDLE/Contents/Frameworks/Sparkle.framework"
 if [[ "$IDENTITY" == "-" ]]; then
     # Ad-hoc: keep --deep, no Hardened Runtime — there's no path to
     # notarization from ad-hoc anyway and the simpler form keeps
     # local dev easy.
     codesign --force --deep --sign "$IDENTITY" "$APP_BUNDLE"
 else
+    if [[ -d "$SPARKLE_FW" ]]; then
+        # Sparkle's nested helpers in dependency order.
+        for nested in \
+            "$SPARKLE_FW/Versions/B/XPCServices/Downloader.xpc" \
+            "$SPARKLE_FW/Versions/B/XPCServices/Installer.xpc" \
+            "$SPARKLE_FW/Versions/B/Updater.app" \
+            "$SPARKLE_FW/Versions/B/Autoupdate"; do
+            if [[ -e "$nested" ]]; then
+                codesign --force --sign "$IDENTITY" \
+                    --options runtime \
+                    --timestamp \
+                    --preserve-metadata=entitlements \
+                    "$nested"
+            fi
+        done
+        # Outer framework. No --preserve-metadata here; the framework
+        # bundle itself doesn't carry entitlements.
+        codesign --force --sign "$IDENTITY" \
+            --options runtime \
+            --timestamp \
+            "$SPARKLE_FW"
+    fi
+    # Outer .app bundle. No --deep; the nested signatures above
+    # remain intact.
     codesign --force --sign "$IDENTITY" \
         --options runtime \
         --entitlements "$ENTITLEMENTS_FILE" \

@@ -4,7 +4,9 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
-(no changes yet)
+### Added
+
+- **Auto-updates via Sparkle.** Parleq now checks `parleq.app/appcast.xml` on launch + every 24 hours and prompts you when a newer release is available — the same well-known "an update is available" UX Bear, Transmit, Sketch, and many other Mac apps use. Each release is signed with an Ed25519 key whose public half ships inside every build; Sparkle refuses any update whose enclosure signature doesn't verify, so a downstream attacker who tampered with the appcast or the .dmg can't push an arbitrary binary to existing installs. Two user-facing controls: a new **Settings → Updates** pane with an "Automatically check for updates" toggle + a "Check for Updates Now" button, and a **"Check for Updates…"** item in the menu-bar dropdown. See `docs/SECURITY_REVIEW.md` §7a for the full posture (private-key custody, what gets sent on update checks, failure modes).
 
 ## [0.9.1] - 2026-05-14
 

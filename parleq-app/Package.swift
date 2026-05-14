@@ -35,6 +35,16 @@ let package = Package(
         // Same 0.14.x pin the retired sidecar used so first-run model
         // downloads land on a known-good FluidAudio revision.
         .package(url: "https://github.com/FluidInference/FluidAudio.git", "0.14.3"..<"0.15.0"),
+        // Sparkle — auto-update framework. Checks an EdDSA-signed
+        // appcast.xml on parleq.app for newer releases and runs the
+        // user-prompted download/install/relaunch flow. Used by
+        // thousands of Mac apps; covered in SECURITY_REVIEW.md
+        // §"Auto-update" for the new network egress + signature-
+        // verification posture. The corresponding public Ed25519
+        // key is in Info.plist's `SUPublicEDKey`; the private key
+        // lives in the maintainer's macOS Keychain (and a password-
+        // manager backup) and never enters the repository.
+        .package(url: "https://github.com/sparkle-project/Sparkle.git", "2.9.0"..<"2.10.0"),
     ],
     targets: [
         .executableTarget(
@@ -42,6 +52,7 @@ let package = Package(
             dependencies: [
                 .product(name: "SotoBedrockRuntime", package: "soto"),
                 .product(name: "FluidAudio", package: "FluidAudio"),
+                .product(name: "Sparkle", package: "Sparkle"),
             ],
             path: "Sources/ParleqApp"
         ),

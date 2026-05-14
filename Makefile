@@ -31,12 +31,21 @@ SOURCE_INFO_PLIST := $(APP_DIR)/Resources/Info.plist
 # first line against SOURCE_INFO_PLIST's CFBundleShortVersionString
 # before doing anything destructive.
 RELEASE_NOTES     := RELEASE_NOTES.txt
+APPCAST           := web/public/appcast.xml
 INSTALL_DEST      := /Applications/Parleq.app
 CODESIGN_IDENTITY :=
 # Keychain profile name for `xcrun notarytool`. Created once via
 # `xcrun notarytool store-credentials` (see `make help` output for
 # the full command). Override to use a different profile.
 NOTARY_PROFILE    := parleq-notarize
+# Sparkle's sign_update tool. Generates the Ed25519 signature each
+# released .dmg gets recorded against in the appcast. Loads the
+# private key from the maintainer's macOS Keychain (where
+# generate_keys placed it). Override SPARKLE_SIGN_UPDATE for a
+# different install path (e.g. a colleague's machine that extracted
+# the Sparkle tarball somewhere else):
+#   make release SPARKLE_SIGN_UPDATE=/opt/sparkle/bin/sign_update
+SPARKLE_SIGN_UPDATE := $(HOME)/Tools/sparkle/bin/sign_update
 
 .DEFAULT_GOAL := help
 .PHONY: help build build-debug install run clean notarize dmg dmg-preview release release-precheck set-version show-version
@@ -248,12 +257,19 @@ dmg: notarize
 #      starts with "Parleq $VERSION" (anchored — "Parleq 0.8.1" alone
 #      does not satisfy a 0.8.10 release) so the release notes can't
 #      drift out of sync with the version being shipped.
-#   2. Current branch has an upstream and its local HEAD is an
+#   2. Sparkle's `sign_update` tool exists at $(SPARKLE_SIGN_UPDATE).
+#      Without it the release recipe couldn't emit an EdDSA-signed
+#      appcast entry; better to bail before paying the DMG build cost.
+#   3. $(APPCAST) exists and contains the PARLEQ_APPCAST_INSERT
+#      sentinel marker. The release recipe inserts new <item> blocks
+#      immediately above that marker, so removing it would leave the
+#      flow with nowhere deterministic to inject the entry.
+#   4. Current branch has an upstream and its local HEAD is an
 #      ancestor of (or equal to) origin/<branch>. gh release create's
 #      --target uses the local SHA, which must exist server-side;
 #      failing here is much friendlier than getting a 404 from gh
 #      halfway through.
-#   3. Working tree is clean. A surprise dirty file in the release
+#   5. Working tree is clean. A surprise dirty file in the release
 #      build is almost always a mistake; bail rather than ship it.
 #
 # After pre-checks succeed:
@@ -263,13 +279,23 @@ dmg: notarize
 #     and keeping the rest verbatim. The augmented first line carries
 #     the build-time provenance (sha + UTC date) that the source file
 #     doesn't carry on its own.
+#   - Run Sparkle's `sign_update` against the DMG to produce the
+#     Ed25519 signature + byte-length the appcast <enclosure> needs.
+#     The private key lives in the maintainer's Keychain; macOS may
+#     pop a one-time access prompt on first invocation (click
+#     "Always Allow" to skip it on subsequent runs).
+#   - Insert a new <item> at the top of $(APPCAST), commit + push to
+#     main, and refresh FULL_SHA. The release tag then points at the
+#     just-pushed commit containing the matching appcast entry — so
+#     installed Parleq builds checking the appcast will always find
+#     the .dmg the appcast describes.
 #   - Run `gh release create` directly with the DMG + .sha256 attached
 #     and --target=$SHA so the release tag points at the exact local
 #     commit (handy when you cut a release pre-merge from a branch).
 #   - Dispatch deploy-pages.yml from main so the website rebuilds and
-#     picks up the new release listing. Bypasses the github-pages
-#     environment protection rule that rejects release-event-triggered
-#     runs from tag refs.
+#     picks up both the new release listing and the freshly-prepended
+#     appcast entry. Bypasses the github-pages environment protection
+#     rule that rejects release-event-triggered runs from tag refs.
 #
 # Both recipes run under `set -e` so any single failing command
 # aborts the chain and propagates a non-zero exit to make. This
@@ -297,6 +323,26 @@ release-precheck:
 		echo "       Update $(RELEASE_NOTES) for the new version before running make release."; \
 		exit 1; \
 	fi; \
+	if [ ! -x "$(SPARKLE_SIGN_UPDATE)" ]; then \
+		echo "ERROR: Sparkle's sign_update tool not found at $(SPARKLE_SIGN_UPDATE)."; \
+		echo "       Download the Sparkle release tarball from"; \
+		echo "       https://github.com/sparkle-project/Sparkle/releases, extract to"; \
+		echo "       ~/Tools/sparkle/, and strip the quarantine xattr:"; \
+		echo "         xattr -dr com.apple.quarantine ~/Tools/sparkle/"; \
+		echo "       Override SPARKLE_SIGN_UPDATE if you've extracted it elsewhere."; \
+		exit 1; \
+	fi; \
+	if [ ! -f "$(APPCAST)" ]; then \
+		echo "ERROR: $(APPCAST) not found. The release flow needs the appcast skeleton"; \
+		echo "       to exist before it can insert a new <item>."; \
+		exit 1; \
+	fi; \
+	if ! grep -q "PARLEQ_APPCAST_INSERT" "$(APPCAST)"; then \
+		echo "ERROR: $(APPCAST) is missing the PARLEQ_APPCAST_INSERT sentinel marker."; \
+		echo "       The release recipe inserts new <item> blocks above that marker;"; \
+		echo "       without it, the recipe doesn't know where to put the entry."; \
+		exit 1; \
+	fi; \
 	UPSTREAM=$$(git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null || true); \
 	if [ -z "$$UPSTREAM" ]; then \
 		echo "ERROR: current branch has no upstream — can't verify it's pushed."; \
@@ -319,10 +365,12 @@ release: release-precheck dmg
 	@set -e; \
 	VERSION=$$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" \
 		"$(SOURCE_INFO_PLIST)" 2>/dev/null || echo "0.0.0"); \
+	BUILD=$$(git rev-list --count HEAD); \
 	SHA=$$(git rev-parse --short HEAD); \
-	FULL_SHA=$$(git rev-parse HEAD); \
 	OUT="$(APP_DIR)/build/release"; \
 	NAME="Parleq-$$VERSION-$$SHA.dmg"; \
+	DMG_URL="https://github.com/parleq/parleq-speech/releases/download/v$$VERSION/$$NAME"; \
+	RELEASE_NOTES_URL="https://github.com/parleq/parleq-speech/releases/tag/v$$VERSION"; \
 	mkdir -p "$$OUT"; \
 	rm -f "$$OUT"/Parleq-*.dmg "$$OUT"/Parleq-*.dmg.sha256 "$$OUT"/RELEASE_NOTES.txt; \
 	cp "$(APP_DIR)/build/Parleq.dmg" "$$OUT/$$NAME"; \
@@ -331,6 +379,28 @@ release: release-precheck dmg
 		echo "Parleq $$VERSION ($$SHA) — $$(date -u +%Y-%m-%d)"; \
 		tail -n +2 "$(RELEASE_NOTES)"; \
 	} > "$$OUT/RELEASE_NOTES.txt"; \
+	echo ""; \
+	echo "==> Signing DMG with Sparkle Ed25519 key ($(SPARKLE_SIGN_UPDATE))..."; \
+	SIGN_OUTPUT=$$("$(SPARKLE_SIGN_UPDATE)" "$$OUT/$$NAME"); \
+	echo "    $$SIGN_OUTPUT"; \
+	ED_SIGNATURE=$$(echo "$$SIGN_OUTPUT" | sed -n 's/.*sparkle:edSignature="\([^"]*\)".*/\1/p'); \
+	DMG_LENGTH=$$(echo "$$SIGN_OUTPUT" | sed -n 's/.*length="\([^"]*\)".*/\1/p'); \
+	if [ -z "$$ED_SIGNATURE" ] || [ -z "$$DMG_LENGTH" ]; then \
+		echo "ERROR: failed to parse sign_update output; got: $$SIGN_OUTPUT"; \
+		exit 1; \
+	fi; \
+	echo ""; \
+	echo "==> Prepending v$$VERSION <item> to $(APPCAST)..."; \
+	PUBDATE=$$(date -u +"%a, %d %b %Y %H:%M:%S +0000"); \
+	APPCAST_ITEM="        <item>\n            <title>Version $$VERSION</title>\n            <pubDate>$$PUBDATE</pubDate>\n            <sparkle:version>$$BUILD</sparkle:version>\n            <sparkle:shortVersionString>$$VERSION</sparkle:shortVersionString>\n            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>\n            <sparkle:releaseNotesLink>$$RELEASE_NOTES_URL</sparkle:releaseNotesLink>\n            <enclosure\n                url=\"$$DMG_URL\"\n                sparkle:edSignature=\"$$ED_SIGNATURE\"\n                length=\"$$DMG_LENGTH\"\n                type=\"application/octet-stream\" />\n        </item>"; \
+	awk -v item="$$APPCAST_ITEM" '/PARLEQ_APPCAST_INSERT/ { gsub(/\\n/, "\n", item); print item } { print }' "$(APPCAST)" > "$(APPCAST).tmp" && mv "$(APPCAST).tmp" "$(APPCAST)"; \
+	echo ""; \
+	echo "==> Committing + pushing appcast update to main..."; \
+	git add "$(APPCAST)"; \
+	git commit -m "release: appcast entry for v$$VERSION"; \
+	git push; \
+	FULL_SHA=$$(git rev-parse HEAD); \
+	SHA=$$(git rev-parse --short HEAD); \
 	echo ""; \
 	echo "Release artifacts ready in $$OUT/:"; \
 	ls -lh "$$OUT/$$NAME" "$$OUT/$$NAME.sha256" "$$OUT/RELEASE_NOTES.txt" | awk '{print "  " $$NF " (" $$5 ")"}'; \
@@ -347,6 +417,7 @@ release: release-precheck dmg
 	echo ""; \
 	echo "Done."; \
 	echo "  Release:  https://github.com/parleq/parleq-speech/releases/tag/v$$VERSION"; \
+	echo "  Appcast:  https://parleq.app/appcast.xml (live after deploy-pages runs)"; \
 	echo "  Workflow: https://github.com/parleq/parleq-speech/actions/workflows/deploy-pages.yml"
 
 # Show the current marketing version + projected build number.
