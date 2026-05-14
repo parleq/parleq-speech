@@ -4,10 +4,17 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+(no changes yet)
+
+## [0.9.0] - 2026-05-14
+
+Architectural simplification: FluidAudio now runs in-process, retiring the bundled HTTP sidecar that earlier builds spawned alongside the main app. No user-visible behavior change to dictation; visible UI change is the menu item formerly called "Restart Sidecar" is now "Reset ASR" and gains a clearer load-failure tooltip with a retry hint.
+
 ### Changed
 
 - **FluidAudio runs in-process; the bundled HTTP sidecar is gone.** Earlier builds (≤ v0.8.x) hosted the speech recognizer in a separate `fluidaudio-sidecar` Swift package, supervised as a child process and reached over `127.0.0.1:8767` with bearer-token auth. v0.9.0 folds that pipeline into the main app target via a new `LocalASR` module. Wins: no listening sockets on the default ASR path (stronger compliance posture — "no local server" beats "local server with bearer auth"), single signed binary in the bundle, Hummingbird is dropped as a dependency, the app and the speech engine share fate (an ASR crash takes the app down loudly instead of leaving the menu bar alive but black-holed). The menu's **Restart Sidecar** item is now **Reset ASR** — same recovery affordance, but it unloads + reloads the FluidAudio model in-process instead of cycling a child process.
 - **`asr.endpoint`'s default value is now a sentinel, not a URL.** The string `http://127.0.0.1:8767/inference` is kept verbatim for back-compat with config files written by 0.7.x / 0.8.x builds — but in 0.9.0+ matching it triggers the in-process `LocalASR` path. Any other value continues to route through `ASRClient`'s HTTP code so existing Sherpa-ONNX / faster-whisper / custom-server users keep working without a config change.
+- **Model load failures are now recoverable from the menu.** If the first-run download fails (network blip, disk full, sandbox denial), `LocalASR` auto-retries once after ~10 s; if that also fails, the menu bar surfaces "Speech model failed to load" with a tooltip pointing the user at "Reset ASR" to retry. The retired sidecar's exponential-backoff restarts didn't surface this clearly.
 
 ### Removed
 
@@ -107,7 +114,8 @@ Press a global hotkey, speak, see post-processed text in a floating overlay, acc
 - **Apple Silicon** (M1 / M2 / M3 / M4) running **macOS 14 (Sonoma) or later**.
 - **Apache-2.0 licensed**. Source at [github.com/parleq/parleq-speech](https://github.com/parleq/parleq-speech).
 
-[Unreleased]: https://github.com/parleq/parleq-speech/compare/v0.8.1...HEAD
+[Unreleased]: https://github.com/parleq/parleq-speech/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/parleq/parleq-speech/releases/tag/v0.9.0
 [0.8.1]: https://github.com/parleq/parleq-speech/releases/tag/v0.8.1
 [0.8.0]: https://github.com/parleq/parleq-speech/releases/tag/v0.8.0
 [0.7.0]: https://github.com/parleq/parleq-speech/releases/tag/v0.7.0
