@@ -424,8 +424,12 @@ struct ParleqApp {
                 local.onLoadFailedChanged = { failed in
                     menuBox.value?.setASRLoadFailed(failed)
                 }
+                local.onProgressChanged = { progress in
+                    stateBox.value?.notifyDownloadProgress(progress)
+                }
                 menuBox.value?.setASRReady(local.isReady)
                 menuBox.value?.setASRLoadFailed(local.loadFailed)
+                stateBox.value?.notifyDownloadProgress(local.downloadProgress)
                 menuBox.value?.onResetASR = { [weak local] in
                     local?.reset()
                 }

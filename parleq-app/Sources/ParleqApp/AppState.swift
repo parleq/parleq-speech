@@ -133,6 +133,15 @@ final class AppState {
     /// warming would just be a redundant mic-indicator flash.
     private var audioWarmupAttempted = false
 
+    /// Latest model-load progress snapshot from `LocalASR`. ParleqApp
+    /// wires `LocalASR.onProgressChanged` to call
+    /// `notifyDownloadProgress(_:)` whenever FluidAudio reports a new
+    /// fraction / phase. Cached here so the init overlay can render a
+    /// real progress bar the instant the user presses the hotkey
+    /// during a download, rather than waiting for the next progress
+    /// event to arrive.
+    private var latestDownloadProgress: ASRDownloadProgress?
+
     init(
         recorder: AudioRecorder,
         asr: ASRClient,
@@ -186,7 +195,11 @@ final class AppState {
     func hotkeyDown(isDoubleTapHold: Bool = false) {
         if !isSystemReady() {
             initializingOverlayShowing = true
-            overlay.show(state: .initializing, text: "")
+            overlay.show(
+                state: .initializing,
+                text: "",
+                downloadProgress: latestDownloadProgress
+            )
             return
         }
         // System is ready. If the init overlay was up, drop the flag
@@ -256,6 +269,22 @@ final class AppState {
         guard !audioWarmupAttempted, phase == .idle else { return }
         audioWarmupAttempted = true
         recorder.warmupCapture()
+    }
+
+    /// Called by ParleqApp.main from `LocalASR.onProgressChanged`
+    /// whenever FluidAudio emits a new progress snapshot. Caches the
+    /// latest value so the next `hotkeyDown` during init can render
+    /// a populated progress bar immediately, and live-updates the
+    /// init overlay when one is already on screen.
+    func notifyDownloadProgress(_ progress: ASRDownloadProgress?) {
+        latestDownloadProgress = progress
+        if initializingOverlayShowing {
+            overlay.show(
+                state: .initializing,
+                text: "",
+                downloadProgress: progress
+            )
+        }
     }
 
     private func schedulePendingRefine() {

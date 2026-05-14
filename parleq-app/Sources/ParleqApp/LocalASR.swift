@@ -45,6 +45,27 @@
 import FluidAudio
 import Foundation
 
+/// Parleq-side snapshot of the in-progress FluidAudio model load.
+/// Mirrors `DownloadUtils.DownloadProgress` but kept as our own
+/// type so UI code (the overlay, future menu-bar tooltip work)
+/// doesn't have to import the FluidAudio module just to read a
+/// fraction-complete value. `Equatable` so `LocalASR.downloadProgress`
+/// can suppress redundant didSet callbacks when FluidAudio re-emits
+/// the same snapshot (which it does — the progress stream isn't
+/// strictly monotonic, especially around phase transitions).
+struct ASRDownloadProgress: Sendable, Equatable {
+    /// Overall completion fraction in [0, 1]. May regress at phase
+    /// transitions (FluidAudio resets the fraction when moving from
+    /// listing → downloading → compiling). The overlay clamps it for
+    /// display.
+    let fraction: Double
+    /// Human-readable label for the current phase. Already includes
+    /// any per-phase detail FluidAudio carries (e.g. "Downloading
+    /// speech model (3 of 7)…" or "Compiling joint-decoder.mlmodelc…")
+    /// so the UI can render it as-is without further branching.
+    let phaseLabel: String
+}
+
 @MainActor
 final class LocalASR {
     /// True once the TDT model has finished loading. Hotkey presses
@@ -79,6 +100,29 @@ final class LocalASR {
     /// distinct from the (transient) "Initializing…" state.
     var onLoadFailedChanged: (@MainActor (Bool) -> Void)?
 
+    /// Latest progress snapshot from the in-flight TDT model
+    /// download / compile. `nil` when no load is running (idle, or
+    /// already-loaded steady state). Set by the FluidAudio progress
+    /// handler that `start()` plumbs through to
+    /// `AsrModels.downloadAndLoad(progressHandler:)`. The overlay
+    /// reads the latest snapshot when surfacing the
+    /// "Initializing speech model…" UI in response to a hotkey
+    /// press during model load.
+    private(set) var downloadProgress: ASRDownloadProgress? {
+        didSet {
+            if oldValue != downloadProgress {
+                onProgressChanged?(downloadProgress)
+            }
+        }
+    }
+
+    /// Fires on every `downloadProgress` change. The overlay listens
+    /// for this so the progress bar shown during a "user pressed
+    /// hotkey before init finished" event re-renders as new bytes
+    /// arrive, rather than freezing at whatever fraction it captured
+    /// at first show.
+    var onProgressChanged: (@MainActor (ASRDownloadProgress?) -> Void)?
+
     /// When true, the CTC vocabulary-boosting models are downloaded
     /// and loaded eagerly alongside the TDT model so the first
     /// dictation with custom dictionary entries doesn't pay the
@@ -95,6 +139,7 @@ final class LocalASR {
     func start() {
         guard !isReady, loadTask == nil else { return }
         loadFailed = false
+        downloadProgress = nil
         let preload = preloadVocab
         // Capture the generation at task launch. `reset()` bumps the
         // generation synchronously before its async unload Task is
@@ -104,9 +149,18 @@ final class LocalASR {
         // use `===` for identity — a monotonic counter is simpler
         // than boxing the Task.
         let myGeneration = loadGeneration
+        // Forward progress updates from FluidAudio's `progressHandler`
+        // (called on an unspecified queue) to MainActor. The
+        // generation check inside the MainActor hop is the same
+        // guard the success/failure paths use — a late-completing
+        // cancelled load shouldn't shove stale progress at the UI.
+        let progressSink: @Sendable @MainActor (ASRDownloadProgress) -> Void = { [weak self] snapshot in
+            guard let self, self.loadGeneration == myGeneration else { return }
+            self.downloadProgress = snapshot
+        }
         loadTask = Task { [asr, vocab, weak self] in
             do {
-                try await asr.loadModels()
+                try await asr.loadModels(progress: progressSink)
             } catch {
                 if Task.isCancelled { return }
                 logStderr("[parleq] LocalASR: model load failed: \(error)")
@@ -120,7 +174,7 @@ final class LocalASR {
                 try? await Task.sleep(nanoseconds: 10_000_000_000)
                 if Task.isCancelled { return }
                 do {
-                    try await asr.loadModels()
+                    try await asr.loadModels(progress: progressSink)
                 } catch {
                     if Task.isCancelled { return }
                     logStderr("[parleq] LocalASR: model load retry failed: \(error). Use the menu's “Reset ASR” item to try again once the underlying issue is resolved.")
@@ -128,6 +182,7 @@ final class LocalASR {
                         guard let self, self.loadGeneration == myGeneration else { return }
                         self.loadFailed = true
                         self.loadTask = nil
+                        self.downloadProgress = nil
                     }
                     return
                 }
@@ -137,6 +192,7 @@ final class LocalASR {
                 guard let self, self.loadGeneration == myGeneration else { return }
                 self.isReady = true
                 self.loadTask = nil
+                self.downloadProgress = nil
             }
             if preload {
                 // Detached so the TDT-ready signal isn't gated on the
@@ -174,6 +230,7 @@ final class LocalASR {
         loadGeneration &+= 1
         isReady = false
         loadFailed = false
+        downloadProgress = nil
         loadTask?.cancel()
         loadTask = nil
         Task { [asr, vocab, weak self] in
@@ -336,12 +393,53 @@ actor AsrBox {
     /// Idempotent. First call downloads + loads Parakeet TDT v3
     /// (~150 MB cached afterwards). Subsequent calls return
     /// immediately.
-    func loadModels() async throws {
+    ///
+    /// The optional `progress` callback receives per-phase snapshots
+    /// from FluidAudio's `DownloadUtils.ProgressHandler` — listing
+    /// files, downloading them, and compiling the CoreML models. The
+    /// callback is required to be MainActor-isolated; FluidAudio
+    /// invokes its handler on an unspecified queue, and we hop to
+    /// MainActor inside the adapter so callers see ordered updates.
+    func loadModels(
+        progress: @MainActor @Sendable @escaping (ASRDownloadProgress) -> Void
+    ) async throws {
         if manager != nil { return }
-        let models = try await AsrModels.downloadAndLoad(version: .v3)
+        let handler: DownloadUtils.ProgressHandler = { snapshot in
+            let adapted = ASRDownloadProgress(
+                fraction: snapshot.fractionCompleted,
+                phaseLabel: Self.phaseLabel(for: snapshot.phase)
+            )
+            // FluidAudio invokes the handler synchronously on whatever
+            // queue is doing the download work. Hop to MainActor so
+            // the SwiftUI overlay's @Published property observes a
+            // serialized stream of updates.
+            Task { @MainActor in progress(adapted) }
+        }
+        let models = try await AsrModels.downloadAndLoad(
+            version: .v3,
+            progressHandler: handler
+        )
         let m = AsrManager(config: .default)
         try await m.loadModels(models)
         self.manager = m
+    }
+
+    /// Human-readable label for the current FluidAudio phase,
+    /// suitable for surfacing directly to the user in the
+    /// initialization overlay.
+    private static func phaseLabel(for phase: DownloadUtils.DownloadPhase) -> String {
+        switch phase {
+        case .listing:
+            return "Listing model files…"
+        case .downloading(let completed, let total):
+            // FluidAudio reports per-file granularity (not per-byte).
+            // Showing "3 of 7" gives the user a meaningful sense of
+            // progress without falsely implying we have a byte-level
+            // counter.
+            return "Downloading speech model (\(completed) of \(total))…"
+        case .compiling(let modelName):
+            return "Compiling \(modelName)…"
+        }
     }
 
     /// Drop the manager so the next `loadModels()` call rebuilds
