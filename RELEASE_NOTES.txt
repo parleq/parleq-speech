@@ -8,12 +8,11 @@ GitHub Releases manually.
 
 - **Auto-updates via Sparkle.** Parleq now checks parleq.app on
   launch and once every 24 hours, and prompts you to install a
-  newer version when one's available — the same well-known "an
-  update is available" dialog Bear, Transmit, Sketch, and many
-  other Mac apps surface. Each release is signed with an Ed25519
-  key whose public half ships inside every build, so a tampered
-  update (or a tampered appcast file) is refused before any
-  bytes touch your installed Parleq. Two new user-facing
+  newer version when one's available — the standard "an update
+  is available" dialog familiar from most Mac apps. Each release
+  is signed with an Ed25519 key whose public half ships inside
+  every build, so a tampered update (or a tampered appcast file)
+  is refused before any bytes touch your installed Parleq. Two new user-facing
   controls:
   - **Settings → Updates** — toggle "Automatically check for
     updates" on or off, plus a "Check for Updates Now" button.

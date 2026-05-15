@@ -204,7 +204,7 @@ All network calls are HTTPS via URLSession or Soto, both using the system trust 
 |---|---|---|---|
 | Soto (`SotoBedrockRuntime`) | AWS SigV4, ConverseStream, SSO credential resolution | `"7.14.0"..<"7.15.0"` | `soto-project/soto` |
 | FluidAudio | In-process ASR (Parakeet TDT v3) + CTC custom-vocab boosting | `"0.14.3"..<"0.15.0"` | `FluidInference/FluidAudio` |
-| Sparkle | Auto-update framework (Ed25519-signed appcast → download → relaunch). Used by Bear, Transmit, Sketch, OmniFocus, and thousands of other Mac apps. | `"2.9.0"..<"2.10.0"` | `sparkle-project/Sparkle` |
+| Sparkle | Auto-update framework (Ed25519-signed appcast → download → relaunch). Open-source, the de-facto standard for third-party Mac auto-updates, widely deployed across the ecosystem. | `"2.9.0"..<"2.10.0"` | `sparkle-project/Sparkle` |
 | swift-nio, swift-crypto, swift-certificates | Transitive | (Soto / FluidAudio deps) | Apple |
 
 `Package.resolved` is **committed** to the repository — fresh clones build against the exact dependency graph we tested. Bumping a dependency requires an explicit `swift package update` + reviewable commit diff. See [CLAUDE.md § Dependency upgrade policy](../CLAUDE.md) for the periodic-upgrade ritual.
@@ -215,7 +215,7 @@ There is no longer a separate sidecar `Package.swift` to track. The retired side
 
 ## 7a. Auto-update
 
-Parleq uses Sparkle for auto-updates. The end-user experience is the same well-known "an update is available" prompt Bear, Transmit, Sketch, and many other Mac apps surface. Two parts to the security posture:
+Parleq uses Sparkle for auto-updates. The end-user experience is the standard "an update is available" prompt familiar from most Mac apps. Two parts to the security posture:
 
 ### Where the public/private key pair lives
 
