@@ -288,7 +288,15 @@ final class MenuBar: NSObject {
         }
         applyIcon(active: isActive)
         statusMenuItem.title = "Status: \(label)"
-        statusItem.button?.toolTip = nil
+        // Surface the active microphone in the tooltip so a hover
+        // over the menu-bar icon answers "what mic is Parleq
+        // listening on?" without opening the dropdown. The overlay
+        // carries the same info during dictation; the tooltip
+        // backstops at-rest. We deliberately don't fall back to
+        // a generic "Parleq" label when no mic is resolvable —
+        // a nil tooltip just means no hover-text, which is fine.
+        let micName = effectiveMicrophoneName(forExplicitUID: currentMicrophoneUID)
+        statusItem.button?.toolTip = micName.map { "Microphone: \($0)" }
     }
 
     @objc private func quit() {
@@ -457,8 +465,21 @@ extension MenuBar: NSMenuDelegate {
     private func rebuildMicrophoneSubmenu(_ menu: NSMenu) {
         menu.removeAllItems()
 
+        // Resolve the system default's current name so the user can
+        // see what "System Default" actually points at right now —
+        // their fallback isn't anonymous. Falls through to a bare
+        // "System Default" title when no default input device is
+        // currently available (rare; Core Audio essentially always
+        // has one unless every input device has been physically
+        // removed).
+        let defaultTitle: String
+        if let resolved = effectiveMicrophoneName(forExplicitUID: "") {
+            defaultTitle = "System Default  ·  \(resolved)"
+        } else {
+            defaultTitle = "System Default"
+        }
         let systemDefault = NSMenuItem(
-            title: "System Default",
+            title: defaultTitle,
             action: #selector(selectMicrophone(_:)),
             keyEquivalent: ""
         )

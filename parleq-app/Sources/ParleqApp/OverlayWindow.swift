@@ -130,15 +130,23 @@ final class OverlayWindow {
     /// render a real progress bar — and `notifyDownloadProgress`
     /// calls `show(.initializing, …)` again with the same state but
     /// a new snapshot to live-update while bytes are streaming in.
+    ///
+    /// `microphoneName` is only consulted in the `.capturing` state;
+    /// other states ignore it. AppState resolves the active mic via
+    /// `effectiveMicrophoneName(forExplicitUID:)` and passes the
+    /// result so the overlay can render "listening on <Mic>…"
+    /// inline. nil = fall back to the plain "listening…" text.
     func show(
         state: OverlayState,
         text: String,
-        downloadProgress: ASRDownloadProgress? = nil
+        downloadProgress: ASRDownloadProgress? = nil,
+        microphoneName: String? = nil
     ) {
         model.update(
             state: state,
             text: text,
-            downloadProgress: downloadProgress
+            downloadProgress: downloadProgress,
+            microphoneName: microphoneName
         )
         if !panel.isVisible {
             positionAtScreenBottom()
@@ -268,10 +276,19 @@ private final class OverlayModel: ObservableObject {
     /// case. Cleared whenever the overlay leaves `.initializing`.
     @Published var downloadProgress: ASRDownloadProgress?
 
+    /// Active microphone name to surface in the `.capturing` state's
+    /// "listening on <name>…" line. `nil` falls back to the plain
+    /// "listening…" copy — the only path that produces nil today is
+    /// "user picked System Default but Core Audio currently has no
+    /// default input," which is rare enough not to design for. Cleared
+    /// whenever the overlay leaves `.capturing`.
+    @Published var microphoneName: String?
+
     func update(
         state: OverlayState,
         text: String,
-        downloadProgress: ASRDownloadProgress? = nil
+        downloadProgress: ASRDownloadProgress? = nil,
+        microphoneName: String? = nil
     ) {
         self.state = state
         self.text = text
@@ -282,6 +299,14 @@ private final class OverlayModel: ObservableObject {
         // on other states keeps the published value from carrying
         // stale data into the next show() that might omit it.
         self.downloadProgress = (state == .initializing) ? downloadProgress : nil
+        // Same scoping for the mic name — only the active-capture
+        // states (`.capturing` and `.refining`, both of which run the
+        // mic engine and surface a "listening…" line) render it. We
+        // clear on other-state transitions so a later show() that
+        // forgets to pass a name falls back to the generic copy
+        // rather than reusing stale data.
+        let isActiveCapture = (state == .capturing) || (state == .refining)
+        self.microphoneName = isActiveCapture ? microphoneName : nil
     }
 
     func append(_ chunk: String) {
@@ -393,9 +418,21 @@ private struct OverlayContent: View {
                 }
                 HStack(spacing: 8) {
                     SoundWaveBars(level: model.level)
-                    Text("listening…")
+                    // Inline the active mic name when AppState
+                    // resolved one. Tail truncation keeps the rare
+                    // 40+ char USB-hub device name ("USB Audio
+                    // Device (Focusrite Scarlett Solo)") from
+                    // blowing out the overlay's fixed width; the
+                    // menu-bar tooltip backstops by carrying the
+                    // full name. Falls back to the plain
+                    // "listening…" copy when the resolver returned
+                    // nil (e.g. System Default selected but Core
+                    // Audio has no default input — rare).
+                    Text(model.microphoneName.map { "listening on \($0)…" } ?? "listening…")
                         .font(.system(size: 12))
                         .foregroundColor(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                 }
             }
         case .cleaning:
@@ -427,9 +464,15 @@ private struct OverlayContent: View {
                     .opacity(0.6)
                 HStack(spacing: 8) {
                     BlinkingDots()
-                    Text("listening for refinement…")
+                    // Mirrors the .capturing branch's treatment: the
+                    // mic name is the same data here, just labeled
+                    // for the refinement pass. See the .capturing
+                    // case for the truncation rationale.
+                    Text(model.microphoneName.map { "listening for refinement on \($0)…" } ?? "listening for refinement…")
                         .font(.system(size: 12))
                         .foregroundColor(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                 }
             }
         }
