@@ -60,6 +60,18 @@ cp "$APP_DIR/Resources/Info.plist" "$APP_BUNDLE/Contents/Info.plist"
 cp "$BINARY" "$APP_BUNDLE/Contents/MacOS/ParleqApp"
 chmod +x "$APP_BUNDLE/Contents/MacOS/ParleqApp"
 
+# Inject the standard macOS-bundle framework search path into the
+# executable's LC_RPATH. SwiftPM doesn't add this for binary-target
+# frameworks (it injects @executable_path/ only, treating the
+# binary as a CLI tool), so without this step the runtime looks
+# for Sparkle.framework at Contents/MacOS/ rather than the
+# Contents/Frameworks/ where make-app.sh embeds it — dyld fails
+# with "Library not loaded: @rpath/Sparkle.framework/..." on
+# launch. Xcode-built apps get this rpath automatically; SwiftPM-
+# built apps have to set it themselves.
+install_name_tool -add_rpath "@executable_path/../Frameworks" \
+    "$APP_BUNDLE/Contents/MacOS/ParleqApp"
+
 # App icon — Info.plist's CFBundleIconFile points at "AppIcon" which
 # macOS resolves to Contents/Resources/AppIcon.icns. The same .icns
 # drives the Dock tile, the Finder Get Info pane, and the standard
