@@ -279,6 +279,35 @@ final class AzureOpenAIProvider: LLMProvider, Sendable {
         }
         return body
     }
+
+    /// Provider-specific recovery hint for the cleanup-failure
+    /// overlay (#27). Branches on auth mode: the API-key path
+    /// points the user at Settings; the Entra ID path points at
+    /// `az login`. The hint mentions the deployment + resource so
+    /// the user knows which Azure resource the failure was
+    /// against (helpful when Settings might list more than one).
+    func cleanupFailureHint(for error: LLMError) -> String? {
+        switch error {
+        case .missingAPIKey:
+            return "Azure API key missing. Open Settings → LLM → Set Azure API Key…"
+        case .missingCredentials:
+            switch authMode {
+            case .apiKey:
+                return "Azure API key rejected. Open Settings → LLM → Set Azure API Key…"
+            case .azureAd:
+                return "Azure CLI session expired or unavailable. Run `az login` and try again."
+            }
+        case .badStatus(let code, _) where code == 401 || code == 403:
+            switch authMode {
+            case .apiKey:
+                return "Azure rejected the API key for resource `\(resource)`. Open Settings → LLM → Set Azure API Key… (or confirm the resource name)."
+            case .azureAd:
+                return "Azure rejected the AD token for resource `\(resource)` deployment `\(deployment)`. Re-run `az login` and confirm your tenant has access."
+            }
+        case .badStatus, .malformedResponse, .requestFailed:
+            return nil
+        }
+    }
 }
 
 // MARK: - Azure SSE payload

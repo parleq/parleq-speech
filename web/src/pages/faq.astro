@@ -120,6 +120,10 @@ const sections = [
         q: 'What does Parleq send when it checks for updates?',
         a: `An HTTP GET to <code class="rounded bg-[color:var(--color-bg)] px-1 font-mono text-[13px]">parleq.app/appcast.xml</code>. Sparkle's User-Agent header on that request carries the current Parleq version and your macOS version (e.g. "Parleq/0.10.0 macOS/14.5") so the server could in principle see which version + OS combinations are checking in. No user identifier, no install ID, no telemetry payload, no transcript content (Parleq has no backend anyway). The appcast itself is a static XML file — there's no per-user response, no logging tied to your install. If you accept an update prompt, a second GET fetches the new .dmg from <code class="rounded bg-[color:var(--color-bg)] px-1 font-mono text-[13px]">github.com/parleq/parleq-speech/releases/...</code> — same posture as if you downloaded a release manually from a browser.`,
       },
+      {
+        q: 'Why did macOS ask me to approve a background item the first time I updated?',
+        a: `Because Parleq lives in <code class="rounded bg-[color:var(--color-bg)] px-1 font-mono text-[13px]">/Applications</code>, which is owned by the system rather than your user account. To install an update there, Sparkle's installer service needs a brief privilege escalation — and macOS Ventura+ treats anything that runs in the background with elevated access as a "Background Item" that requires explicit user approval via <strong class="text-[color:var(--color-text)] font-semibold">System Settings → General → Login Items & Extensions</strong>. The prompt fires once per install; after you toggle the switch and let Sparkle's installer through, subsequent updates from the same Parleq install go through without prompting. Nothing about Parleq specifically triggers this — it's the standard macOS flow for any auto-updating app that installs to a system-owned location.`,
+      },
     ],
   },
   {

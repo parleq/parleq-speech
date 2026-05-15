@@ -194,6 +194,44 @@ final class VertexProvider: LLMProvider, Sendable {
             ],
         ]
     }
+
+    /// Provider-specific recovery hint for the cleanup-failure
+    /// overlay (#27). Branches on auth mode so the user sees the
+    /// command that matches their setup. The gcloud ADC path is
+    /// the common case for personal use; the service-account path
+    /// is the no-CLI corporate path.
+    ///
+    /// Both .missingCredentials (token mint failed) and
+    /// .badStatus(401|403) (token minted fine but Vertex rejected
+    /// the principal — service account lacks `aiplatform.user`,
+    /// ADC token issued for the wrong project, IAM policy denial)
+    /// map onto the same recovery path per auth mode, so we don't
+    /// branch the copy further. Mentioning the project in the hint
+    /// helps users with multiple gcloud configurations spot the
+    /// "wrong project" case.
+    func cleanupFailureHint(for error: LLMError) -> String? {
+        switch error {
+        case .missingCredentials:
+            return authRecoveryHint
+        case .badStatus(let code, _) where code == 401 || code == 403:
+            return authRecoveryHint
+        case .missingAPIKey, .badStatus, .malformedResponse, .requestFailed:
+            return nil
+        }
+    }
+
+    /// Shared auth-mode-aware copy for the two auth-failure shapes
+    /// `cleanupFailureHint` recognizes. Hoisted so the
+    /// .missingCredentials and .badStatus(401|403) branches stay in
+    /// lockstep without duplicating the strings.
+    private var authRecoveryHint: String {
+        switch authMode {
+        case .adc:
+            return "Vertex rejected gcloud credentials for project `\(project)`. Re-run `gcloud auth application-default login`, confirm the principal has the `aiplatform.user` role, and check that `gcloud config get-value project` matches."
+        case .serviceAccount:
+            return "Vertex rejected the service-account credentials for project `\(project)`. Open Settings → LLM → Set Service Account JSON… (and confirm the service account has the `aiplatform.user` role in this project)."
+        }
+    }
 }
 
 // MARK: - Token cache
