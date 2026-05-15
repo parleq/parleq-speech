@@ -106,6 +106,23 @@ const sections = [
     ],
   },
   {
+    title: 'Updates & maintenance',
+    items: [
+      {
+        q: 'How does Parleq get updates?',
+        a: `Starting with v0.10.0, Parleq checks for new releases automatically using <a href="https://sparkle-project.org/" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Sparkle</a> — the same standard auto-update framework Bear, Transmit, Sketch, and many other Mac apps use. On launch and once every 24 hours afterwards, Parleq checks <code class="rounded bg-[color:var(--color-bg)] px-1 font-mono text-[13px]">parleq.app/appcast.xml</code> for a newer release and prompts you to install if one's available. You can also trigger a check manually from <strong class="text-[color:var(--color-text)] font-semibold">Settings → Updates → Check for Updates Now</strong> or the menu bar's <strong class="text-[color:var(--color-text)] font-semibold">Check for Updates…</strong> item. To opt out of automatic checks, toggle off <strong class="text-[color:var(--color-text)] font-semibold">Settings → Updates → Automatically check for updates</strong>; the manual check stays available either way.`,
+      },
+      {
+        q: 'Can I verify an update came from you?',
+        a: `Yes. Every Parleq release is signed with an Ed25519 cryptographic key. The matching public key ships inside every Parleq build, and Sparkle on your Mac verifies each downloaded .dmg's signature against that public key before installing — a mismatch refuses the update and surfaces a clear error. The private half lives only in the maintainer's macOS Keychain plus a password-manager backup; it never enters the public repository or any built artifact. So an attacker who compromised parleq.app, intercepted your network connection, or swapped out the .dmg on GitHub couldn't push an arbitrary binary to your installed Parleq — they'd need the private key, which doesn't leave the maintainer's machine. Full posture in <a href="${repoUrl}/blob/main/docs/SECURITY_REVIEW.md" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">SECURITY_REVIEW.md §7a</a>.`,
+      },
+      {
+        q: 'What does Parleq send when it checks for updates?',
+        a: `An HTTP GET to <code class="rounded bg-[color:var(--color-bg)] px-1 font-mono text-[13px]">parleq.app/appcast.xml</code>. Sparkle's User-Agent header on that request carries the current Parleq version and your macOS version (e.g. "Parleq/0.10.0 macOS/14.5") so the server could in principle see which version + OS combinations are checking in. No user identifier, no install ID, no telemetry payload, no transcript content (Parleq has no backend anyway). The appcast itself is a static XML file — there's no per-user response, no logging tied to your install. If you accept an update prompt, a second GET fetches the new .dmg from <code class="rounded bg-[color:var(--color-bg)] px-1 font-mono text-[13px]">github.com/parleq/parleq-speech/releases/...</code> — same posture as if you downloaded a release manually from a browser.`,
+      },
+    ],
+  },
+  {
     title: 'Comparisons & alternatives',
     items: [
       {
