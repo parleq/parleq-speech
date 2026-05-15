@@ -56,8 +56,35 @@ final class AppState {
     /// current state. Set on @MainActor; called on @MainActor (didSet
     /// inside an @MainActor type runs on the main actor).
     var onPhaseChanged: (@MainActor (Phase) -> Void)?
+
+    /// Fired after every cleanup attempt to surface (or clear) the
+    /// menu-bar cleanup-failure badge (#28). Non-nil message →
+    /// cleanup just failed; the menu-bar icon goes amber and a
+    /// dismissable "Cleanup failed — <message>" row appears in
+    /// the dropdown. nil → cleanup just succeeded (or was skipped);
+    /// the menu-bar reverts to normal. Wired in ParleqApp.main to
+    /// MenuBar.setCleanupFailure(_:).
+    ///
+    /// Fires for every applyResult — both quick mode and the
+    /// overlay path — so a successful normal-mode cleanup also
+    /// clears any leftover badge from a prior quick-mode failure.
+    /// The overlay-mode awaitingAccept decoration from #27 still
+    /// surfaces the same hint inline, so users in normal mode see
+    /// the failure twice (overlay + menu badge) — acceptable
+    /// redundancy because the menu-bar badge is the only thing
+    /// quick-mode users will see.
+    var onCleanupResult: (@MainActor (String?) -> Void)?
     private var pasteTarget: PasteTarget?
     private var currentText: String = ""        // last cleaned/refined text in the overlay
+    /// True when the most recent applyResult came back with a
+    /// cleanup-failure message — i.e. `currentText` is the raw ASR
+    /// fallback rather than an LLM-cleaned version. Carried into the
+    /// TranscriptHistory entry on accept (#27) so the Recent
+    /// Dictations submenu can mark these as "raw" — useful when a
+    /// user scans the history after a stretch of auth/network
+    /// failures to spot dictations worth re-running with cleanup
+    /// working. Reset by every fresh capture and by closeAndReset.
+    private var lastCleanupFailed: Bool = false
     private var autoAcceptTimer: Timer?
     /// Timer that delays the initial overlay show on a fresh capture
     /// so a brief tap (the first half of a double-tap-and-hold, or a
@@ -343,7 +370,8 @@ final class AppState {
         if !currentText.isEmpty {
             TranscriptHistory.shared.append(TranscriptEntry(
                 text: currentText,
-                targetAppName: target?.name
+                targetAppName: target?.name,
+                wasCleanupSuccessful: !lastCleanupFailed
             ))
         }
         overlay.hide()
@@ -402,6 +430,7 @@ final class AppState {
     private func startFreshCapture() {
         pasteTarget = Paster.captureFrontmost()
         currentText = ""
+        lastCleanupFailed = false
         guard openRecorder() else { return }
         phase = .capturing
         if quickMode {
@@ -661,15 +690,24 @@ final class AppState {
 
     private func applyResult(_ text: String, cleanupFailureMessage: String? = nil) {
         currentText = text
+        lastCleanupFailed = (cleanupFailureMessage != nil)
+        // Notify the menu bar of the cleanup outcome regardless of
+        // mode (#28). Non-nil message lights up the amber-bar
+        // status icon + a dismissable menu row; nil clears any
+        // prior badge from an earlier failure. Quick mode is the
+        // primary use case here since its overlay-less paste path
+        // doesn't surface the failure inline, but firing in normal
+        // mode too means a successful subsequent dictation
+        // automatically clears the menu badge even if the user
+        // didn't dismiss it manually.
+        onCleanupResult?(cleanupFailureMessage)
         if quickMode {
             // Skip the review step entirely. Transition straight to
             // .pasting and paste right away — same flow as accept()
             // but synchronous from the LLM-stream-done callback.
-            // Cleanup-failure visibility in quick mode is deferred:
-            // the menu-bar badge approach is filed as a follow-up
-            // to #27 since it's substantial UI work; for now we
-            // log loudly so the user can see the failure in
-            // ~/.parleq/app.log when something feels off.
+            // Also log the failure to ~/.parleq/app.log so users
+            // who don't notice the menu-bar badge can still
+            // diagnose from the log.
             if let failure = cleanupFailureMessage {
                 log("quick-mode cleanup failed: \(failure)")
             }
@@ -709,6 +747,7 @@ final class AppState {
         cancelPendingOverlayShow()
         cancelPendingRefine()
         currentText = ""
+        lastCleanupFailed = false
         pasteTarget = nil
         quickMode = false
         phase = .idle
