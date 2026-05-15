@@ -238,6 +238,12 @@ az account set --subscription "My Team Subscription"`}</code></pre>
         </p>
       </div>
       <div>
+        <p class="font-medium text-[color:var(--color-text)]">Entra ID session expired</p>
+        <p class="mt-2">
+          In <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">az login</code> mode, the overlay surfaces an "Azure AD token rejected" error pointing at <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">az login</code>. Run that, then dictate again — Parleq invalidates the cached AD token on auth failure and re-mints from your refreshed Azure CLI session on the next call, no restart needed. (API-key mode doesn't need this — the key is re-read from the Keychain on every call, so editing the value in Settings takes effect immediately.)
+        </p>
+      </div>
+      <div>
         <p class="font-medium text-[color:var(--color-text)]"><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">az: command not found</code></p>
         <p class="mt-2">
           Parleq couldn't find <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">az</code> on PATH. Most likely cause: you installed the Azure CLI somewhere outside <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">/opt/homebrew/bin</code> / <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">/usr/local/bin</code>. Symlink it into <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">/usr/local/bin</code>, or switch to API-key mode.

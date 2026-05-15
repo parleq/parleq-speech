@@ -6,6 +6,20 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 (no changes yet)
 
+## [0.11.0] - 2026-05-15
+
+Cleanup-failure recovery across all three cloud providers — when a cloud sign-in expires mid-session (`aws sso login` token, `gcloud` ADC, Azure Entra ID), Parleq now picks up the refreshed credentials on the next dictation without a restart. Same dictation also keeps working: cleanup falls back to raw ASR transcript when it can't reach the cloud, and three new surfaces (overlay hint, menu-bar badge, Recent Dictations annotation) tell you exactly what happened and how to fix it.
+
+### Added
+
+- **Auto-refresh credentials on auth failure for AWS Bedrock SSO, Vertex AI ADC, and Azure Entra ID.** Previously, if the user launched Parleq while their cloud sign-in was expired or missing, Parleq would paste raw ASR for every dictation until the user manually quit and relaunched the app — even after running `aws sso login` / `gcloud auth application-default login` / `az login` in another terminal. The in-memory token cache held a stale token and never re-minted. Each provider's `generateStreaming` is now a retry-once wrapper: on `.missingCredentials` or HTTP 401, the token cache is invalidated and the call replays once, picking up the freshly-refreshed credentials from the CLI's own cache (`~/.aws/sso/cache/`, `~/.config/gcloud/application_default_credentials.json`, the `az` token cache). 403s deliberately excluded from retry — those are IAM-level denials that re-minting won't fix, so we don't waste a second round-trip. Azure API-key mode also skips the retry path since re-reading the Keychain on each call already picks up Settings edits. Closes [#26](https://github.com/parleq/parleq-speech/issues/26) (Bedrock — landed in #29), [#30](https://github.com/parleq/parleq-speech/issues/30) (Vertex + Azure parity).
+
+- **Cleanup-failure hint in the accept overlay.** When the LLM cleanup call fails and Parleq falls back to the raw ASR transcript, the awaiting-accept overlay now decorates the footer with a provider-specific recovery hint — for Bedrock that's "Run `aws sso login --profile <name>`, then dictate again"; for Vertex ADC, "Run `gcloud auth application-default login`"; for Azure Entra ID, "Run `az login`". You see the exact one-liner you need to type, not a generic error. Closes [#27](https://github.com/parleq/parleq-speech/issues/27) (landed in #29 + completed in #31).
+
+- **Menu-bar badge for cleanup failures (the quick-mode-friendly surface).** Quick mode has no overlay to surface the failure inline, so a new amber-bars status icon + dismissable "⚠ Cleanup failed — <hint>" menu row carry the same provider-specific recovery message. Fires for every dictation in either mode (so a successful subsequent cleanup auto-clears the badge even if the user never dismissed it manually). The amber icon is non-template so the warning color sticks regardless of light/dark menu-bar appearance. Click the row to dismiss; click any dictation to recover. Closes [#28](https://github.com/parleq/parleq-speech/issues/28).
+
+- **Recent Dictations marks raw-fallback entries.** `TranscriptEntry` gained a `wasCleanupSuccessful` flag; the Recent Dictations submenu appends ` · raw` to the title of any entry whose cleanup failed, and the tooltip spells it out ("raw transcript — LLM cleanup failed for this dictation"). Useful when scanning history after a stretch of auth failures to spot which dictations are worth re-running with cleanup working. Closes [#27](https://github.com/parleq/parleq-speech/issues/27).
+
 ## [0.10.1] - 2026-05-15
 
 Small polish release. Also the first real test of v0.10.0's Sparkle auto-update path — installed 0.10.0 builds should detect this release in the appcast, verify the Ed25519 signature, and prompt to install.

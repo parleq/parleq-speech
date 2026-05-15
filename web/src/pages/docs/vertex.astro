@@ -194,6 +194,12 @@ gcloud auth application-default set-quota-project my-team-prod-1234`}</code></pr
         </p>
       </div>
       <div>
+        <p class="font-medium text-[color:var(--color-text)]">ADC session expired</p>
+        <p class="mt-2">
+          The overlay surfaces a clear "Vertex ADC token rejected" error pointing at <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">gcloud auth application-default login</code>. Run that, then dictate again — Parleq invalidates the cached token on auth failure and re-mints from your refreshed CLI session on the next call, no restart needed.
+        </p>
+      </div>
+      <div>
         <p class="font-medium text-[color:var(--color-text)]">"Could not obtain an access token" / <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">gcloud: command not found</code></p>
         <p class="mt-2">
           Parleq couldn't find <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">gcloud</code> on PATH. Most likely cause: you installed gcloud somewhere outside <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">/opt/homebrew/bin</code> / <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">/usr/local/bin</code> (e.g., a custom directory referenced from your shell rc only). Either symlink the binary into <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">/usr/local/bin</code>, or switch to the service-account JSON path which doesn't need gcloud at all.

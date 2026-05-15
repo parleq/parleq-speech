@@ -158,11 +158,11 @@ This was explicitly verified after a full source sweep on 2026-05-06 (see git hi
 
 ### 5.1 In-memory transcript history (Recent Dictations)
 
-The menu bar's **Recent Dictations** submenu surfaces the last 20 cleaned transcripts so the user can grab one back if a paste lands somewhere unexpected (focus changed mid-flight, target app rejected the paste, etc.). Implementation: `TranscriptHistory.swift`, an `@MainActor` ring buffer of `TranscriptEntry` structs (UUID, timestamp, cleaned text, original target-app name).
+The menu bar's **Recent Dictations** submenu surfaces the last 20 accepted transcripts so the user can grab one back if a paste lands somewhere unexpected (focus changed mid-flight, target app rejected the paste, etc.). Implementation: `TranscriptHistory.swift`, an `@MainActor` ring buffer of `TranscriptEntry` structs (UUID, timestamp, transcript text, original target-app name, and a `wasCleanupSuccessful` boolean). Entries whose cleanup failed carry the raw ASR transcript that Parleq actually pasted — the same text the user accepted — with the boolean false so the submenu can mark them ` · raw`. Successful entries carry the cleaned text with the boolean true. From a compliance standpoint the data classification is identical either way (in-memory transcript text the user just dictated); the boolean is a display hint, not a security boundary.
 
 **Compliance posture:**
 - **Process memory only.** The buffer is held in a singleton `@MainActor` class; never serialized to disk, never sent over the network. Deleted when the process exits — a `Quit Parleq` from the menu bar wipes the entire history.
-- **No new persistence surface.** The cleaned text was already in process memory while the overlay was open during cleanup. We hold it for the remainder of the session (capped at 20 entries) instead of dropping it the moment the user pastes. From the policy's perspective, the data classification of "cleaned transcript" is unchanged — it's still in-memory state, just held longer.
+- **No new persistence surface.** The transcript text (cleaned or raw fallback) was already in process memory while the overlay was open during cleanup. We hold it for the remainder of the session (capped at 20 entries) instead of dropping it the moment the user pastes. From the policy's perspective, the data classification of "transcript the user just dictated" is unchanged — it's still in-memory state, just held longer.
 - **Cap is hardcoded at 20 entries.** When the 21st dictation is appended, the oldest is dropped. There is no configuration knob to disable history entirely; if a user needs zero history they can either click **Clear Recent** in the submenu after each dictation, or quit + relaunch.
 - **No metadata leakage.** The original target-app name (e.g. "iTerm2") is captured for the menu's tooltip and never sent anywhere.
 
@@ -170,7 +170,7 @@ The menu bar's **Recent Dictations** submenu surfaces the last 20 cleaned transc
 
 **Threat model.** Memory dumps of a running Parleq process would surface the buffer; this is the same exposure as any in-flight cleaned text (the overlay's `currentText`, the LLM's response stream buffer, etc.). Anyone with the privilege to dump Parleq's memory already has the privilege to dump any process running as the same user, so this is not a new attack surface — it's the existing one with a slightly larger value at risk (last 20 dictations vs. just the current one).
 
-**Verification:** `grep -rn "TranscriptHistory" parleq-app/Sources/` shows the singleton exists at `TranscriptHistory.swift`, is read by `MenuBar.swift` for menu rebuilds, and is written by `AppState.accept()` once per accepted dictation. No `Codable` conformance, no `Data(...)`, no `try ... write(to:)` calls — entries cannot reach disk through the type itself.
+**Verification:** `grep -rn "TranscriptHistory" parleq-app/Sources/` shows the singleton exists at `TranscriptHistory.swift`, is read by `MenuBar.swift` for menu rebuilds, and is written by `AppState.accept()` once per accepted dictation. No `Codable` conformance, no `Data(...)`, no `try ... write(to:)` calls — entries cannot reach disk through the type itself. The `wasCleanupSuccessful` boolean is set from a `lastCleanupFailed` flag that AppState tracks across the `applyResult → accept` handoff, and is reset by `startFreshCapture` and `closeAndReset` so a prior dictation's failure never leaks into a later entry.
 
 ---
 
