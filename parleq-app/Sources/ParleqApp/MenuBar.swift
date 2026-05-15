@@ -82,7 +82,17 @@ final class MenuBar: NSObject {
     /// Drives the checkmark in the Microphone submenu. ParleqApp
     /// updates this on launch from Config and after each user
     /// selection so the submenu's next-open render is correct.
-    var currentMicrophoneUID: String = ""
+    /// didSet refreshes the menu-bar tooltip so a hover after any
+    /// selection change (from the submenu, from Settings → Audio,
+    /// from anywhere else that touches this property) immediately
+    /// shows the new mic name — without this, the tooltip stays
+    /// pinned to whatever value was set at the last phase
+    /// transition.
+    var currentMicrophoneUID: String = "" {
+        didSet {
+            if oldValue != currentMicrophoneUID { refresh() }
+        }
+    }
 
     init(hotkeyDisplayName: String) {
         // .variableLength sizes the item to the icon's intrinsic
@@ -288,7 +298,15 @@ final class MenuBar: NSObject {
         }
         applyIcon(active: isActive)
         statusMenuItem.title = "Status: \(label)"
-        statusItem.button?.toolTip = nil
+        // Surface the active microphone in the tooltip so a hover
+        // over the menu-bar icon answers "what mic is Parleq
+        // listening on?" without opening the dropdown. The overlay
+        // carries the same info during dictation; the tooltip
+        // backstops at-rest. We deliberately don't fall back to
+        // a generic "Parleq" label when no mic is resolvable —
+        // a nil tooltip just means no hover-text, which is fine.
+        let micName = effectiveMicrophoneName(forExplicitUID: currentMicrophoneUID)
+        statusItem.button?.toolTip = micName.map { "Microphone: \($0)" }
     }
 
     @objc private func quit() {
@@ -457,8 +475,21 @@ extension MenuBar: NSMenuDelegate {
     private func rebuildMicrophoneSubmenu(_ menu: NSMenu) {
         menu.removeAllItems()
 
+        // Resolve the system default's current name so the user can
+        // see what "System Default" actually points at right now —
+        // their fallback isn't anonymous. Falls through to a bare
+        // "System Default" title when no default input device is
+        // currently available (rare; Core Audio essentially always
+        // has one unless every input device has been physically
+        // removed).
+        let defaultTitle: String
+        if let resolved = effectiveMicrophoneName(forExplicitUID: "") {
+            defaultTitle = "System Default  ·  \(resolved)"
+        } else {
+            defaultTitle = "System Default"
+        }
         let systemDefault = NSMenuItem(
-            title: "System Default",
+            title: defaultTitle,
             action: #selector(selectMicrophone(_:)),
             keyEquivalent: ""
         )
@@ -526,6 +557,16 @@ extension MenuBar: NSMenuDelegate {
     /// picker reflects the change without a separate observer.
     @objc private func selectMicrophone(_ sender: NSMenuItem) {
         let uid = (sender.representedObject as? String) ?? ""
+        // Setting currentMicrophoneUID triggers its didSet, which
+        // calls refresh() to re-render the menu-bar tooltip with
+        // the new mic name. Same path covers Settings → Audio
+        // selection changes (they post the cross-surface notification
+        // that ParleqApp.main routes back through this property).
+        // Note: macOS-level default-input-device changes (e.g. user
+        // unplugs AirPods while Parleq has "System Default"
+        // selected) aren't observed here — that would need a
+        // Core Audio property listener on
+        // kAudioHardwarePropertyDefaultInputDevice. Deferred.
         currentMicrophoneUID = uid
         onMicrophoneSelected?(uid)
         NotificationCenter.default.post(

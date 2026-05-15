@@ -429,9 +429,24 @@ final class AppState {
                 // fast hotkey-up + finalize that landed on the same
                 // run-loop turn could have already advanced us out.
                 guard self.phase == .capturing || self.phase == .refining else { return }
-                self.overlay.show(state: .capturing, text: "")
+                self.overlay.show(
+                    state: .capturing,
+                    text: "",
+                    microphoneName: self.activeMicrophoneName()
+                )
             }
         }
+    }
+
+    /// Resolve the name of the microphone the recorder is currently
+    /// (or would be) capturing from, for surfacing in the overlay's
+    /// "listening on <name>…" line. Reads the recorder's explicit-
+    /// UID selection and delegates to the shared
+    /// `effectiveMicrophoneName(forExplicitUID:)` resolver in
+    /// AudioRecorder.swift so the overlay, menu submenu, and
+    /// menu-bar tooltip all agree on which name to show.
+    private func activeMicrophoneName() -> String? {
+        return effectiveMicrophoneName(forExplicitUID: recorder.explicitInputDeviceUID)
     }
 
     private func cancelPendingOverlayShow() {
@@ -447,7 +462,11 @@ final class AppState {
         cancelAutoAcceptTimer()
         guard openRecorder() else { return }
         phase = .refining
-        overlay.show(state: .refining, text: currentText)
+        overlay.show(
+            state: .refining,
+            text: currentText,
+            microphoneName: activeMicrophoneName()
+        )
     }
 
     /// Start the audio recorder. Returns false (and logs) if the

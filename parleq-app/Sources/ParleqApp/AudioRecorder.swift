@@ -496,6 +496,39 @@ func availableInputDevices() -> [InputDeviceInfo] {
     return out
 }
 
+/// Resolve a user-facing display name for the microphone Parleq is
+/// currently capturing from (or would capture from on the next
+/// hotkey press). Single source of truth shared by the overlay's
+/// "listening on …" line, the menu's "System Default (…)" hint,
+/// and the menu-bar idle-tooltip. Three cases:
+///
+///   1. `uid` empty (System Default): resolve the current Core
+///      Audio default input device's name. The auto-route heuristic
+///      for Bluetooth defaults (built-in mic substitution) is
+///      deliberately not surfaced here — showing the user-selected
+///      "System Default" semantic is what they expect to see, and
+///      the auto-route trade-off is documented in
+///      Settings → Audio.
+///   2. `uid` matches a connected device: that device's name.
+///   3. `uid` set but the device isn't currently connected (e.g.
+///      USB mic unplugged, AirPods out of range): returns nil so
+///      callers can render their own placeholder (e.g. "Selected
+///      microphone disconnected" in the submenu) rather than
+///      lying about a name that no longer exists.
+///
+/// Returns nil only when no relevant device can be found —
+/// callers handle the rare "no microphones at all" case.
+func effectiveMicrophoneName(forExplicitUID uid: String) -> String? {
+    if uid.isEmpty {
+        guard let defaultID = systemDefaultInputDevice() else { return nil }
+        return deviceName(of: defaultID)
+    }
+    if let device = availableInputDevices().first(where: { $0.uid == uid }) {
+        return device.name
+    }
+    return nil
+}
+
 /// Apple Core Audio uses a small set of UID conventions for the
 /// aggregates it creates internally. macOS Sound prefs hides devices
 /// matching any of them. The list is conservative — only patterns
