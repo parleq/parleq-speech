@@ -345,10 +345,23 @@ release-precheck:
 		echo "       to exist before it can insert a new <item>."; \
 		exit 1; \
 	fi; \
-	if ! grep -q "PARLEQ_APPCAST_INSERT" "$(APPCAST)"; then \
-		echo "ERROR: $(APPCAST) is missing the PARLEQ_APPCAST_INSERT sentinel marker."; \
-		echo "       The release recipe inserts new <item> blocks above that marker;"; \
-		echo "       without it, the recipe doesn't know where to put the entry."; \
+	if ! grep -qF "<!-- PARLEQ_APPCAST_INSERT -->" "$(APPCAST)"; then \
+		echo "ERROR: $(APPCAST) is missing the literal sentinel marker line"; \
+		echo "       '<!-- PARLEQ_APPCAST_INSERT -->' (verbatim, single-line)."; \
+		echo "       The release recipe inserts new <item> blocks directly below"; \
+		echo "       that marker; without it, the recipe doesn't know where to"; \
+		echo "       put the entry. The marker must be its own single-line comment"; \
+		echo "       so the inserted item lands as a real element child of"; \
+		echo "       <channel>, not inside a multi-line documentation comment."; \
+		exit 1; \
+	fi; \
+	MARKER_COUNT=$$(grep -cF "PARLEQ_APPCAST_INSERT" "$(APPCAST)"); \
+	if [ "$$MARKER_COUNT" != "1" ]; then \
+		echo "ERROR: $(APPCAST) contains $$MARKER_COUNT references to the literal"; \
+		echo "       string 'PARLEQ_APPCAST_INSERT' (expected exactly 1, the marker"; \
+		echo "       itself). Earlier 0.10.0 release shipped a broken appcast because"; \
+		echo "       a documentation comment paraphrased the token, and awk inserted"; \
+		echo "       the new <item> inside that comment. Strip any other mentions."; \
 		exit 1; \
 	fi; \
 	BRANCH=$$(git symbolic-ref --short HEAD 2>/dev/null || true); \
@@ -411,7 +424,7 @@ release: release-precheck dmg
 	echo "==> Prepending v$$VERSION <item> to $(APPCAST)..."; \
 	PUBDATE=$$(date -u +"%a, %d %b %Y %H:%M:%S +0000"); \
 	APPCAST_ITEM="        <item>\n            <title>Version $$VERSION</title>\n            <pubDate>$$PUBDATE</pubDate>\n            <sparkle:version>$$BUILD</sparkle:version>\n            <sparkle:shortVersionString>$$VERSION</sparkle:shortVersionString>\n            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>\n            <sparkle:releaseNotesLink>$$RELEASE_NOTES_URL</sparkle:releaseNotesLink>\n            <enclosure\n                url=\"$$DMG_URL\"\n                sparkle:edSignature=\"$$ED_SIGNATURE\"\n                length=\"$$DMG_LENGTH\"\n                type=\"application/octet-stream\" />\n        </item>"; \
-	awk -v item="$$APPCAST_ITEM" '{ print } /PARLEQ_APPCAST_INSERT/ { gsub(/\\n/, "\n", item); print item }' "$(APPCAST)" > "$(APPCAST).tmp" && mv "$(APPCAST).tmp" "$(APPCAST)"; \
+	awk -v item="$$APPCAST_ITEM" '{ print } /<!-- PARLEQ_APPCAST_INSERT -->/ { gsub(/\\n/, "\n", item); print item }' "$(APPCAST)" > "$(APPCAST).tmp" && mv "$(APPCAST).tmp" "$(APPCAST)"; \
 	echo "==> Validating $(APPCAST) is well-formed XML..."; \
 	xmllint --noout "$(APPCAST)" 2>&1 || { \
 		echo "ERROR: $(APPCAST) is no longer well-formed XML after the v$$VERSION insertion."; \

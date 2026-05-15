@@ -5,43 +5,32 @@
   Served at https://parleq.app/appcast.xml (configured as
   SUFeedURL in parleq-app/Resources/Info.plist). Sparkle on
   installed Parleq builds fetches this file on launch + on a
-  ~24h timer and prompts the user when the latest <item> below
+  ~24h timer and prompts the user when the latest item below
   describes a newer version than the running build.
 
-  Each <item>'s `sparkle:edSignature` is an Ed25519 signature
-  over the linked .dmg's bytes, produced by Sparkle's
-  `sign_update` tool against the maintainer's private key. The
-  matching public key ships inside every Parleq build via
-  Info.plist's `SUPublicEDKey`. Sparkle refuses any update
-  whose enclosure signature doesn't verify against that exact
-  public key, so a downstream attacker who swaps either the
-  appcast file or the .dmg cannot push an arbitrary binary to
-  existing installs.
+  Each item's sparkle:edSignature is an Ed25519 signature over
+  the linked .dmg's bytes, produced by Sparkle's sign_update
+  tool against the maintainer's private key. The matching
+  public key ships inside every Parleq build via Info.plist's
+  SUPublicEDKey. Sparkle refuses any update whose enclosure
+  signature doesn't verify against that exact public key, so a
+  downstream attacker who swaps either the appcast file or the
+  .dmg cannot push an arbitrary binary to existing installs.
 
-  Items are inserted by `make release`: see the Makefile's
-  release recipe for the awk insertion against the
-  PARLEQ_APPCAST_INSERT marker below. The newest entry goes
-        <item>
-            <title>Version 0.10.0</title>
-            <pubDate>Fri, 15 May 2026 09:46:15 +0000</pubDate>
-            <sparkle:version>27</sparkle:version>
-            <sparkle:shortVersionString>0.10.0</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <sparkle:releaseNotesLink>https://github.com/parleq/parleq-speech/releases/tag/v0.10.0</sparkle:releaseNotesLink>
-            <enclosure
-                url="https://github.com/parleq/parleq-speech/releases/download/v0.10.0/Parleq-0.10.0-83c3007.dmg"
-                sparkle:edSignature="nUazHdC57sDQCu+bXftCzclnoMqaU0hwohgiplBUg+iFXLsbK4etdNCiuOpF6i4N1F+WDyZeH85Xk/KAmGYOAQ=="
-                length="11607488"
-                type="application/octet-stream" />
-        </item>
-  immediately AFTER the marker, so the top of the <channel>
-  is always the freshest release and older entries get pushed
-  downward.
+  Items are inserted automatically by make release. The
+  insertion marker is the single-line HTML comment immediately
+  below the language element inside the channel. New entries
+  land directly below that marker line, so the top of the
+  channel is always the freshest release and older entries get
+  pushed downward.
 
-  Empty channel ships in 0.10.0 (the release that introduces
-  Sparkle). The first <item> gets emitted whenever the next
-  `make release` runs; until then, installed builds checking
-  this URL see an empty feed and report "you're up to date."
+  Do not paraphrase the literal marker token anywhere else in
+  this file — the Makefile's awk matcher looks for that exact
+  string and would otherwise insert items inside this
+  documentation block (which is itself a comment, so they'd be
+  ignored by Sparkle entirely). The marker is intentionally
+  positioned on a single line outside this comment so awk
+  insertion lands as a proper element child of <channel>.
 -->
 <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
     <channel>
@@ -49,7 +38,7 @@
         <link>https://parleq.app/appcast.xml</link>
         <description>Updates to Parleq, the local-first AI dictation app for macOS.</description>
         <language>en</language>
-        <!-- PARLEQ_APPCAST_INSERT — `make release` inserts new <item> blocks
+        <!-- PARLEQ_APPCAST_INSERT -->
         <item>
             <title>Version 0.10.0</title>
             <pubDate>Fri, 15 May 2026 09:46:15 +0000</pubDate>
@@ -63,8 +52,5 @@
                 length="11607488"
                 type="application/octet-stream" />
         </item>
-             on the line immediately below this marker, so the freshest
-             release lands at the top of the channel and older entries
-             get pushed downward. Don't remove. -->
     </channel>
 </rss>
