@@ -6,6 +6,14 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 (no changes yet)
 
+## [0.10.1] - 2026-05-15
+
+Small polish release. Also the first real test of v0.10.0's Sparkle auto-update path — installed 0.10.0 builds should detect this release in the appcast, verify the Ed25519 signature, and prompt to install.
+
+### Added
+
+- **Active microphone visible in three more places.** The Microphone submenu's "System Default" entry now renders as `System Default · <resolved name>` so the fallback isn't anonymous. During dictation, the overlay's `listening…` line becomes `listening on <Mic Name>…` (and `listening for refinement on <Mic Name>…` in the refinement branch) so you can confirm at a glance which device is being captured from. Hovering the menu-bar status icon when idle now surfaces `Microphone: <full name>` as a tooltip. All three surfaces read from a single resolver in `AudioRecorder.swift`, so the displayed name is always consistent. Tail-truncated in the overlay's fixed-width layout for the rare 40+ char USB-hub device names; the tooltip carries the full name. Closes [#24](https://github.com/parleq/parleq-speech/issues/24).
+
 ## [0.10.0] - 2026-05-15
 
 First release with built-in auto-updates. Going forward, you'll be prompted to install new versions instead of needing to check GitHub Releases manually. Note this release is also the first one whose .dmg is signed with the Sparkle Ed25519 key, so installs of 0.10.0 are what will detect (and verify the integrity of) every future release.
@@ -134,7 +142,8 @@ Press a global hotkey, speak, see post-processed text in a floating overlay, acc
 - **Apple Silicon** (M1 / M2 / M3 / M4) running **macOS 14 (Sonoma) or later**.
 - **Apache-2.0 licensed**. Source at [github.com/parleq/parleq-speech](https://github.com/parleq/parleq-speech).
 
-[Unreleased]: https://github.com/parleq/parleq-speech/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/parleq/parleq-speech/compare/v0.10.1...HEAD
+[0.10.1]: https://github.com/parleq/parleq-speech/releases/tag/v0.10.1
 [0.10.0]: https://github.com/parleq/parleq-speech/releases/tag/v0.10.0
 [0.9.1]: https://github.com/parleq/parleq-speech/releases/tag/v0.9.1
 [0.9.0]: https://github.com/parleq/parleq-speech/releases/tag/v0.9.0

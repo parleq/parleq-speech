@@ -1,48 +1,36 @@
-Parleq 0.10.0
+Parleq 0.10.1
 
-First release with built-in auto-updates. From here on, you'll be
-prompted to install new versions instead of needing to re-check
-GitHub Releases manually.
+Small polish release. If you're on v0.10.0, this is the first
+release Parleq's Sparkle auto-update will offer you — accepting
+the prompt downloads + verifies + installs without you needing
+to grab the .dmg manually.
 
 ### Added
 
-- **Auto-updates via Sparkle.** Parleq now checks parleq.app on
-  launch and once every 24 hours, and prompts you to install a
-  newer version when one's available — the standard "an update
-  is available" dialog familiar from most Mac apps. Each release
-  is signed with an Ed25519 key whose public half ships inside
-  every build, so a tampered update (or a tampered appcast file)
-  is refused before any bytes touch your installed Parleq. Two new user-facing
-  controls:
-  - **Settings → Updates** — toggle "Automatically check for
-    updates" on or off, plus a "Check for Updates Now" button.
-  - **Menu bar → "Check for Updates…"** — on-demand check from
-    the dropdown, useful when you want to grab a fresh release
-    immediately without waiting for the next scheduled check.
-- **First-launch update prompt.** The first time you launch this
-  build, Sparkle asks "Would you like Parleq to check for updates
-  automatically?" Pick whichever you prefer — Settings →
-  Updates can change it any time.
+- **Active microphone visible in three more places.**
+  - The Microphone submenu's "System Default" entry now reads
+    "System Default · <resolved name>" so the fallback isn't
+    anonymous.
+  - During dictation, the overlay's "listening…" line becomes
+    "listening on <Mic Name>…" (and "listening for refinement
+    on <Mic Name>…" during a refine pass) so you can confirm at
+    a glance which device is being captured from.
+  - Hovering the menu-bar Parleq icon when idle now surfaces a
+    "Microphone: <full name>" tooltip.
 
-### Compliance posture
-
-The auto-update path adds two new outbound HTTPS calls, both
-documented in docs/SECURITY_REVIEW.md §7a (Auto-update):
-
-- Periodic GET of parleq.app/appcast.xml. Sparkle's User-Agent
-  carries the app version and macOS version; nothing else.
-- Per-install GET of the .dmg URL from
-  github.com/parleq/parleq-speech/releases/download/...
-  Fires only when the user accepts the update prompt.
-
-Sparkle verifies every downloaded .dmg's Ed25519 signature
-against the public key compiled into Parleq before installing.
-Mismatch refuses the update.
+  All three surfaces read from the same resolver, so the
+  displayed name is always consistent. Closes #24.
 
 ## Install
 
+If you're already running Parleq 0.10.0, Sparkle's update prompt
+is the easiest path — it handles download, signature
+verification, and the relaunch for you.
+
+For a fresh install:
+
 1. Download the .dmg attached to this release.
-2. (Optional) Verify the SHA-256: `shasum -a 256 -c Parleq-0.10.0-<sha>.dmg.sha256`
+2. (Optional) Verify the SHA-256: `shasum -a 256 -c Parleq-0.10.1-<sha>.dmg.sha256`
 3. Open the DMG and drag Parleq.app onto the Applications folder.
 4. Eject the DMG, then launch Parleq from Applications.
 5. On first launch, grant Microphone + Accessibility permissions
