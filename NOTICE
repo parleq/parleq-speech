@@ -68,17 +68,6 @@ the Soto project authors, licensed under Apache License 2.0.
 Soto's source files are generated using HummingbirdMustache (Apache-2.0).
 
 ============================================================
-Hummingbird
-============================================================
-
-This product uses Hummingbird, Copyright 2024 The Hummingbird Project,
-licensed under Apache License 2.0.
-
-  * Hummingbird  https://github.com/hummingbird-project/hummingbird
-
-Hummingbird contains code from swift-foundation, licensed under MIT.
-
-============================================================
 JMESPath.swift
 ============================================================
 
@@ -100,6 +89,42 @@ checkpoints). The model weights are not redistributed inside the
 .app bundle and are governed by the upstream NVIDIA NeMo model
 license terms posted at the corresponding Hugging Face repositories.
 See THIRD_PARTY_LICENSES.md § "Model weights" for details.
+
+============================================================
+Sparkle
+============================================================
+
+This product uses Sparkle for auto-updates, MIT-licensed. Copyright
+holders, per Sparkle's LICENSE file:
+
+  Copyright (c) 2006-2013 Andy Matuschak
+  Copyright (c) 2009-2013 Elgato Systems GmbH
+  Copyright (c) 2011-2014 Kornel Lesiński
+  Copyright (c) 2015-2017 Mayur Pawashe
+  Copyright (c) 2014 C.W. Betts
+  Copyright (c) 2014 Petroules Corporation
+  Copyright (c) 2014 Big Nerd Ranch
+
+  * Sparkle  https://github.com/sparkle-project/Sparkle
+
+Sparkle bundles two third-party components inside its framework that
+ship inside Parleq.app as part of Sparkle.framework:
+
+  - ed25519-sparkle (Vendor/ed25519-sparkle/) — Copyright (c) 2015
+    Orson Peters, zlib-style license. Derivative of Daniel J.
+    Bernstein's ref10 ed25519 reference implementation. Used by
+    Sparkle to verify the Ed25519 enclosure signature on every
+    downloaded update.
+
+  - bsdiff (Vendor/bsdiff/) — Copyright 2003-2005 Colin Percival,
+    2-clause BSD license. Used by Sparkle when applying
+    delta-update patches to the existing .app bundle.
+
+Both vendored components' full license texts ship at
+`Sparkle/Vendor/ed25519-sparkle/license.txt` and
+`Sparkle/Vendor/bsdiff/bsdiff.c` (license is in the file header) in
+the upstream Sparkle checkout. See THIRD_PARTY_LICENSES.md
+§ "Embedded components" for additional context.
 
 ============================================================
 
