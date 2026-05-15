@@ -95,6 +95,52 @@ final class AzureOpenAIProvider: LLMProvider, Sendable {
         messages: [LLMMessage],
         onEvent: @Sendable (LLMStreamEvent) -> Void
     ) async throws {
+        // Try once; on an auth-shaped failure in .azureAd mode,
+        // invalidate the token cache and retry once. Matches the
+        // Bedrock (#26) and Vertex (#30) patterns. Common case:
+        // user launched Parleq with an expired/missing `az login`
+        // session, ran `az login` externally, then dictated —
+        // without the retry, Parleq pasted raw ASR until the user
+        // manually quit and relaunched.
+        //
+        // The retry only fires when .azureAd is the active auth
+        // mode AND we have a token cache to invalidate. In .apiKey
+        // mode, an auth failure means the user's stored key is
+        // wrong; re-issuing the same request won't fix that, and
+        // the per-call .apiKey re-read from Keychain already picks
+        // up post-Settings-edit updates. So .apiKey skips the
+        // retry path entirely.
+        do {
+            try await attemptStreaming(
+                systemPrompt: systemPrompt,
+                messages: messages,
+                onEvent: onEvent
+            )
+        } catch let firstError as LLMError
+            where authMode == .azureAd
+                && tokenCache != nil
+                && Self.isAuthFailure(firstError) {
+            FileHandle.standardError.write(
+                "[parleq] azure: auth failure on first attempt (\(firstError.description)); invalidating Azure token cache and retrying once.\n"
+                    .data(using: .utf8) ?? Data()
+            )
+            await tokenCache?.invalidate()
+            try await attemptStreaming(
+                systemPrompt: systemPrompt,
+                messages: messages,
+                onEvent: onEvent
+            )
+        }
+    }
+
+    /// Single attempt at the Azure streaming call. Extracted so the
+    /// retry-once path above can replay it after invalidating the
+    /// AD token cache. Same auth-mode branching as before.
+    private func attemptStreaming(
+        systemPrompt: String,
+        messages: [LLMMessage],
+        onEvent: @Sendable (LLMStreamEvent) -> Void
+    ) async throws {
         let body = buildRequestBody(systemPrompt: systemPrompt, messages: messages)
         let urlString = "https://\(Self.endpointHost(forResource: resource))/openai/deployments/\(deployment)/chat/completions?api-version=\(apiVersion)"
         guard let url = URL(string: urlString) else {
@@ -306,6 +352,26 @@ final class AzureOpenAIProvider: LLMProvider, Sendable {
             }
         case .badStatus, .malformedResponse, .requestFailed:
             return nil
+        }
+    }
+
+    /// True when an LLMError indicates an auth failure that may be
+    /// recoverable by invalidating the AD token cache and re-minting.
+    /// Used only on the .azureAd path; the caller in
+    /// `generateStreaming` already gates on `authMode == .azureAd`
+    /// because retry doesn't help on .apiKey (the per-call Keychain
+    /// re-read already picks up Settings updates). 403 is not
+    /// considered an auth-retry candidate — same reasoning as
+    /// Vertex: an IAM-level denial can't be fixed by a fresh token
+    /// for the same principal.
+    private static func isAuthFailure(_ error: LLMError) -> Bool {
+        switch error {
+        case .missingCredentials:
+            return true
+        case .badStatus(let code, _):
+            return code == 401
+        case .missingAPIKey, .malformedResponse, .requestFailed:
+            return false
         }
     }
 }

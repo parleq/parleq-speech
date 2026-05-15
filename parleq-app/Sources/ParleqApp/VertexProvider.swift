@@ -89,6 +89,50 @@ final class VertexProvider: LLMProvider, Sendable {
         messages: [LLMMessage],
         onEvent: @Sendable (LLMStreamEvent) -> Void
     ) async throws {
+        // Try once; on an auth-shaped failure (token mint failed or
+        // server returned 401), invalidate the token cache and retry
+        // once. Common case for ADC mode: user launched Parleq, then
+        // their gcloud session expired or got refreshed externally
+        // via `gcloud auth application-default login`. The first
+        // attempt sees the stale token, fails 401 (server rejected),
+        // we invalidate, the retry's getToken() re-shells out to
+        // gcloud which now reads the refreshed
+        // application_default_credentials.json — and the retry
+        // succeeds. Matches the Bedrock pattern from #26 / #30.
+        //
+        // Auth failures happen before any chunk is emitted (the HTTP
+        // status check fires first), so the onEvent callback hasn't
+        // run yet on the failed attempt — safe to replay the whole
+        // call without sending duplicate chunks to the overlay.
+        do {
+            try await attemptStreaming(
+                systemPrompt: systemPrompt,
+                messages: messages,
+                onEvent: onEvent
+            )
+        } catch let firstError as LLMError where Self.isAuthFailure(firstError) {
+            FileHandle.standardError.write(
+                "[parleq] vertex: auth failure on first attempt (\(firstError.description)); invalidating token cache and retrying once.\n"
+                    .data(using: .utf8) ?? Data()
+            )
+            await tokenCache.invalidate()
+            try await attemptStreaming(
+                systemPrompt: systemPrompt,
+                messages: messages,
+                onEvent: onEvent
+            )
+        }
+    }
+
+    /// Single attempt at the Vertex streaming call. Extracted so the
+    /// retry-once path above can replay it after invalidating the
+    /// token cache. Same error-mapping logic as before; no auth
+    /// retry happens at this layer.
+    private func attemptStreaming(
+        systemPrompt: String,
+        messages: [LLMMessage],
+        onEvent: @Sendable (LLMStreamEvent) -> Void
+    ) async throws {
         let token: String
         do {
             token = try await tokenCache.getToken()
@@ -230,6 +274,30 @@ final class VertexProvider: LLMProvider, Sendable {
             return "Vertex rejected gcloud credentials for project `\(project)`. Re-run `gcloud auth application-default login`, confirm the principal has the `aiplatform.user` role, and check that `gcloud config get-value project` matches."
         case .serviceAccount:
             return "Vertex rejected the service-account credentials for project `\(project)`. Open Settings → LLM → Set Service Account JSON… (and confirm the service account has the `aiplatform.user` role in this project)."
+        }
+    }
+
+    /// True when an LLMError indicates an auth failure that may be
+    /// recoverable by invalidating the token cache and re-minting.
+    /// `.missingCredentials` covers the "gcloud print-access-token
+    /// itself failed" case (rare but possible if the user fixed
+    /// something between attempts) and the malformed-creds case.
+    /// 401 = server rejected our token; re-mint may pick up
+    /// post-`gcloud auth application-default login` credentials.
+    /// 403 deliberately NOT retried: it usually means the IAM
+    /// principal lacks the role, which re-minting won't fix — the
+    /// user needs to grant the role on the GCP console. We don't
+    /// want to waste a second gcloud shell-out on a known-doomed
+    /// retry. Non-auth errors (network, malformed JSON, etc.)
+    /// don't benefit from token invalidation either.
+    private static func isAuthFailure(_ error: LLMError) -> Bool {
+        switch error {
+        case .missingCredentials:
+            return true
+        case .badStatus(let code, _):
+            return code == 401
+        case .missingAPIKey, .malformedResponse, .requestFailed:
+            return false
         }
     }
 }
