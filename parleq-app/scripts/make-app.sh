@@ -83,6 +83,24 @@ else
     echo "WARNING: AppIcon.icns not found at $APP_DIR/Resources/AppIcon.icns; bundle will use generic icon" >&2
 fi
 
+# Open-source attribution files. Apache-2.0 §4 (the license covering
+# most of our deps) and the MIT/BSD attribution clauses (Sparkle and
+# its vendored components) want us to propagate notices alongside any
+# binary redistribution. Copying these into Contents/Resources/
+# physically satisfies that for the notarized .app — downstream
+# redistributors don't need to ship a separate notice file alongside
+# the .dmg, and end users with curiosity can find the credits by
+# Show Package Contents on Parleq.app. See THIRD_PARTY_LICENSES.md
+# for the policy this implements.
+REPO_ROOT="$(cd "$APP_DIR/.." && pwd)"
+for f in LICENSE NOTICE THIRD_PARTY_LICENSES.md; do
+    if [[ -f "$REPO_ROOT/$f" ]]; then
+        cp "$REPO_ROOT/$f" "$APP_BUNDLE/Contents/Resources/$f"
+    else
+        echo "WARNING: $f not found at $REPO_ROOT/$f; .app will ship without it" >&2
+    fi
+done
+
 # LaunchAgent plist for "Open at Login" via SMAppService.mainApp.
 # macOS looks for this file at Contents/Library/LaunchAgents/<bundle-id>.plist
 # and reports `SMAppService.mainApp.status == .notFound` (with no path
