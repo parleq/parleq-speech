@@ -225,15 +225,34 @@ final class BedrockProvider: LLMProvider, @unchecked Sendable {
     /// path being "user launched Parleq before running
     /// `aws sso login`, then ran it externally; Soto's in-memory
     /// credential cache stayed stale until we tear the client down
-    /// and rebuild." Old client is shut down asynchronously after
-    /// the lock releases so the rebuild doesn't block on
-    /// soto-core's shutdown handshake. Best-effort: if rebuild
-    /// itself fails (e.g. .static auth mode and the Keychain entry
-    /// got deleted between launch and now), we keep the prior
-    /// client active so subsequent calls return a sensible error
-    /// rather than crashing.
-    private func rebuildClient() {
+    /// and rebuild."
+    ///
+    /// `failedClient` is the AWSClient reference whose request just
+    /// threw the auth error. The rebuild is guarded by an identity
+    /// check so coincident auth-failure storms (two parallel
+    /// dictations hitting the same expired-SSO state at once)
+    /// don't double-rebuild — the second rebuild would (a) be pure
+    /// waste because the on-disk cache only changes when the user
+    /// runs `aws sso login` and (b) introduce an in-flight-shutdown
+    /// race where dictation B's rebuild's `syncShutdown()` kills
+    /// the client dictation A is currently using.
+    ///
+    /// Old client is shut down asynchronously after the lock
+    /// releases so the rebuild doesn't block on soto-core's
+    /// shutdown handshake. Best-effort: if rebuild itself fails
+    /// (e.g. .static auth mode and the Keychain entry got deleted
+    /// between launch and now), we keep the prior client active so
+    /// subsequent calls return a sensible error rather than
+    /// crashing.
+    private func rebuildClient(failedClient: AWSClient) {
         clientLock.lock()
+        guard awsClient === failedClient else {
+            // Another caller already rebuilt the client between
+            // this caller's snapshot and now. Skip — the new client
+            // is already in place; the retry path picks it up.
+            clientLock.unlock()
+            return
+        }
         let oldClient = awsClient
         do {
             let (newClient, newRuntime) = try Self.buildClient(
@@ -259,17 +278,15 @@ final class BedrockProvider: LLMProvider, @unchecked Sendable {
         }
     }
 
-    /// Snapshot of the current BedrockRuntime under the lock so a
-    /// concurrent rebuild doesn't observe a half-mutated client. The
-    /// snapshot is a value (the BedrockRuntime struct is Sendable
-    /// and copies cheaply); a rebuild that lands between this
-    /// snapshot and the actual request just means the stale snapshot
-    /// will issue its request against the prior client, fail with
-    /// the same auth error, and our retry path picks up the new
-    /// client on its next snapshot.
-    private func currentRuntime() -> BedrockRuntime {
+    /// Snapshot the current BedrockRuntime + the AWSClient backing it
+    /// under the lock so a concurrent rebuild doesn't observe a
+    /// half-mutated client. The AWSClient reference is returned
+    /// alongside so the caller can later say "I'm asking you to
+    /// rebuild THIS specific client" — see `rebuildClient(failedClient:)`
+    /// for why the identity is load-bearing.
+    private func currentRuntime() -> (BedrockRuntime, AWSClient) {
         clientLock.lock(); defer { clientLock.unlock() }
-        return bedrockRuntime
+        return (bedrockRuntime, awsClient)
     }
 
     func generateStreaming(
@@ -306,6 +323,12 @@ final class BedrockProvider: LLMProvider, @unchecked Sendable {
         // attempts fail, the credentials are genuinely missing or
         // the user's session can't be refreshed, and we surface the
         // error to the caller's normal cleanup-failure UI (see #27).
+        //
+        // `failedClient` is captured from the first attempt's
+        // snapshot so `rebuildClient(failedClient:)` can identity-
+        // check that it's still the live client before rebuilding —
+        // protects against a parallel dictation racing us and
+        // shutting down the very client we're about to retry on.
         let response: BedrockRuntime.ConverseStreamResponse
         do {
             response = try await openStream(
@@ -318,7 +341,17 @@ final class BedrockProvider: LLMProvider, @unchecked Sendable {
                 "[parleq] bedrock: auth failure on first attempt (\(firstError.description)); rebuilding Soto client to pick up refreshed credentials and retrying once.\n"
                     .data(using: .utf8) ?? Data()
             )
-            rebuildClient()
+            // We don't have the failed client directly here — openStream
+            // discarded it after throwing. But every concurrent caller
+            // that snapshotted the same client will hit the same auth
+            // error and call rebuildClient too; the identity check
+            // inside ensures only the first one actually rebuilds. We
+            // pass the currently-live client (which equals "the
+            // client that just failed" for the single-caller case
+            // and equals "the already-rebuilt client" for the racing
+            // case — the identity check makes both safe).
+            let (_, currentClient) = currentRuntime()
+            rebuildClient(failedClient: currentClient)
             response = try await openStream(
                 inferenceConfig: inferenceConfig,
                 bedrockMessages: bedrockMessages,
@@ -391,8 +424,9 @@ final class BedrockProvider: LLMProvider, @unchecked Sendable {
         bedrockMessages: [BedrockRuntime.Message],
         systemPrompt: String
     ) async throws -> BedrockRuntime.ConverseStreamResponse {
+        let (runtime, _) = currentRuntime()
         do {
-            return try await currentRuntime().converseStream(
+            return try await runtime.converseStream(
                 additionalModelRequestFields: Self.additionalFields(forModel: model),
                 inferenceConfig: inferenceConfig,
                 messages: bedrockMessages,
@@ -458,14 +492,18 @@ final class BedrockProvider: LLMProvider, @unchecked Sendable {
                 return "AWS credentials rejected. Open Settings → LLM → Set AWS Credentials."
             }
         case .badStatus(let code, _):
-            // Bedrock returns 403 on most auth failures, but those
-            // map to AWSClientError.accessDenied which is already
-            // classified as .missingCredentials above. A 403 reaching
-            // this branch usually means a model-access issue (the
-            // user's account isn't subscribed to the requested
-            // model in this region) — point them at the right fix.
+            // Most auth-shaped 403s from Bedrock get caught by the
+            // upstream `.invalidSignature / .accessDenied /
+            // .missingAuthenticationToken` mapping into
+            // `.missingCredentials`. A raw 403 reaching this branch
+            // typically means: model isn't enabled for the account
+            // in this region, an IAM policy denies the action, or
+            // the region itself isn't opted in. We point the user
+            // at the most common cause (model access) without
+            // claiming it's the only one — the Bedrock console
+            // shows all three so the user can diagnose from there.
             if code == 403 {
-                return "Bedrock returned 403. The account may not have access to model `\(model)` in region `\(region)`. Enable it in the Bedrock console or pick a different model in Settings → LLM."
+                return "Bedrock returned 403. Common causes: model `\(model)` isn't enabled for this account in `\(region)`, the IAM policy attached to your credentials denies bedrock:InvokeModel, or the region isn't opted in. Check the Bedrock console or pick a different model in Settings → LLM."
             }
             return nil
         case .missingAPIKey, .malformedResponse, .requestFailed:

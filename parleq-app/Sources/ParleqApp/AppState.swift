@@ -747,6 +747,17 @@ final class AppState {
     }
 }
 
+/// Result of a cleanup / refine attempt: the text to display +
+/// paste, plus an optional one-line failure message AppState shows
+/// in the overlay's awaitingAccept state when cleanup didn't run
+/// (or ran and failed). The text is always populated — it's either
+/// the cleaned output (success) or the raw transcript / prior
+/// text (fallback). `failureMessage` is nil on success.
+struct CleanupOutcome {
+    let text: String
+    let failureMessage: String?
+}
+
 /// Stream a cleanup or refine call into the overlay — chunks are
 /// appended to the overlay text as they arrive (so the user sees
 /// text grow incrementally), and the final assembled text is
@@ -759,18 +770,10 @@ final class AppState {
 /// On LLM failure the fallback is to use the raw ASR transcript
 /// (cleanup) or the prior text (refine) — whatever the user has
 /// most-correctly. We log the failure but never propagate it; the
-/// overlay should always show *something*.
-/// Result of a cleanup / refine attempt: the text to display +
-/// paste, plus an optional one-line failure message AppState shows
-/// in the overlay's awaitingAccept state when cleanup didn't run
-/// (or ran and failed). The text is always populated — it's either
-/// the cleaned output (success) or the raw transcript / prior
-/// text (fallback). `failureMessage` is nil on success.
-struct CleanupOutcome {
-    let text: String
-    let failureMessage: String?
-}
-
+/// overlay should always show *something*. The optional
+/// `CleanupOutcome.failureMessage` carries a user-facing recovery
+/// hint when the failure is one a user can act on (auth expired,
+/// API key rejected, network down).
 @MainActor
 private func streamCleanupOrRefine(
     llm: (any LLMProvider)?,
@@ -887,17 +890,34 @@ private func streamCleanupOrRefine(
         // Build a user-facing recovery hint: prefer the provider's
         // own `cleanupFailureHint` (auth-mode-aware, points the user
         // at the specific command or Settings entry that fixes the
-        // underlying issue), fall back to a generic one-liner when
-        // the error isn't an LLMError or the provider doesn't have
-        // a specific hint. Either way, AppState wires this into
-        // OverlayModel.cleanupFailureMessage so the awaitingAccept
-        // overlay surfaces it next to the raw transcript (#27).
+        // underlying issue), fall back to a network-specific message
+        // when the error originates from URLSession, fall back to a
+        // generic see-the-log message otherwise. Either way, AppState
+        // wires this into OverlayModel.cleanupFailureMessage so the
+        // awaitingAccept overlay surfaces it next to the raw
+        // transcript (#27).
+        //
+        // The network detection has to unwrap `LLMError.requestFailed`
+        // first: every provider wraps underlying URLSession errors in
+        // that case before throwing, so the outer `error as NSError`
+        // is the auto-bridged LLMError (no NSURLErrorDomain), not
+        // the underlying network error. Checking the underlying error
+        // inside the `.requestFailed` payload is the only path that
+        // actually reaches the network message.
         let failureMessage: String
-        if let llmError = error as? LLMError,
-           let providerHint = llm.cleanupFailureHint(for: llmError) {
-            failureMessage = providerHint
-        } else if let nsErr = error as NSError?,
-                  nsErr.domain == NSURLErrorDomain {
+        if let llmError = error as? LLMError {
+            if let providerHint = llm.cleanupFailureHint(for: llmError) {
+                failureMessage = providerHint
+            } else if case .requestFailed(let underlying) = llmError,
+                      (underlying as NSError).domain == NSURLErrorDomain {
+                failureMessage = "Network unavailable — pasting raw transcript. Check your connection and try again."
+            } else {
+                failureMessage = "Cleanup unavailable — pasting raw transcript. See ~/.parleq/app.log for details."
+            }
+        } else if (error as NSError).domain == NSURLErrorDomain {
+            // Non-LLMError NSURLError — shouldn't happen in practice
+            // (every provider wraps these) but covers any future
+            // direct-throw path.
             failureMessage = "Network unavailable — pasting raw transcript. Check your connection and try again."
         } else {
             failureMessage = "Cleanup unavailable — pasting raw transcript. See ~/.parleq/app.log for details."
