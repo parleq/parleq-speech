@@ -131,11 +131,14 @@ final class OverlayWindow {
     /// calls `show(.initializing, …)` again with the same state but
     /// a new snapshot to live-update while bytes are streaming in.
     ///
-    /// `microphoneName` is only consulted in the `.capturing` state;
-    /// other states ignore it. AppState resolves the active mic via
-    /// `effectiveMicrophoneName(forExplicitUID:)` and passes the
-    /// result so the overlay can render "listening on <Mic>…"
-    /// inline. nil = fall back to the plain "listening…" text.
+    /// `microphoneName` is only consulted in the active-capture
+    /// states (`.capturing` and `.refining`, both of which run the
+    /// mic engine); other states ignore it. AppState resolves the
+    /// active mic via `effectiveMicrophoneName(forExplicitUID:)` and
+    /// passes the result so the overlay can render "listening on
+    /// <Mic>…" / "listening for refinement on <Mic>…" inline. nil =
+    /// fall back to the plain "listening…" / "listening for
+    /// refinement…" text.
     func show(
         state: OverlayState,
         text: String,
@@ -276,12 +279,15 @@ private final class OverlayModel: ObservableObject {
     /// case. Cleared whenever the overlay leaves `.initializing`.
     @Published var downloadProgress: ASRDownloadProgress?
 
-    /// Active microphone name to surface in the `.capturing` state's
-    /// "listening on <name>…" line. `nil` falls back to the plain
-    /// "listening…" copy — the only path that produces nil today is
-    /// "user picked System Default but Core Audio currently has no
-    /// default input," which is rare enough not to design for. Cleared
-    /// whenever the overlay leaves `.capturing`.
+    /// Active microphone name to surface in the active-capture
+    /// states' "listening on <name>…" / "listening for refinement on
+    /// <name>…" line. `nil` falls back to the plain "listening…" /
+    /// "listening for refinement…" copy — the only path that produces
+    /// nil today is "user picked System Default but Core Audio
+    /// currently has no default input," which is rare enough not to
+    /// design for. Cleared whenever the overlay leaves an
+    /// active-capture state (anything other than `.capturing` or
+    /// `.refining`).
     @Published var microphoneName: String?
 
     func update(

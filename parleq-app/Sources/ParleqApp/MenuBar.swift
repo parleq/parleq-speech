@@ -82,7 +82,17 @@ final class MenuBar: NSObject {
     /// Drives the checkmark in the Microphone submenu. ParleqApp
     /// updates this on launch from Config and after each user
     /// selection so the submenu's next-open render is correct.
-    var currentMicrophoneUID: String = ""
+    /// didSet refreshes the menu-bar tooltip so a hover after any
+    /// selection change (from the submenu, from Settings → Audio,
+    /// from anywhere else that touches this property) immediately
+    /// shows the new mic name — without this, the tooltip stays
+    /// pinned to whatever value was set at the last phase
+    /// transition.
+    var currentMicrophoneUID: String = "" {
+        didSet {
+            if oldValue != currentMicrophoneUID { refresh() }
+        }
+    }
 
     init(hotkeyDisplayName: String) {
         // .variableLength sizes the item to the icon's intrinsic
@@ -547,6 +557,16 @@ extension MenuBar: NSMenuDelegate {
     /// picker reflects the change without a separate observer.
     @objc private func selectMicrophone(_ sender: NSMenuItem) {
         let uid = (sender.representedObject as? String) ?? ""
+        // Setting currentMicrophoneUID triggers its didSet, which
+        // calls refresh() to re-render the menu-bar tooltip with
+        // the new mic name. Same path covers Settings → Audio
+        // selection changes (they post the cross-surface notification
+        // that ParleqApp.main routes back through this property).
+        // Note: macOS-level default-input-device changes (e.g. user
+        // unplugs AirPods while Parleq has "System Default"
+        // selected) aren't observed here — that would need a
+        // Core Audio property listener on
+        // kAudioHardwarePropertyDefaultInputDevice. Deferred.
         currentMicrophoneUID = uid
         onMicrophoneSelected?(uid)
         NotificationCenter.default.post(
