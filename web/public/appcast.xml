@@ -21,6 +21,19 @@
   Items are inserted by `make release`: see the Makefile's
   release recipe for the awk insertion against the
   PARLEQ_APPCAST_INSERT marker below. The newest entry goes
+        <item>
+            <title>Version 0.10.0</title>
+            <pubDate>Fri, 15 May 2026 09:46:15 +0000</pubDate>
+            <sparkle:version>27</sparkle:version>
+            <sparkle:shortVersionString>0.10.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:releaseNotesLink>https://github.com/parleq/parleq-speech/releases/tag/v0.10.0</sparkle:releaseNotesLink>
+            <enclosure
+                url="https://github.com/parleq/parleq-speech/releases/download/v0.10.0/Parleq-0.10.0-83c3007.dmg"
+                sparkle:edSignature="nUazHdC57sDQCu+bXftCzclnoMqaU0hwohgiplBUg+iFXLsbK4etdNCiuOpF6i4N1F+WDyZeH85Xk/KAmGYOAQ=="
+                length="11607488"
+                type="application/octet-stream" />
+        </item>
   immediately AFTER the marker, so the top of the <channel>
   is always the freshest release and older entries get pushed
   downward.
@@ -37,6 +50,19 @@
         <description>Updates to Parleq, the local-first AI dictation app for macOS.</description>
         <language>en</language>
         <!-- PARLEQ_APPCAST_INSERT — `make release` inserts new <item> blocks
+        <item>
+            <title>Version 0.10.0</title>
+            <pubDate>Fri, 15 May 2026 09:46:15 +0000</pubDate>
+            <sparkle:version>27</sparkle:version>
+            <sparkle:shortVersionString>0.10.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:releaseNotesLink>https://github.com/parleq/parleq-speech/releases/tag/v0.10.0</sparkle:releaseNotesLink>
+            <enclosure
+                url="https://github.com/parleq/parleq-speech/releases/download/v0.10.0/Parleq-0.10.0-83c3007.dmg"
+                sparkle:edSignature="nUazHdC57sDQCu+bXftCzclnoMqaU0hwohgiplBUg+iFXLsbK4etdNCiuOpF6i4N1F+WDyZeH85Xk/KAmGYOAQ=="
+                length="11607488"
+                type="application/octet-stream" />
+        </item>
              on the line immediately below this marker, so the freshest
              release lands at the top of the channel and older entries
              get pushed downward. Don't remove. -->
