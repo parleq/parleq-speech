@@ -324,14 +324,20 @@ final class BedrockProvider: LLMProvider, @unchecked Sendable {
         // the user's session can't be refreshed, and we surface the
         // error to the caller's normal cleanup-failure UI (see #27).
         //
-        // `failedClient` is captured from the first attempt's
-        // snapshot so `rebuildClient(failedClient:)` can identity-
-        // check that it's still the live client before rebuilding —
-        // protects against a parallel dictation racing us and
-        // shutting down the very client we're about to retry on.
+        // Snapshot the client up-front and use the same reference
+        // for the failure-identity check. That's what makes
+        // `rebuildClient(failedClient:)`'s identity check actually
+        // discriminate: if a parallel dictation already rebuilt
+        // between our snapshot and our failure, the live `awsClient`
+        // is the post-rebuild one, our `clientForAttempt1` is the
+        // pre-rebuild one, the references differ, and we skip the
+        // redundant rebuild + dangerous shutdown of the client the
+        // parallel dictation is now using.
+        let (runtimeForAttempt1, clientForAttempt1) = currentRuntime()
         let response: BedrockRuntime.ConverseStreamResponse
         do {
             response = try await openStream(
+                runtime: runtimeForAttempt1,
                 inferenceConfig: inferenceConfig,
                 bedrockMessages: bedrockMessages,
                 systemPrompt: systemPrompt
@@ -341,18 +347,13 @@ final class BedrockProvider: LLMProvider, @unchecked Sendable {
                 "[parleq] bedrock: auth failure on first attempt (\(firstError.description)); rebuilding Soto client to pick up refreshed credentials and retrying once.\n"
                     .data(using: .utf8) ?? Data()
             )
-            // We don't have the failed client directly here — openStream
-            // discarded it after throwing. But every concurrent caller
-            // that snapshotted the same client will hit the same auth
-            // error and call rebuildClient too; the identity check
-            // inside ensures only the first one actually rebuilds. We
-            // pass the currently-live client (which equals "the
-            // client that just failed" for the single-caller case
-            // and equals "the already-rebuilt client" for the racing
-            // case — the identity check makes both safe).
-            let (_, currentClient) = currentRuntime()
-            rebuildClient(failedClient: currentClient)
+            rebuildClient(failedClient: clientForAttempt1)
+            // Fresh snapshot for the retry — whether we did the
+            // rebuild ourselves or a parallel caller had already
+            // done it, this picks up the live post-rebuild client.
+            let (runtimeForAttempt2, _) = currentRuntime()
             response = try await openStream(
+                runtime: runtimeForAttempt2,
                 inferenceConfig: inferenceConfig,
                 bedrockMessages: bedrockMessages,
                 systemPrompt: systemPrompt
@@ -420,11 +421,11 @@ final class BedrockProvider: LLMProvider, @unchecked Sendable {
     /// inline in `generateStreaming`; factored out so the auth-retry
     /// can re-issue the same logic without code duplication.
     private func openStream(
+        runtime: BedrockRuntime,
         inferenceConfig: BedrockRuntime.InferenceConfiguration,
         bedrockMessages: [BedrockRuntime.Message],
         systemPrompt: String
     ) async throws -> BedrockRuntime.ConverseStreamResponse {
-        let (runtime, _) = currentRuntime()
         do {
             return try await runtime.converseStream(
                 additionalModelRequestFields: Self.additionalFields(forModel: model),

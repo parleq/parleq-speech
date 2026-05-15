@@ -904,23 +904,25 @@ private func streamCleanupOrRefine(
         // the underlying network error. Checking the underlying error
         // inside the `.requestFailed` payload is the only path that
         // actually reaches the network message.
+        let networkHint = "Network unavailable — pasting raw transcript. Check your connection and try again."
+        let genericHint = "Cleanup unavailable — pasting raw transcript. See ~/.parleq/app.log for details."
         let failureMessage: String
         if let llmError = error as? LLMError {
             if let providerHint = llm.cleanupFailureHint(for: llmError) {
                 failureMessage = providerHint
             } else if case .requestFailed(let underlying) = llmError,
                       (underlying as NSError).domain == NSURLErrorDomain {
-                failureMessage = "Network unavailable — pasting raw transcript. Check your connection and try again."
+                failureMessage = networkHint
             } else {
-                failureMessage = "Cleanup unavailable — pasting raw transcript. See ~/.parleq/app.log for details."
+                failureMessage = genericHint
             }
         } else if (error as NSError).domain == NSURLErrorDomain {
             // Non-LLMError NSURLError — shouldn't happen in practice
             // (every provider wraps these) but covers any future
             // direct-throw path.
-            failureMessage = "Network unavailable — pasting raw transcript. Check your connection and try again."
+            failureMessage = networkHint
         } else {
-            failureMessage = "Cleanup unavailable — pasting raw transcript. See ~/.parleq/app.log for details."
+            failureMessage = genericHint
         }
         if useOverlay {
             overlay.show(state: .cleaning, text: fallback)
