@@ -904,6 +904,15 @@ private func streamCleanupOrRefine(
         // the underlying network error. Checking the underlying error
         // inside the `.requestFailed` payload is the only path that
         // actually reaches the network message.
+        // Every provider wraps its thrown errors in LLMError before
+        // re-throwing, so the catch above receives an LLMError in
+        // every practical path. The provider's own hint wins; if it
+        // returned nil, fall back to a network-specific message
+        // when the underlying URLSession error is reachable through
+        // `.requestFailed`, otherwise a generic "see the log" copy.
+        // Any non-LLMError throw falls to the generic copy too —
+        // no contracted path produces one, but the catch-all keeps
+        // failureMessage assigned no matter what.
         let networkHint = "Network unavailable — pasting raw transcript. Check your connection and try again."
         let genericHint = "Cleanup unavailable — pasting raw transcript. See ~/.parleq/app.log for details."
         let failureMessage: String
@@ -916,11 +925,6 @@ private func streamCleanupOrRefine(
             } else {
                 failureMessage = genericHint
             }
-        } else if (error as NSError).domain == NSURLErrorDomain {
-            // Non-LLMError NSURLError — shouldn't happen in practice
-            // (every provider wraps these) but covers any future
-            // direct-throw path.
-            failureMessage = networkHint
         } else {
             failureMessage = genericHint
         }
