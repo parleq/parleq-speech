@@ -25,9 +25,14 @@ final class MenuBar: NSObject {
     private let statusItem: NSStatusItem
     private let statusMenuItem: NSMenuItem
     /// "⚠ Cleanup failed — <message>" item that appears between
-    /// Status and Hotkey when quick-mode cleanup fails (#28). Click
-    /// dismisses the badge. Hidden by default; AppState's quick-mode
-    /// applyResult toggles visibility via `setCleanupFailure(_:)`.
+    /// Status and Hotkey when LLM cleanup fails (#28). Click
+    /// dismisses the badge. Hidden by default; every `applyResult`
+    /// in AppState — both quick-mode and the overlay path — toggles
+    /// visibility via `setCleanupFailure(_:)`. Quick mode is the
+    /// motivating case (no overlay to surface the failure inline),
+    /// but firing in normal mode too means a successful subsequent
+    /// dictation automatically clears the badge even when the user
+    /// never dismissed an earlier one manually.
     private let cleanupFailureMenuItem: NSMenuItem
     /// Submenu listing recent dictations. Items are rebuilt
     /// on every menu open via `NSMenuDelegate.menuNeedsUpdate(_:)`
@@ -158,10 +163,11 @@ final class MenuBar: NSObject {
         )
         resetASRItem.target = self
 
-        // Cleanup-failure indicator. Hidden by default; AppState's
-        // quick-mode applyResult shows it with a provider-specific
-        // recovery hint when LLM cleanup fails. Click clears the
-        // badge (and the amber-bar icon).
+        // Cleanup-failure indicator. Hidden by default; every
+        // `applyResult` in AppState toggles it via
+        // `setCleanupFailure(_:)` with a provider-specific recovery
+        // hint on failure or nil on success. Click clears the badge
+        // (and the amber-bar icon) manually.
         cleanupFailureMenuItem.target = self
         cleanupFailureMenuItem.action = #selector(dismissCleanupFailure)
         cleanupFailureMenuItem.isHidden = true
@@ -269,13 +275,17 @@ final class MenuBar: NSObject {
         refresh()
     }
 
-    /// AppState calls this from `applyResult`'s quick-mode branch
-    /// to surface or clear a cleanup-failure indicator. Non-nil
-    /// message → amber-bar icon + "Cleanup failed: <message>"
-    /// menu item visible; nil → cleared. Same message text the
-    /// overlay's `awaitingAccept` decoration shows in non-quick
-    /// mode, so users get consistent recovery hints regardless
-    /// of which dictation flow surfaced the failure (#28).
+    /// AppState calls this from every `applyResult` to surface or
+    /// clear a cleanup-failure indicator. Non-nil message →
+    /// amber-bar icon + "⚠ Cleanup failed — <message>" menu item
+    /// visible; nil → cleared. Quick mode is the primary
+    /// motivating case (no overlay to surface the failure inline),
+    /// but firing in normal mode too means a successful subsequent
+    /// dictation automatically clears any leftover badge. The
+    /// message text matches what the overlay's `awaitingAccept`
+    /// decoration shows in normal mode, so users get consistent
+    /// recovery hints regardless of which surface delivers them
+    /// (#28).
     func setCleanupFailure(_ message: String?) {
         let oldHadFailure = cleanupFailureMessage != nil
         cleanupFailureMessage = message
@@ -292,11 +302,12 @@ final class MenuBar: NSObject {
     private var currentPhase: AppState.Phase = .idle
     private var asrReady: Bool = true
     private var asrLoadFailed: Bool = false
-    /// Latest cleanup-failure message from a quick-mode dictation
-    /// (or any path where the overlay-side decoration didn't reach
-    /// the user). Drives the amber-bar status icon + the
-    /// dismissable "Cleanup failed: …" menu item. Cleared on the
-    /// next successful cleanup. nil = no badge shown.
+    /// Latest cleanup-failure message from the most recent
+    /// `applyResult` in AppState (any mode — quick or overlay).
+    /// Drives the amber-bar status icon + the dismissable
+    /// "⚠ Cleanup failed — …" menu item. Cleared on the next
+    /// successful cleanup or when the user clicks the row. nil = no
+    /// badge shown.
     private var cleanupFailureMessage: String?
 
     private func refresh() {
@@ -383,7 +394,7 @@ final class MenuBar: NSObject {
     ///     non-template so the color sticks regardless of menu bar
     ///     appearance. Distinct-at-a-glance signal that LLM cleanup
     ///     stopped working — the user typically discovers the cause
-    ///     by clicking the menu, where a "Cleanup failed: <hint>"
+    ///     by clicking the menu, where a "⚠ Cleanup failed — <hint>"
     ///     row carries the full recovery message.
     ///
     /// Drawn via NSImage(size:flipped:drawingHandler:) so AppKit
