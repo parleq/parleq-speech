@@ -34,17 +34,17 @@
     <!-- Opt out of macOS automatic termination. Without this, the
          system will silently kill an LSUIElement app that has no
          visible windows after a short idle period. We have a hotkey
-         listener and a supervised child sidecar process that must
-         keep running until the user explicitly quits via the menu
-         bar. The supervisor relies on applicationWillTerminate to
-         clean up the sidecar; an automatic termination skips that
-         hook and orphans the child. -->
+         listener and an in-process speech engine with model state
+         that takes 30-60s to reload on first launch; the user
+         expects Parleq to stay running until they explicitly quit
+         via the menu bar. -->
     <key>NSSupportsAutomaticTermination</key>
     <false/>
     <!-- Sudden termination is the "OS may SIGKILL us during shutdown
-         or low-memory conditions" policy. Same reason as above: we
-         need our applicationWillTerminate to fire so the sidecar
-         child gets SIGTERM and releases port 8767. -->
+         or low-memory conditions" policy. Disabled for the same
+         reasons as automatic termination — Parleq should exit only
+         through the menu-bar Quit path or an explicit signal, so
+         in-flight LLM streams cancel cleanly. -->
     <key>NSSupportsSuddenTermination</key>
     <false/>
     <key>NSHighResolutionCapable</key>
@@ -54,5 +54,25 @@
     <!-- Mic permission prompt copy. Shown on first capture. -->
     <key>NSMicrophoneUsageDescription</key>
     <string>Parleq listens to your voice when you press the configured hotkey, transcribes locally, and pastes the result into the active app.</string>
+    <!-- Sparkle update channel. The feed URL is fetched on app
+         launch and on a periodic timer (24h default); each
+         <enclosure> link in the feed is verified against the
+         public Ed25519 key below before any update is installed.
+         If the user disables automatic checks in Settings, only
+         the explicit menu-bar "Check for Updates…" item hits this
+         URL. See docs/SECURITY_REVIEW.md §"Auto-update" for the
+         full posture. -->
+    <key>SUFeedURL</key>
+    <string>https://parleq.app/appcast.xml</string>
+    <!-- Ed25519 public key. The matching private key lives only in
+         the maintainer's macOS Keychain (and a password-manager
+         backup) and never enters the repository or any built
+         artifact. Sparkle on user machines refuses any update
+         whose enclosure signature doesn't verify against this
+         exact public key, so a downstream attacker who swapped
+         out the appcast or the .dmg cannot push an arbitrary
+         binary to existing installs. -->
+    <key>SUPublicEDKey</key>
+    <string>lYMPheHVJ0WKG3tUTqrvWRb0+tLKQVynVtbR8tJENZs=</string>
 </dict>
 </plist>

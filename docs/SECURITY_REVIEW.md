@@ -186,11 +186,14 @@ All network calls are HTTPS via URLSession or Soto, both using the system trust 
 | `portal.sso.<region>.amazonaws.com` | SSO GetRoleCredentials (Bedrock path) | Periodic | N/A (managed by Soto) |
 | `raw.githubusercontent.com/BerriAI/litellm/...` | LiteLLM pricing JSON | Once per 24 h, on launch | `PARLEQ_DISABLE_LIVE_PRICING=1` |
 | `huggingface.co` (FluidAudio's loader) | First-run model download (Parakeet TDT v3 ≈ 150 MB; CTC encoder ≈ 97 MB if custom dictionary used) | Once per machine, then cached at `~/Library/Application Support/FluidAudio/Models/` | N/A — bundled ASR requires the models. Switch to a custom `asr.endpoint` to skip. |
+| `parleq.app/appcast.xml` | Sparkle auto-update check | On app launch + every 24 h (default; configurable) | Settings → Updates → "Automatically check for updates" off. The menu-bar "Check for Updates…" item still hits the URL on demand. |
+| `github.com/parleq/parleq-speech/releases/download/...` | Downloads the .dmg referenced by the appcast, when the user accepts an update prompt | Per update install (user-initiated) | Don't accept the prompt; the request never fires. |
 
 **Outbound data classifications:**
 - Transcript text → LLM provider on cleanup (intentional, the entire point).
 - AWS request metadata (model ID, region, request body of token-shaped JSON) → Bedrock.
 - API key in Gemini URL query parameter → Gemini.
+- Sparkle's update check sends a User-Agent including the app version + macOS version; no other identifying information. The appcast response is a static XML file; Sparkle verifies each enclosure's Ed25519 signature against the `SUPublicEDKey` baked into Info.plist before installing.
 - No telemetry, no analytics, no crash reporting to any Parleq-controlled server. Parleq itself has no backend.
 
 ---
@@ -201,11 +204,56 @@ All network calls are HTTPS via URLSession or Soto, both using the system trust 
 |---|---|---|---|
 | Soto (`SotoBedrockRuntime`) | AWS SigV4, ConverseStream, SSO credential resolution | `"7.14.0"..<"7.15.0"` | `soto-project/soto` |
 | FluidAudio | In-process ASR (Parakeet TDT v3) + CTC custom-vocab boosting | `"0.14.3"..<"0.15.0"` | `FluidInference/FluidAudio` |
+| Sparkle | Auto-update framework (Ed25519-signed appcast → download → relaunch). Used by Bear, Transmit, Sketch, OmniFocus, and thousands of other Mac apps. | `"2.9.0"..<"2.10.0"` | `sparkle-project/Sparkle` |
 | swift-nio, swift-crypto, swift-certificates | Transitive | (Soto / FluidAudio deps) | Apple |
 
 `Package.resolved` is **committed** to the repository — fresh clones build against the exact dependency graph we tested. Bumping a dependency requires an explicit `swift package update` + reviewable commit diff. See [CLAUDE.md § Dependency upgrade policy](../CLAUDE.md) for the periodic-upgrade ritual.
 
 There is no longer a separate sidecar `Package.swift` to track. The retired sidecar package's only direct deps (Hummingbird, FluidAudio) collapsed into the main app target as part of v0.9.0 — Hummingbird is gone, FluidAudio is pinned above.
+
+---
+
+## 7a. Auto-update
+
+Parleq uses Sparkle for auto-updates. The end-user experience is the same well-known "an update is available" prompt Bear, Transmit, Sketch, and many other Mac apps surface. Two parts to the security posture:
+
+### Where the public/private key pair lives
+
+- The **public** Ed25519 key is baked into every Parleq build as `SUPublicEDKey` in `Info.plist`. Anyone can read it from any installed Parleq.app, and that's the design — Sparkle on every user's machine uses it to verify each downloaded .dmg's signature before installing.
+- The **private** Ed25519 key lives only in the maintainer's macOS Keychain (where Sparkle's `generate_keys` tool placed it) and a backup in the maintainer's password manager. It never enters the repository, never appears in any built artifact, and never travels off the maintainer's machine. `sign_update` finds it via the Keychain lookup at release time.
+- **If the private key is lost**, Parleq can no longer issue updates to existing installs (Sparkle refuses anything signed by a different key). Users would need to manually download a new build from a new public key. The maintainer treats the backup the same way as the notarization Apple ID + app-specific password.
+
+### What gets checked at each update
+
+1. Sparkle GETs `https://parleq.app/appcast.xml` over HTTPS using the system trust store.
+2. If the appcast's latest `<item>` describes a newer version than the running build, Sparkle prompts the user. **No download happens without user consent.**
+3. On user accept, Sparkle downloads the .dmg from the `<enclosure url="...">` URL (typically `github.com/parleq/parleq-speech/releases/download/v.../...dmg`).
+4. Sparkle verifies the downloaded bytes match the `<enclosure length="...">` byte count and that the Ed25519 signature in `<enclosure sparkle:edSignature="...">` verifies against the build's compiled-in `SUPublicEDKey`. **Mismatch → refused.** Any attacker who tampers with the appcast XML, swaps out the .dmg, or MITMs the download cannot push an arbitrary binary because they don't have the private key.
+5. Sparkle's installer relaunches Parleq.
+
+### Outbound information on update checks
+
+Sparkle sends a User-Agent string containing the app version and macOS version with each check. No other identifying information — no UUID, no install ID, no telemetry payload. The appcast response is a static XML file; the server doesn't log Parleq specifically.
+
+### User control
+
+- **Settings → Updates** has an "Automatically check for updates" toggle (writes to UserDefaults' `SUEnableAutomaticChecks` key; Sparkle reads from there). Disable to suppress the periodic background check.
+- The menu-bar **"Check for Updates…"** item triggers an on-demand check regardless of the toggle.
+- An installed Parleq that opts out of automatic checks still verifies every update's Ed25519 signature when the user runs a manual check — the verification is unconditional, the network call timing is what the toggle gates.
+
+### Failure modes
+
+- **parleq.app unreachable.** Sparkle silently skips the check; no error surfaced to the user. The next successful check resumes normal operation.
+- **Appcast malformed.** Sparkle logs a warning to Console.app and skips the check. The app continues running.
+- **Signature verification fails.** Sparkle refuses the download and shows a clear error dialog. The running app continues to work; no rollback needed because the .app bundle is unchanged.
+
+### Implementation references
+
+- `parleq-app/Sources/ParleqApp/ParleqApp.swift` — `SPUStandardUpdaterController` instantiation.
+- `parleq-app/Sources/ParleqApp/UpdatesView.swift` — Settings → Updates pane.
+- `parleq-app/Resources/Info.plist` — `SUFeedURL` + `SUPublicEDKey`.
+- `web/public/appcast.xml` — the feed itself, regenerated by `make release` per release.
+- `Makefile` — `release` recipe runs `sign_update` against each .dmg + inserts the corresponding `<item>` into the appcast.
 
 ---
 

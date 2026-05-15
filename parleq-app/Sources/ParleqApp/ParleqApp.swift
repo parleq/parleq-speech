@@ -11,6 +11,7 @@
 
 import AppKit
 import Foundation
+import Sparkle
 
 @main
 struct ParleqApp {
@@ -293,6 +294,7 @@ struct ParleqApp {
         let menuBox = MenuBox()
         let settingsBox = SettingsBox()
         let wizardBox = WizardBox()
+        let updaterBox = UpdaterBox()
         MainActor.assumeIsolated {
             logStderr("[parleq] login-item: status=\(LoginItem.statusDescription), supported=\(LoginItem.isSupported), bundle=\(Bundle.main.bundlePath)")
             let menuBar = MenuBar(hotkeyDisplayName: binding.displayName)
@@ -301,8 +303,33 @@ struct ParleqApp {
             settingsBox.value = settings
             let wizard = SetupWizardController()
             wizardBox.value = wizard
+            // Sparkle auto-update controller. `startingUpdater: true`
+            // arms Sparkle's standard background-check loop (default
+            // 24h interval) which, on first launch after the user
+            // opts in, prompts "Would you like Parleq to check for
+            // updates automatically?" The Settings → Updates section
+            // and the menu's "Check for Updates…" item both target
+            // this same controller. Retained for the app's lifetime
+            // via the UpdaterBox @unchecked-Sendable shim so menu /
+            // settings closures can capture it without a Swift 6
+            // strict-concurrency complaint.
+            let updaterController = SPUStandardUpdaterController(
+                startingUpdater: true,
+                updaterDelegate: nil,
+                userDriverDelegate: nil
+            )
+            updaterBox.value = updaterController
+            // Make the live updater visible to Settings → Updates so
+            // its toggle reads the real `automaticallyChecksForUpdates`
+            // state rather than an @AppStorage guess. SparkleHolder
+            // is a process-wide write-once shim; ParleqApp.main is
+            // the only writer.
+            SparkleHolder.controller = updaterController
             menuBar.onOpenSettings = { settings.show() }
             menuBar.onOpenWizard = { wizard.show() }
+            menuBar.onCheckForUpdates = { [weak updaterController] in
+                updaterController?.checkForUpdates(nil)
+            }
 
             // Microphone selector (#25). The menu submenu writes the
             // chosen UID back via this callback; we update the
@@ -342,6 +369,20 @@ struct ParleqApp {
             ) { [weak wizardBox] _ in
                 MainActor.assumeIsolated {
                     wizardBox?.value?.show()
+                }
+            }
+
+            // Settings → Updates → "Check for Updates Now" posts this
+            // notification. Same decoupling rationale as the wizard
+            // case: SettingsView doesn't need a reference to the
+            // Sparkle controller.
+            NotificationCenter.default.addObserver(
+                forName: .parleqCheckForUpdates,
+                object: nil,
+                queue: .main
+            ) { [weak updaterBox] _ in
+                MainActor.assumeIsolated {
+                    updaterBox?.value?.checkForUpdates(nil)
                 }
             }
 
@@ -499,6 +540,16 @@ private final class WizardBox: @unchecked Sendable {
 // route through.
 private final class RecorderBox: @unchecked Sendable {
     var value: AudioRecorder?
+}
+
+// UpdaterBox holds the Sparkle SPUStandardUpdaterController for
+// the app's whole runtime. Sparkle's controller is @MainActor and
+// would otherwise be eligible for ARC release after the
+// `MainActor.assumeIsolated` block returns; pinning it here keeps
+// the auto-update background loop alive and gives menu / settings
+// closures a Sendable handle to capture.
+private final class UpdaterBox: @unchecked Sendable {
+    var value: SPUStandardUpdaterController?
 }
 
 private func logStderr(_ message: String) {

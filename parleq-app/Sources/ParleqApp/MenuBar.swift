@@ -64,6 +64,12 @@ final class MenuBar: NSObject {
     /// SetupWizardController; works regardless of whether the
     /// wizard already ran on first launch (#21 step 6).
     var onOpenWizard: (() -> Void)?
+    /// Closure invoked when the user picks "Check for Updates…".
+    /// Wired to `SPUStandardUpdaterController.checkForUpdates(nil)`
+    /// in ParleqApp.main. Sparkle handles the UI from there — the
+    /// "you're up to date" dialog, the "update available" prompt,
+    /// the download progress, the relaunch.
+    var onCheckForUpdates: (() -> Void)?
 
     /// Invoked when the user picks an entry from the Microphone
     /// submenu (#25). Empty string = "System Default"; otherwise a
@@ -136,6 +142,13 @@ final class MenuBar: NSObject {
         )
         resetASRItem.target = self
 
+        let checkForUpdatesItem = NSMenuItem(
+            title: "Check for Updates…",
+            action: #selector(checkForUpdates),
+            keyEquivalent: ""
+        )
+        checkForUpdatesItem.target = self
+
         let aboutItem = NSMenuItem(
             title: "About Parleq",
             action: #selector(showAbout),
@@ -159,6 +172,7 @@ final class MenuBar: NSObject {
         menu.addItem(runSetupItem)
         menu.addItem(.separator())
         menu.addItem(resetASRItem)
+        menu.addItem(checkForUpdatesItem)
         menu.addItem(recentMenuItem)
         menu.addItem(aboutItem)
         menu.addItem(.separator())
@@ -174,6 +188,10 @@ final class MenuBar: NSObject {
 
     @objc private func runSetup() {
         onOpenWizard?()
+    }
+
+    @objc private func checkForUpdates() {
+        onCheckForUpdates?()
     }
 
     @objc private func resetASR() {

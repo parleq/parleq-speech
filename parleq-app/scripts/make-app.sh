@@ -60,6 +60,18 @@ cp "$APP_DIR/Resources/Info.plist" "$APP_BUNDLE/Contents/Info.plist"
 cp "$BINARY" "$APP_BUNDLE/Contents/MacOS/ParleqApp"
 chmod +x "$APP_BUNDLE/Contents/MacOS/ParleqApp"
 
+# Inject the standard macOS-bundle framework search path into the
+# executable's LC_RPATH. SwiftPM doesn't add this for binary-target
+# frameworks (it injects @executable_path/ only, treating the
+# binary as a CLI tool), so without this step the runtime looks
+# for Sparkle.framework at Contents/MacOS/ rather than the
+# Contents/Frameworks/ where make-app.sh embeds it — dyld fails
+# with "Library not loaded: @rpath/Sparkle.framework/..." on
+# launch. Xcode-built apps get this rpath automatically; SwiftPM-
+# built apps have to set it themselves.
+install_name_tool -add_rpath "@executable_path/../Frameworks" \
+    "$APP_BUNDLE/Contents/MacOS/ParleqApp"
+
 # App icon — Info.plist's CFBundleIconFile points at "AppIcon" which
 # macOS resolves to Contents/Resources/AppIcon.icns. The same .icns
 # drives the Dock tile, the Finder Get Info pane, and the standard
@@ -109,9 +121,32 @@ fi
 # FluidAudio runs in-process now (see LocalASR.swift). Previously
 # this stage built a separate `fluidaudio-sidecar` binary, copied it
 # to Contents/Resources/sidecar/, and signed it independently. The
-# in-process consolidation drops the second SwiftPM build, the
-# Resources/sidecar directory, and the nested codesigning pass — the
-# bundle is now a single signed executable.
+# in-process consolidation drops the second SwiftPM build and the
+# Resources/sidecar directory.
+
+# Embed Sparkle.framework. SwiftPM's binary-target integration leaves
+# Sparkle.framework in .build/<triple>/<config>/, NOT inside the
+# .app's Contents/Frameworks/ where the runtime expects it — that
+# step is on the integrator. A missing framework is a hard error,
+# not a warning: the main binary links Sparkle, so a build without
+# the framework produces a guaranteed-crash-on-launch bundle.
+# Failing here is much friendlier than getting a launch-time
+# `dlopen Sparkle` crash from a user.
+SPARKLE_BUILD_DIR=$(swift build -c "$CONFIG" --show-bin-path)
+SPARKLE_SRC="$SPARKLE_BUILD_DIR/Sparkle.framework"
+if [[ ! -d "$SPARKLE_SRC" ]]; then
+    echo "ERROR: Sparkle.framework not found at $SPARKLE_SRC." >&2
+    echo "       The main executable links Sparkle, so the .app would crash" >&2
+    echo "       on launch without the embedded framework. Try:" >&2
+    echo "         cd $APP_DIR && swift package resolve && swift build -c $CONFIG" >&2
+    echo "       If that doesn't repopulate the framework, clear the artifact" >&2
+    echo "       cache and rebuild:" >&2
+    echo "         rm -rf $APP_DIR/.build/artifacts && swift build -c $CONFIG" >&2
+    exit 1
+fi
+mkdir -p "$APP_BUNDLE/Contents/Frameworks"
+cp -R "$SPARKLE_SRC" "$APP_BUNDLE/Contents/Frameworks/Sparkle.framework"
+echo "    embedded Sparkle.framework: $(du -sh "$APP_BUNDLE/Contents/Frameworks/Sparkle.framework" | awk '{print $1}')"
 
 # Pick a signing identity:
 #   1. Honor PARLEQ_CODESIGN_IDENTITY env var if set (lets the user
@@ -146,18 +181,72 @@ if [[ -z "$IDENTITY" ]]; then
 else
     echo "==> codesign --sign \"$IDENTITY\""
 fi
-# Single signing pass on the bundle. Previously this stage signed a
-# nested sidecar binary first (Apple's notarization rejects --deep'd
-# nested binaries), then the outer bundle. With FluidAudio folded
-# into the main executable there's nothing nested to sign — one call
-# covers everything.
+# Sign innermost-first: Sparkle.framework's nested helpers, then
+# Sparkle.framework, then the outer .app bundle. Apple's notarization
+# rejects --deep'd nested binaries because --deep doesn't reliably
+# propagate --options runtime + --timestamp into them — every nested
+# binary gets its own codesign call, each with --options runtime and
+# --timestamp.
+#
+# The nested helpers (Updater.app, the two .xpc services, Autoupdate)
+# come pre-signed by the Sparkle project, but Apple's notary requires
+# every binary in the eventual .app tree to be signed by the SAME
+# Developer ID. `--force` replaces Sparkle's signature; we keep their
+# original entitlements via `--preserve-metadata=entitlements`
+# because those helpers need specific XPC client/service rights that
+# our app's entitlements file doesn't grant.
 ENTITLEMENTS_FILE="$APP_DIR/Resources/Parleq.entitlements"
+SPARKLE_FW="$APP_BUNDLE/Contents/Frameworks/Sparkle.framework"
 if [[ "$IDENTITY" == "-" ]]; then
     # Ad-hoc: keep --deep, no Hardened Runtime — there's no path to
     # notarization from ad-hoc anyway and the simpler form keeps
     # local dev easy.
     codesign --force --deep --sign "$IDENTITY" "$APP_BUNDLE"
 else
+    if [[ -d "$SPARKLE_FW" ]]; then
+        # Sparkle's nested helpers in dependency order. Use the
+        # `Versions/Current` symlink rather than hard-coding
+        # `Versions/B`: a future Sparkle release that bumps to
+        # `Versions/C` (Apple convention when ABI breaks) would
+        # otherwise silently skip every signing step and ship an
+        # unsigned-nested-binary bundle that notarization rejects.
+        SPARKLE_CURRENT="$SPARKLE_FW/Versions/Current"
+        if [[ ! -L "$SPARKLE_FW/Versions/Current" ]]; then
+            echo "ERROR: $SPARKLE_FW/Versions/Current is not a symlink." >&2
+            echo "       Sparkle's framework layout is unexpected — the signing" >&2
+            echo "       loop below relies on Versions/Current pointing at the" >&2
+            echo "       active version directory. Has Sparkle changed its layout?" >&2
+            exit 1
+        fi
+        for nested in \
+            "$SPARKLE_CURRENT/XPCServices/Downloader.xpc" \
+            "$SPARKLE_CURRENT/XPCServices/Installer.xpc" \
+            "$SPARKLE_CURRENT/Updater.app" \
+            "$SPARKLE_CURRENT/Autoupdate"; do
+            if [[ ! -e "$nested" ]]; then
+                echo "ERROR: missing nested Sparkle helper at $nested." >&2
+                echo "       The framework layout is unexpected — all four nested" >&2
+                echo "       binaries (Downloader.xpc, Installer.xpc, Updater.app," >&2
+                echo "       Autoupdate) need to be signed with the Developer ID" >&2
+                echo "       identity or notarization will reject the bundle. Has" >&2
+                echo "       Sparkle dropped or renamed one of them?" >&2
+                exit 1
+            fi
+            codesign --force --sign "$IDENTITY" \
+                --options runtime \
+                --timestamp \
+                --preserve-metadata=entitlements \
+                "$nested"
+        done
+        # Outer framework. No --preserve-metadata here; the framework
+        # bundle itself doesn't carry entitlements.
+        codesign --force --sign "$IDENTITY" \
+            --options runtime \
+            --timestamp \
+            "$SPARKLE_FW"
+    fi
+    # Outer .app bundle. No --deep; the nested signatures above
+    # remain intact.
     codesign --force --sign "$IDENTITY" \
         --options runtime \
         --entitlements "$ENTITLEMENTS_FILE" \
