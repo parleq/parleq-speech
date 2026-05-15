@@ -24,6 +24,11 @@ import AppKit
 final class MenuBar: NSObject {
     private let statusItem: NSStatusItem
     private let statusMenuItem: NSMenuItem
+    /// "⚠ Cleanup failed — <message>" item that appears between
+    /// Status and Hotkey when quick-mode cleanup fails (#28). Click
+    /// dismisses the badge. Hidden by default; AppState's quick-mode
+    /// applyResult toggles visibility via `setCleanupFailure(_:)`.
+    private let cleanupFailureMenuItem: NSMenuItem
     /// Submenu listing recent dictations. Items are rebuilt
     /// on every menu open via `NSMenuDelegate.menuNeedsUpdate(_:)`
     /// so the user always sees the current state of
@@ -99,6 +104,7 @@ final class MenuBar: NSObject {
         // width — what most well-behaved menu-bar apps use.
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusMenuItem = NSMenuItem(title: "Status: Idle", action: nil, keyEquivalent: "")
+        cleanupFailureMenuItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
         recentMenuItem = NSMenuItem(
             title: "Recent Dictations",
             action: nil,
@@ -152,6 +158,14 @@ final class MenuBar: NSObject {
         )
         resetASRItem.target = self
 
+        // Cleanup-failure indicator. Hidden by default; AppState's
+        // quick-mode applyResult shows it with a provider-specific
+        // recovery hint when LLM cleanup fails. Click clears the
+        // badge (and the amber-bar icon).
+        cleanupFailureMenuItem.target = self
+        cleanupFailureMenuItem.action = #selector(dismissCleanupFailure)
+        cleanupFailureMenuItem.isHidden = true
+
         let checkForUpdatesItem = NSMenuItem(
             title: "Check for Updates…",
             action: #selector(checkForUpdates),
@@ -175,6 +189,7 @@ final class MenuBar: NSObject {
 
         let menu = NSMenu()
         menu.addItem(statusMenuItem)
+        menu.addItem(cleanupFailureMenuItem)
         menu.addItem(hotkeyItem)
         menu.addItem(.separator())
         menu.addItem(microphoneMenuItem)
@@ -206,6 +221,13 @@ final class MenuBar: NSObject {
 
     @objc private func resetASR() {
         onResetASR?()
+    }
+
+    @objc private func dismissCleanupFailure() {
+        // Clearing the badge from the menu doesn't retry the cleanup —
+        // the next successful dictation does that on its own. This is
+        // just "yes I saw the warning, get it off my menu bar."
+        setCleanupFailure(nil)
     }
 
     @objc private func showAbout() {
@@ -247,9 +269,35 @@ final class MenuBar: NSObject {
         refresh()
     }
 
+    /// AppState calls this from `applyResult`'s quick-mode branch
+    /// to surface or clear a cleanup-failure indicator. Non-nil
+    /// message → amber-bar icon + "Cleanup failed: <message>"
+    /// menu item visible; nil → cleared. Same message text the
+    /// overlay's `awaitingAccept` decoration shows in non-quick
+    /// mode, so users get consistent recovery hints regardless
+    /// of which dictation flow surfaced the failure (#28).
+    func setCleanupFailure(_ message: String?) {
+        let oldHadFailure = cleanupFailureMessage != nil
+        cleanupFailureMessage = message
+        cleanupFailureMenuItem.title = message.map { "⚠ Cleanup failed — \($0)" } ?? ""
+        cleanupFailureMenuItem.isHidden = (message == nil)
+        // Only re-render the icon when the failure-state boolean
+        // actually changed — flipping isHidden on the menu item is
+        // cheap, but redrawing the icon is wasteful otherwise.
+        if oldHadFailure != (message != nil) {
+            refresh()
+        }
+    }
+
     private var currentPhase: AppState.Phase = .idle
     private var asrReady: Bool = true
     private var asrLoadFailed: Bool = false
+    /// Latest cleanup-failure message from a quick-mode dictation
+    /// (or any path where the overlay-side decoration didn't reach
+    /// the user). Drives the amber-bar status icon + the
+    /// dismissable "Cleanup failed: …" menu item. Cleared on the
+    /// next successful cleanup. nil = no badge shown.
+    private var cleanupFailureMessage: String?
 
     private func refresh() {
         if asrLoadFailed {
@@ -314,27 +362,34 @@ final class MenuBar: NSObject {
     }
 
     private func applyIcon(active: Bool) {
-        statusItem.button?.image = Self.barIcon(active: active)
+        statusItem.button?.image = Self.barIcon(
+            active: active,
+            cleanupFailed: cleanupFailureMessage != nil
+        )
     }
 
-    /// Render the 5-bar brand mark as a template `NSImage`. The mark
-    /// is the same shape the favicon and the wordmark lockup carry —
-    /// drawn here in monochrome black on transparent so AppKit's
-    /// template-image machinery tints it to match the menu bar
-    /// background (white-on-dark in dark mode, black-on-light in light
-    /// mode) without per-appearance asset variants.
+    /// Render the 5-bar brand mark as an `NSImage`. The mark is the
+    /// same shape the favicon and the wordmark lockup carry — drawn
+    /// here in monochrome on transparent (or amber when cleanup has
+    /// failed) so it sits cleanly against any menu bar background.
     ///
-    /// Two states:
-    ///   - Idle: bars at the favicon's rhythm (20/36/48/30/42 normalized).
+    /// Three states:
+    ///   - Idle: bars at the favicon's rhythm (20/36/48/30/42
+    ///     normalized), template-tinted by AppKit.
     ///   - Active: bars in a peak shape with the tallest bar in the
-    ///     center, signalling "listening / capturing audio." Distinct
-    ///     enough from idle that a glance at the menu bar tells the
-    ///     user whether Parleq is in flight.
+    ///     center, signalling "listening / capturing audio."
+    ///     Template-tinted.
+    ///   - Cleanup failed: bars rendered in NSColor.systemOrange and
+    ///     non-template so the color sticks regardless of menu bar
+    ///     appearance. Distinct-at-a-glance signal that LLM cleanup
+    ///     stopped working — the user typically discovers the cause
+    ///     by clicking the menu, where a "Cleanup failed: <hint>"
+    ///     row carries the full recovery message.
     ///
     /// Drawn via NSImage(size:flipped:drawingHandler:) so AppKit
-    /// re-rasterizes on demand at the target backing scale — crisp on
-    /// Retina without shipping @2x assets.
-    private static func barIcon(active: Bool) -> NSImage {
+    /// re-rasterizes on demand at the target backing scale — crisp
+    /// on Retina without shipping @2x assets.
+    private static func barIcon(active: Bool, cleanupFailed: Bool) -> NSImage {
         let size = NSSize(width: 18, height: 18)
         let image = NSImage(size: size, flipped: false) { rect in
             let barWidth: CGFloat = 2
@@ -354,7 +409,16 @@ final class MenuBar: NSObject {
                 ? [8, 10, 14, 10, 8]
                 : [5, 9, 14, 7, 11]
 
-            NSColor.black.setFill() // template — AppKit tints this.
+            // Cleanup-failed state breaks out of template-image
+            // rendering so the amber tint reads as a deliberate
+            // warning rather than the system tinting the bars to
+            // black/white. Picked systemOrange (not systemRed) to
+            // signal "needs attention" without implying the app is
+            // broken — dictation still works, just cleanup is off.
+            let fillColor: NSColor = cleanupFailed
+                ? .systemOrange
+                : .black  // template — AppKit retints in idle/active
+            fillColor.setFill()
 
             for (i, h) in heights.enumerated() {
                 let x = xStart + CGFloat(i) * (barWidth + gap)
@@ -368,8 +432,13 @@ final class MenuBar: NSObject {
             }
             return true
         }
-        image.isTemplate = true
-        image.accessibilityDescription = "Parleq"
+        // Template only when the bars are the regular monochrome
+        // version — the cleanup-failed amber should bypass AppKit's
+        // auto-tint to preserve the warning color.
+        image.isTemplate = !cleanupFailed
+        image.accessibilityDescription = cleanupFailed
+            ? "Parleq — cleanup failed"
+            : "Parleq"
         return image
     }
 
@@ -422,7 +491,17 @@ extension MenuBar: NSMenuDelegate {
             let when = relativeFormatter.localizedString(
                 for: entry.timestamp, relativeTo: now
             )
-            let title = "\(entry.preview)  ·  \(when)"
+            // Entries where LLM cleanup failed get a trailing "· raw"
+            // marker (#27) so users can tell at a glance which
+            // dictations are the raw-ASR fallback rather than the
+            // cleaned-up version. Tooltip spells it out for users
+            // who don't recognise the marker yet.
+            let title: String
+            if entry.wasCleanupSuccessful {
+                title = "\(entry.preview)  ·  \(when)"
+            } else {
+                title = "\(entry.preview)  ·  \(when)  ·  raw"
+            }
             let item = NSMenuItem(
                 title: title,
                 action: #selector(copyRecentEntry(_:)),
@@ -435,6 +514,10 @@ extension MenuBar: NSMenuDelegate {
             var tooltip = entry.text
             if let app = entry.targetAppName {
                 tooltip += "\n\n(originally pasted into \(app))"
+            }
+            if !entry.wasCleanupSuccessful {
+                tooltip += "\n\n(raw transcript — LLM cleanup failed " +
+                    "for this dictation)"
             }
             item.toolTip = tooltip
             menu.addItem(item)

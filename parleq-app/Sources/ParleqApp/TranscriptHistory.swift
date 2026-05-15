@@ -21,27 +21,40 @@ import Foundation
 struct TranscriptEntry: Identifiable, Sendable {
     let id: UUID
     let timestamp: Date
-    /// The cleaned text. Already had trailing-space / no-trailing-
-    /// space rules applied at paste time, but we store the bare
-    /// version here — the user might want to paste somewhere with
-    /// a different convention than the original target.
+    /// The cleaned text — OR the raw ASR transcript when cleanup
+    /// failed and we fell back. `wasCleanupSuccessful` says which.
+    /// Either way it's the same text the user just pasted, stored
+    /// without the trailing-space-rule applied so re-pastes match
+    /// the user's intent rather than the original target's
+    /// convention.
     let text: String
     /// Human-readable name of the app that was the original paste
     /// target (e.g. "iTerm2", "Mail"). nil if no target was
     /// captured (rare — usually only when the focused app changes
     /// mid-flight or has no bundle identity).
     let targetAppName: String?
+    /// False when LLM cleanup failed for this dictation and the
+    /// pasted text is the raw ASR transcript fallback. The Recent
+    /// Dictations submenu surfaces these entries with a "raw"
+    /// suffix so users can tell at a glance which dictations went
+    /// through the cleanup pass and which didn't — useful when
+    /// scanning Recent Dictations after a stretch of failed
+    /// cleanups to identify ones worth re-dictating with cleanup
+    /// working (#27).
+    let wasCleanupSuccessful: Bool
 
     init(
         id: UUID = UUID(),
         timestamp: Date = Date(),
         text: String,
-        targetAppName: String?
+        targetAppName: String?,
+        wasCleanupSuccessful: Bool = true
     ) {
         self.id = id
         self.timestamp = timestamp
         self.text = text
         self.targetAppName = targetAppName
+        self.wasCleanupSuccessful = wasCleanupSuccessful
     }
 
     /// Single-line preview suitable for a menu-item title. Caps

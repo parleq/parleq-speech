@@ -348,6 +348,13 @@ struct ParleqApp {
             stateBox.value?.onPhaseChanged = { phase in
                 menuBar.setPhase(phase)
             }
+            // Surface cleanup failures (or clear them) on the
+            // menu-bar status icon and dropdown (#28). Non-nil
+            // message → amber bars + dismissable "Cleanup failed —
+            // <message>" row; nil → cleared.
+            stateBox.value?.onCleanupResult = { message in
+                menuBar.setCleanupFailure(message)
+            }
             // First-launch wizard auto-show (#21 step 6). Skipping
             // here keeps existing users (config.wizardCompleted ==
             // true) out of the path entirely. Test users who want
