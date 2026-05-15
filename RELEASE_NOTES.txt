@@ -1,34 +1,53 @@
-Parleq 0.9.1
+Parleq 0.10.0
 
-Polish release on top of v0.9.0's in-process consolidation. Two
-visible improvements; no behavior change to dictation.
+First release with built-in auto-updates. From here on, you'll be
+prompted to install new versions instead of needing to re-check
+GitHub Releases manually.
 
 ### Added
 
-- **Real progress bar in the initialization overlay.** If you press
-  the dictation hotkey before the speech model has finished loading,
-  the overlay now shows a linear progress bar with a phase label
-  ("Downloading speech model (N of M)…", "Compiling joint-decoder.mlmodelc…",
-  etc.) instead of a generic indeterminate spinner. You'll mainly
-  see this on first launch, when the ~150 MB Parakeet TDT v3
-  download is in flight — on a slow connection the old spinner read
-  as "the app is frozen." If you don't try to dictate during init,
-  you won't see this UI at all. Closes #15.
+- **Auto-updates via Sparkle.** Parleq now checks parleq.app on
+  launch and once every 24 hours, and prompts you to install a
+  newer version when one's available — the same well-known "an
+  update is available" dialog Bear, Transmit, Sketch, and many
+  other Mac apps surface. Each release is signed with an Ed25519
+  key whose public half ships inside every build, so a tampered
+  update (or a tampered appcast file) is refused before any
+  bytes touch your installed Parleq. Two new user-facing
+  controls:
+  - **Settings → Updates** — toggle "Automatically check for
+    updates" on or off, plus a "Check for Updates Now" button.
+  - **Menu bar → "Check for Updates…"** — on-demand check from
+    the dropdown, useful when you want to grab a fresh release
+    immediately without waiting for the next scheduled check.
+- **First-launch update prompt.** The first time you launch this
+  build, Sparkle asks "Would you like Parleq to check for updates
+  automatically?" Pick whichever you prefer — Settings →
+  Updates can change it any time.
 
-### Changed
+### Compliance posture
 
-- **DMG mounts with the Parleq icon.** When you download the .dmg
-  and mount it, the volume on the desktop / in the Finder sidebar
-  now renders with the five-bar Parleq mark instead of the generic
-  disk-image glyph.
+The auto-update path adds two new outbound HTTPS calls, both
+documented in docs/SECURITY_REVIEW.md §7a (Auto-update):
+
+- Periodic GET of parleq.app/appcast.xml. Sparkle's User-Agent
+  carries the app version and macOS version; nothing else.
+- Per-install GET of the .dmg URL from
+  github.com/parleq/parleq-speech/releases/download/...
+  Fires only when the user accepts the update prompt.
+
+Sparkle verifies every downloaded .dmg's Ed25519 signature
+against the public key compiled into Parleq before installing.
+Mismatch refuses the update.
 
 ## Install
 
 1. Download the .dmg attached to this release.
-2. (Optional) Verify the SHA-256: `shasum -a 256 -c Parleq-0.9.1-<sha>.dmg.sha256`
+2. (Optional) Verify the SHA-256: `shasum -a 256 -c Parleq-0.10.0-<sha>.dmg.sha256`
 3. Open the DMG and drag Parleq.app onto the Applications folder.
 4. Eject the DMG, then launch Parleq from Applications.
-5. On first launch, grant Microphone + Accessibility permissions.
+5. On first launch, grant Microphone + Accessibility permissions
+   and answer the auto-update prompt.
 
 First launch downloads the speech model (~150 MB) — give it
 30–60 seconds before pressing the hotkey. The menu-bar icon
