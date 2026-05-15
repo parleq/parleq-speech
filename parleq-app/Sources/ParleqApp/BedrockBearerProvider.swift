@@ -187,4 +187,22 @@ final class BedrockBearerProvider: LLMProvider, Sendable {
         }
         return body
     }
+
+    /// Provider-specific recovery hint for the cleanup-failure
+    /// overlay (#27). The Bedrock-API-key path uses scoped bearer
+    /// tokens that don't expire on a session-style cadence; if it
+    /// fails auth, the key is genuinely wrong (revoked, typo, or
+    /// region mismatch). The remedy is always Settings → LLM →
+    /// Set Bedrock API Key…, regardless of which auth-failure
+    /// shape Bedrock returned.
+    func cleanupFailureHint(for error: LLMError) -> String? {
+        switch error {
+        case .missingAPIKey, .missingCredentials:
+            return "Bedrock API key missing or rejected. Open Settings → LLM → Set Bedrock API Key…"
+        case .badStatus(let code, _) where code == 401 || code == 403:
+            return "Bedrock rejected the API key in region `\(region)`. Open Settings → LLM → Set Bedrock API Key… (or confirm the key has access to model `\(model)` in this region)."
+        case .badStatus, .malformedResponse, .requestFailed:
+            return nil
+        }
+    }
 }

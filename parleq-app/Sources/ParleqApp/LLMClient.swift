@@ -203,4 +203,21 @@ final class LLMClient: LLMProvider, Sendable {
         }
         return nil
     }
+
+    /// Provider-specific recovery hint for the cleanup-failure
+    /// overlay (#27). Gemini has one auth path (API key), so the
+    /// hint always points the user at Settings → LLM → Set Gemini
+    /// API Key… A 401/403 typically means the key is wrong; a
+    /// .missingAPIKey means there's no key set at all. Same
+    /// remedy either way.
+    func cleanupFailureHint(for error: LLMError) -> String? {
+        switch error {
+        case .missingAPIKey:
+            return "Gemini API key not set. Open Settings → LLM → Set Gemini API Key…"
+        case .badStatus(let code, _) where code == 401 || code == 403:
+            return "Gemini rejected the API key. Open Settings → LLM → Set Gemini API Key… to update it."
+        case .missingCredentials, .badStatus, .malformedResponse, .requestFailed:
+            return nil
+        }
+    }
 }

@@ -139,17 +139,27 @@ final class OverlayWindow {
     /// <Mic>…" / "listening for refinement on <Mic>…" inline. nil =
     /// fall back to the plain "listening…" / "listening for
     /// refinement…" text.
+    ///
+    /// `cleanupFailureMessage` is only consulted in the
+    /// `.awaitingAccept` state; other states ignore it. When non-nil,
+    /// the overlay decorates the awaitingAccept view with a warning
+    /// icon + the message so the user knows cleanup failed and what
+    /// to do about it (the message is provider-specific — see each
+    /// LLMProvider's `cleanupFailureHint`). The raw transcript is
+    /// shown alongside so the user can still accept it via Enter.
     func show(
         state: OverlayState,
         text: String,
         downloadProgress: ASRDownloadProgress? = nil,
-        microphoneName: String? = nil
+        microphoneName: String? = nil,
+        cleanupFailureMessage: String? = nil
     ) {
         model.update(
             state: state,
             text: text,
             downloadProgress: downloadProgress,
-            microphoneName: microphoneName
+            microphoneName: microphoneName,
+            cleanupFailureMessage: cleanupFailureMessage
         )
         if !panel.isVisible {
             positionAtScreenBottom()
@@ -290,11 +300,20 @@ private final class OverlayModel: ObservableObject {
     /// `.refining`).
     @Published var microphoneName: String?
 
+    /// Optional cleanup-failure message rendered alongside the raw
+    /// transcript in the `.awaitingAccept` state. Carries the
+    /// provider-specific recovery hint (see
+    /// `LLMProvider.cleanupFailureHint(for:)`). Cleared on any other
+    /// state so a successful subsequent dictation doesn't carry over
+    /// the prior turn's failure annotation.
+    @Published var cleanupFailureMessage: String?
+
     func update(
         state: OverlayState,
         text: String,
         downloadProgress: ASRDownloadProgress? = nil,
-        microphoneName: String? = nil
+        microphoneName: String? = nil,
+        cleanupFailureMessage: String? = nil
     ) {
         self.state = state
         self.text = text
@@ -313,6 +332,11 @@ private final class OverlayModel: ObservableObject {
         // rather than reusing stale data.
         let isActiveCapture = (state == .capturing) || (state == .refining)
         self.microphoneName = isActiveCapture ? microphoneName : nil
+        // Cleanup-failure message is only relevant in
+        // `.awaitingAccept` — that's where the user reviews the
+        // text + decides whether to paste raw. Cleared elsewhere
+        // so stale messages don't follow a successful cleanup turn.
+        self.cleanupFailureMessage = (state == .awaitingAccept) ? cleanupFailureMessage : nil
     }
 
     func append(_ chunk: String) {
@@ -457,10 +481,32 @@ private struct OverlayContent: View {
                 }
             }
         case .awaitingAccept:
-            Text(model.text)
-                .font(.system(size: 17))
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: 8) {
+                Text(model.text)
+                    .font(.system(size: 17))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                // Cleanup-failure decoration. AppState passes a
+                // non-nil message when LLM cleanup threw — the user
+                // is being shown the raw ASR transcript (the
+                // fallback) and needs to know that's why it looks
+                // less polished than usual, plus what to do to fix
+                // it. Provider-specific hint comes from each
+                // LLMProvider's `cleanupFailureHint`.
+                if let failure = model.cleanupFailureMessage {
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(.orange)
+                            .font(.system(size: 12))
+                            .padding(.top, 2)
+                        Text(failure)
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+            }
         case .refining:
             VStack(alignment: .leading, spacing: 6) {
                 Text(model.text)

@@ -194,6 +194,25 @@ final class VertexProvider: LLMProvider, Sendable {
             ],
         ]
     }
+
+    /// Provider-specific recovery hint for the cleanup-failure
+    /// overlay (#27). Branches on auth mode so the user sees the
+    /// command that matches their setup. The gcloud ADC path is
+    /// the common case for personal use; the service-account path
+    /// is the no-CLI corporate path.
+    func cleanupFailureHint(for error: LLMError) -> String? {
+        switch error {
+        case .missingCredentials:
+            switch authMode {
+            case .adc:
+                return "gcloud session unavailable or expired. Run `gcloud auth application-default login` and try again."
+            case .serviceAccount:
+                return "Service-account JSON rejected. Open Settings → LLM → Set Service Account JSON…"
+            }
+        case .missingAPIKey, .badStatus, .malformedResponse, .requestFailed:
+            return nil
+        }
+    }
 }
 
 // MARK: - Token cache

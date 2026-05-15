@@ -638,7 +638,7 @@ final class AppState {
 
                 let useOverlay = !(self?.quickMode ?? false)
                 let targetBundleID = self?.pasteTarget?.bundleID
-                let final = await streamCleanupOrRefine(
+                let outcome = await streamCleanupOrRefine(
                     llm: llm,
                     overlay: overlay,
                     useOverlay: useOverlay,
@@ -650,7 +650,7 @@ final class AppState {
                 )
                 if Task.isCancelled { return }
 
-                self?.applyResult(final)
+                self?.applyResult(outcome.text, cleanupFailureMessage: outcome.failureMessage)
             } catch {
                 self?.log("pipeline failed: \(error)")
                 self?.phase = .idle
@@ -659,12 +659,20 @@ final class AppState {
         }
     }
 
-    private func applyResult(_ text: String) {
+    private func applyResult(_ text: String, cleanupFailureMessage: String? = nil) {
         currentText = text
         if quickMode {
             // Skip the review step entirely. Transition straight to
             // .pasting and paste right away — same flow as accept()
             // but synchronous from the LLM-stream-done callback.
+            // Cleanup-failure visibility in quick mode is deferred:
+            // the menu-bar badge approach is filed as a follow-up
+            // to #27 since it's substantial UI work; for now we
+            // log loudly so the user can see the failure in
+            // ~/.parleq/app.log when something feels off.
+            if let failure = cleanupFailureMessage {
+                log("quick-mode cleanup failed: \(failure)")
+            }
             phase = .pasting
             let target = pasteTarget
             let textToPaste = textForPaste(text, target: target)
@@ -685,8 +693,15 @@ final class AppState {
         }
         phase = .awaitingAccept
         // Don't re-set the text — it was streamed in already; just
-        // change the state so the footer updates to "[⏎] accept".
-        overlay.show(state: .awaitingAccept, text: text)
+        // change the state so the footer updates to "[⏎] accept",
+        // and pass through any cleanup-failure message so the
+        // overlay decorates the accept view with the provider's
+        // recovery hint.
+        overlay.show(
+            state: .awaitingAccept,
+            text: text,
+            cleanupFailureMessage: cleanupFailureMessage
+        )
         startAutoAcceptTimer()
     }
 
@@ -745,6 +760,17 @@ final class AppState {
 /// (cleanup) or the prior text (refine) — whatever the user has
 /// most-correctly. We log the failure but never propagate it; the
 /// overlay should always show *something*.
+/// Result of a cleanup / refine attempt: the text to display +
+/// paste, plus an optional one-line failure message AppState shows
+/// in the overlay's awaitingAccept state when cleanup didn't run
+/// (or ran and failed). The text is always populated — it's either
+/// the cleaned output (success) or the raw transcript / prior
+/// text (fallback). `failureMessage` is nil on success.
+struct CleanupOutcome {
+    let text: String
+    let failureMessage: String?
+}
+
 @MainActor
 private func streamCleanupOrRefine(
     llm: (any LLMProvider)?,
@@ -755,21 +781,24 @@ private func streamCleanupOrRefine(
     priorText: String,
     targetBundleID: String? = nil,
     customDictionary: [DictionaryEntry] = []
-) async -> String {
+) async -> CleanupOutcome {
     let fallback = asRefine ? priorText : rawTranscript
     guard let llm = llm else {
-        // No API key — show the fallback in the overlay so the user
-        // can still accept/cancel it (when overlay is in use).
+        // No LLM provider configured at launch (e.g., the user
+        // selected provider=none, or every provider's init failed).
+        // Render the fallback without any failure decoration —
+        // there's no error here, just an intentional no-cleanup
+        // posture.
         if useOverlay {
             overlay.show(state: .cleaning, text: fallback)
         }
-        return fallback
+        return CleanupOutcome(text: fallback, failureMessage: nil)
     }
     if rawTranscript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
         if useOverlay {
             overlay.show(state: .cleaning, text: fallback)
         }
-        return fallback
+        return CleanupOutcome(text: fallback, failureMessage: nil)
     }
 
     let systemPrompt = asRefine
@@ -842,21 +871,41 @@ private func streamCleanupOrRefine(
         let final = assembled.value
         if final.isEmpty {
             // Stream produced nothing visible — paste the fallback
-            // instead of leaving the overlay empty.
+            // instead of leaving the overlay empty. This is treated
+            // as a non-failure (no decorations) because some LLMs
+            // legitimately return empty for unusable input, and we
+            // don't want to flag that as an auth / provider error.
             if useOverlay {
                 overlay.show(state: .cleaning, text: fallback)
             }
-            return fallback
+            return CleanupOutcome(text: fallback, failureMessage: nil)
         }
-        return final
+        return CleanupOutcome(text: final, failureMessage: nil)
     } catch {
         let logLine = "[parleq] LLM \(asRefine ? "refine" : "cleanup") stream failed: \(error). Using fallback text.\n"
         FileHandle.standardError.write(logLine.data(using: .utf8) ?? Data())
-        // Show the fallback so the overlay isn't blank, then return it.
+        // Build a user-facing recovery hint: prefer the provider's
+        // own `cleanupFailureHint` (auth-mode-aware, points the user
+        // at the specific command or Settings entry that fixes the
+        // underlying issue), fall back to a generic one-liner when
+        // the error isn't an LLMError or the provider doesn't have
+        // a specific hint. Either way, AppState wires this into
+        // OverlayModel.cleanupFailureMessage so the awaitingAccept
+        // overlay surfaces it next to the raw transcript (#27).
+        let failureMessage: String
+        if let llmError = error as? LLMError,
+           let providerHint = llm.cleanupFailureHint(for: llmError) {
+            failureMessage = providerHint
+        } else if let nsErr = error as NSError?,
+                  nsErr.domain == NSURLErrorDomain {
+            failureMessage = "Network unavailable — pasting raw transcript. Check your connection and try again."
+        } else {
+            failureMessage = "Cleanup unavailable — pasting raw transcript. See ~/.parleq/app.log for details."
+        }
         if useOverlay {
             overlay.show(state: .cleaning, text: fallback)
         }
-        return fallback
+        return CleanupOutcome(text: fallback, failureMessage: failureMessage)
     }
 }
 

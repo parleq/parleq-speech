@@ -93,4 +93,26 @@ protocol LLMProvider: Sendable {
         messages: [LLMMessage],
         onEvent: @Sendable (LLMStreamEvent) -> Void
     ) async throws
+
+    /// One-line, user-facing recovery hint for a cleanup failure.
+    /// Returned to AppState so the overlay's "Cleanup failed —
+    /// pasting raw transcript" decoration can include
+    /// provider-specific guidance ("Run `aws sso login`", "Open
+    /// Settings → LLM → Set Gemini API Key…", etc.) rather than the
+    /// raw error string.
+    ///
+    /// Implementations should be aware of their own auth mode so the
+    /// hint matches what the user can actually do — e.g. a Bedrock
+    /// SSO failure should suggest `aws sso login`, while a Bedrock
+    /// static-keys failure should point at Settings. Return nil for
+    /// errors the provider doesn't have a specific hint for; the
+    /// classifier will fall back to a generic message.
+    func cleanupFailureHint(for error: LLMError) -> String?
+}
+
+/// Default implementation so providers that don't have any
+/// provider-specific guidance (or haven't yet wired the protocol
+/// method) can opt out without a separate empty method definition.
+extension LLMProvider {
+    func cleanupFailureHint(for error: LLMError) -> String? { nil }
 }
