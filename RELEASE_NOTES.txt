@@ -1,54 +1,62 @@
-Parleq 0.11.0
+Parleq 0.11.1
 
-Cleanup-failure recovery across all three cloud providers. When
-a cloud sign-in expires mid-session (`aws sso login` token,
-`gcloud` ADC, Azure Entra ID), Parleq now picks up the refreshed
-credentials on the next dictation without a restart. Three new
-surfaces (overlay hint, menu-bar badge, Recent Dictations
-annotation) tell you exactly what happened and how to fix it.
+Open-source attribution polish. v0.11.0 shipped on top of a
+THIRD_PARTY_LICENSES.md that was last regenerated at v0.9.0 and
+had drifted — most notably, Sparkle (added in v0.10.0 for
+auto-updates) was missing from both THIRD_PARTY_LICENSES.md and
+NOTICE. This release closes the gap. No code changes to dictation,
+ASR, cleanup, or any user-visible workflow.
 
 ### Added
 
-- **Auto-refresh credentials on auth failure for Bedrock SSO,
-  Vertex ADC, and Azure Entra ID.** Previously if you launched
-  Parleq with an expired cloud session and then re-logged in
-  externally (`aws sso login` / `gcloud auth application-default
-  login` / `az login`), Parleq stayed stuck on the stale token
-  and pasted raw ASR until you quit and relaunched. Each
-  provider's streaming call now retries once on auth failure
-  after invalidating its in-memory token cache — picking up the
-  fresh credentials from the CLI's own cache. 403s (IAM
-  denials) deliberately not retried. Closes #26, #30.
+- **"Open Source Licenses…" item in the menu-bar dropdown.**
+  Placed right after "About Parleq". Opens the canonical
+  THIRD_PARTY_LICENSES.md on GitHub in your default browser —
+  Markdown renders natively, and every upstream source repo is
+  one click away. An offline copy is also bundled inside
+  Parleq.app/Contents/Resources/.
 
-- **Recovery hint in the accept overlay.** When LLM cleanup
-  fails and Parleq falls back to raw ASR, the overlay footer
-  carries the exact one-liner you need to run — e.g. "Run `aws
-  sso login --profile work`, then dictate again." Closes #27
-  (overlay hint).
+- **LICENSE, NOTICE, and THIRD_PARTY_LICENSES.md ship inside the
+  .app bundle now.** `make-app.sh` copies the three files into
+  Parleq.app/Contents/Resources/ at build time. Discharges
+  Apache-2.0 §4 (notice propagation on binary redistribution) and
+  the MIT/BSD attribution clauses for Sparkle and its vendored
+  components, without relying on downstream redistributors to
+  also ship a separate notice file alongside the .dmg.
 
-- **Menu-bar badge for cleanup failures.** Quick mode has no
-  overlay to surface the failure inline, so the status icon
-  goes amber and a dismissable "⚠ Cleanup failed — <hint>" row
-  appears in the dropdown. Fires for every dictation (either
-  mode), so a successful subsequent cleanup auto-clears the
-  badge even if you never dismissed it manually. Closes #28.
+### Changed
 
-- **Recent Dictations marks raw-fallback entries.** Entries
-  whose cleanup failed get a trailing ` · raw` suffix in the
-  Recent Dictations submenu, with a tooltip spelling it out.
-  Useful for spotting which dictations are worth re-running
-  with cleanup working again. Closes #27.
+- **THIRD_PARTY_LICENSES.md and NOTICE refreshed.** Sparkle 2.9.1
+  (MIT) is now credited as a direct dependency, along with its
+  two vendored components — ed25519-sparkle (zlib-style) and
+  bsdiff (2-clause BSD) — that ship inside Sparkle.framework.
+  The obsolete Hummingbird section was removed (it was retired
+  in v0.9.0). FluidAudio version refreshed 0.14.3 → 0.14.5
+  (within the pinned range). At-a-glance counts updated;
+  audit-trail footer dated to v0.11.0. External-services list
+  extended to include Vertex AI, Azure OpenAI, and the Sparkle
+  appcast as runtime egress destinations alongside the
+  previously-listed Gemini, Bedrock, Hugging Face, and GitHub.
+
+- **About page on parleq.app gets a body link** to
+  THIRD_PARTY_LICENSES.md in addition to the existing footer
+  link, naming the heavyweight deps by category for quick
+  orientation.
 
 ## Install
 
-If you're already running Parleq 0.10.x, Sparkle's update
-prompt is the easiest path — it handles download, signature
-verification, and the relaunch for you.
+If you're already running Parleq 0.11.0, Sparkle's update prompt
+is the easiest path — it handles download, signature
+verification, and the relaunch for you. (This is the first
+release whose installed .app physically carries the bundled
+LICENSE / NOTICE / THIRD_PARTY_LICENSES.md files inside
+Contents/Resources/, so updating from 0.11.0 is what gets you
+the bundled attribution.)
 
 For a fresh install:
 
 1. Download the .dmg attached to this release.
-2. (Optional) Verify the SHA-256: `shasum -a 256 -c Parleq-0.11.0-<sha>.dmg.sha256`
+2. (Optional) Verify the SHA-256: `shasum -a 256 -c Parleq-0.11.1-<sha>.dmg.sha256`
 3. Open the DMG and drag Parleq.app onto the Applications folder.
 4. Eject the DMG, then launch Parleq from Applications.
 5. On first launch, grant Microphone + Accessibility permissions

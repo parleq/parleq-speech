@@ -6,6 +6,22 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 (no changes yet)
 
+## [0.11.1] - 2026-05-16
+
+Open-source attribution polish. v0.11.0 shipped on top of a `THIRD_PARTY_LICENSES.md` that was last regenerated at v0.9.0 and had drifted — most notably, Sparkle (added in v0.10.0 for auto-updates) was missing from both `THIRD_PARTY_LICENSES.md` and `NOTICE`. This release closes the gap. No code changes to dictation, ASR, cleanup, or any user-visible workflow.
+
+### Added
+
+- **"Open Source Licenses…" item in the menu-bar dropdown.** Placed right after "About Parleq". Opens the canonical [`THIRD_PARTY_LICENSES.md`](https://github.com/parleq/parleq-speech/blob/main/THIRD_PARTY_LICENSES.md) on GitHub in your default browser — Markdown renders natively, and every upstream source repo is one click away. An offline copy is also bundled inside `Parleq.app/Contents/Resources/` (see below).
+
+- **LICENSE, NOTICE, and THIRD_PARTY_LICENSES.md now ship inside the .app bundle.** `make-app.sh` copies the three files into `Parleq.app/Contents/Resources/` at build time. Discharges Apache-2.0 §4 (which wants notices to travel with binary redistributions) and the MIT/BSD attribution clauses for Sparkle and its vendored components, without relying on downstream redistributors to also ship a separate notice file alongside the .dmg. Anyone with the .app can right-click → Show Package Contents and find the credits directly.
+
+### Changed
+
+- **`THIRD_PARTY_LICENSES.md` and `NOTICE` refreshed for v0.11.x.** Sparkle 2.9.1 (MIT) is now credited as a direct dependency, along with its two vendored components — ed25519-sparkle (Orson Peters 2015, zlib-style) and bsdiff (Colin Percival 2003-2005, 2-clause BSD) — that ship inside `Sparkle.framework`. The obsolete Hummingbird section was removed (it was retired in v0.9.0 when the FluidAudio sidecar was folded into the main target). FluidAudio version refreshed 0.14.3 → 0.14.5 (still within the pinned range). At-a-glance counts updated; audit-trail footer dated to v0.11.0. The external-services list was extended to include Vertex AI, Azure OpenAI, and the Sparkle appcast as runtime egress destinations alongside the previously-listed Gemini, Bedrock, Hugging Face, and GitHub.
+
+- **The About page on parleq.app now includes a body link** to `THIRD_PARTY_LICENSES.md` in addition to the existing footer link, naming the heavyweight deps by category for quick orientation.
+
 ## [0.11.0] - 2026-05-15
 
 Cleanup-failure recovery across all three cloud providers — when a cloud sign-in expires mid-session (`aws sso login` token, `gcloud` ADC, Azure Entra ID), Parleq now picks up the refreshed credentials on the next dictation without a restart. Same dictation also keeps working: cleanup falls back to raw ASR transcript when it can't reach the cloud, and three new surfaces (overlay hint, menu-bar badge, Recent Dictations annotation) tell you exactly what happened and how to fix it.
