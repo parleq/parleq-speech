@@ -186,6 +186,13 @@ final class MenuBar: NSObject {
         )
         aboutItem.target = self
 
+        let licensesItem = NSMenuItem(
+            title: "Open Source Licenses…",
+            action: #selector(openLicenses),
+            keyEquivalent: ""
+        )
+        licensesItem.target = self
+
         let quitItem = NSMenuItem(
             title: "Quit Parleq",
             action: #selector(quit),
@@ -206,6 +213,7 @@ final class MenuBar: NSObject {
         menu.addItem(checkForUpdatesItem)
         menu.addItem(recentMenuItem)
         menu.addItem(aboutItem)
+        menu.addItem(licensesItem)
         menu.addItem(.separator())
         menu.addItem(quitItem)
         statusItem.menu = menu
@@ -243,6 +251,19 @@ final class MenuBar: NSObject {
         // into a richer About later if useful.
         NSApp.orderFrontStandardAboutPanel(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// Open the canonical THIRD_PARTY_LICENSES.md on GitHub. The
+    /// notarized .app also carries a copy at
+    /// `Parleq.app/Contents/Resources/THIRD_PARTY_LICENSES.md` (the
+    /// bundle satisfies Apache-2.0 §4 and MIT/BSD attribution on its
+    /// own — see THIRD_PARTY_LICENSES.md), but the GitHub copy
+    /// renders Markdown natively in any browser and is what users
+    /// actually want to click into. Falls back gracefully if the
+    /// URL can't be opened (e.g., no default browser).
+    @objc private func openLicenses() {
+        let url = URL(string: "https://github.com/parleq/parleq-speech/blob/main/THIRD_PARTY_LICENSES.md")!
+        NSWorkspace.shared.open(url)
     }
 
     /// AppState calls this on every phase transition. We update the

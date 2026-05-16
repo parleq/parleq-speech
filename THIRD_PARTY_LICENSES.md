@@ -3,30 +3,36 @@
 Parleq is built on the open-source projects listed below. The Parleq
 project itself is distributed under the Apache License, Version 2.0
 (see [LICENSE](LICENSE)). All redistributable build-time and run-time
-dependencies are under permissive licenses (Apache-2.0; one nested
-component is MIT). There are no GPL, AGPL, SSPL, or other copyleft
+dependencies are under permissive licenses (Apache-2.0, MIT, 2-clause
+BSD, and zlib-style). There are no GPL, AGPL, SSPL, or other copyleft
 dependencies, and no commercial-use restrictions.
 
 This document satisfies the attribution and notice-propagation
-requirements of Apache License 2.0 §4 for Parleq's redistributors;
-the per-package upstream notices are aggregated in
-[`NOTICE`](NOTICE).
+requirements of Apache License 2.0 §4 (and the MIT/BSD attribution
+clauses) for Parleq's redistributors; the per-package upstream
+notices are aggregated in [`NOTICE`](NOTICE). `LICENSE`, `NOTICE`,
+and this file are also copied into `Parleq.app/Contents/Resources/`
+at build time so the notarized .app physically carries the
+attribution required for binary redistribution. An "Open Source
+Licenses" item in the menu-bar dropdown opens the canonical web
+copy for users who want a clickable view.
 
 ## At a glance
 
 | Category | Count | License |
 |---|---|---|
-| Direct SwiftPM dependencies (parleq-app) | 2 | Apache-2.0 |
+| Direct SwiftPM dependencies (parleq-app) | 3 | 2× Apache-2.0; 1× MIT (Sparkle) |
 | Transitive SwiftPM dependencies | 25 | Apache-2.0 |
-| Embedded MIT-licensed component (inside swift-nio) | 1 | MIT |
+| Components embedded inside SwiftPM dependencies | 3 | 1× MIT (llhttp, inside swift-nio); 1× zlib-style (ed25519-sparkle, inside Sparkle); 1× 2-clause BSD (bsdiff, inside Sparkle) |
 | Apple system frameworks | n/a | Bundled with macOS — no attribution required |
 | Run-time downloaded model weights | 2 | See [Model weights](#model-weights) below |
 
-Total unique third-party packages bundled in the .app: **27**.
+Total unique top-level third-party packages bundled in the .app: **28**.
 
 Note: as of v0.9.0 there is only one SwiftPM tree — the retired
 `third_party/fluidaudio-sidecar/` package was folded into the main
-`parleq-app` target, dropping Hummingbird as a dependency.
+`parleq-app` target, dropping Hummingbird as a dependency. Sparkle
+was added in v0.10.0 for auto-updates.
 
 ---
 
@@ -36,7 +42,7 @@ Note: as of v0.9.0 there is only one SwiftPM tree — the retired
 
 | Package | Version | License | Source | Used for |
 |---|---|---|---|---|
-| FluidAudio | 0.14.3 | Apache-2.0 | https://github.com/FluidInference/FluidAudio | Parakeet TDT v3 ASR + CTC keyword spotting on the Apple Neural Engine. Called directly from `LocalASR.swift` since v0.9.0; previously wrapped in a bundled HTTP sidecar that has now been retired. |
+| FluidAudio | 0.14.5 | Apache-2.0 | https://github.com/FluidInference/FluidAudio | Parakeet TDT v3 ASR + CTC keyword spotting on the Apple Neural Engine. Called directly from `LocalASR.swift` since v0.9.0; previously wrapped in a bundled HTTP sidecar that has now been retired. |
 
 ### LLM cleanup (AWS Bedrock path)
 
@@ -46,7 +52,14 @@ Note: as of v0.9.0 there is only one SwiftPM tree — the retired
 | Soto Core | 7.13.0 | Apache-2.0 | https://github.com/soto-project/soto-core | Soto's SigV4 signer + eventstream parsing |
 
 The Gemini provider talks to Google's HTTP API directly with no SDK,
-so no Gemini-specific package is bundled.
+so no Gemini-specific package is bundled. Vertex AI and Azure OpenAI
+also use direct HTTPS (URLSession) with no SDK.
+
+### Auto-update
+
+| Package | Version | License | Source | Used for |
+|---|---|---|---|---|
+| Sparkle | 2.9.1 | MIT | https://github.com/sparkle-project/Sparkle | EdDSA-verified appcast checks + user-prompted download/install/relaunch flow. Added in v0.10.0. Bundled as `Parleq.app/Contents/Frameworks/Sparkle.framework` (plus the framework's nested XPC services and helper tool). |
 
 ### Apple Swift ecosystem (transitive)
 
@@ -91,6 +104,24 @@ so no Gemini-specific package is bundled.
   `swift-nio/Sources/CNIOLLHTTP/LICENSE` in the upstream checkout.
   MIT is more permissive than Apache-2.0 and adds no obligations
   beyond keeping the license file with the source.
+
+- **ed25519-sparkle** — zlib-style — Vendored inside Sparkle at
+  `Vendor/ed25519-sparkle/`. Copyright (c) 2015 Orson Peters; a
+  derivative of Daniel J. Bernstein's ref10 ed25519 reference
+  implementation. The license permits unrestricted use including
+  commercial redistribution; the only obligations are not
+  misrepresenting authorship and preserving the notice in source
+  distributions. The notice ships inside Sparkle's source tree,
+  which is itself attributed in `NOTICE`. Used by Sparkle to verify
+  the Ed25519 enclosure signature on every downloaded update.
+
+- **bsdiff** — 2-clause BSD — Vendored inside Sparkle at
+  `Vendor/bsdiff/`. Copyright 2003–2005 Colin Percival. The 2-clause
+  BSD license obliges binary redistributions to reproduce the
+  copyright notice; doing so via the bundled `NOTICE` (which credits
+  Sparkle and its vendored components) satisfies that. Used by
+  Sparkle when applying delta-update patches to the existing .app
+  bundle.
 
 ---
 
@@ -144,7 +175,10 @@ redistribution is not.
 Parleq makes outbound network calls to:
 
 - **Google Gemini API** — direct HTTPS to `generativelanguage.googleapis.com`. Subject to Google's [Generative AI APIs Additional Terms of Service](https://ai.google.dev/terms). The user supplies their own API key.
-- **AWS Bedrock Runtime** — via Soto. Subject to the user's AWS account agreement and the model-vendor EULAs (Anthropic for Claude, OpenAI for GPT-OSS). The user authenticates with their own SSO session.
+- **AWS Bedrock Runtime** — via Soto. Subject to the user's AWS account agreement and the model-vendor EULAs (Anthropic for Claude, OpenAI for GPT-OSS). The user authenticates with their own SSO session, static IAM keys, or a scoped Bedrock API key.
+- **Google Vertex AI** — direct HTTPS to `*-aiplatform.googleapis.com`. Subject to the user's GCP account terms and the Vertex AI service terms. The user authenticates via gcloud Application Default Credentials or a service-account JSON they supply.
+- **Azure OpenAI** — direct HTTPS to the user's Azure resource hostname. Subject to the user's Azure agreement and Azure OpenAI service terms. The user authenticates with an API key or via Microsoft Entra ID (`az login`).
+- **Sparkle appcast** — HTTPS to `parleq.app/appcast.xml` on launch + every 24 h to check for newer Parleq releases. EdDSA signature on each enclosure is verified locally before any download is installed. Disable in Settings → Updates.
 - **Hugging Face** — anonymous reads only, for the FluidAudio model downloads above. Subject to [Hugging Face's Terms of Service](https://huggingface.co/terms-of-service).
 - **GitHub raw content** (LiteLLM JSON pricing snapshot) — public read of `BerriAI/litellm`'s `model_prices_and_context_window.json`, cached locally for 24 h. Disable with `PARLEQ_DISABLE_LIVE_PRICING=1`.
 
@@ -187,6 +221,9 @@ This list is regenerated by re-running `swift package show-dependencies`
 in `parleq-app/` and cross-referencing each `Package.resolved` against
 the LICENSE file in that package's `.build/checkouts/<name>/`
 directory. The current audit captures the dependency state at the
-v0.9.0 release (2026-05-13).
+v0.11.0 release (2026-05-15) — refreshed to add Sparkle (added in
+v0.10.0 for auto-updates, MIT-licensed, with two embedded vendored
+components attributed above) and to drop the obsolete Hummingbird
+reference (the sidecar that depended on it was retired in v0.9.0).
 
 If you upgrade a dependency, re-run the audit and update this file.
