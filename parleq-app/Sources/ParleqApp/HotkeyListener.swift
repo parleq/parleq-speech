@@ -108,6 +108,18 @@ struct HotkeyBinding {
     static let defaultBinding = HotkeyBinding.parse("option-right")!
 }
 
+/// Context for a key-down event: which gesture variants apply.
+struct HotkeyDownEvent {
+    /// True if this key-down landed within the double-tap window
+    /// of the most recent key-up — i.e., the user is doing a
+    /// double-tap-and-hold (quick-mode gesture).
+    let isDoubleTapHold: Bool
+    /// True if either Shift key was held at the moment the hotkey
+    /// went down. Used to open the staging mode (curate references
+    /// before dictating).
+    let isShiftHeld: Bool
+}
+
 final class HotkeyListener {
     /// Time window for treating "down → up → down (and hold)" as a
     /// double-tap-and-hold gesture. Empirically: 300 ms is faster
@@ -116,7 +128,7 @@ final class HotkeyListener {
     private static let doubleTapWindow: TimeInterval = 0.3
 
     private let binding: HotkeyBinding
-    private let onKeyDown: (Bool) -> Void   // Bool: isDoubleTapHold
+    private let onKeyDown: (HotkeyDownEvent) -> Void
     private let onKeyUp: () -> Void
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
@@ -132,7 +144,7 @@ final class HotkeyListener {
 
     init(
         binding: HotkeyBinding = .defaultBinding,
-        onKeyDown: @escaping (Bool) -> Void,
+        onKeyDown: @escaping (HotkeyDownEvent) -> Void,
         onKeyUp: @escaping () -> Void
     ) {
         self.binding = binding
@@ -183,7 +195,9 @@ final class HotkeyListener {
         if isDown {
             let now = Date().timeIntervalSinceReferenceDate
             let isDoubleTap = (now - lastKeyUpAt) < HotkeyListener.doubleTapWindow
-            onKeyDown(isDoubleTap)
+            // maskShift covers both left and right Shift.
+            let isShiftHeld = event.flags.contains(.maskShift)
+            onKeyDown(HotkeyDownEvent(isDoubleTapHold: isDoubleTap, isShiftHeld: isShiftHeld))
         } else {
             lastKeyUpAt = Date().timeIntervalSinceReferenceDate
             onKeyUp()

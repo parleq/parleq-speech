@@ -21,6 +21,7 @@
 // @MainActor so the compiler enforces this.
 
 import AppKit
+import Combine
 import Foundation
 
 @MainActor
@@ -29,6 +30,7 @@ final class AppState {
 
     enum Phase: Equatable {
         case idle
+        case staging                     // overlay open, no audio, user curating refs
         case capturing                   // mic is hot, audio streaming to ASR pipeline
         case cleaning                    // LLM cleanup in flight; overlay open
         case awaitingAccept              // cleanup done; overlay open with finished text
@@ -93,6 +95,19 @@ final class AppState {
     /// short-circuited, or the user cancels.
     private var pendingOverlayShowTimer: Timer?
     private var inFlightTask: Task<Void, Never>?  // cleanup or refine task — cancel on abort
+    // ConversationState is intentionally NOT stored here. Phase 1 is
+    // single-turn-per-dispatch: streamCleanupOrRefine builds messages
+    // directly from overlay.model.references each call, so the dispatch
+    // is stateless across turns. The type exists for Phase 2 multi-turn
+    // wiring; we'll thread it through when prompt caching + conversation
+    // history land.
+    private let captureService: ReferenceCapturer = ScreenCaptureKitReferenceCapture()
+    private let pasteTargetTracker = PasteTargetTracker()
+    private var pasteTargetSubscription: AnyCancellable?
+    /// Floating titled-panel picker. Lifted out of an NSPopover so the
+    /// thumbnail grid actually has room. Opened by the overlay's `+`
+    /// chip-row button, hidden after a pick or via Esc / close.
+    private let windowPickerWindow = WindowPickerWindow()
     /// Per-utterance streaming ASR session. Created at hotkey-down,
     /// drained at hotkey-up. nil between utterances.
     private var streamingSession: StreamingASRSession?
@@ -187,6 +202,24 @@ final class AppState {
         self.noTrailingSpaceAppBundleIDs = Set(noTrailingSpaceAppBundleIDs)
         overlay.onAccept = { [weak self] in self?.accept() }
         overlay.onCancel = { [weak self] in self?.cancel() }
+        overlay.onCopy = { [weak self] in self?.copy() }
+        overlay.onShowWindowPicker = { [weak self] in
+            self?.windowPickerWindow.show()
+        }
+
+        windowPickerWindow.setOnPick { [weak self] entry in
+            guard let self else { return }
+            self.windowPickerWindow.hide()
+            Task { @MainActor in
+                await self.capture(entry)
+            }
+        }
+
+        pasteTargetSubscription = pasteTargetTracker.$current
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] target in
+                self?.overlay.model.pasteTarget = target
+            }
     }
 
     /// Apply the trailing-space rule for this paste:
@@ -219,7 +252,7 @@ final class AppState {
     ///     longer than the threshold becomes a refine capture.
     ///   - from cleaning: refine the in-flight transcript directly
     ///     (already a hold by the time we got here).
-    func hotkeyDown(isDoubleTapHold: Bool = false) {
+    func hotkeyDown(isDoubleTapHold: Bool = false, isShiftHeld: Bool = false) {
         if !isSystemReady() {
             initializingOverlayShowing = true
             overlay.show(
@@ -235,7 +268,23 @@ final class AppState {
         initializingOverlayShowing = false
         switch phase {
         case .idle:
+            if isShiftHeld {
+                // Shift+hotkey = staging mode: open the overlay so the
+                // user can curate references before speaking. No audio
+                // captured. Picker auto-opens since that's the point.
+                enterStaging()
+                return
+            }
             quickMode = isDoubleTapHold
+            startFreshCapture()
+        case .staging:
+            // Plain hotkey-down while staging: the user has finished
+            // curating references and wants to dictate. Close the
+            // picker (so it doesn't linger over the dictation overlay)
+            // and hand off to the normal capture path —
+            // overlay.model.references already holds the staged refs
+            // and survives the state transition.
+            windowPickerWindow.hide()
             startFreshCapture()
         case .awaitingAccept:
             schedulePendingRefine()
@@ -246,6 +295,18 @@ final class AppState {
             // re-trigger.
             return
         }
+    }
+
+    /// Enter staging mode (Shift+hotkey from idle). Shows the overlay
+    /// with the chip strip + + button visible but no transcript;
+    /// auto-opens the WindowPickerWindow so the user can start picking
+    /// references immediately. Released by either the user pressing
+    /// the hotkey again without Shift (→ start dictation), or Esc /
+    /// Cancel (→ discard and return to idle).
+    private func enterStaging() {
+        phase = .staging
+        overlay.show(state: .staging, text: "")
+        windowPickerWindow.show()
     }
 
     /// Hotkey was released (key-up). Whichever capture phase we're
@@ -358,8 +419,14 @@ final class AppState {
         guard phase == .awaitingAccept else { return }
         phase = .pasting
         cancelAutoAcceptTimer()
-        let textToPaste = textForPaste(currentText, target: pasteTarget)
-        let target = pasteTarget
+        // Use the live-tracked target rather than the one captured at
+        // hotkey-down. The chip in the overlay reflects the live
+        // tracker (PasteTargetTracker), so whatever the user sees as
+        // 'Pastes to: X' is what they expect Accept to honor. If the
+        // tracker has nothing newer than the captured-at-start value,
+        // fall through to the original.
+        let target = liveTrackedPasteTarget() ?? pasteTarget
+        let textToPaste = textForPaste(currentText, target: target)
         // Record to the in-memory transcription history before the
         // paste attempt — even if the paste lands in the wrong app
         // (focus changed mid-flight) the user can grab the text
@@ -368,13 +435,17 @@ final class AppState {
         // rule applied, so re-pastes match the user's intent rather
         // than the previous target's convention.
         if !currentText.isEmpty {
+            let refs = overlay.model.references
             TranscriptHistory.shared.append(TranscriptEntry(
                 text: currentText,
                 targetAppName: target?.name,
-                wasCleanupSuccessful: !lastCleanupFailed
+                wasCleanupSuccessful: !lastCleanupFailed,
+                referenceCount: refs.count,
+                referenceLabels: refs.map(\.label)
             ))
         }
         overlay.hide()
+        overlay.model.references = []
         Task { @MainActor in
             if let target = target {
                 do {
@@ -402,6 +473,11 @@ final class AppState {
         switch phase {
         case .idle, .pasting:
             return  // nothing to cancel
+        case .staging:
+            // Nothing async to tear down — just close the picker and
+            // fall through to the standard overlay-hide / refs-clear
+            // path below.
+            windowPickerWindow.hide()
         case .capturing, .refining:
             // Stop the recorder so the audio engine releases its
             // input tap; the returned WAV bytes are discarded
@@ -420,6 +496,7 @@ final class AppState {
         cancelAutoAcceptTimer()
         cancelPendingOverlayShow()
         cancelPendingRefine()
+        overlay.model.references = []
         Task { @MainActor in
             await closeAndReset()
         }
@@ -675,7 +752,14 @@ final class AppState {
                     rawTranscript: asrResult.text,
                     priorText: priorText,
                     targetBundleID: targetBundleID,
-                    customDictionary: dictionary
+                    customDictionary: dictionary,
+                    references: self?.overlay.model.references ?? [],
+                    pasteDestinationLabel: self?.overlay.model.pasteTarget.map { dest in
+                        if let title = dest.windowTitle, !title.isEmpty {
+                            return "\(dest.appName) — \(title)"
+                        }
+                        return dest.appName
+                    }
                 )
                 if Task.isCancelled { return }
 
@@ -774,6 +858,63 @@ final class AppState {
 
     // MARK: - Helpers
 
+    /// Resolve the *currently intended* paste target by looking at the
+    /// live PasteTargetTracker (the same source the overlay's chip
+    /// reads from). If the user switched apps after starting the
+    /// dictation, this returns the app they're currently focused on
+    /// — matching the chip — rather than the app that happened to be
+    /// frontmost at hotkey-down.
+    @MainActor
+    private func liveTrackedPasteTarget() -> PasteTarget? {
+        guard let dest = pasteTargetTracker.current else { return nil }
+        // Resolve the running NSRunningApplication for this bundle ID
+        // so we can fill in pid (Paster.PasteTarget requires pid for
+        // the actual Cmd-V dispatch).
+        guard let app = NSWorkspace.shared.runningApplications
+            .first(where: { $0.bundleIdentifier == dest.bundleID })
+        else {
+            return nil
+        }
+        return PasteTarget(
+            pid: app.processIdentifier,
+            name: app.localizedName ?? dest.appName,
+            bundleID: dest.bundleID
+        )
+    }
+
+    @MainActor
+    private func capture(_ entry: WindowPickerModel.Entry) async {
+        guard Permissions.hasScreenRecording else {
+            Permissions.requestScreenRecording()
+            overlay.model.permissionPrompt = "Screen Recording permission needed. Grant in System Settings, then try again."
+            return
+        }
+        // Clear any stale banners up front so success implicitly
+        // dismisses them — otherwise an "Permission denied" banner
+        // from a prior capture lingers after the user grants and
+        // retries.
+        overlay.model.errorMessage = nil
+        overlay.model.permissionPrompt = nil
+        do {
+            let reference = try await captureService.captureWindow(
+                windowID: entry.windowID,
+                displayTitle: entry.title
+            )
+            overlay.model.references.append(reference)
+        } catch CaptureError.permissionDenied {
+            overlay.model.permissionPrompt = "Screen Recording permission denied. Grant in System Settings, then try again."
+        } catch {
+            overlay.model.errorMessage = "Couldn't capture window: \(error.localizedDescription)"
+        }
+    }
+
+    @MainActor
+    private func copy() {
+        let text = currentText
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+    }
+
     private func logPhase(from old: Phase, to new: Phase) {
         if old == new { return }
         log("phase: \(old) → \(new)")
@@ -822,7 +963,9 @@ private func streamCleanupOrRefine(
     rawTranscript: String,
     priorText: String,
     targetBundleID: String? = nil,
-    customDictionary: [DictionaryEntry] = []
+    customDictionary: [DictionaryEntry] = [],
+    references: [Reference] = [],
+    pasteDestinationLabel: String? = nil
 ) async -> CleanupOutcome {
     let fallback = asRefine ? priorText : rawTranscript
     guard let llm = llm else {
@@ -843,12 +986,33 @@ private func streamCleanupOrRefine(
         return CleanupOutcome(text: fallback, failureMessage: nil)
     }
 
-    let systemPrompt = asRefine
-        ? SystemPrompts.refine
-        : SystemPrompts.cleanup(dictionary: customDictionary)
-    let userMessage: String
-    if asRefine {
-        userMessage = "Current text:\n\(priorText)\n\nEdit instruction:\n\(rawTranscript)"
+    let systemPrompt: String
+    let messages: [LLMMessage]
+    if !references.isEmpty {
+        // Reference-aware mode: use PromptBuilder. Phase 1 stays
+        // single-turn — we don't preserve assistant responses across
+        // refinement yet — but we DO carry priorText into the user
+        // content when refining, otherwise hold-⌥ refine while
+        // references are attached would silently throw away the
+        // current cleaned text and re-treat the instruction as a
+        // fresh ask. Document the regression possibility in the
+        // prompt itself by labeling the prior output.
+        systemPrompt = PromptBuilder.referenceAwareSystem
+        let baseContent = PromptBuilder.firstTurnUserContent(
+            references: references,
+            destination: pasteDestinationLabel,
+            instruction: rawTranscript
+        )
+        let userContent: String
+        if asRefine, !priorText.isEmpty {
+            userContent = baseContent + "\n\nCurrent text (apply the instruction above to refine this):\n\(priorText)"
+        } else {
+            userContent = baseContent
+        }
+        messages = [LLMMessage(role: "user", content: userContent)]
+    } else if asRefine {
+        systemPrompt = SystemPrompts.refine
+        messages = [LLMMessage(role: "user", content: "Current text:\n\(priorText)\n\nEdit instruction:\n\(rawTranscript)")]
     } else {
         // Wrap the raw transcript in explicit cleanup-task framing.
         // Without this, models trained heavily on safety guardrails
@@ -859,7 +1023,8 @@ private func streamCleanupOrRefine(
         // instead of cleaning. The structural wrapper makes the
         // user message a meta-instruction containing the data,
         // rather than being mistakable for the data itself.
-        userMessage = "Transcript to clean up:\n\n\(rawTranscript)"
+        systemPrompt = SystemPrompts.cleanup(dictionary: customDictionary)
+        messages = [LLMMessage(role: "user", content: "Transcript to clean up:\n\n\(rawTranscript)")]
     }
 
     // Reset the overlay text before streaming begins so the new
@@ -875,7 +1040,7 @@ private func streamCleanupOrRefine(
     do {
         try await llm.generateStreaming(
             systemPrompt: systemPrompt,
-            messages: [LLMMessage(role: "user", content: userMessage)]
+            messages: messages
         ) { event in
             // The streaming callback fires on URLSession's queue, not
             // MainActor. Hop to the main actor for any overlay

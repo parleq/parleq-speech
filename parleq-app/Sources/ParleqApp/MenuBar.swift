@@ -360,6 +360,9 @@ final class MenuBar: NSObject {
         case .idle:
             isActive = false
             label = "Idle"
+        case .staging:
+            isActive = true
+            label = "Staging references…"
         case .capturing:
             isActive = true
             label = "Listening…"
@@ -523,17 +526,19 @@ extension MenuBar: NSMenuDelegate {
             let when = relativeFormatter.localizedString(
                 for: entry.timestamp, relativeTo: now
             )
-            // Entries where LLM cleanup failed get a trailing "· raw"
-            // marker (#27) so users can tell at a glance which
-            // dictations are the raw-ASR fallback rather than the
-            // cleaned-up version. Tooltip spells it out for users
-            // who don't recognise the marker yet.
-            let title: String
-            if entry.wasCleanupSuccessful {
-                title = "\(entry.preview)  ·  \(when)"
-            } else {
-                title = "\(entry.preview)  ·  \(when)  ·  raw"
+            // Trailing markers (in order of appearance):
+            //   · N refs   — reference-aware dictation (Phase 1+)
+            //   · raw      — LLM cleanup failed; raw ASR fallback (#27)
+            // Tooltip spells them out for users who don't yet
+            // recognise the markers.
+            var suffix = "  ·  \(when)"
+            if entry.referenceCount > 0 {
+                suffix += "  ·  \(entry.referenceCount) ref\(entry.referenceCount == 1 ? "" : "s")"
             }
+            if !entry.wasCleanupSuccessful {
+                suffix += "  ·  raw"
+            }
+            let title = "\(entry.preview)\(suffix)"
             let item = NSMenuItem(
                 title: title,
                 action: #selector(copyRecentEntry(_:)),
@@ -550,6 +555,9 @@ extension MenuBar: NSMenuDelegate {
             if !entry.wasCleanupSuccessful {
                 tooltip += "\n\n(raw transcript — LLM cleanup failed " +
                     "for this dictation)"
+            }
+            if entry.referenceCount > 0 && !entry.referenceLabels.isEmpty {
+                tooltip += "\n\nReferences: " + entry.referenceLabels.joined(separator: ", ")
             }
             item.toolTip = tooltip
             menu.addItem(item)

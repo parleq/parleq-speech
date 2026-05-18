@@ -32,6 +32,10 @@ enum OverlayState: Sendable {
     /// "please wait" message instead of being silently ignored or
     /// hanging on a black-hole capture.
     case initializing
+    /// Shift+hotkey opens this. No audio capture; the user is curating
+    /// references via the window picker. The next plain hotkey press
+    /// transitions to .capturing while preserving the staged refs.
+    case staging
     case capturing
     case cleaning
     case awaitingAccept
@@ -46,18 +50,35 @@ final class OverlayWindow {
     /// Floor for the panel height — short utterances still get a
     /// stable shape while the partial transcript streams in.
     private static let minHeight: CGFloat = 140
-    /// Cap on the transcript area as a fraction of screen height.
-    /// Above this, SwiftUI clips the TOP of older text and keeps
-    /// the latest text visible at the bottom of the content area
-    /// (just above the indicator dots / footer).
-    private static let maxContentHeightScreenFraction: CGFloat = 0.5
+    /// Vertical offset between the bottom of the visible screen and
+    /// the bottom of the panel — kept consistent with the anchor
+    /// enforced in OverlayPanel.setFrame.
+    private static let bottomAnchorOffset: CGFloat = 96
+    /// Estimated panel chrome height: chips row (may wrap when many
+    /// references attached) + error/permission banner (visible when
+    /// non-nil) + divider + buttons row + "[hold ⌥] refine" hint +
+    /// VStack spacings + outer paddings + shadow breathing room.
+    /// Used to compute the maximum content height that won't drive
+    /// the panel off the top of the screen. Set conservatively
+    /// because under-estimating leaks visible content past the screen
+    /// edge — over-estimating just gives a slightly tighter content
+    /// area, which is the safe failure mode.
+    private static let chromeHeightEstimate: CGFloat = 360
+    /// Breathing room below the menu bar at the top of the visible
+    /// screen — keeps the panel from pressing against the system UI.
+    private static let topBreathingRoom: CGFloat = 16
 
     private let panel: OverlayPanel
-    private let model: OverlayModel
+    let model: OverlayModel
     private let hostingController: NSHostingController<OverlayContent>
     private var sizeObservation: NSKeyValueObservation?
     var onAccept: (() -> Void)?
     var onCancel: (() -> Void)?
+    var onCopy: (() -> Void)?
+    /// AppState wires this to open the WindowPickerWindow. The picker
+    /// itself owns the entry-pick callback chain; the overlay just
+    /// requests the picker be shown.
+    var onShowWindowPicker: (() -> Void)?
 
     init() {
         let initialFrame = NSRect(
@@ -74,7 +95,14 @@ final class OverlayWindow {
         panel.level = .popUpMenu
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.isMovableByWindowBackground = false
-        panel.hasShadow = true
+        // hasShadow=false: on macOS 26 Liquid Glass paints its own
+        // edge specular treatment, and AppKit's window shadow was
+        // tuned for opaque panels in macOS 14 — the two together
+        // produced a doubled-rim "fine line" effect that read as
+        // odd. Letting Liquid Glass own the edge is cleaner. On the
+        // legacy .regularMaterial fallback, the lack of shadow is
+        // mildly less polished but not visually broken.
+        panel.hasShadow = false
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hidesOnDeactivate = false
@@ -95,29 +123,131 @@ final class OverlayWindow {
         // ensuring the latest text always stays visible just above
         // the footer.
         let screenHeight = NSScreen.main?.visibleFrame.height ?? 800
-        let maxContentHeight = screenHeight * OverlayWindow.maxContentHeightScreenFraction
+        let maxContentHeight = OverlayWindow.computeMaxContentHeight(visibleHeight: screenHeight)
+        let maxPanelHeight = OverlayWindow.computeMaxPanelHeight(visibleHeight: screenHeight)
+        // OverlayContent needs callbacks (onCopy, onCancel, onAccept,
+        // onShowWindowPicker) that forward to this class's published
+        // vars. We can't reference `self` in the closures before fully
+        // initialising, so seed the rootView with pass-through stubs
+        // and replace it immediately after all stored properties are
+        // set (see the rewireCallbacks() call below).
         let hc = NSHostingController(
             rootView: OverlayContent(
                 model: model,
                 width: OverlayWindow.fixedWidth,
-                maxContentHeight: maxContentHeight
+                maxContentHeight: maxContentHeight,
+                maxPanelHeight: maxPanelHeight,
+                onCopy: {},
+                onCancel: {},
+                onAccept: {},
+                onShowWindowPicker: {},
+                onBodyHeightChange: { _ in }
             )
         )
         hc.sizingOptions = [.preferredContentSize]
         self.hostingController = hc
-        panel.contentViewController = hc
+
+        // Wrap the hosting controller's view in a custom NSView that
+        // accepts first-mouse clicks, so a click while unfocused
+        // refocuses the panel AND triggers the action in one motion.
+        let wrappedView = FirstMouseAcceptingView(hc.view)
+        panel.contentView = wrappedView
 
         // Wire the panel's key-handler hooks to the closures on this
         // class (which AppState fills in via onAccept/onCancel).
         panel.onEnter = { [weak self] in self?.onAccept?() }
         panel.onEscape = { [weak self] in self?.onCancel?() }
 
-        sizeObservation = hc.observe(\.preferredContentSize, options: [.new]) { [weak self] _, _ in
+        sizeObservation = hc.observe(\.preferredContentSize, options: [.new]) { [weak self] _, change in
+            // Trace: prove the KVO fires. Captures the .new value so
+            // we can see what size NSHostingController is reporting.
+            if let newSize = change.newValue {
+                OverlayWindow.logStderr(
+                    "[parleq] overlay KVO: preferredContentSize → " +
+                    "\(Int(newSize.width))×\(Int(newSize.height))"
+                )
+            }
             // KVO callbacks run on whatever thread updated the
             // property; SwiftUI on macOS updates this on main, but
             // hop explicitly to be safe.
             Task { @MainActor in self?.resizePanelToFitContent() }
         }
+
+        // All stored properties are now set; replace the stub rootView
+        // with one whose callbacks forward to self.
+        rewireCallbacks()
+
+        // Subscribe to NSPanel key-state notifications so the overlay
+        // can track whether it's the focused window. The OverlayButtons
+        // view uses model.isKey to show the "Parleq lost focus" message
+        // when the panel isn't key.
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.didBecomeKeyNotification,
+            object: panel,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.model.isKey = true
+            }
+        }
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.didResignKeyNotification,
+            object: panel,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.model.isKey = false
+            }
+        }
+    }
+
+    /// Replace the hosting controller's rootView so that the SwiftUI
+    /// callbacks (onCopy, onCancel, onAccept, onShowWindowPicker)
+    /// forward to this class's current closure properties. Called
+    /// exactly once at the end of init (after `self` is fully
+    /// initialised). Do not call again — replacing rootView at runtime
+    /// resets per-instance SwiftUI @State.
+    private func rewireCallbacks() {
+        let screenHeight = NSScreen.main?.visibleFrame.height ?? 800
+        let maxContentHeight = OverlayWindow.computeMaxContentHeight(visibleHeight: screenHeight)
+        let maxPanelHeight = OverlayWindow.computeMaxPanelHeight(visibleHeight: screenHeight)
+        hostingController.rootView = OverlayContent(
+            model: model,
+            width: OverlayWindow.fixedWidth,
+            maxContentHeight: maxContentHeight,
+            maxPanelHeight: maxPanelHeight,
+            onCopy: { [weak self] in self?.onCopy?() },
+            onCancel: { [weak self] in self?.onCancel?() },
+            onAccept: { [weak self] in self?.onAccept?() },
+            onShowWindowPicker: { [weak self] in self?.onShowWindowPicker?() },
+            onBodyHeightChange: { [weak self] newHeight in
+                self?.resizePanelToHeight(newHeight)
+            }
+        )
+    }
+
+    /// Resize the panel to match the SwiftUI body's measured height.
+    /// Driven by OverlayBodyHeightKey via OverlayContent's outer
+    /// .background(GeometryReader) — this is the replacement for the
+    /// NSHostingController.preferredContentSize KVO chain (which never
+    /// fires in our setup because we attach hc.view as a subview
+    /// rather than installing hc as the panel's contentViewController,
+    /// so the controller's viewDidLayout is never called).
+    private func resizePanelToHeight(_ measuredHeight: CGFloat) {
+        let visible = NSScreen.main?.visibleFrame.height ?? 800
+        let maxPanelHeight = OverlayWindow.computeMaxPanelHeight(visibleHeight: visible)
+        let target = max(
+            OverlayWindow.minHeight,
+            min(maxPanelHeight, measuredHeight)
+        )
+        var frame = panel.frame
+        if abs(frame.size.height - target) < 0.5 { return }
+        OverlayWindow.logStderr(
+            "[parleq] overlay body-height resize: measured=\(Int(measuredHeight)) " +
+            "maxPanel=\(Int(maxPanelHeight)) → target=\(Int(target))"
+        )
+        frame.size.height = target
+        panel.setFrame(frame, display: true, animate: false)
     }
 
     /// Show / update the overlay. Called on every state transition;
@@ -162,30 +292,124 @@ final class OverlayWindow {
             cleanupFailureMessage: cleanupFailureMessage
         )
         if !panel.isVisible {
+            // Pre-size the panel to the SwiftUI intrinsic content
+            // height BEFORE making it visible. Without this, the
+            // panel appears at its 140pt minHeight (or whatever
+            // its prior size happened to be) and:
+            //   1. SwiftUI lays out the body within those bounds,
+            //      clipping the top because the panel is anchored
+            //      at the bottom.
+            //   2. The GeometryReader inside OverlayContent measures
+            //      the CONSTRAINED body size (= current panel height),
+            //      not the intrinsic content size.
+            //   3. The .onPreferenceChange callback fires with the
+            //      constrained height, equal to the current frame.
+            //   4. resizePanelToHeight sees no change and no-ops.
+            //   5. The panel stays clipped until something else grows
+            //      the content further.
+            //
+            // sizeThatFits(in:) queries SwiftUI directly with an
+            // unconstrained-height proposal, so it returns the height
+            // the body actually wants — independent of the current
+            // view bounds. layoutSubtreeIfNeeded first ensures any
+            // pending SwiftUI updates from the just-issued model.update
+            // call have been flushed so sizeThatFits reflects the
+            // new state, not the previous one.
+            hostingController.view.layoutSubtreeIfNeeded()
+            let proposal = NSSize(
+                width: OverlayWindow.fixedWidth,
+                height: .greatestFiniteMagnitude
+            )
+            let fitting = hostingController.sizeThatFits(in: proposal)
+            // anchoredBottomY left over from a prior session would
+            // make panel.setFrame snap the origin to a stale Y; clear
+            // it so positionAtScreenBottom (called next) can re-arm
+            // the anchor with the freshly computed origin.
+            panel.anchoredBottomY = nil
+            resizePanelToHeight(fitting.height)
+
             positionAtScreenBottom()
+
+            // Soft fade-in entrance. Start fully transparent before
+            // orderFront and animate to opaque over ~150ms — the
+            // panel appears at its final size (pre-sized above) but
+            // dissolves in rather than snapping, which reads as
+            // polish rather than abruptness. We don't animate the
+            // position because the bottom-anchor enforcement in
+            // OverlayPanel.setFrame would fight per-frame origin
+            // changes from NSAnimationContext.
+            panel.alphaValue = 0
             panel.orderFrontRegardless()
             // makeKey delivers keyDown events to the panel without
             // activating our app (we're a .nonactivatingPanel).
             panel.makeKey()
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.16
+                context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                panel.animator().alphaValue = 1
+            }
         }
     }
 
-    /// Enforce the minHeight floor on the panel.
+    /// Size the panel to fit the SwiftUI intrinsic content height,
+    /// clamped to minHeight at the floor.
     ///
-    /// NSWindow auto-tracks contentViewController.preferredContentSize,
-    /// so the panel's height already matches SwiftUI's intrinsic
-    /// height after the auto-track runs. We just need to bump it up
-    /// to minHeight when the content would be smaller. Position is
-    /// handled by OverlayPanel.setFrame's anchor override; the
-    /// transcript-area cap is enforced inside SwiftUI (see
-    /// OverlayContent.maxContentHeight).
+    /// Sizing is driven purely by the KVO observer on
+    /// `hostingController.preferredContentSize` (registered in init).
+    /// We install the hosting view via `panel.contentView` (wrapped in
+    /// FirstMouseAcceptingView) rather than `panel.contentViewController`,
+    /// so NSWindow does NOT auto-track preferredContentSize — this
+    /// method is the sole sizing path. Position is handled by
+    /// OverlayPanel.setFrame's anchor override; the transcript-area
+    /// cap is enforced inside SwiftUI (see OverlayContent.maxContentHeight).
     private func resizePanelToFitContent() {
         let preferred = hostingController.preferredContentSize
-        let target = max(OverlayWindow.minHeight, preferred.height)
+        let visible = NSScreen.main?.visibleFrame.height ?? 800
+        let maxPanelHeight = max(
+            OverlayWindow.minHeight + 1,
+            visible - OverlayWindow.bottomAnchorOffset - OverlayWindow.topBreathingRoom
+        )
+        let target = max(
+            OverlayWindow.minHeight,
+            min(maxPanelHeight, preferred.height)
+        )
         var frame = panel.frame
-        if abs(frame.size.height - target) < 0.5 { return }
+        let noop = abs(frame.size.height - target) < 0.5
+        OverlayWindow.logStderr(
+            "[parleq] overlay resize\(noop ? " (no-op)" : ""): " +
+            "pref=\(Int(preferred.height)) " +
+            "visible=\(Int(visible)) " +
+            "maxPanel=\(Int(maxPanelHeight)) " +
+            "currentFrame=\(Int(frame.size.height)) " +
+            "→ target=\(Int(target))"
+        )
+        if noop { return }
         frame.size.height = target
         panel.setFrame(frame, display: true, animate: false)
+    }
+
+    private static func logStderr(_ message: String) {
+        FileHandle.standardError.write((message + "\n").data(using: .utf8) ?? Data())
+    }
+
+    /// Maximum height the transcript / content area is allowed to
+    /// take. Subtracts the realistic chrome height from the available
+    /// vertical space so the panel never grows tall enough to push
+    /// the chip row past the top of the screen.
+    private static func computeMaxContentHeight(visibleHeight: CGFloat) -> CGFloat {
+        let usable = visibleHeight - bottomAnchorOffset - topBreathingRoom - chromeHeightEstimate
+        // Floor at 200pt so the cap is never absurdly small even on
+        // tiny external monitors.
+        return max(200, usable)
+    }
+
+    /// Maximum height for the whole panel — visible screen minus the
+    /// bottom anchor offset minus a small top breathing room. Used
+    /// both as the SwiftUI body's .frame(maxHeight:) and as the
+    /// hard cap in resizePanelToFitContent so the panel can never
+    /// extend above the menu bar.
+    static func computeMaxPanelHeight(visibleHeight: CGFloat) -> CGFloat {
+        return max(minHeight + 1, visibleHeight - bottomAnchorOffset - topBreathingRoom)
     }
 
     /// Append a chunk of text to the overlay. Used by the streaming
@@ -251,10 +475,31 @@ private final class OverlayPanel: NSPanel {
     }
 
     private func applyAnchor(_ rect: NSRect) -> NSRect {
-        guard let bottomY = anchoredBottomY else { return rect }
         var r = rect
-        r.origin.y = bottomY
+        // Defensive height cap at the AppKit layer. No matter what
+        // SwiftUI or the resize KVO computes, the panel physically
+        // cannot exceed the screen's available height minus the
+        // bottom anchor and a small breathing-room buffer. This is
+        // the final say.
+        if let screen = NSScreen.main {
+            let visible = screen.visibleFrame
+            let absoluteMax = max(140, visible.height - 96 - 16)
+            if r.size.height > absoluteMax {
+                Self.logStderr(
+                    "[parleq] overlay panel height \(Int(r.size.height)) " +
+                    "exceeded screen cap \(Int(absoluteMax)) — clamping"
+                )
+                r.size.height = absoluteMax
+            }
+        }
+        if let bottomY = anchoredBottomY {
+            r.origin.y = bottomY
+        }
         return r
+    }
+
+    private static func logStderr(_ message: String) {
+        FileHandle.standardError.write((message + "\n").data(using: .utf8) ?? Data())
     }
 
     override func keyDown(with event: NSEvent) {
@@ -269,10 +514,53 @@ private final class OverlayPanel: NSPanel {
     }
 }
 
+// MARK: - First-mouse accepting view wrapper
+
+/// Wraps the hosting controller's view as the panel's contentView.
+///
+/// AppKit consults `acceptsFirstMouse(for:)` on the *hit-test view*
+/// at the click location — not on its ancestors — so this wrapper's
+/// override only takes effect when a click lands on bare wrapper
+/// area outside the hosted SwiftUI content. For clicks that land
+/// inside the hosted view's button hit-region, AppKit consults the
+/// SwiftUI-internal `NSHostingView`'s `acceptsFirstMouse` instead.
+/// In current macOS, `NSHostingView` returns true for interactive
+/// SwiftUI controls, so the chained behavior (wrapper for ambient
+/// area, hosting view for controls) gives us single-click-while-
+/// unfocused for the Accept/Cancel/Copy buttons.
+///
+/// If a future macOS revision changes that default, we'll need to
+/// subclass `NSHostingView` directly (replacing
+/// `NSHostingController`'s default view) and put the override there.
+/// Documented as a known seam.
+private final class FirstMouseAcceptingView: NSView {
+    private let hostedView: NSView
+
+    init(_ hostedView: NSView) {
+        self.hostedView = hostedView
+        super.init(frame: hostedView.frame)
+        addSubview(hostedView)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func layout() {
+        super.layout()
+        hostedView.frame = bounds
+    }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        return true
+    }
+}
+
 // MARK: - SwiftUI content + view-model
 
 @MainActor
-private final class OverlayModel: ObservableObject {
+final class OverlayModel: ObservableObject {
     @Published var state: OverlayState = .capturing
     @Published var text: String = ""
     /// Normalized 0…1 mic level pushed by AudioRecorder during
@@ -307,6 +595,30 @@ private final class OverlayModel: ObservableObject {
     /// state so a successful subsequent dictation doesn't carry over
     /// the prior turn's failure annotation.
     @Published var cleanupFailureMessage: String?
+
+    /// Array of Reference objects to display in the overlay. Used by
+    /// the reference window feature to show context-aware references
+    /// and citations.
+    @Published var references: [Reference] = []
+
+    /// Optional paste destination target for the current overlay state.
+    /// When set, indicates where the user's paste action will be routed
+    /// or which envelope is being suggested.
+    @Published var pasteTarget: PasteDestination?
+
+    /// Whether the overlay is in "key" mode (used by the reference
+    /// window feature to control overlay behavior and styling).
+    @Published var isKey: Bool = true
+
+    /// Optional screen recording permission prompt message. Surfaced in
+    /// the overlay when capture lacks the necessary permissions.
+    @Published var permissionPrompt: String?
+
+    /// Optional error message to display in the overlay's error banner.
+    /// Cleared by tapping the banner. Distinct from `permissionPrompt`
+    /// so callers can set either independently without overwriting the
+    /// other.
+    @Published var errorMessage: String?
 
     func update(
         state: OverlayState,
@@ -348,6 +660,33 @@ private final class OverlayModel: ObservableObject {
     }
 }
 
+/// PreferenceKey for plumbing the measured intrinsic height of the
+/// transcript content up to the OverlayContent view. Lets the
+/// ScrollView wrapper size its frame to the actual content height
+/// (so the panel grows naturally with the dictation) while still
+/// capping at maxContentHeight (so the panel can't walk off the top
+/// of the screen on very long output, and scrolling engages).
+private struct OverlayContentHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+/// PreferenceKey for the OverlayContent's outermost measured height —
+/// the value we want the panel itself to take. Used to drive panel
+/// resize directly from SwiftUI, bypassing NSHostingController's
+/// preferredContentSize auto-track (which only works when the
+/// controller is installed as panel.contentViewController; we install
+/// its view as a subview via FirstMouseAcceptingView instead, so the
+/// auto-track is dead in this app).
+private struct OverlayBodyHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 private struct OverlayContent: View {
     @ObservedObject var model: OverlayModel
     /// Fixed outer width passed in from OverlayWindow. We constrain
@@ -363,29 +702,290 @@ private struct OverlayContent: View {
     /// preferred-size query keeps growing and the panel walks past
     /// the screen edge.
     let maxContentHeight: CGFloat
+    /// Hard cap on the whole panel's visible height. Applied as the
+    /// body's .frame(maxHeight:) so SwiftUI never asks NSHostingController
+    /// for a preferredContentSize larger than the available screen
+    /// area (visible.height - bottomAnchorOffset - topBreathingRoom).
+    /// Belt-and-suspenders with the panel-side cap in
+    /// resizePanelToFitContent.
+    let maxPanelHeight: CGFloat
+
+    // Callbacks forwarded from OverlayWindow.
+    let onCopy: () -> Void
+    let onCancel: () -> Void
+    let onAccept: () -> Void
+    /// Tapping the `+` chip-row button fires this. AppState owns the
+    /// WindowPickerWindow and routes the pick through its own chain.
+    let onShowWindowPicker: () -> Void
+
+    /// Fires whenever the body's outermost measured height changes.
+    /// OverlayWindow uses this to drive panel resize directly, since
+    /// NSHostingController.preferredContentSize is dead in our setup
+    /// (the controller's view is added as a subview rather than as
+    /// the panel's contentViewController, so the controller's
+    /// viewDidLayout never fires).
+    let onBodyHeightChange: (CGFloat) -> Void
+
+    /// Measured intrinsic height of the transcript content, updated
+    /// every time the content's layout changes. Drives the ScrollView
+    /// frame's height: <= cap, the frame matches content and the
+    /// panel grows naturally; >= cap, the frame caps and the ScrollView
+    /// scrolls internally.
+    @State private var measuredContentHeight: CGFloat = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            content
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .frame(maxHeight: maxContentHeight, alignment: .bottom)
-                .clipped()
+            // Single header strip combining paste-target chip + reference
+            // chips + window-picker button. One row keeps the chrome
+            // compact (the panel anchors at the bottom and grows upward,
+            // so every chrome row we add risks pushing the top of the
+            // panel past the visible screen on long transcripts).
+            headerStrip
+
+            // Error / permission banner (only when a message is set).
+            errorBanner
+
+            // Main content area — two-mode layout per Jon's suggestion:
+            //
+            //   1. Below the scroll threshold: render content directly
+            //      with no ScrollView wrapper. The body's height grows
+            //      naturally with the content. This gives the "panel
+            //      grows organically with what I'm dictating" feel for
+            //      short and medium output.
+            //
+            //   2. At or above the threshold: switch to a fixed-height
+            //      ScrollView. The body stops growing; the content
+            //      scrolls inside. Chips at top + buttons at bottom
+            //      stay anchored, since the body height (chrome +
+            //      threshold) is the same in this mode regardless of
+            //      how long the content actually is.
+            //
+            // The threshold is computed so that chrome + threshold ≈
+            // maxPanelHeight, i.e. the switch happens at the moment
+            // the panel would otherwise grow past the screen.
+            //
+            // GeometryReader measures the content's intrinsic height
+            // even inside the ScrollView (the content is sized to its
+            // intrinsic and the ScrollView scrolls it), so the
+            // measurement stays consistent across mode switches.
+            contentArea
+
             Divider().opacity(0.3)
-            footer
-                .font(.system(size: 11))
-                .foregroundColor(.secondary)
+
+            // Bottom area: full button row in awaitingAccept; text
+            // hint in every other state. The buttons surface Copy /
+            // Cancel / Accept; the trailing [hold ⌥] refine hint
+            // preserves the third affordance (which is a hotkey
+            // gesture, not a clickable control) so users know it's
+            // still available alongside the buttons.
+            if model.state == .awaitingAccept {
+                // Single-line footer: Copy on left, then Cancel, the
+                // paste-target inline (so Accept is visually paired
+                // with its destination), then Accept on the right.
+                // The "hold ⌥ to refine" affordance is documented on
+                // the staging-state hint + naturally discoverable;
+                // we drop the explicit footer hint here to keep the
+                // row to one line.
+                OverlayButtons(
+                    isKey: model.isKey,
+                    pasteTarget: model.pasteTarget,
+                    onCopy: onCopy,
+                    onCancel: onCancel,
+                    onAccept: onAccept
+                )
+            } else {
+                footer
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            }
         }
         .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color(nsColor: .windowBackgroundColor).opacity(0.95))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
-        )
+        // Background surface: Liquid Glass on macOS 26+, translucent
+        // material fallback below. Toggle via PARLEQ_LIQUID_GLASS env.
+        .parleqPanelBackground(cornerRadius: 12)
         .padding(8)  // shadow breathing room
+        // Width is fixed; height is naturally driven by the children
+        // (which switch from direct content → fixed-height ScrollView
+        // once the content crosses scrollThreshold).
         .frame(width: width)
+        // Measure the actually-laid-out body height and publish it up
+        // to OverlayWindow so the panel can resize to match. This
+        // replaces NSHostingController's preferredContentSize auto-
+        // track (dead in our setup — see onBodyHeightChange doc).
+        .background(
+            GeometryReader { geom in
+                Color.clear
+                    .preference(
+                        key: OverlayBodyHeightKey.self,
+                        value: geom.size.height
+                    )
+            }
+        )
+        .onPreferenceChange(OverlayBodyHeightKey.self) { newHeight in
+            onBodyHeightChange(newHeight)
+        }
+    }
+
+    /// The content's intrinsic height threshold above which the
+    /// content area switches from "direct render, panel grows" mode to
+    /// "fixed-height ScrollView, panel pinned" mode. Chosen so that
+    /// chromeApprox + threshold ≈ maxPanelHeight — i.e. the switch
+    /// happens at the moment the body would otherwise grow past the
+    /// screen.
+    ///
+    /// Over-estimating the chrome leads to a slightly smaller content
+    /// area in scroll mode (harmless). Under-estimating it would let
+    /// the panel briefly exceed maxPanelHeight before the switch
+    /// catches; with the chrome estimate at 200pt that's an acceptable
+    /// margin for the layout we have today.
+    private var scrollThreshold: CGFloat {
+        let chromeApprox: CGFloat = 200
+        return max(120, maxPanelHeight - chromeApprox)
+    }
+
+    /// Content area — direct render below the scroll threshold, fixed
+    /// ScrollView above it. Both branches measure the content's
+    /// intrinsic height via the same GeometryReader-on-background
+    /// pattern, so the mode-switch decision is stable across paints.
+    @ViewBuilder
+    private var contentArea: some View {
+        let measuredContent = content
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                GeometryReader { geom in
+                    Color.clear
+                        .preference(
+                            key: OverlayContentHeightKey.self,
+                            value: geom.size.height
+                        )
+                }
+            )
+
+        Group {
+            if measuredContentHeight <= scrollThreshold {
+                measuredContent
+            } else {
+                ScrollViewReader { proxy in
+                    ScrollView(.vertical, showsIndicators: true) {
+                        measuredContent
+                            .id("content-bottom")
+                    }
+                    .frame(height: scrollThreshold)
+                    .onChange(of: model.text) { _, _ in
+                        proxy.scrollTo("content-bottom", anchor: .bottom)
+                    }
+                }
+            }
+        }
+        .onPreferenceChange(OverlayContentHeightKey.self) { newHeight in
+            if abs(measuredContentHeight - newHeight) > 0.5 {
+                measuredContentHeight = newHeight
+            }
+        }
+    }
+
+    // MARK: - Structural sub-views
+
+    /// Single combined chrome row: paste-target chip (left, fixed) +
+    /// reference chips (middle, horizontally scrolling) + window-picker
+    /// button (right, pinned). One row instead of two keeps the panel
+    /// compact — the panel anchors at the bottom edge of the visible
+    /// screen and grows upward as content fills, so every chrome row
+    /// we save reduces the risk of the panel's top extending past the
+    /// menu bar on long transcripts.
+    @ViewBuilder
+    private var headerStrip: some View {
+        HStack(spacing: 8) {
+            // Reference chips — scrollable horizontally when many
+            // attached. The paste-target indicator used to live here
+            // too, but moved to the footer (next to Accept) so it's
+            // only displayed when there's something to actually paste.
+            //
+            // When no references are attached, the chip area would
+            // otherwise be empty — leaving a blank header bar with
+            // just a "+" floating at the right edge, which reads as
+            // unfinished UI. Show a tertiary-color affordance hint
+            // instead so the area has visible purpose.
+            if model.references.isEmpty {
+                HStack(spacing: 5) {
+                    Image(systemName: "rectangle.on.rectangle.angled")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.tertiary)
+                    Text("Add a reference window for context")
+                        // SF Rounded for consistency with the
+                        // listening-state hint — same family of
+                        // secondary descriptive text.
+                        .font(.system(size: 11, design: .rounded))
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                }
+                .accessibilityHidden(true)
+                Spacer()
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(model.references) { ref in
+                            ReferenceChip(reference: ref) {
+                                model.references.removeAll { $0.id == ref.id }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Window-picker button — fires onShowWindowPicker so
+            // AppState can open the dedicated WindowPickerWindow
+            // (a floating titled panel with room for a real grid of
+            // thumbnails, vs. the size-constrained popover we used
+            // initially).
+            Button {
+                onShowWindowPicker()
+            } label: {
+                Image(systemName: "plus.circle")
+                    .font(.system(size: 14))
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Add reference window")
+        }
+    }
+
+    /// Error / permission-prompt banner. Tapping it clears the message.
+    @ViewBuilder
+    private var errorBanner: some View {
+        let message = model.errorMessage ?? model.permissionPrompt
+        if let message = message {
+            Button {
+                if model.errorMessage != nil {
+                    model.errorMessage = nil
+                } else {
+                    model.permissionPrompt = nil
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.orange)
+                    Text(message)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(Color.orange.opacity(0.10))
+                )
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss: \(message)")
+        }
     }
 
     @ViewBuilder
@@ -431,40 +1031,37 @@ private struct OverlayContent: View {
                         .foregroundColor(.secondary)
                 }
             }
-        case .capturing:
-            // While the user is speaking, AudioRecorder pushes the
-            // per-buffer mic level into model.level so SoundWaveBars
-            // can animate in time with the audio. The batch-mode
-            // pipeline doesn't show partial transcripts (Parakeet TDT
-            // v3 only returns text at end-of-utterance), so the
-            // visualization is the only feedback during capture —
-            // worth doing well.
+        case .staging:
+            // Staging: no audio, the user is curating references.
+            // The header strip already shows the chip strip + + button
+            // — render a clear hint here explaining what's about to
+            // happen and how to leave.
             VStack(alignment: .leading, spacing: 6) {
-                if !model.text.isEmpty {
-                    Text(model.text)
-                        .font(.system(size: 17))
+                Text("Ready to dictate with references")
+                    .font(.system(size: 17, weight: .medium))
+                if model.references.isEmpty {
+                    Text("Pick one or more windows from the picker, then press the hotkey to dictate.")
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    Text("\(model.references.count) reference\(model.references.count == 1 ? "" : "s") attached. Press the hotkey to dictate, or Esc to cancel.")
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                HStack(spacing: 8) {
-                    SoundWaveBars(level: model.level)
-                    // Inline the active mic name when AppState
-                    // resolved one. Tail truncation keeps the rare
-                    // 40+ char USB-hub device name ("USB Audio
-                    // Device (Focusrite Scarlett Solo)") from
-                    // blowing out the overlay's fixed width; the
-                    // menu-bar tooltip backstops by carrying the
-                    // full name. Falls back to the plain
-                    // "listening…" copy when the resolver returned
-                    // nil (e.g. System Default selected but Core
-                    // Audio has no default input — rare).
-                    Text(model.microphoneName.map { "listening on \($0)…" } ?? "listening…")
-                        .font(.system(size: 12))
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                }
             }
+        case .capturing:
+            // Centered, system-stock listening indicator. Replaces
+            // the prior left-aligned SoundWaveBars (which were
+            // mic-level driven and stopped animating during refine).
+            // SF Symbol "waveform" with the .variableColor.iterative
+            // .symbolEffect is the Tahoe-native animated treatment —
+            // continuous animation, no dependency on per-buffer mic
+            // levels, identical behavior in capture and refine.
+            listeningIndicator(label: capturingHintText)
         case .cleaning:
             VStack(alignment: .leading, spacing: 6) {
                 if !model.text.isEmpty {
@@ -508,26 +1105,40 @@ private struct OverlayContent: View {
                 }
             }
         case .refining:
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 12) {
                 Text(model.text)
                     .font(.system(size: 17))
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .opacity(0.6)
-                HStack(spacing: 8) {
-                    BlinkingDots()
-                    // Mirrors the .capturing branch's treatment: the
-                    // mic name is the same data here, just labeled
-                    // for the refinement pass. See the .capturing
-                    // case for the truncation rationale.
-                    Text(model.microphoneName.map { "listening for refinement on \($0)…" } ?? "listening for refinement…")
-                        .font(.system(size: 12))
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                }
+                    .opacity(0.55)
+                let refineHint = model.microphoneName.map { "listening for refinement on \($0)…" } ?? "listening for refinement…"
+                listeningIndicator(label: refineHint)
             }
         }
+    }
+
+    /// Centered listening indicator used by both .capturing and
+    /// .refining. The visual is Parleq's own brand-orange bar pattern
+    /// (the same shape as the menu-bar favicon), with per-bar heights
+    /// driven by `model.level` — so it's the static Parleq logo at
+    /// rest and an audio-reactive waveform when audio is coming in.
+    @ViewBuilder
+    private func listeningIndicator(label: String) -> some View {
+        VStack(spacing: 10) {
+            ParleqListeningIndicator(level: model.level)
+            Text(label)
+                // SF Rounded gives the label a touch of warmth that
+                // pairs well with the rounded-rect listening bars,
+                // without going whimsical. Body text + transcript
+                // stay on SF Pro so the casual treatment is
+                // localized to the listening hint.
+                .font(.system(size: 12, design: .rounded))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .center)
     }
 
     @ViewBuilder
@@ -535,6 +1146,8 @@ private struct OverlayContent: View {
         switch model.state {
         case .initializing:
             Text("[Esc] dismiss")
+        case .staging:
+            Text("[hold ⌥] start dictating   [Esc] cancel")
         case .capturing:
             Text("Release ⌥ when done")
         case .cleaning:
@@ -544,6 +1157,24 @@ private struct OverlayContent: View {
         case .refining:
             Text("Release ⌥ when done")
         }
+    }
+
+    /// Inline hint shown next to the sound-wave bars during capture.
+    /// When references are attached, the copy shifts from a generic
+    /// "listening…" to a directive that teaches the reference-aware
+    /// mental model — the user's utterance becomes an instruction to
+    /// apply against the attached materials, not just dictation to
+    /// be cleaned. The shift happens the moment a reference is added,
+    /// so the user encounters it at the exact moment it becomes
+    /// relevant.
+    private var capturingHintText: String {
+        if !model.references.isEmpty {
+            return "say what to do with these references…"
+        }
+        if let mic = model.microphoneName {
+            return "listening on \(mic)…"
+        }
+        return "listening…"
     }
 }
 
@@ -576,54 +1207,79 @@ private struct BlinkingDots: View {
     }
 }
 
-/// Five vertical bars whose heights track recent mic-level samples,
-/// giving a real-time wave visualization during capture. Each bar is
-/// one tick behind the next, so as new levels arrive the bumps
-/// travel from right (newest) to left (oldest), reading like a
-/// scrolling waveform. Pure SwiftUI, no Canvas — the small fixed bar
-/// count keeps redraws cheap.
-private struct SoundWaveBars: View {
-    /// Normalized 0…1 mic level. The view's @State history tracks
-    /// the last `barCount` values so the bars carry visual memory
-    /// between buffer updates. Driven externally by OverlayModel.
+/// Parleq's listening visualization: five vertical rounded-rect
+/// bars rendered in Parleq's brand orange. Each bar tracks a
+/// different point in the recent mic-level history, so bumps in
+/// loudness travel from right (newest) to left (oldest) and the
+/// bars animate INDEPENDENTLY rather than the whole silhouette
+/// scaling uniformly. At rest (history all zero) the bars sit at
+/// the Parleq favicon's asymmetric pattern, so the icon literally
+/// IS the Parleq logo when silent and morphs into an audio
+/// waveform when speech comes in.
+private struct ParleqListeningIndicator: View {
+    /// Normalized 0…1 mic level driven by OverlayModel.level. Both
+    /// .capturing and .refining states feed live values via
+    /// AppState.openRecorder() → recorder.levelHandler →
+    /// overlay.setLevel(_:), so the bars react identically in both.
     let level: Float
 
-    private static let barCount = 5
-    private static let barWidth: CGFloat = 4
-    private static let barSpacing: CGFloat = 4
-    private static let minHeight: CGFloat = 4
-    private static let maxHeight: CGFloat = 24
+    /// Multiplier on the menu-bar favicon's 18pt-canvas dimensions.
+    /// 2.5 puts the indicator at roughly 35×52pt — large enough to
+    /// anchor the listening view, small enough to leave room for
+    /// the hint label below.
+    var scale: CGFloat = 2.5
 
-    @State private var history: [Float] = Array(
-        repeating: 0,
-        count: SoundWaveBars.barCount
-    )
+    /// Brand favicon idle silhouette (heights in points pre-scale).
+    /// When `history` is all zero (silence) every bar resolves to
+    /// these values and the indicator reads as the Parleq logo.
+    private let idlePattern: [CGFloat] = [5, 9, 14, 7, 11]
+
+    /// Maximum additional height (pre-scale) a peak history sample
+    /// (1.0) adds on top of a bar's idle height. Same boost for
+    /// every bar so loudness reads as a uniform "swelling" rather
+    /// than the middle bar dominating audio response.
+    private let levelBoost: CGFloat = 14
+
+    /// Rolling buffer of the last 5 mic-level samples — one per
+    /// bar. Newest sample lands on the right (index 4); each new
+    /// sample shifts older values left so a loud syllable visibly
+    /// travels across the bars over time.
+    @State private var history: [Float] = Array(repeating: 0, count: 5)
 
     var body: some View {
-        HStack(alignment: .center, spacing: Self.barSpacing) {
-            ForEach(history.indices, id: \.self) { i in
+        HStack(alignment: .center, spacing: 1 * scale) {
+            ForEach(0..<5, id: \.self) { i in
                 Capsule(style: .continuous)
-                    .fill(Color.accentColor.opacity(0.85))
-                    .frame(
-                        width: Self.barWidth,
-                        height: barHeight(for: history[i])
-                    )
+                    .fill(SettingsView.brandAccent)
+                    .frame(width: 2 * scale, height: barHeight(at: i))
             }
         }
-        .frame(height: Self.maxHeight)
+        .frame(height: peakHeight)
         .onChange(of: level) { _, newValue in
-            withAnimation(.easeOut(duration: 0.08)) {
-                // Shift left, append the latest sample on the right —
-                // newest goes to the trailing edge so the wave reads
-                // as moving in the same direction speech progresses.
+            withAnimation(.spring(response: 0.14, dampingFraction: 0.6)) {
                 history.removeFirst()
                 history.append(newValue)
             }
         }
     }
 
-    private func barHeight(for value: Float) -> CGFloat {
-        let clamped = max(0, min(1, CGFloat(value)))
-        return Self.minHeight + clamped * (Self.maxHeight - Self.minHeight)
+    private func barHeight(at index: Int) -> CGFloat {
+        let raw = max(0, min(1, CGFloat(history[index])))
+        // sqrt curve compresses the level→height response: quiet
+        // speech (the bulk of real dictation) gets visibly larger
+        // bars instead of barely lifting off the idle silhouette,
+        // while loud peaks approach but don't blow past the cap.
+        // Mirrors how analog VU meters weight perceived loudness
+        // over raw amplitude — visually "more aggressive at low
+        // levels, capped at high."
+        let curved = sqrt(raw)
+        return (idlePattern[index] + curved * levelBoost) * scale
+    }
+
+    /// Tallest possible bar height (middle bar at peak level). The
+    /// HStack reserves this much vertical space so bars stay
+    /// vertically centered in a stable region regardless of level.
+    private var peakHeight: CGFloat {
+        ((idlePattern.max() ?? 14) + levelBoost) * scale
     }
 }

@@ -42,19 +42,36 @@ struct TranscriptEntry: Identifiable, Sendable {
     /// cleanups to identify ones worth re-dictating with cleanup
     /// working (#27).
     let wasCleanupSuccessful: Bool
+    /// Number of references attached to this dictation. 0 = plain
+    /// cleanup (today's behavior); ≥1 = reference-aware dictation.
+    /// The reference content itself is intentionally NOT persisted
+    /// — keeping the SECURITY_REVIEW §5.1 in-memory-only invariant
+    /// for captured screen content. We track the count and labels
+    /// only so the Recent Dictations menu can surface a "· N refs"
+    /// suffix and the user can tell at a glance which dictations
+    /// used references.
+    let referenceCount: Int
+    /// Window titles / filenames of the attached references,
+    /// truncated for menu display. May be empty when
+    /// `referenceCount > 0` only if labels were dropped for length.
+    let referenceLabels: [String]
 
     init(
         id: UUID = UUID(),
         timestamp: Date = Date(),
         text: String,
         targetAppName: String?,
-        wasCleanupSuccessful: Bool = true
+        wasCleanupSuccessful: Bool = true,
+        referenceCount: Int = 0,
+        referenceLabels: [String] = []
     ) {
         self.id = id
         self.timestamp = timestamp
         self.text = text
         self.targetAppName = targetAppName
         self.wasCleanupSuccessful = wasCleanupSuccessful
+        self.referenceCount = referenceCount
+        self.referenceLabels = referenceLabels
     }
 
     /// Single-line preview suitable for a menu-item title. Caps

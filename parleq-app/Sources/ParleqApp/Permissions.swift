@@ -184,6 +184,40 @@ enum Permissions {
         openSystemSettings(privacyPane: "Privacy_Accessibility")
     }
 
+    // MARK: - Screen Recording (Reference Windows)
+    //
+    // Screen Recording is a lazy-prompt permission used by Reference
+    // Windows (#TBD-once-issue-filed). Unlike Microphone / Accessibility,
+    // it isn't surfaced in Settings → Permissions today — the prompt
+    // fires the first time the user attempts a window capture. If
+    // declined, the chip-add path surfaces an inline explainer.
+
+    /// True if Screen Recording is currently granted. False covers both
+    /// "not yet determined" and "denied" — the request handler
+    /// distinguishes them.
+    static var hasScreenRecording: Bool {
+        CGPreflightScreenCaptureAccess()
+    }
+
+    /// Fire the system Screen Recording prompt (the first time) or
+    /// surface a no-op (subsequent calls after prior denial — macOS
+    /// won't re-prompt for this permission, the user must go to
+    /// System Settings). Returns `true` if access is granted by the
+    /// time the call returns; in practice the first-time flow always
+    /// returns `false` and the user's grant lands asynchronously
+    /// after they click Allow.
+    @discardableResult
+    static func requestScreenRecording() -> Bool {
+        CGRequestScreenCaptureAccess()
+    }
+
+    /// Open System Settings directly to the Screen Recording Privacy
+    /// pane. Use after a prior denial, when CGRequestScreenCaptureAccess
+    /// won't re-prompt.
+    static func openScreenRecordingSettings() {
+        openSystemSettings(privacyPane: "Privacy_ScreenCapture")
+    }
+
     /// Open System Settings directly to a specific Privacy & Security
     /// sub-pane. `pane` is the suffix that comes after
     /// `com.apple.preference.security?` — e.g. `Privacy_Microphone`,

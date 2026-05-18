@@ -422,10 +422,13 @@ struct ParleqApp {
         }
         let listener = HotkeyListener(
             binding: binding,
-            onKeyDown: { isDoubleTapHold in
+            onKeyDown: { event in
                 Task { @MainActor in
                     soundBox.value?.scheduleStart()
-                    stateBox.value?.hotkeyDown(isDoubleTapHold: isDoubleTapHold)
+                    stateBox.value?.hotkeyDown(
+                        isDoubleTapHold: event.isDoubleTapHold,
+                        isShiftHeld: event.isShiftHeld
+                    )
                 }
             },
             onKeyUp: {
