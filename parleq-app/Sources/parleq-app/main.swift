@@ -211,10 +211,11 @@ struct ParleqApp {
                     model: id.model,
                     project: project,
                     region: config.vertexRegion,
+                    anthropicRegion: config.vertexAnthropicRegion,
                     authMode: mode
                 )
                 let modeLabel = (mode == .serviceAccount) ? "service-account-jwt" : "gcloud-adc"
-                logStderr("[parleq] LLM \(label) (vertex model=\(id.model) project=\(project) region=\(config.vertexRegion) auth=\(modeLabel))")
+                logStderr("[parleq] LLM \(label) (vertex model=\(id.model) project=\(project) region=\(config.vertexRegion) anthropic_region=\(config.vertexAnthropicRegion) auth=\(modeLabel))")
                 return p
             case "azure":
                 let resource = config.azureResource.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -241,6 +242,19 @@ struct ParleqApp {
                 let authModeLabel = (authMode == .azureAd) ? "azure-ad-cli" : "api-key"
                 let familyLabel = (family == .reasoning) ? "reasoning" : "standard"
                 logStderr("[parleq] LLM \(label) (azure family=\(familyLabel) resource=\(resource) deployment=\(deployment) apiVersion=\(config.azureApiVersion) auth=\(authModeLabel))")
+                return p
+            case "openai":
+                // OpenAI direct (api.openai.com). No resource / deployment
+                // indirection — the model field in the body is the routing
+                // key. API key is resolved per-request from Keychain inside
+                // the provider, matching the Gemini/LLMClient pattern:
+                // a key set in Settings takes effect on the next dictation
+                // without restart.
+                if !KeychainStore.hasOpenAIAPIKey {
+                    logStderr("[parleq] openai: no API key set yet — set one in Settings → Cleanup → Set OpenAI API Key… (no restart needed)")
+                }
+                let p = OpenAIProvider(model: id.model)
+                logStderr("[parleq] LLM \(label) (openai model=\(id.model))")
                 return p
             case "none":
                 // Explicit user choice. Don't log this as a problem —

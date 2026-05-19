@@ -65,6 +65,11 @@ public enum KeychainStore {
     /// the private key separately from its metadata.
     public static let vertexServiceAccountJSONAccount = "vertex-service-account-json"
 
+    /// Account name for the OpenAI direct API key (#33). The user
+    /// creates an API key at platform.openai.com → API keys and
+    /// pastes it into Settings. Stored as a single opaque string.
+    public static let openAIAPIKeyAccount = "openai-api-key"
+
     // MARK: - Public API
 
     /// Store the user's Gemini API key. Replaces any prior value
@@ -224,6 +229,27 @@ public enum KeychainStore {
     /// Settings-UI predicate. Doesn't materialize the JSON content.
     public static var hasVertexServiceAccountJSON: Bool {
         readVertexServiceAccountJSON() != nil
+    }
+
+    // MARK: - OpenAI direct API key (#33)
+
+    @discardableResult
+    public static func setOpenAIAPIKey(_ key: String) -> Bool {
+        set(account: openAIAPIKeyAccount, value: key)
+    }
+
+    public static func readOpenAIAPIKey() -> String? {
+        read(account: openAIAPIKeyAccount)
+    }
+
+    @discardableResult
+    public static func removeOpenAIAPIKey() -> Bool {
+        delete(account: openAIAPIKeyAccount)
+    }
+
+    /// Settings-UI predicate. Doesn't materialize the secret value.
+    public static var hasOpenAIAPIKey: Bool {
+        readOpenAIAPIKey() != nil
     }
 
     // MARK: - Internals

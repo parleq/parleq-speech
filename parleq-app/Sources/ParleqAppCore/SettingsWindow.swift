@@ -98,6 +98,11 @@ final class SettingsModel: ObservableObject {
     @Published var vertexRegion: String
     /// Vertex AI auth mode (#23): "adc" or "serviceAccount".
     @Published var vertexAuthMode: String
+    /// Region used for Anthropic publisher calls on Vertex AI (Claude
+    /// models). Separate from `vertexRegion` so users can keep Gemini
+    /// in us-central1 while routing Claude through us-east5. Defaults
+    /// to "us-east5".
+    @Published var vertexAnthropicRegion: String
     /// Mirror of `KeychainStore.hasVertexServiceAccountJSON` for SwiftUI.
     @Published var vertexServiceAccountJSONSet: Bool
     /// Azure OpenAI resource name (#21 step 5).
@@ -114,6 +119,8 @@ final class SettingsModel: ObservableObject {
     @Published var azureFamily: String
     /// Mirror of `KeychainStore.hasAzureAPIKey` for SwiftUI.
     @Published var azureAPIKeySet: Bool
+    /// Mirror of `KeychainStore.hasOpenAIAPIKey` for SwiftUI.
+    @Published var openAIAPIKeySet: Bool
     @Published var asrEndpoint: String
     /// Editable rows for the Custom Dictionary section. Each row is
     /// term + context fields; we strip empty terms on save and map
@@ -155,6 +162,7 @@ final class SettingsModel: ObservableObject {
         ProviderOption(id: "bedrock",        displayName: "Bedrock (AWS IAM)"),
         ProviderOption(id: "bedrock-bearer", displayName: "Bedrock (bearer token)"),
         ProviderOption(id: "azure",          displayName: "Azure OpenAI"),
+        ProviderOption(id: "openai",         displayName: "OpenAI (direct API)"),
     ]
 
     /// Mirror of `KeychainStore.hasGeminiAPIKey` for SwiftUI.
@@ -182,6 +190,7 @@ final class SettingsModel: ObservableObject {
     private let initialVertexProject: String
     private let initialVertexRegion: String
     private let initialVertexAuthMode: String
+    private let initialVertexAnthropicRegion: String
     private let initialAzureResource: String
     private let initialAzureDeployment: String
     private let initialAzureApiVersion: String
@@ -208,6 +217,7 @@ final class SettingsModel: ObservableObject {
         self.vertexProject = config.vertexProject
         self.vertexRegion = config.vertexRegion
         self.vertexAuthMode = config.vertexAuthMode
+        self.vertexAnthropicRegion = config.vertexAnthropicRegion
         self.vertexServiceAccountJSONSet = KeychainStore.hasVertexServiceAccountJSON
         self.azureResource = config.azureResource
         self.azureDeployment = config.azureDeployment
@@ -215,6 +225,7 @@ final class SettingsModel: ObservableObject {
         self.azureAuthMode = config.azureAuthMode
         self.azureFamily = config.azureFamily
         self.azureAPIKeySet = KeychainStore.hasAzureAPIKey
+        self.openAIAPIKeySet = KeychainStore.hasOpenAIAPIKey
         self.asrEndpoint = config.asrEndpoint
         self.dictionaryEntries = config.customDictionary.map { entry in
             DictionaryEntryRow(
@@ -242,6 +253,7 @@ final class SettingsModel: ObservableObject {
         self.initialVertexProject = config.vertexProject
         self.initialVertexRegion = config.vertexRegion
         self.initialVertexAuthMode = config.vertexAuthMode
+        self.initialVertexAnthropicRegion = config.vertexAnthropicRegion
         self.initialAzureResource = config.azureResource
         self.initialAzureDeployment = config.azureDeployment
         self.initialAzureApiVersion = config.azureApiVersion
@@ -292,6 +304,7 @@ final class SettingsModel: ObservableObject {
         self.vertexProject = config.vertexProject
         self.vertexRegion = config.vertexRegion
         self.vertexAuthMode = config.vertexAuthMode
+        self.vertexAnthropicRegion = config.vertexAnthropicRegion
         self.vertexServiceAccountJSONSet = KeychainStore.hasVertexServiceAccountJSON
         self.azureResource = config.azureResource
         self.azureDeployment = config.azureDeployment
@@ -299,6 +312,7 @@ final class SettingsModel: ObservableObject {
         self.azureAuthMode = config.azureAuthMode
         self.azureFamily = config.azureFamily
         self.azureAPIKeySet = KeychainStore.hasAzureAPIKey
+        self.openAIAPIKeySet = KeychainStore.hasOpenAIAPIKey
         self.asrEndpoint = config.asrEndpoint
         self.dictionaryEntries = config.customDictionary.map { entry in
             DictionaryEntryRow(
@@ -350,6 +364,7 @@ final class SettingsModel: ObservableObject {
             || vertexProject != initialVertexProject
             || vertexRegion != initialVertexRegion
             || vertexAuthMode != initialVertexAuthMode
+            || vertexAnthropicRegion != initialVertexAnthropicRegion
             || azureResource != initialAzureResource
             || azureDeployment != initialAzureDeployment
             || azureApiVersion != initialAzureApiVersion
@@ -388,6 +403,8 @@ final class SettingsModel: ObservableObject {
         c.vertexRegion = vertexRegion.trimmingCharacters(in: .whitespacesAndNewlines)
         if c.vertexRegion.isEmpty { c.vertexRegion = "us-central1" }
         c.vertexAuthMode = ["adc", "serviceAccount"].contains(vertexAuthMode) ? vertexAuthMode : "adc"
+        c.vertexAnthropicRegion = vertexAnthropicRegion.trimmingCharacters(in: .whitespacesAndNewlines)
+        if c.vertexAnthropicRegion.isEmpty { c.vertexAnthropicRegion = "us-east5" }
         c.azureResource = azureResource.trimmingCharacters(in: .whitespacesAndNewlines)
         c.azureDeployment = azureDeployment.trimmingCharacters(in: .whitespacesAndNewlines)
         c.azureApiVersion = azureApiVersion.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -521,6 +538,28 @@ final class SettingsModel: ObservableObject {
     func removeAzureAPIKey() {
         if KeychainStore.removeAzureAPIKey() {
             azureAPIKeySet = false
+        }
+    }
+
+    /// Persist the OpenAI direct API key to the Keychain (#33).
+    /// Same flow as setGeminiAPIKey / setAzureAPIKey: write through
+    /// to Keychain, drop the in-memory string, mirror via the
+    /// `openAIAPIKeySet` published flag.
+    func setOpenAIAPIKey(_ key: String) {
+        let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        if KeychainStore.setOpenAIAPIKey(trimmed) {
+            openAIAPIKeySet = true
+        }
+    }
+
+    /// Delete the Keychain-stored OpenAI API key. The provider's
+    /// per-request resolve throws `missingCredentials`, falling
+    /// through to raw-ASR paste if the user removes the key without
+    /// re-setting it.
+    func removeOpenAIAPIKey() {
+        if KeychainStore.removeOpenAIAPIKey() {
+            openAIAPIKeySet = false
         }
     }
 
@@ -664,29 +703,25 @@ struct SettingsView: View {
         ("gemini-2.5-pro",        "Gemini 2.5 Pro 👁 — highest quality"),
     ]
 
-    /// Vertex AI model picker options. Currently Gemini-only on the
-    /// publishers/google endpoint.
+    /// Vertex AI model picker options. Includes both Gemini models
+    /// (publishers/google endpoint) and Anthropic Claude models
+    /// (publishers/anthropic endpoint).
     ///
-    /// Claude on Vertex is intentionally NOT in the curated list:
-    /// Anthropic publisher models are only hosted in specific Vertex
-    /// regions (us-east5, europe-west1) and not in the default
-    /// us-central1 — so the dropdown entry would 404 for any user
-    /// who hasn't switched their Vertex region wholesale. The
-    /// VertexProvider still routes Claude IDs through the Anthropic
-    /// publisher correctly, so users with us-east5 configured can
-    /// type a Claude ID via Custom… and it works. A separate
-    /// "Anthropic region" config field would let Claude live in the
-    /// dropdown without forcing a region-wide switch — tracked in
-    /// issue #34.
+    /// Claude entries are available now that `vertexAnthropicRegion`
+    /// (issue #34) lets users keep their Gemini region (e.g. us-central1)
+    /// and route Claude calls through a separate region (e.g. us-east5,
+    /// europe-west1) that actually hosts the Anthropic publisher.
     ///
     /// Gemini 1.5 family (pro / flash, 002 or bare alias) was
     /// removed because Google retired it from Vertex in 2025.
     /// (Still works on the direct Gemini API as legacy — see
     /// geminiModelOptions.)
     private static let vertexModelOptions: [(value: String, label: String)] = [
-        ("gemini-2.5-flash-lite", "Gemini 2.5 Flash-Lite — fastest (cleanup default)"),
-        ("gemini-2.5-flash",      "Gemini 2.5 Flash 👁 — recommended"),
-        ("gemini-2.5-pro",        "Gemini 2.5 Pro 👁 — highest quality"),
+        ("gemini-2.5-flash-lite",         "Gemini 2.5 Flash-Lite — fastest (cleanup default)"),
+        ("gemini-2.5-flash",              "Gemini 2.5 Flash 👁 — recommended"),
+        ("gemini-2.5-pro",                "Gemini 2.5 Pro 👁 — highest quality"),
+        ("claude-haiku-4-5@20251001",     "Claude Haiku 4.5 👁 — balanced (Anthropic via Vertex)"),
+        ("claude-sonnet-4-5@20250929",    "Claude Sonnet 4.5 👁 — highest quality (Anthropic via Vertex)"),
     ]
 
     /// Azure OpenAI model options. Azure routes by deployment, not
@@ -710,6 +745,34 @@ struct SettingsView: View {
         ("gpt-4.1",      "GPT-4.1 👁 — current"),
         ("gpt-4.1-mini", "GPT-4.1 Mini 👁 — current, cheaper"),
         ("gpt-4.1-nano", "GPT-4.1 Nano — text-only, smallest"),
+        // o-series reasoning models — slower and more expensive than
+        // standard GPT, but deeper analysis for context-tier use.
+        ("o1",           "o1 👁 — reasoning, slower"),
+        ("o1-mini",      "o1-mini — reasoning, text-only"),
+        ("o3",           "o3 👁 — reasoning, slower"),
+        ("o3-mini",      "o3-mini — reasoning, text-only"),
+        ("o4-mini",      "o4-mini 👁 — reasoning"),
+    ]
+
+    /// OpenAI direct (api.openai.com) model options. Unlike Azure,
+    /// there is no deployment-name indirection — the model ID in the
+    /// request body is the routing key. The curated list mirrors Azure's
+    /// set for the 4o and 4.1 families, plus o-series reasoning models
+    /// which use a conditional parameter shape (max_completion_tokens,
+    /// no temperature) handled in buildRequestBody via isOpenAIReasoningModel.
+    private static let openAIModelOptions: [(value: String, label: String)] = [
+        ("gpt-4o-mini",  "GPT-4o Mini 👁 — fastest (cleanup default)"),
+        ("gpt-4o",       "GPT-4o 👁 — highest quality"),
+        ("gpt-4.1",      "GPT-4.1 👁 — current"),
+        ("gpt-4.1-mini", "GPT-4.1 Mini 👁 — current, cheaper"),
+        ("gpt-4.1-nano", "GPT-4.1 Nano — text-only, smallest"),
+        // o-series reasoning models — slower and more expensive than
+        // standard GPT, but deeper analysis for context-tier use.
+        ("o1",           "o1 👁 — reasoning, slower"),
+        ("o1-mini",      "o1-mini — reasoning, text-only"),
+        ("o3",           "o3 👁 — reasoning, slower"),
+        ("o3-mini",      "o3-mini — reasoning, text-only"),
+        ("o4-mini",      "o4-mini 👁 — reasoning"),
     ]
 
     /// Helper to return the canonical model list for a given provider.
@@ -721,6 +784,7 @@ struct SettingsView: View {
         case "bedrock":        return Self.bedrockModelOptions.map(\.value)
         case "bedrock-bearer": return Self.bedrockBearerModelOptions.map(\.value)
         case "azure":          return Self.azureModelOptions.map(\.value)
+        case "openai":         return Self.openAIModelOptions.map(\.value)
         default:               return []
         }
     }
@@ -1239,6 +1303,7 @@ struct SettingsView: View {
         case "bedrock":        models = Self.bedrockModelOptions
         case "bedrock-bearer": models = Self.bedrockBearerModelOptions
         case "azure":          models = Self.azureModelOptions
+        case "openai":         models = Self.openAIModelOptions
         default:               models = []
         }
 
@@ -1362,7 +1427,7 @@ struct SettingsView: View {
 
     /// Ordered list of all provider IDs used for iteration.
     private static let allCredentialProviders = [
-        "gemini", "vertex", "bedrock", "bedrock-bearer", "azure"
+        "gemini", "vertex", "bedrock", "bedrock-bearer", "azure", "openai"
     ]
 
     /// The full credentials section rendered below the tier card.
@@ -1405,6 +1470,7 @@ struct SettingsView: View {
         case "bedrock":        bedrockCredentialsCard(badge: badge)
         case "bedrock-bearer": bedrockBearerCredentialsCard(badge: badge)
         case "azure":          azureCredentialsCard(badge: badge)
+        case "openai":         openAICredentialsCard(badge: badge)
         default:               EmptyView()
         }
     }
@@ -1430,6 +1496,10 @@ struct SettingsView: View {
                 .textFieldStyle(.roundedBorder)
             TextField("Region (e.g. us-central1)", text: bind(\.vertexRegion))
                 .textFieldStyle(.roundedBorder)
+            SettingsCaption("Gemini calls use this region.")
+            TextField("Anthropic region (e.g. us-east5)", text: bind(\.vertexAnthropicRegion))
+                .textFieldStyle(.roundedBorder)
+            SettingsCaption("Claude calls on Vertex use this region. us-east5 and europe-west1 are common; us-central1 doesn't host the Anthropic publisher.")
             HStack(alignment: .center) {
                 Text("Auth mode")
                     .frame(minWidth: 90, alignment: .leading)
@@ -1546,6 +1616,20 @@ struct SettingsView: View {
                 SettingsCaption("Resource API key from the Keys and Endpoint page of your Azure OpenAI resource. Stored in the macOS Keychain. Restart to apply.")
             }
             SettingsCaption("Azure routes by deployment name, not model name — set the deployment to match what you created in the Azure portal. The Resource field accepts either a bare resource name (e.g. `my-openai`, builds the classic `*.openai.azure.com` URL) or a full hostname (e.g. `my-resource.cognitiveservices.azure.com` or `*.services.ai.azure.com` for newer Foundry resources). Bump the API version to a current preview (e.g. `2025-04-01-preview`) for gpt-5-series models.")
+        }
+    }
+
+    @ViewBuilder
+    private func openAICredentialsCard(badge: String?) -> some View {
+        SettingsCard {
+            credentialCardHeader(
+                title: "OpenAI (direct API)",
+                isConfigured: model.openAIAPIKeySet,
+                activeBadge: badge
+            )
+            OpenAIAPIKeyRow(model: model)
+            SettingsCaption("API key from platform.openai.com → API keys → Create new secret key. Stored in the macOS Keychain — never written to ~/.parleq/config.json or any plaintext file. Restart to apply.")
+            SettingsCaption("Routes directly to api.openai.com without any Azure intermediary. For data-residency requirements that mandate Azure infrastructure, use Azure OpenAI instead — the model quality is equivalent.")
         }
     }
 
@@ -2197,6 +2281,71 @@ private struct SetAzureAPIKeySheet: View {
                 .keyboardShortcut(.cancelAction)
                 Button("Save") {
                     model.setAzureAPIKey(pending)
+                    pending = ""
+                    isPresented = false
+                }
+                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent)
+                .disabled(pending.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(20)
+        .frame(width: 420)
+    }
+}
+
+/// One-row OpenAI direct API key control inside the OpenAI
+/// sub-panel (#33). Mirrors the GeminiAPIKeyRow / AzureAPIKeyRow pattern.
+private struct OpenAIAPIKeyRow: View {
+    @ObservedObject var model: SettingsModel
+    @State private var sheetVisible = false
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text("API Key")
+            Spacer()
+            if model.openAIAPIKeySet {
+                Text("•••• stored in Keychain")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Button("Replace…") { sheetVisible = true }
+                Button("Remove") { model.removeOpenAIAPIKey() }
+                    .foregroundColor(.red)
+            } else {
+                Button("Set OpenAI API Key…") { sheetVisible = true }
+            }
+        }
+        .sheet(isPresented: $sheetVisible) {
+            SetOpenAIAPIKeySheet(model: model, isPresented: $sheetVisible)
+        }
+    }
+}
+
+private struct SetOpenAIAPIKeySheet: View {
+    @ObservedObject var model: SettingsModel
+    @Binding var isPresented: Bool
+    @State private var pending = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Set OpenAI API Key")
+                .font(.title3)
+            Text("Get a key from platform.openai.com → API keys → Create new secret key. Stored in the macOS Keychain — never written to ~/.parleq/config.json or any plaintext file.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            SecureField("sk-…", text: $pending)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 360)
+            HStack {
+                Spacer()
+                Button("Cancel") {
+                    pending = ""
+                    isPresented = false
+                }
+                .keyboardShortcut(.cancelAction)
+                Button("Save") {
+                    model.setOpenAIAPIKey(pending)
                     pending = ""
                     isPresented = false
                 }

@@ -68,10 +68,15 @@ public final class AzureOpenAIProvider: LLMProvider, Sendable {
         // gpt-4.1 and gpt-4.1-mini support vision; gpt-4.1-nano is
         // text-only (smallest, cheapest, no multimodal path).
         // gpt-4-turbo supports vision.
-        // Reasoning models (o1, o3, etc.) are text-only on this path.
-        if model.contains("gpt-4o") { return true }
-        if model == "gpt-4.1" || model == "gpt-4.1-mini" { return true }
-        if model == "gpt-4-turbo" { return true }
+        // Reasoning models: o1 and o3 support vision; o4-mini supports
+        // vision; o1-mini and o3-mini are text-only.
+        let m = model.lowercased()
+        if m.contains("gpt-4o") { return true }
+        if m == "gpt-4.1" || m == "gpt-4.1-mini" { return true }
+        if m == "gpt-4-turbo" { return true }
+        // o-series reasoning models (partial vision support)
+        if m == "o1" || m == "o3" || m == "o4-mini" { return true }
+        if m == "o1-mini" || m == "o3-mini" { return false }
         return false  // conservative; explicit allowlist
         // gpt-4.1-nano falls through to false (text-only).
     }

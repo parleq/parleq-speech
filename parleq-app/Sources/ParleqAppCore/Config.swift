@@ -175,6 +175,14 @@ public struct Config: Sendable {
     /// gcloud; "serviceAccount" mints OAuth tokens from a pasted
     /// SA JSON stored in the Keychain.
     public var vertexAuthMode: String
+    /// Region used for Anthropic publisher calls on Vertex AI (Claude
+    /// models). Defaults to "us-east5" — one of the few regions where
+    /// Vertex hosts the Anthropic publisher. Kept separate from
+    /// `vertexRegion` (the Gemini-call region) so users can keep their
+    /// primary Gemini region in us-central1 while routing Claude
+    /// through us-east5 without affecting cost / latency / data
+    /// residency for non-Claude calls.
+    public var vertexAnthropicRegion: String
     /// Azure OpenAI resource name (#21 step 5) — the prefix in
     /// `https://{resource}.openai.azure.com/...`. From the "Keys
     /// and Endpoint" page of the resource in the Azure portal.
@@ -294,6 +302,7 @@ public struct Config: Sendable {
         vertexProject: "",
         vertexRegion: "us-central1",
         vertexAuthMode: "adc",
+        vertexAnthropicRegion: "us-east5",
         azureResource: "",
         azureDeployment: "",
         azureApiVersion: "2025-04-01-preview",
@@ -381,6 +390,10 @@ public struct Config: Sendable {
                 if let mode = vertex["auth_mode"] as? String,
                    ["adc", "serviceAccount"].contains(mode) {
                     c.vertexAuthMode = mode
+                }
+                if let anthropicRegion = vertex["anthropic_region"] as? String,
+                   !anthropicRegion.isEmpty {
+                    c.vertexAnthropicRegion = anthropicRegion
                 }
             }
             if let azure = dict["azure"] as? [String: Any] {
@@ -542,6 +555,7 @@ public struct Config: Sendable {
                 "project": config.vertexProject,
                 "region": config.vertexRegion,
                 "auth_mode": config.vertexAuthMode,
+                "anthropic_region": config.vertexAnthropicRegion,
             ],
             "azure": [
                 "resource": config.azureResource,

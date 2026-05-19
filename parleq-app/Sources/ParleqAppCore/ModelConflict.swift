@@ -93,9 +93,25 @@ enum ModelCapability {
             // gpt-4.1 and gpt-4.1-mini support vision; gpt-4.1-nano
             // is text-only (smallest, cheapest, no multimodal path).
             // gpt-4-turbo supports vision.
+            // o-series reasoning models: o1, o3, o4-mini support vision;
+            // o1-mini and o3-mini are text-only.
             if m.contains("gpt-4o") { return true }
             if m == "gpt-4.1" || m == "gpt-4.1-mini" { return true }
             if m == "gpt-4-turbo" { return true }
+            if m == "o1" || m == "o3" || m == "o4-mini" { return true }
+            if m == "o1-mini" || m == "o3-mini" { return false }
+            return false
+        case "openai":
+            // OpenAI direct (api.openai.com). Same model family as
+            // Azure's curated set: gpt-4o + gpt-4o-mini support vision;
+            // gpt-4.1 and gpt-4.1-mini support vision; gpt-4.1-nano is
+            // text-only. Mirrors OpenAIProvider.supportsVision.
+            // o-series reasoning models: o1, o3, o4-mini support vision;
+            // o1-mini and o3-mini are text-only.
+            if m.contains("gpt-4o") { return true }
+            if m == "gpt-4.1" || m == "gpt-4.1-mini" { return true }
+            if m == "o1" || m == "o3" || m == "o4-mini" { return true }
+            if m == "o1-mini" || m == "o3-mini" { return false }
             return false
         default:
             return false  // conservative; explicit allowlist only

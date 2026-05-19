@@ -29,6 +29,7 @@ enum ProviderRegistry {
     /// - "gemini"         → Gemini direct API key
     /// - "vertex"         → Vertex AI service-account JSON
     /// - "azure"          → Azure OpenAI resource API key
+    /// - "openai"         → OpenAI direct API key (api.openai.com)
     ///
     /// Note: SSO-auth Bedrock ("sso" mode) and ADC-auth Vertex ("adc"
     /// mode) authenticate via the ambient AWS / gcloud CLI session —
@@ -52,6 +53,8 @@ enum ProviderRegistry {
             return KeychainStore.hasBedrockAPIKey
         case "azure":
             return KeychainStore.hasAzureAPIKey
+        case "openai":
+            return KeychainStore.hasOpenAIAPIKey
         default:
             return false
         }

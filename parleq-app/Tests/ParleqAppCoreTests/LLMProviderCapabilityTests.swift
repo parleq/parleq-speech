@@ -52,31 +52,31 @@ final class LLMProviderCapabilityTests: XCTestCase {
         XCTAssertFalse(provider.supportsVision, "Vertex Gemini 2.5 Flash-Lite should not support vision")
     }
 
-    // Claude-on-Vertex capability tests kept even though Claude entries
-    // were removed from the curated Vertex dropdown. Users who configure
-    // an Anthropic-capable Vertex region (us-east5, europe-west1) and
-    // enter a Claude ID via Custom… still need correct vision detection.
-    // See issue #34 for the separate-region config that would let Claude
-    // re-enter the curated list.
+    // Claude-on-Vertex capability tests. Claude entries are now in the
+    // curated Vertex dropdown (issue #34 shipped vertexAnthropicRegion).
+    // Users set a separate Anthropic region (e.g. us-east5) so Gemini
+    // calls stay on their primary region while Claude routes correctly.
 
-    func test_vertex_claude_sonnet_supports_vision_via_custom() {
+    func test_vertex_claude_sonnet_supports_vision() {
         let provider = VertexProvider(
             model: "claude-sonnet-4-5@20250929",
             project: "test-project",
-            region: "us-east5",
+            region: "us-central1",
+            anthropicRegion: "us-east5",
             authMode: .adc
         )
-        XCTAssertTrue(provider.supportsVision, "Claude Sonnet on Vertex should support vision when configured")
+        XCTAssertTrue(provider.supportsVision, "Claude Sonnet on Vertex should support vision")
     }
 
-    func test_vertex_claude_haiku_supports_vision_via_custom() {
+    func test_vertex_claude_haiku_supports_vision() {
         let provider = VertexProvider(
             model: "claude-haiku-4-5@20251001",
             project: "test-project",
-            region: "us-east5",
+            region: "us-central1",
+            anthropicRegion: "us-east5",
             authMode: .adc
         )
-        XCTAssertTrue(provider.supportsVision, "Claude Haiku on Vertex should support vision when configured")
+        XCTAssertTrue(provider.supportsVision, "Claude Haiku on Vertex should support vision")
     }
 
     // Gemini 1.5 Vertex tests removed: Google retired the 1.5 family
@@ -192,17 +192,6 @@ final class LLMProviderCapabilityTests: XCTestCase {
         XCTAssertTrue(provider.supportsVision, "GPT-4o-mini on Azure should support vision")
     }
 
-    func test_azure_o1_does_not_support_vision() {
-        let provider = AzureOpenAIProvider(
-            model: "o1",
-            family: .reasoning,
-            resource: "test-resource",
-            deployment: "test-deployment",
-            apiVersion: "2024-12-01-preview"
-        )
-        XCTAssertFalse(provider.supportsVision, "o1 reasoning model on Azure should not support vision")
-    }
-
     // gpt-4-turbo test removed: the SKU was dropped from the curated
     // Azure list since gpt-4o is a strict superset and some Azure
     // regions may not deploy gpt-4-turbo anymore. The Azure
@@ -241,5 +230,121 @@ final class LLMProviderCapabilityTests: XCTestCase {
             apiVersion: "2025-01-01-preview"
         )
         XCTAssertFalse(provider.supportsVision, "GPT-4.1 Nano on Azure is text-only")
+    }
+
+    // MARK: - AzureOpenAIProvider — o-series reasoning models
+
+    func test_azure_o1_supports_vision() {
+        let provider = AzureOpenAIProvider(
+            model: "o1",
+            family: .reasoning,
+            resource: "test-resource",
+            deployment: "test-deployment",
+            apiVersion: "2024-12-01-preview"
+        )
+        XCTAssertTrue(provider.supportsVision, "o1 on Azure should support vision (added Dec 2024)")
+    }
+
+    func test_azure_o1_mini_is_text_only() {
+        let provider = AzureOpenAIProvider(
+            model: "o1-mini",
+            family: .reasoning,
+            resource: "test-resource",
+            deployment: "test-deployment",
+            apiVersion: "2024-12-01-preview"
+        )
+        XCTAssertFalse(provider.supportsVision, "o1-mini on Azure is text-only")
+    }
+
+    func test_azure_o3_supports_vision() {
+        let provider = AzureOpenAIProvider(
+            model: "o3",
+            family: .reasoning,
+            resource: "test-resource",
+            deployment: "test-deployment",
+            apiVersion: "2025-01-01-preview"
+        )
+        XCTAssertTrue(provider.supportsVision, "o3 on Azure should support vision")
+    }
+
+    func test_azure_o3_mini_is_text_only() {
+        let provider = AzureOpenAIProvider(
+            model: "o3-mini",
+            family: .reasoning,
+            resource: "test-resource",
+            deployment: "test-deployment",
+            apiVersion: "2025-01-01-preview"
+        )
+        XCTAssertFalse(provider.supportsVision, "o3-mini on Azure is text-only")
+    }
+
+    func test_azure_o4_mini_supports_vision() {
+        let provider = AzureOpenAIProvider(
+            model: "o4-mini",
+            family: .reasoning,
+            resource: "test-resource",
+            deployment: "test-deployment",
+            apiVersion: "2025-04-01-preview"
+        )
+        XCTAssertTrue(provider.supportsVision, "o4-mini on Azure should support vision")
+    }
+
+    // MARK: - OpenAIProvider (api.openai.com direct)
+
+    func test_openai_gpt_4o_supports_vision() {
+        let provider = OpenAIProvider(model: "gpt-4o")
+        XCTAssertTrue(provider.supportsVision, "GPT-4o on OpenAI direct should support vision")
+    }
+
+    func test_openai_gpt_4o_mini_supports_vision() {
+        let provider = OpenAIProvider(model: "gpt-4o-mini")
+        XCTAssertTrue(provider.supportsVision, "GPT-4o-mini on OpenAI direct should support vision")
+    }
+
+    func test_openai_gpt_4_1_supports_vision() {
+        let provider = OpenAIProvider(model: "gpt-4.1")
+        XCTAssertTrue(provider.supportsVision, "GPT-4.1 on OpenAI direct should support vision")
+    }
+
+    func test_openai_gpt_4_1_mini_supports_vision() {
+        let provider = OpenAIProvider(model: "gpt-4.1-mini")
+        XCTAssertTrue(provider.supportsVision, "GPT-4.1 Mini on OpenAI direct should support vision")
+    }
+
+    func test_openai_gpt_4_1_nano_is_text_only() {
+        let provider = OpenAIProvider(model: "gpt-4.1-nano")
+        XCTAssertFalse(provider.supportsVision, "GPT-4.1 Nano on OpenAI direct is text-only")
+    }
+
+    func test_openai_unknown_model_defaults_to_no_vision() {
+        let provider = OpenAIProvider(model: "gpt-5-future-unknown")
+        XCTAssertFalse(provider.supportsVision, "Unknown model on OpenAI direct should default to no vision (conservative)")
+    }
+
+    // MARK: - OpenAIProvider — o-series reasoning models
+
+    func test_openai_o1_supports_vision() {
+        let provider = OpenAIProvider(model: "o1")
+        XCTAssertTrue(provider.supportsVision, "o1 on OpenAI direct should support vision (added Dec 2024)")
+    }
+
+    func test_openai_o1_mini_is_text_only() {
+        let provider = OpenAIProvider(model: "o1-mini")
+        XCTAssertFalse(provider.supportsVision, "o1-mini on OpenAI direct is text-only")
+    }
+
+    func test_openai_o3_supports_vision() {
+        let provider = OpenAIProvider(model: "o3")
+        XCTAssertTrue(provider.supportsVision, "o3 on OpenAI direct should support vision")
+    }
+
+    func test_openai_o3_mini_is_text_only() {
+        let provider = OpenAIProvider(model: "o3-mini")
+        XCTAssertFalse(provider.supportsVision, "o3-mini on OpenAI direct is text-only")
+    }
+
+    func test_openai_o4_mini_supports_vision() {
+        let provider = OpenAIProvider(model: "o4-mini")
+        XCTAssertTrue(provider.supportsVision, "o4-mini on OpenAI direct should support vision")
     }
 }

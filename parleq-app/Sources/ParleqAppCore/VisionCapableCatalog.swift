@@ -17,6 +17,9 @@ enum VisionCapableCatalog {
     ///
     /// Model IDs match the strings accepted by each concrete provider:
     ///   - Gemini/Vertex: bare model name passed to the API URL.
+    ///     Vertex also includes Claude IDs in the `<base>@<version>`
+    ///     format (e.g. `claude-sonnet-4-5@20250929`) — routed via
+    ///     the Anthropic publisher using `vertexAnthropicRegion`.
     ///   - Bedrock/Bedrock-bearer: cross-region inference profile IDs
     ///     (`us.anthropic.*`) — the same format used in
     ///     SettingsWindow.bedrockModelOptions.
@@ -33,6 +36,8 @@ enum VisionCapableCatalog {
             return [
                 ModelIdentifier(provider: "vertex", model: "gemini-2.5-flash"),
                 ModelIdentifier(provider: "vertex", model: "gemini-2.5-pro"),
+                ModelIdentifier(provider: "vertex", model: "claude-haiku-4-5@20251001"),
+                ModelIdentifier(provider: "vertex", model: "claude-sonnet-4-5@20250929"),
             ]
         case "bedrock":
             return [
@@ -45,11 +50,29 @@ enum VisionCapableCatalog {
                 ModelIdentifier(provider: "bedrock-bearer", model: "us.anthropic.claude-haiku-4-5-20251001-v1:0"),
             ]
         case "azure":
+            // Standard GPT families + vision-capable o-series reasoning models.
+            // o1-mini and o3-mini are text-only and excluded.
             return [
                 ModelIdentifier(provider: "azure", model: "gpt-4o"),
                 ModelIdentifier(provider: "azure", model: "gpt-4o-mini"),
                 ModelIdentifier(provider: "azure", model: "gpt-4.1"),
                 ModelIdentifier(provider: "azure", model: "gpt-4.1-mini"),
+                ModelIdentifier(provider: "azure", model: "o1"),
+                ModelIdentifier(provider: "azure", model: "o3"),
+                ModelIdentifier(provider: "azure", model: "o4-mini"),
+            ]
+        case "openai":
+            // OpenAI direct (api.openai.com). gpt-4.1-nano is text-only.
+            // Vision-capable o-series reasoning models (o1, o3, o4-mini)
+            // added; o1-mini and o3-mini are text-only and excluded.
+            return [
+                ModelIdentifier(provider: "openai", model: "gpt-4o"),
+                ModelIdentifier(provider: "openai", model: "gpt-4o-mini"),
+                ModelIdentifier(provider: "openai", model: "gpt-4.1"),
+                ModelIdentifier(provider: "openai", model: "gpt-4.1-mini"),
+                ModelIdentifier(provider: "openai", model: "o1"),
+                ModelIdentifier(provider: "openai", model: "o3"),
+                ModelIdentifier(provider: "openai", model: "o4-mini"),
             ]
         default:
             return []
