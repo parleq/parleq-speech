@@ -11,6 +11,9 @@ let package = Package(
     platforms: [
         .macOS(.v14),
     ],
+    products: [
+        .executable(name: "parleq-app", targets: ["parleq-app"]),
+    ],
     dependencies: [
         // Soto — community Swift AWS SDK. Used for Bedrock Runtime
         // ConverseStream (the SSO + static-credentials Bedrock auth
@@ -47,14 +50,24 @@ let package = Package(
         .package(url: "https://github.com/sparkle-project/Sparkle.git", "2.9.0"..<"2.10.0"),
     ],
     targets: [
-        .executableTarget(
-            name: "ParleqApp",
+        .target(
+            name: "ParleqAppCore",
             dependencies: [
                 .product(name: "SotoBedrockRuntime", package: "soto"),
                 .product(name: "FluidAudio", package: "FluidAudio"),
                 .product(name: "Sparkle", package: "Sparkle"),
             ],
-            path: "Sources/ParleqApp"
+            path: "Sources/ParleqAppCore"
+        ),
+        .executableTarget(
+            name: "parleq-app",
+            dependencies: ["ParleqAppCore"],
+            path: "Sources/parleq-app"
+        ),
+        .testTarget(
+            name: "ParleqAppCoreTests",
+            dependencies: ["ParleqAppCore"],
+            path: "Tests/ParleqAppCoreTests"
         ),
     ]
 )
