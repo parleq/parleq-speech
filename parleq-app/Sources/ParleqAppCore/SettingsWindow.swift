@@ -113,10 +113,6 @@ final class SettingsModel: ObservableObject {
     @Published var azureApiVersion: String
     /// Azure auth mode (#21 step 5 follow-up): "apiKey" or "azureAd".
     @Published var azureAuthMode: String
-    /// Azure underlying-model family: "standard" or "reasoning".
-    /// Drives which request shape Parleq sends — see
-    /// `AzureOpenAIProvider.Family`.
-    @Published var azureFamily: String
     /// Mirror of `KeychainStore.hasAzureAPIKey` for SwiftUI.
     @Published var azureAPIKeySet: Bool
     /// Mirror of `KeychainStore.hasOpenAIAPIKey` for SwiftUI.
@@ -195,7 +191,6 @@ final class SettingsModel: ObservableObject {
     private let initialAzureDeployment: String
     private let initialAzureApiVersion: String
     private let initialAzureAuthMode: String
-    private let initialAzureFamily: String
     private let initialContextModel: ModelIdentifier?
 
     init() {
@@ -223,7 +218,6 @@ final class SettingsModel: ObservableObject {
         self.azureDeployment = config.azureDeployment
         self.azureApiVersion = config.azureApiVersion
         self.azureAuthMode = config.azureAuthMode
-        self.azureFamily = config.azureFamily
         self.azureAPIKeySet = KeychainStore.hasAzureAPIKey
         self.openAIAPIKeySet = KeychainStore.hasOpenAIAPIKey
         self.asrEndpoint = config.asrEndpoint
@@ -258,7 +252,6 @@ final class SettingsModel: ObservableObject {
         self.initialAzureDeployment = config.azureDeployment
         self.initialAzureApiVersion = config.azureApiVersion
         self.initialAzureAuthMode = config.azureAuthMode
-        self.initialAzureFamily = config.azureFamily
         self.initialContextModel = config.contextModel
         refreshUsage()
     }
@@ -310,7 +303,6 @@ final class SettingsModel: ObservableObject {
         self.azureDeployment = config.azureDeployment
         self.azureApiVersion = config.azureApiVersion
         self.azureAuthMode = config.azureAuthMode
-        self.azureFamily = config.azureFamily
         self.azureAPIKeySet = KeychainStore.hasAzureAPIKey
         self.openAIAPIKeySet = KeychainStore.hasOpenAIAPIKey
         self.asrEndpoint = config.asrEndpoint
@@ -369,7 +361,6 @@ final class SettingsModel: ObservableObject {
             || azureDeployment != initialAzureDeployment
             || azureApiVersion != initialAzureApiVersion
             || azureAuthMode != initialAzureAuthMode
-            || azureFamily != initialAzureFamily
     }
 
     /// Persist current model values to ~/.parleq/config.json. Other
@@ -410,7 +401,6 @@ final class SettingsModel: ObservableObject {
         c.azureApiVersion = azureApiVersion.trimmingCharacters(in: .whitespacesAndNewlines)
         if c.azureApiVersion.isEmpty { c.azureApiVersion = "2024-08-01-preview" }
         c.azureAuthMode = ["apiKey", "azureAd"].contains(azureAuthMode) ? azureAuthMode : "apiKey"
-        c.azureFamily = ["standard", "reasoning"].contains(azureFamily) ? azureFamily : "standard"
         c.asrEndpoint = asrEndpoint.trimmingCharacters(in: .whitespaces)
         if c.asrEndpoint.isEmpty { c.asrEndpoint = Config.bundledASREndpoint }
         c.customDictionary = dictionaryEntries.compactMap { row -> DictionaryEntry? in
@@ -1580,17 +1570,6 @@ struct SettingsView: View {
                 isConfigured: model.azureAPIKeySet,
                 activeBadge: badge
             )
-            HStack(alignment: .center) {
-                Text("Model family")
-                    .frame(minWidth: 110, alignment: .leading)
-                Picker("", selection: bind(\.azureFamily)) {
-                    Text("Standard (gpt-4o, gpt-4 family)").tag("standard")
-                    Text("Reasoning (gpt-5, o-series)").tag("reasoning")
-                }
-                .labelsHidden()
-                .frame(maxWidth: 360)
-                Spacer()
-            }
             TextField("Resource name or full hostname", text: bind(\.azureResource))
                 .textFieldStyle(.roundedBorder)
             TextField("Deployment name", text: bind(\.azureDeployment))
@@ -2387,12 +2366,15 @@ private struct VertexServiceAccountRow: View {
 }
 
 /// Modal sheet for pasting a Vertex service-account JSON (#23).
-/// Multiline TextEditor sized for a typical SA JSON (~2–3 KB). The
-/// JSON contains an RSA private key, so it's effectively a secret;
-/// the field uses a regular TextEditor for legibility while pasting
-/// (SecureField doesn't support multiline) but the value isn't
-/// displayed back after Save — the row collapses to "•••• stored
-/// in Keychain" instead.
+/// The JSON contains an RSA private key. We use a multi-line
+/// `TextEditor` rather than `SecureField`: the SA JSON has embedded
+/// newlines inside the private_key string, and `NSSecureTextField`
+/// (which `SecureField` bridges to on macOS) is a single-line cell
+/// whose paste behavior for multi-line content isn't guaranteed to
+/// preserve bytes. The shoulder-surfing risk during a brief modal
+/// paste is small compared to silently corrupting the SA JSON. The
+/// value is not displayed back after Save — the row collapses to
+/// "•••• stored in Keychain".
 private struct SetVertexServiceAccountSheet: View {
     @ObservedObject var model: SettingsModel
     @Binding var isPresented: Bool

@@ -1180,6 +1180,19 @@ private struct OverlayContent: View {
                 accepted = true
                 _ = provider.loadObject(ofClass: URL.self) { url, _ in
                     guard let url else { return }
+                    // Guard against non-file URLs (smb://, ftp://, http://
+                    // etc.) that a malicious or misbehaving drag source
+                    // could inject. Without this check, the URL would
+                    // flow into Data(contentsOf:) / String(contentsOf:)
+                    // inside reference(forFileAt:), triggering an
+                    // outbound network request from the app — leaking
+                    // the fact that this user attempted to "open" the
+                    // remote URL to whoever controls it. File drops
+                    // are the only sensible payload here.
+                    // File-type validation (image / PDF / safe text) lives
+                    // inside reference(forFileAt:) — unsupported types
+                    // throw and surface as errorMessage below.
+                    guard url.isFileURL else { return }
                     // NSItemProvider's completion is already async but
                     // reference(forFileAt:) does synchronous disk I/O —
                     // hop to a detached task so the read doesn't block

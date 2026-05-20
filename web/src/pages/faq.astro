@@ -34,7 +34,11 @@ const sections = [
     items: [
       {
         q: 'Which cleanup provider should I pick?',
-        a: `For personal use with no compliance constraints: **Gemini direct** — five-minute setup, a free tier you can sign up for without a credit card, no infrastructure to think about. For work where you have an existing cloud relationship: pick the one your team already uses (**Bedrock** for AWS, **Vertex** for GCP, **Azure** for Microsoft). All four produce comparable cleanup quality on the short text Parleq generates. The provider choice mostly comes down to where you want the bill to land and whose contract you're operating under.`,
+        a: `For personal use with no compliance constraints: **Gemini direct** or **OpenAI direct** — both offer five-minute setup using just an API key, no infrastructure to think about. For work where you have an existing cloud relationship: pick the one your team already uses (**Bedrock** for AWS, **Vertex** for GCP, **Azure** for Microsoft). All options produce comparable cleanup quality on the short text Parleq generates. The provider choice mostly comes down to where you want the bill to land and whose contract you're operating under.`,
+      },
+      {
+        q: 'Can I use OpenAI directly?',
+        a: `Yes. Pick **OpenAI** in the provider list — it calls \`api.openai.com\` using an API key you paste from platform.openai.com. Available models include GPT-4o, GPT-4.1, GPT-4o Mini, and the o1 / o3 / o4-mini reasoning series. If your organization needs enterprise data-privacy commitments or Azure's regional controls, use **Azure OpenAI** instead — the same models run on Microsoft's infrastructure under your org's contract and audit logging.`,
       },
       {
         q: 'Can I switch providers later?',
@@ -71,7 +75,7 @@ const sections = [
       },
       {
         q: 'Why does Parleq need Microphone *and* Accessibility permissions?',
-        a: `Microphone is for capturing audio (obviously). Accessibility is for two things: (1) reading which app currently has keyboard focus when you press the hotkey, so the cleaned text pastes back into that app even if your focus drifts mid-dictation; (2) synthesizing the paste keystrokes via \`CGEventTap\` — macOS's standard mechanism for system-wide hotkey + paste apps. Parleq doesn't use Accessibility for any kind of screen reading, keystroke logging, or window inspection beyond identifying the originally-focused app's bundle ID.`,
+        a: `Microphone is for capturing audio (obviously). Accessibility is for two things: (1) reading which app currently has keyboard focus when you press the hotkey, so the cleaned text pastes back into that app even if your focus drifts mid-dictation; (2) synthesizing the paste keystrokes via \`CGEventTap\` — macOS's standard mechanism for system-wide hotkey + paste apps. Parleq doesn't use Accessibility for any kind of screen reading, keystroke logging, or window inspection beyond identifying the originally-focused app's bundle ID. **Screen Recording** is a third permission, requested lazily — only when you use Reference Windows for the first time, not at startup.`,
       },
     ],
   },
@@ -85,6 +89,10 @@ const sections = [
       {
         q: 'Can I teach Parleq names and terms it gets wrong?',
         a: `Yes — **Settings → Custom Dictionary**. Add terms Parleq commonly mis-transcribes (people's names, project codenames, technical jargon), with optional aliases for variant spellings the speech model often emits (e.g. "Parlay" / "Parlez" → canonical "Parleq") and an optional context blurb that helps the LLM judge whether the surrounding speech topic actually matches. Each entry has a per-term toggle for STT-side biasing — leave on for terms with distinctive phonetics, turn off when a term's sounds overlap a common word and trigger false positives.`,
+      },
+      {
+        q: 'Can I attach a window or file as context for a dictation?',
+        a: `Yes — that's the **Reference Windows** feature. Before dictating, click the **"Pick a window…"** button in the overlay and click any on-screen window to capture it, or use the file picker or clipboard attach to add document content. The captured text (or image, if you're using a vision-capable model) is included in the cleanup prompt so the LLM can use it as context when processing your speech. Captures stay in memory only — released on accept or cancel, never written to disk.`,
       },
       {
         q: 'Can I customize the cleanup style (more formal, more terse, etc.)?',

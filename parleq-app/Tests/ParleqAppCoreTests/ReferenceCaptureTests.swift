@@ -129,6 +129,86 @@ final class ReferenceCaptureTests: XCTestCase {
         }
     }
 
+    // MARK: - File type allowlist (M1 fix)
+
+    func test_no_extension_file_is_rejected() throws {
+        // Simulate a credential file or SSH key: UTF-8 content, no extension.
+        // The old code accepted anything UTF-8-readable; the fixed code
+        // requires a recognized extension OR a specific safe UTType.
+        // macOS assigns public.plain-text (or similar) to no-extension UTF-8
+        // files — the broad plainText supertype must not be accepted.
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("no-extension-file-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        try "secret content".write(to: tmp, atomically: true, encoding: .utf8)
+
+        XCTAssertThrowsError(
+            try ScreenCaptureKitReferenceCapture.reference(forFileAt: tmp),
+            "A file with no extension should be rejected by the type allowlist"
+        ) { error in
+            let ns = error as NSError
+            XCTAssertEqual(ns.domain, "ParleqReferenceCapture")
+            XCTAssertEqual(ns.code, 1001)
+        }
+    }
+
+    func test_txt_extension_file_is_accepted() throws {
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("plain-\(UUID().uuidString).txt")
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        try "hello world".write(to: tmp, atomically: true, encoding: .utf8)
+
+        let ref = try ScreenCaptureKitReferenceCapture.reference(forFileAt: tmp)
+        XCTAssertEqual(ref.captureMode, .text)
+        XCTAssertEqual(ref.textContent, "hello world")
+    }
+
+    func test_swift_extension_file_is_accepted() throws {
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("sample-\(UUID().uuidString).swift")
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        try "let x = 1".write(to: tmp, atomically: true, encoding: .utf8)
+
+        let ref = try ScreenCaptureKitReferenceCapture.reference(forFileAt: tmp)
+        XCTAssertEqual(ref.captureMode, .text)
+        XCTAssertEqual(ref.textContent, "let x = 1")
+    }
+
+    // MARK: - Symlink bypass (security regression from ac53ab2)
+
+    /// A symlink whose name has a benign extension (passes the initial
+    /// allowlist check) but whose target has no extension (would fail
+    /// the allowlist if inspected directly) must be rejected.
+    ///
+    /// Without the post-allowlist symlink re-check, a symlink named
+    /// "notes.txt" -> "~/.ssh/id_rsa" passes the extension gate
+    /// (URL reads the symlink's own name, not the target) and
+    /// String(contentsOf:) silently follows the symlink.
+    func test_symlink_with_benign_extension_pointing_to_no_extension_target_is_rejected() throws {
+        let tmpDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("parleq-symlink-test-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+
+        // Create the target file with no extension (simulates id_rsa, credentials, etc.)
+        let targetURL = tmpDir.appendingPathComponent("secret")
+        try "sensitive content".write(to: targetURL, atomically: true, encoding: .utf8)
+
+        // Create a symlink with a benign .txt extension pointing at the no-extension target.
+        let linkURL = tmpDir.appendingPathComponent("notes.txt")
+        try FileManager.default.createSymbolicLink(at: linkURL, withDestinationURL: targetURL)
+
+        // Must throw: the resolved target has no extension and fails the allowlist.
+        XCTAssertThrowsError(
+            try ScreenCaptureKitReferenceCapture.reference(forFileAt: linkURL),
+            "Symlink with benign extension pointing to no-extension target must be rejected"
+        ) { error in
+            let ns = error as NSError
+            XCTAssertEqual(ns.domain, "ParleqReferenceCapture")
+            XCTAssertEqual(ns.code, 1001)
+        }
+    }
+
     // MARK: - Clipboard: image
 
     func test_clipboard_image_produces_image_mode_reference() {

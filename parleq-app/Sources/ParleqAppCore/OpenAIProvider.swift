@@ -41,11 +41,29 @@ public final class OpenAIProvider: LLMProvider, Sendable {
     /// o4-mini supports vision; o1-mini and o3-mini are text-only.
     public var supportsVision: Bool {
         let m = model.lowercased()
-        if m.contains("gpt-4o") { return true }
-        if m == "gpt-4.1" || m == "gpt-4.1-mini" { return true }
-        // o-series reasoning models (partial vision support)
-        if m == "o1" || m == "o3" || m == "o4-mini" { return true }
-        if m == "o1-mini" || m == "o3-mini" { return false }
+        // gpt-4o family (gpt-4o, gpt-4o-mini, and dated snapshots like
+        // gpt-4o-2024-11-20) supports vision. Audio-preview and
+        // realtime-preview variants share the gpt-4o prefix but do NOT
+        // accept image inputs through Chat Completions — exclude by
+        // substring on the variant suffix.
+        let isGPT4o = (m == "gpt-4o" || m.hasPrefix("gpt-4o-"))
+        let isNonVisionPreview = m.contains("audio-preview") || m.contains("realtime-preview")
+        if isGPT4o && !isNonVisionPreview { return true }
+        // gpt-4.1 family supports vision (gpt-4.1, gpt-4.1-mini, and
+        // their dated snapshots) EXCEPT gpt-4.1-nano which is text-only.
+        let isGPT41 = (m == "gpt-4.1" || m.hasPrefix("gpt-4.1-"))
+        let isGPT41Nano = (m == "gpt-4.1-nano" || m.hasPrefix("gpt-4.1-nano-"))
+        if isGPT41 && !isGPT41Nano { return true }
+        // o-series reasoning models (partial vision support).
+        // Use the shared prefix-aware helper so dated snapshots (e.g.
+        // "o1-2024-12-17") also report the correct capability.
+        if isOpenAIReasoningModel(m) {
+            // o1, o3, o4-mini (and their dated snapshots) support vision;
+            // o1-mini and o3-mini (and their dated snapshots) are text-only.
+            if m == "o1-mini" || m.hasPrefix("o1-mini-") { return false }
+            if m == "o3-mini" || m.hasPrefix("o3-mini-") { return false }
+            return true
+        }
         return false  // conservative; explicit allowlist only
         // gpt-4.1-nano falls through to false (text-only).
     }
@@ -106,10 +124,21 @@ public final class OpenAIProvider: LLMProvider, Sendable {
             throw LLMError.malformedResponse("response is not HTTP")
         }
         if !(200..<300).contains(http.statusCode) {
+            // Drain up to 4KB of error body. Per-line iteration is far
+            // faster than per-byte: a 400-char body via per-byte costs
+            // thousands of awaits, while per-line costs one or two.
+            // Matches the pattern used by other providers in this codebase.
+            // Cap is enforced BEFORE appending to guarantee a hard 4096-byte
+            // ceiling even when a single very long line (e.g. a minified
+            // single-line JSON error envelope) would overshoot on append.
+            let cap = 4096
             var buf = Data()
-            for try await byte in bytes {
-                buf.append(byte)
-                if buf.count > 4096 { break }
+            for try await line in bytes.lines {
+                guard buf.count < cap else { break }
+                if let lineData = (line + "\n").data(using: .utf8) {
+                    let remaining = cap - buf.count
+                    buf.append(lineData.prefix(remaining))
+                }
             }
             let snippet = String(data: buf, encoding: .utf8) ?? "<\(buf.count) bytes>"
             throw LLMError.badStatus(http.statusCode, String(snippet.prefix(400)))
@@ -168,8 +197,19 @@ public final class OpenAIProvider: LLMProvider, Sendable {
         // avoid a 400. Standard models continue to use `max_tokens` +
         // `temperature: 0`.
         if isOpenAIReasoningModel(model) {
-            body["max_completion_tokens"] = 1024
-            // Omit temperature — reasoning models only accept the default 1.0.
+            // o-series models spend 1000-5000+ tokens internally on reasoning
+            // before emitting any visible output. A 1024-token cap causes the
+            // visible response to be truncated — often to empty — when the
+            // model's reasoning budget alone consumes the ceiling. 4096 gives
+            // ~2000-3000 tokens of headroom for reasoning plus ~1000-2000 for
+            // the visible cleanup output, which is well above any real cleanup
+            // response. Mirrors the existing Bedrock GPT-OSS treatment where
+            // reasoning_effort:"low" is already set (CLAUDE.md hard invariant #4).
+            body["max_completion_tokens"] = 4096
+            // low effort is appropriate for cleanup-style tasks (short
+            // utterances); users who want medium/high can pick a non-reasoning
+            // model. Omit temperature — reasoning models only accept 1.0.
+            body["reasoning_effort"] = "low"
         } else {
             body["max_tokens"] = 1024
             body["temperature"] = 0
@@ -216,6 +256,10 @@ public final class OpenAIProvider: LLMProvider, Sendable {
         switch error {
         case .missingAPIKey, .missingCredentials:
             return "OpenAI API key missing. Open Settings → Cleanup → Set OpenAI API Key…"
+        case .badStatus(429, _):
+            return "OpenAI rate-limited or quota exceeded. Check usage at https://platform.openai.com/usage and add billing if you haven't yet."
+        case .badStatus(404, _):
+            return "OpenAI returned 404 — the configured model isn't available on this API key. Free-tier and trial keys typically can't access gpt-4o or o-series; verify access at https://platform.openai.com/account/limits."
         case .badStatus(let code, _) where code == 401 || code == 403:
             return "OpenAI rejected the API key. Open Settings → Cleanup → Set OpenAI API Key… and verify the key is current."
         case .badStatus, .malformedResponse, .requestFailed:

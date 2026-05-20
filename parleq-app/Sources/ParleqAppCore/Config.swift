@@ -200,14 +200,6 @@ public struct Config: Sendable {
     /// a Microsoft Entra ID OAuth bearer via the user's `az login`
     /// session and sends it in `Authorization: Bearer <token>`.
     public var azureAuthMode: String
-    /// Azure underlying-model family. "standard" (gpt-4o, gpt-4,
-    /// gpt-3.5-turbo) uses `max_tokens` + arbitrary `temperature`;
-    /// "reasoning" (gpt-5, o-series) uses `max_completion_tokens`
-    /// and refuses non-default temperature. Declared explicitly
-    /// because Azure routes by deployment name (user-chosen,
-    /// arbitrary), so we can't infer the family from anything
-    /// Parleq sees on the wire — the user has to tell us.
-    public var azureFamily: String
     /// True after the user has finished (or explicitly skipped) the
     /// first-run setup wizard (#21 step 6). Drives whether the
     /// wizard auto-launches on app start. The user can re-run the
@@ -307,7 +299,6 @@ public struct Config: Sendable {
         azureDeployment: "",
         azureApiVersion: "2025-04-01-preview",
         azureAuthMode: "apiKey",
-        azureFamily: "standard",
         wizardCompleted: false,
         trailingSpace: true,
         noTrailingSpaceAppBundleIDs: [],
@@ -410,23 +401,11 @@ public struct Config: Sendable {
                    ["apiKey", "azureAd"].contains(mode) {
                     c.azureAuthMode = mode
                 }
-                if let family = azure["family"] as? String,
-                   ["standard", "reasoning"].contains(family) {
-                    c.azureFamily = family
-                } else {
-                    // Backwards-compat: configs written before the
-                    // family field existed inferred reasoning vs
-                    // standard from the llmModel string. Keep that
-                    // behavior on first load so users who already
-                    // had gpt-5-mini etc. wired up don't see their
-                    // setup silently regress to standard mode.
-                    let lower = c.llmModel.lowercased()
-                    if lower.hasPrefix("gpt-5") || lower.hasPrefix("o1")
-                        || lower.hasPrefix("o3") || lower.hasPrefix("o4")
-                        || lower.hasPrefix("o5") {
-                        c.azureFamily = "reasoning"
-                    }
-                }
+                // "family" key in on-disk configs is silently ignored —
+                // AzureOpenAIProvider.family is now a computed property
+                // derived from isOpenAIReasoningModel(model). Old configs
+                // that carry the key decode fine; Swift ignores unknown
+                // keys in manual JSONSerialization parsing.
             }
             if let wizard = dict["wizard"] as? [String: Any],
                let completed = wizard["completed"] as? Bool {
@@ -562,7 +541,6 @@ public struct Config: Sendable {
                 "deployment": config.azureDeployment,
                 "api_version": config.azureApiVersion,
                 "auth_mode": config.azureAuthMode,
-                "family": config.azureFamily,
             ],
             "wizard": [
                 "completed": config.wizardCompleted,

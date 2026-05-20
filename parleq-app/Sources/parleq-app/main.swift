@@ -229,18 +229,20 @@ struct ParleqApp {
                 if authMode == .apiKey, !KeychainStore.hasAzureAPIKey {
                     logStderr("[parleq] azure: no API key set yet — set one in Settings → LLM → Set Azure API Key… (no restart needed)")
                 }
-                let family: AzureOpenAIProvider.Family = (config.azureFamily == "reasoning")
-                    ? .reasoning : .standard
+                // Family is auto-detected per-request inside
+                // AzureOpenAIProvider.buildRequestBody using
+                // isOpenAIReasoningModel, so each tier (cleanup +
+                // context) picks the right parameter shape independently
+                // from its own model id.
                 let p = AzureOpenAIProvider(
                     model: id.model,
-                    family: family,
                     resource: resource,
                     deployment: deployment,
                     apiVersion: config.azureApiVersion,
                     authMode: authMode
                 )
                 let authModeLabel = (authMode == .azureAd) ? "azure-ad-cli" : "api-key"
-                let familyLabel = (family == .reasoning) ? "reasoning" : "standard"
+                let familyLabel = isOpenAIReasoningModel(id.model) ? "reasoning" : "standard"
                 logStderr("[parleq] LLM \(label) (azure family=\(familyLabel) resource=\(resource) deployment=\(deployment) apiVersion=\(config.azureApiVersion) auth=\(authModeLabel))")
                 return p
             case "openai":

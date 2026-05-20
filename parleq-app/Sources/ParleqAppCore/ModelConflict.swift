@@ -95,11 +95,24 @@ enum ModelCapability {
             // gpt-4-turbo supports vision.
             // o-series reasoning models: o1, o3, o4-mini support vision;
             // o1-mini and o3-mini are text-only.
-            if m.contains("gpt-4o") { return true }
-            if m == "gpt-4.1" || m == "gpt-4.1-mini" { return true }
+            // gpt-4o family (including dated snapshots like
+            // gpt-4o-2024-11-20) supports vision. Audio-preview /
+            // realtime-preview variants share the prefix but don't
+            // accept image inputs.
+            let isGPT4o = (m == "gpt-4o" || m.hasPrefix("gpt-4o-"))
+            let isNonVisionPreview = m.contains("audio-preview") || m.contains("realtime-preview")
+            if isGPT4o && !isNonVisionPreview { return true }
+            // gpt-4.1 family except nano.
+            let isGPT41 = (m == "gpt-4.1" || m.hasPrefix("gpt-4.1-"))
+            let isGPT41Nano = (m == "gpt-4.1-nano" || m.hasPrefix("gpt-4.1-nano-"))
+            if isGPT41 && !isGPT41Nano { return true }
             if m == "gpt-4-turbo" { return true }
-            if m == "o1" || m == "o3" || m == "o4-mini" { return true }
-            if m == "o1-mini" || m == "o3-mini" { return false }
+            // Use prefix-aware helper so dated snapshots route correctly.
+            if isOpenAIReasoningModel(m) {
+                if m == "o1-mini" || m.hasPrefix("o1-mini-") { return false }
+                if m == "o3-mini" || m.hasPrefix("o3-mini-") { return false }
+                return true
+            }
             return false
         case "openai":
             // OpenAI direct (api.openai.com). Same model family as
@@ -108,10 +121,21 @@ enum ModelCapability {
             // text-only. Mirrors OpenAIProvider.supportsVision.
             // o-series reasoning models: o1, o3, o4-mini support vision;
             // o1-mini and o3-mini are text-only.
-            if m.contains("gpt-4o") { return true }
-            if m == "gpt-4.1" || m == "gpt-4.1-mini" { return true }
-            if m == "o1" || m == "o3" || m == "o4-mini" { return true }
-            if m == "o1-mini" || m == "o3-mini" { return false }
+            // gpt-4o family including dated snapshots; exclude
+            // audio-preview / realtime-preview variants.
+            let isGPT4o = (m == "gpt-4o" || m.hasPrefix("gpt-4o-"))
+            let isNonVisionPreview = m.contains("audio-preview") || m.contains("realtime-preview")
+            if isGPT4o && !isNonVisionPreview { return true }
+            // gpt-4.1 family except nano.
+            let isGPT41 = (m == "gpt-4.1" || m.hasPrefix("gpt-4.1-"))
+            let isGPT41Nano = (m == "gpt-4.1-nano" || m.hasPrefix("gpt-4.1-nano-"))
+            if isGPT41 && !isGPT41Nano { return true }
+            // Use prefix-aware helper so dated snapshots route correctly.
+            if isOpenAIReasoningModel(m) {
+                if m == "o1-mini" || m.hasPrefix("o1-mini-") { return false }
+                if m == "o3-mini" || m.hasPrefix("o3-mini-") { return false }
+                return true
+            }
             return false
         default:
             return false  // conservative; explicit allowlist only

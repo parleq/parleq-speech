@@ -68,6 +68,15 @@ enum SystemPrompts {
         Output ONLY the cleaned text as plain text.
         """
 
+    /// Public accessor for the vocabulary-hint addendum, so callers
+    /// building a non-cleanup system prompt (e.g. the reference-aware
+    /// path in AppState) can still benefit from the user's custom
+    /// dictionary. Returns "" when the dictionary is empty so callers
+    /// can no-op without checking.
+    public static func dictionaryHint(dictionary: [DictionaryEntry]) -> String {
+        vocabularyHint(dictionary: dictionary)
+    }
+
     /// Build the smart-vocabulary addendum. Empty string when the
     /// dictionary is empty — caller appends only when non-empty.
     private static func vocabularyHint(dictionary: [DictionaryEntry]) -> String {

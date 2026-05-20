@@ -1,7 +1,8 @@
 // Permissions — synchronous state probes and click handlers for the
-// three permissions Parleq surfaces in Settings → Permissions and in
-// the Setup wizard's Permissions step: Microphone, Accessibility, and
-// Open at Login.
+// four permissions Parleq surfaces in Settings → Permissions and in
+// the Setup wizard's Permissions step: Microphone, Accessibility,
+// Screen Recording (optional — only needed for Reference Windows),
+// and Open at Login (optional).
 //
 // Each probe is a single API call that returns immediately — no async,
 // no blocking, safe to call from any UI refresh cycle. The probes are
@@ -24,12 +25,13 @@ enum PermissionState: Equatable {
     case notSupported
 }
 
-/// Snapshot of all three permissions captured at a single instant.
+/// Snapshot of all four permissions captured at a single instant.
 /// Equatable so PermissionsModel only republishes when something
 /// actually changed.
 struct PermissionsSnapshot: Equatable {
     let microphone: PermissionState
     let accessibility: PermissionState
+    let screenRecording: PermissionState
     let openAtLogin: PermissionState
 }
 
@@ -68,12 +70,24 @@ enum Permissions {
         return LoginItem.isEnabled ? .granted : .missing
     }
 
-    /// Convenience snapshot. Three synchronous calls — cheap to call
+    /// Wraps `CGPreflightScreenCaptureAccess()`. Screen Recording is
+    /// surfaced in Settings → Permissions as an *optional* row (only
+    /// required for Reference Windows). Like microphone, the OS state
+    /// is a binary "granted vs not" — TCC doesn't distinguish
+    /// notDetermined from denied here, and the click handler treats
+    /// both as "fire request + open Settings" since
+    /// `CGRequestScreenCaptureAccess()` is a one-shot.
+    static var screenRecordingState: PermissionState {
+        CGPreflightScreenCaptureAccess() ? .granted : .missing
+    }
+
+    /// Convenience snapshot. Four synchronous calls — cheap to call
     /// on every UI refresh.
     static var snapshot: PermissionsSnapshot {
         PermissionsSnapshot(
             microphone: microphone,
             accessibility: accessibility,
+            screenRecording: screenRecordingState,
             openAtLogin: openAtLogin
         )
     }
@@ -186,11 +200,13 @@ enum Permissions {
 
     // MARK: - Screen Recording (Reference Windows)
     //
-    // Screen Recording is a lazy-prompt permission used by Reference
-    // Windows (#TBD-once-issue-filed). Unlike Microphone / Accessibility,
-    // it isn't surfaced in Settings → Permissions today — the prompt
-    // fires the first time the user attempts a window capture. If
-    // declined, the chip-add path surfaces an inline explainer.
+    // Screen Recording is required by Reference Windows. It's surfaced
+    // in Settings → Permissions and the Setup wizard as an *optional*
+    // row (the pill reads "Optional", not "Required") since users who
+    // don't use Reference Windows don't need it. The runtime path
+    // (`AppState.captureReferenceWindow`) also fires the OS prompt
+    // lazily on first capture attempt, so users who skip the row in
+    // Settings still get the just-in-time grant flow.
 
     /// True if Screen Recording is currently granted. False covers both
     /// "not yet determined" and "denied" — the request handler

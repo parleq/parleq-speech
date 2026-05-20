@@ -36,24 +36,28 @@ public final class AzureOpenAIProvider: LLMProvider, Sendable {
         case azureAd
     }
 
-    /// Underlying model family that a deployment serves. Drives the
-    /// request-shape branching in `buildRequestBody` — reasoning
-    /// models reject `max_tokens` and any non-default temperature,
-    /// standard models expect both. Azure's API routes by deployment
-    /// *name*, not model, so Parleq can't infer the family from what
-    /// it sends — the user has to declare it. Maps 1:1 to
-    /// `Config.azureFamily`.
+    /// Underlying model family. Computed from the model name via
+    /// `isOpenAIReasoningModel` — the value always reflects the actual
+    /// model. Detection currently matches the prefixes `o1`, `o1-mini`,
+    /// `o3`, `o3-mini`, `o4-mini` (plus their dated snapshots).
+    /// New o-series prefixes (e.g. a future `o5`) require a one-line
+    /// addition to `isOpenAIReasoningModel`'s prefix list.
     public enum Family: Sendable {
-        /// gpt-4o, gpt-4, gpt-3.5-turbo, etc. Use `max_tokens` +
-        /// arbitrary `temperature`.
+        /// gpt-4o family, gpt-4.1 family, gpt-4-turbo, and any other
+        /// non-reasoning model.
         case standard
-        /// gpt-5*, o1*, o3*, o4*, o5*. Use `max_completion_tokens`,
-        /// no `temperature` knob (only the default 1.0 is accepted).
+        /// o-series reasoning models: o1, o1-mini, o3, o3-mini,
+        /// o4-mini (and their dated snapshots).
         case reasoning
     }
 
     public let model: String
-    public let family: Family
+    /// Computed from `model` via `isOpenAIReasoningModel`. Always
+    /// reflects the actual family — no stale .standard for o-series
+    /// models constructed via the primary (family-free) initializer.
+    public var family: Family {
+        isOpenAIReasoningModel(model) ? .reasoning : .standard
+    }
     public let resource: String
     public let deployment: String
     public let apiVersion: String
@@ -71,12 +75,26 @@ public final class AzureOpenAIProvider: LLMProvider, Sendable {
         // Reasoning models: o1 and o3 support vision; o4-mini supports
         // vision; o1-mini and o3-mini are text-only.
         let m = model.lowercased()
-        if m.contains("gpt-4o") { return true }
-        if m == "gpt-4.1" || m == "gpt-4.1-mini" { return true }
+        // gpt-4o family (gpt-4o, gpt-4o-mini, and dated snapshots like
+        // gpt-4o-2024-11-20) supports vision. Audio-preview and
+        // realtime-preview variants share the gpt-4o prefix but do NOT
+        // accept image inputs through Chat Completions.
+        let isGPT4o = (m == "gpt-4o" || m.hasPrefix("gpt-4o-"))
+        let isNonVisionPreview = m.contains("audio-preview") || m.contains("realtime-preview")
+        if isGPT4o && !isNonVisionPreview { return true }
+        // gpt-4.1 family supports vision EXCEPT gpt-4.1-nano (text-only).
+        let isGPT41 = (m == "gpt-4.1" || m.hasPrefix("gpt-4.1-"))
+        let isGPT41Nano = (m == "gpt-4.1-nano" || m.hasPrefix("gpt-4.1-nano-"))
+        if isGPT41 && !isGPT41Nano { return true }
         if m == "gpt-4-turbo" { return true }
-        // o-series reasoning models (partial vision support)
-        if m == "o1" || m == "o3" || m == "o4-mini" { return true }
-        if m == "o1-mini" || m == "o3-mini" { return false }
+        // o-series reasoning models (partial vision support).
+        // Use the prefix-aware helper so dated snapshots (e.g.
+        // "o1-2024-12-17") also report the correct capability.
+        if isOpenAIReasoningModel(m) {
+            if m == "o1-mini" || m.hasPrefix("o1-mini-") { return false }
+            if m == "o3-mini" || m.hasPrefix("o3-mini-") { return false }
+            return true
+        }
         return false  // conservative; explicit allowlist
         // gpt-4.1-nano falls through to false (text-only).
     }
@@ -86,18 +104,20 @@ public final class AzureOpenAIProvider: LLMProvider, Sendable {
     /// deployment name, not model name. We surface the configured
     /// model label to the rest of the codebase so usage breakdowns
     /// stay readable, but the deployment is what the API actually
-    /// dispatches against. The `family` parameter is what governs
-    /// request-shape: reasoning vs standard.
+    /// dispatches against.
+    ///
+    /// Family is auto-detected from the model name in `buildRequestBody`
+    /// via `isOpenAIReasoningModel` — o-series models get
+    /// `max_completion_tokens` + `reasoning_effort:"low"`, everything else
+    /// gets `max_tokens` + `temperature`. No explicit declaration needed.
     public init(
         model: String,
-        family: Family,
         resource: String,
         deployment: String,
         apiVersion: String,
         authMode: AuthMode = .apiKey
     ) {
         self.model = model
-        self.family = family
         self.resource = resource
         self.deployment = deployment
         self.apiVersion = apiVersion
@@ -323,18 +343,23 @@ public final class AzureOpenAIProvider: LLMProvider, Sendable {
         // (gpt-4o, gpt-4, gpt-3.5-turbo) still expect `max_tokens` +
         // arbitrary temperature.
         //
-        // The family is declared explicitly in Settings (Standard or
-        // Reasoning) rather than inferred from a model label —
-        // Azure's API routes by deployment name, not model name, and
-        // deployment names are user-chosen and arbitrary, so we
-        // can't reliably parse the family from any string Parleq
-        // sees on the wire.
-        switch family {
-        case .reasoning:
-            body["max_completion_tokens"] = 1024
-            // Don't set temperature — the API rejects anything other
-            // than the default 1.0 for reasoning models.
-        case .standard:
+        // Family is auto-detected from the model name using
+        // isOpenAIReasoningModel so each tier (cleanup + context) can
+        // independently be standard or reasoning without a shared config
+        // field racing between them. The stored `family` property is
+        // retained for file-format backward compat but no longer
+        // consulted here.
+        if isOpenAIReasoningModel(model) {
+            // o-series models spend 1000-5000+ tokens internally on reasoning
+            // before emitting any visible output. A 1024-token cap truncates the
+            // visible response — often to empty — when hidden reasoning alone
+            // hits the ceiling. 4096 gives ample headroom for both reasoning
+            // and visible cleanup output. Mirrors the Bedrock GPT-OSS treatment.
+            body["max_completion_tokens"] = 4096
+            // low effort is appropriate for cleanup-style tasks; omit
+            // temperature since the API rejects anything other than 1.0.
+            body["reasoning_effort"] = "low"
+        } else {
             body["max_tokens"] = 1024
             body["temperature"] = 0
         }

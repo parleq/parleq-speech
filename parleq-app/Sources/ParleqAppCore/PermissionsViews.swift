@@ -6,7 +6,7 @@
 //     body. Rendered by SetupWizardView when step == .permissions.
 //
 // Both consume the same PermissionsModel snapshot and emit the same
-// three rows via the descriptor builders in PermissionRow.swift — by
+// four rows via the descriptor builders in PermissionRow.swift — by
 // construction, anything that changes the row UI lands in both
 // surfaces simultaneously.
 
@@ -29,6 +29,7 @@ struct PermissionsSectionContent: View {
 
             PermissionRow(descriptor: microphoneDescriptor(state: model.snapshot.microphone))
             PermissionRow(descriptor: accessibilityDescriptor(state: model.snapshot.accessibility))
+            PermissionRow(descriptor: screenRecordingDescriptor(state: model.snapshot.screenRecording))
             PermissionRow(descriptor: openAtLoginDescriptor(state: model.snapshot.openAtLogin))
 
             HStack(spacing: 4) {
@@ -62,7 +63,7 @@ struct PermissionsWizardStep: View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Allow Parleq to work")
                 .font(.title2.weight(.semibold))
-            Text("Two macOS permissions are required, plus an optional toggle for launching at login. We'll wait here until the required ones are granted.")
+            Text("Two macOS permissions are required for core dictation. Screen Recording is optional — only needed for Reference Windows. Open-at-Login is an optional toggle. We'll wait here until the required ones are granted.")
                 .font(.system(size: 14))
                 .foregroundStyle(Color(NSColor.secondaryLabelColor))
                 .fixedSize(horizontal: false, vertical: true)
@@ -70,6 +71,7 @@ struct PermissionsWizardStep: View {
 
             PermissionRow(descriptor: microphoneDescriptor(state: model.snapshot.microphone))
             PermissionRow(descriptor: accessibilityDescriptor(state: model.snapshot.accessibility))
+            PermissionRow(descriptor: screenRecordingDescriptor(state: model.snapshot.screenRecording))
             PermissionRow(descriptor: openAtLoginDescriptor(state: model.snapshot.openAtLogin))
 
             HStack(spacing: 4) {

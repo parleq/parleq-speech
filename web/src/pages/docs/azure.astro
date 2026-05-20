@@ -30,14 +30,14 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
       Azure OpenAI
     </h1>
     <p class="mt-6 text-[17px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      Azure OpenAI is Microsoft's hosted version of OpenAI's GPT-4o family and the newer gpt-5 reasoning models. The models are the same ones OpenAI ships, but the calls run through Microsoft's infrastructure on your organization's Azure subscription — billed alongside other Azure services and governed by Microsoft's enterprise contracts and data privacy commitments rather than OpenAI's consumer terms. If your team already uses Azure for other workloads, an Azure OpenAI resource generally slips through procurement and IT review the same way any other Azure resource would.
+      Azure OpenAI is Microsoft's hosted version of OpenAI's models — GPT-4o, the GPT-4.1 family, and the o-series reasoning models. The models are the same ones OpenAI ships, but the calls run through Microsoft's infrastructure on your organization's Azure subscription — billed alongside other Azure services and governed by Microsoft's enterprise contracts and data privacy commitments rather than OpenAI's consumer terms. If your team already uses Azure for other workloads, an Azure OpenAI resource generally slips through procurement and IT review the same way any other Azure resource would.
     </p>
 
     <div class="mt-8 rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6">
       <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-text-subtle)]">At a glance</p>
       <ul class="mt-3 space-y-2 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
         <li><strong class="text-[color:var(--color-text)]">Auth modes (two):</strong> Resource API key (simpler — paste a key from the portal), or Microsoft Entra ID (uses <code class="rounded bg-[color:var(--color-bg)] px-1 font-mono text-[13px]">az login</code> — no key to paste, refreshes automatically).</li>
-        <li><strong class="text-[color:var(--color-text)]">Model family setting:</strong> <strong class="text-[color:var(--color-text)]">Standard</strong> (gpt-4o, gpt-4) or <strong class="text-[color:var(--color-text)]">Reasoning</strong> (gpt-5, o-series). Picked once in Settings to tell Parleq which request shape to send — Azure routes by deployment name, so the model itself is configured in the Azure portal, not Parleq.</li>
+        <li><strong class="text-[color:var(--color-text)]">Model</strong>: gpt-4o family, gpt-4.1 family, or an o-series reasoning model (o1, o3, o4-mini, etc.). Parleq auto-detects the request shape from the model name — no separate family toggle. Azure itself routes by deployment name, so the actual model is configured in the Azure portal; the model field in Parleq is a hint used to choose the right request body shape.</li>
         <li><strong class="text-[color:var(--color-text)]">Region:</strong> Model availability varies by region. <code class="rounded bg-[color:var(--color-bg)] px-1 font-mono text-[13px]">eastus2</code>, <code class="rounded bg-[color:var(--color-bg)] px-1 font-mono text-[13px]">swedencentral</code>, and <code class="rounded bg-[color:var(--color-bg)] px-1 font-mono text-[13px]">westus3</code> tend to carry the broadest selection.</li>
         <li><strong class="text-[color:var(--color-text)]">IAM role for Entra ID auth:</strong> <code class="rounded bg-[color:var(--color-bg)] px-1 font-mono text-[13px]">Cognitive Services OpenAI User</code> on the resource (data-plane role — Owner / Contributor on the subscription is <em>not</em> sufficient).</li>
         <li><strong class="text-[color:var(--color-text)]">Routing quirk:</strong> Azure routes by <em>deployment name</em>, not model name. Pick a deployment name when you deploy the model in the portal; that's what Parleq calls.</li>
@@ -65,7 +65,7 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
         <div>
           <p class="text-[color:var(--color-text)] font-medium">Deploy a model under the resource.</p>
           <p class="mt-2">
-            In <strong class="text-[color:var(--color-text)]">Azure AI Foundry</strong> (or "Azure OpenAI Studio" on older resources): <strong class="text-[color:var(--color-text)]">Deployments → Deploy model</strong>. Recommended starting point is <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">gpt-4o-mini</code> for low latency and predictable behavior; <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">gpt-5-mini</code> works too if you have access to the reasoning family in your subscription.
+            In <strong class="text-[color:var(--color-text)]">Azure AI Foundry</strong> (or "Azure OpenAI Studio" on older resources): <strong class="text-[color:var(--color-text)]">Deployments → Deploy model</strong>. Recommended starting point is <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">gpt-4o-mini</code> for low latency and predictable behavior; <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">o4-mini</code> is a good option if you want a reasoning model.
           </p>
           <p class="mt-2">
             <strong class="text-[color:var(--color-text)]">The deployment name is what Parleq calls.</strong> Azure's API routes requests by deployment name, not model name. You'll typically name the deployment after the model (e.g. <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">gpt-4o-mini</code>), but anything works — just paste the deployment name into Parleq's <strong class="text-[color:var(--color-text)]">Deployment</strong> field.
@@ -161,24 +161,24 @@ az account set --subscription "My Team Subscription"`}</code></pre>
     </div>
 
     <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
-      Model family (and the API version)
+      Choosing a model (and the API version)
     </h2>
     <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
       <p>
-        Azure's API routes calls by <em>deployment name</em>, not model name — there is no per-call model identifier on the wire, only the deployment you pick in the URL. So Parleq's Settings doesn't ask for a model name; instead, it asks for a <strong class="text-[color:var(--color-text)]">Model family</strong>:
+        Azure's API routes calls by <em>deployment name</em>, not model name — there is no per-call model identifier on the wire, only the deployment you pick in the URL. The <strong class="text-[color:var(--color-text)]">Model</strong> field in Parleq's Settings tells Parleq which request-body shape to build:
       </p>
       <ul class="mt-3 space-y-2 list-disc list-inside marker:text-[color:var(--color-text-subtle)]">
-        <li><strong class="text-[color:var(--color-text)]">Standard</strong> — pick this when your deployment serves <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">gpt-4o-mini</code>, <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">gpt-4o</code>, <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">gpt-4</code>, <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">gpt-3.5-turbo</code>, or any non-reasoning model. Parleq sends <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">max_tokens</code> + an explicit temperature.</li>
-        <li><strong class="text-[color:var(--color-text)]">Reasoning</strong> — pick this when your deployment serves <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">gpt-5</code>, <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">gpt-5-mini</code>, or any o-series model (<code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">o1</code>, <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">o3</code>, <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">o4</code>, <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">o5</code>). These models reject <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">max_tokens</code> in favor of <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">max_completion_tokens</code> and refuse any temperature other than 1.0, so Parleq has to send a different request shape.</li>
+        <li><strong class="text-[color:var(--color-text)]">gpt-4o family / gpt-4.1 family</strong> — non-reasoning. Parleq sends <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">max_tokens</code> + an explicit temperature.</li>
+        <li><strong class="text-[color:var(--color-text)]">o-series reasoning</strong> (<code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">o1</code>, <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">o1-mini</code>, <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">o3</code>, <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">o3-mini</code>, <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">o4-mini</code>). These reject <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">max_tokens</code> in favor of <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">max_completion_tokens</code> and refuse any temperature other than 1.0, so Parleq sends a different shape (<code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">max_completion_tokens</code> + <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">reasoning_effort</code>, no temperature).</li>
       </ul>
       <p class="mt-4">
-        Default is <strong class="text-[color:var(--color-text)]">Standard</strong>. If you mismatch (e.g., picked Standard but deployed a gpt-5 model), Azure responds with a clear 400 error message that names the offending parameter — flip the family in Settings and dictate again.
+        Detection is automatic — Parleq inspects the model name and picks the request shape. If your deployment's underlying model doesn't match what you picked in Parleq (e.g. picked gpt-4o-mini but the deployment actually serves o4-mini), Azure responds with a clear 400 error that names the offending parameter; fix one side or the other.
       </p>
       <p>
-        <strong class="text-[color:var(--color-text)]">API version.</strong> Defaults to <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">2025-04-01-preview</code>, which supports gpt-5-series models. If your deployment requires a different version, override in Settings.
+        <strong class="text-[color:var(--color-text)]">API version.</strong> Defaults to <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">2025-04-01-preview</code>. If your deployment requires a different version, override in Settings — but reasoning models require <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">2024-12-01-preview</code> or later, since that's when Azure added support for <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">max_completion_tokens</code> and <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">reasoning_effort</code>. Pinning to an older version with an o-series model will produce <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">400 unknown parameter</code>.
       </p>
       <p class="text-[14px] text-[color:var(--color-text-subtle)]">
-        Reasoning models are noticeably slower than the gpt-4o family — they think before responding. Worth it if you've tuned the cleanup style toward gpt-5; otherwise the gpt-4o-mini path wins on latency.
+        Reasoning models are noticeably slower than the gpt-4o family — they think before responding. Worth it for complex reference-aware turns; otherwise gpt-4o-mini wins on latency.
       </p>
     </div>
 
@@ -216,7 +216,7 @@ az account set --subscription "My Team Subscription"`}</code></pre>
       <div>
         <p class="font-medium text-[color:var(--color-text)]"><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">404 Resource not found</code> on first dictation</p>
         <p class="mt-2">
-          The URL Parleq built doesn't match a real deployment. Check three things in order: (1) the <strong class="text-[color:var(--color-text)]">Resource</strong> field — for an AI Foundry resource, paste the full hostname (<code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">*.cognitiveservices.azure.com</code>) rather than the bare name; (2) the <strong class="text-[color:var(--color-text)]">Deployment</strong> name — it's case-sensitive and has to match exactly; (3) the API version — bump to <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">2025-04-01-preview</code> or later if you're calling gpt-5-series.
+          The URL Parleq built doesn't match a real deployment. Check three things in order: (1) the <strong class="text-[color:var(--color-text)]">Resource</strong> field — for an AI Foundry resource, paste the full hostname (<code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">*.cognitiveservices.azure.com</code>) rather than the bare name; (2) the <strong class="text-[color:var(--color-text)]">Deployment</strong> name — it's case-sensitive and has to match exactly; (3) the API version — bump to <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">2025-04-01-preview</code> or later if you're calling o-series or newer models.
         </p>
       </div>
       <div>
@@ -228,13 +228,13 @@ az account set --subscription "My Team Subscription"`}</code></pre>
       <div>
         <p class="font-medium text-[color:var(--color-text)]"><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">400 max_tokens not supported</code> / "use 'max_completion_tokens'"</p>
         <p class="mt-2">
-          Family mismatch. Your deployment serves a reasoning model but Parleq is configured as Standard. Open Settings → LLM → switch <strong class="text-[color:var(--color-text)]">Model family</strong> to <strong class="text-[color:var(--color-text)]">Reasoning (gpt-5, o-series)</strong>, then dictate again.
+          Model / deployment mismatch. Your Azure deployment serves a reasoning model (o-series) but Parleq's <strong class="text-[color:var(--color-text)]">Model</strong> field is set to a non-reasoning model name, so Parleq is sending the standard <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">max_tokens</code> shape. Open Settings → LLM → switch the Azure model to the o-series name that matches your deployment (e.g. <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">o4-mini</code>), then dictate again.
         </p>
       </div>
       <div>
         <p class="font-medium text-[color:var(--color-text)]"><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">400 unsupported parameter: 'max_completion_tokens'</code></p>
         <p class="mt-2">
-          The reverse mismatch: Parleq is in Reasoning mode but your deployment serves a standard model. Switch <strong class="text-[color:var(--color-text)]">Model family</strong> back to <strong class="text-[color:var(--color-text)]">Standard</strong> and try again.
+          The reverse mismatch: Parleq is set to a reasoning model name but your deployment actually serves a non-reasoning model. Switch Parleq's Azure <strong class="text-[color:var(--color-text)]">Model</strong> field to the gpt-4o / gpt-4.1 name that matches the deployment and try again.
         </p>
       </div>
       <div>

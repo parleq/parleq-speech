@@ -234,6 +234,62 @@ func accessibilityDescriptor(state: PermissionState) -> PermissionDescriptor {
 }
 
 @MainActor
+func screenRecordingDescriptor(state: PermissionState) -> PermissionDescriptor {
+    switch state {
+    case .granted:
+        return PermissionDescriptor(
+            icon: "macwindow",
+            title: "Screen Recording",
+            subtitle: "Required for Reference Windows — Parleq only captures a window when you pick one from the picker, never in the background.",
+            pillLabel: "✓ Granted",
+            pillStyle: .granted,
+            actionLabel: "Manage…",
+            actionDisabled: true,
+            actionPrimary: false,
+            onAction: {}
+        )
+    case .missing:
+        return PermissionDescriptor(
+            icon: "macwindow",
+            title: "Screen Recording",
+            subtitle: "Optional — only needed for the Reference Windows feature. Skip if you don't plan to attach on-screen context to dictation.",
+            pillLabel: "Optional",
+            pillStyle: .neutral,
+            actionLabel: "Allow…",
+            actionDisabled: false,
+            actionPrimary: false,
+            onAction: {
+                // Fire the OS TCC prompt (first-time flow) AND open
+                // System Settings → Privacy & Security → Screen
+                // Recording. Mirrors the accessibility descriptor's
+                // pattern: returning users (who can't be re-prompted
+                // after a denial) land on Settings; first-time users
+                // see the OS dialog, and Settings sits behind it for
+                // when they dismiss.
+                Permissions.requestScreenRecording()
+                Permissions.openScreenRecordingSettings()
+            }
+        )
+    case .notSupported:
+        // Like microphone and accessibility, this branch isn't reached
+        // by Permissions.screenRecordingState today — the CGPreflight
+        // check returns Bool, mapped to granted/missing only. Keep the
+        // case for exhaustiveness and degrade to a Settings deep-link.
+        return PermissionDescriptor(
+            icon: "macwindow",
+            title: "Screen Recording",
+            subtitle: "Manage in System Settings → Privacy & Security → Screen Recording.",
+            pillLabel: "Manual",
+            pillStyle: .neutral,
+            actionLabel: "Open System Settings…",
+            actionDisabled: false,
+            actionPrimary: false,
+            onAction: { Permissions.openScreenRecordingSettings() }
+        )
+    }
+}
+
+@MainActor
 func openAtLoginDescriptor(state: PermissionState) -> PermissionDescriptor {
     switch state {
     case .granted:

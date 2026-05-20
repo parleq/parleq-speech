@@ -4,6 +4,34 @@ import XCTest
 @MainActor
 final class PromptBuilderTests: XCTestCase {
 
+    // MARK: - Dictionary hint exposure for reference-aware path
+
+    func test_dictionary_hint_empty_returns_empty_string() {
+        // Empty dictionary should produce no hint — caller can no-op
+        // without checking before appending.
+        XCTAssertEqual(SystemPrompts.dictionaryHint(dictionary: []), "")
+    }
+
+    func test_dictionary_hint_non_empty_includes_canonical_terms() {
+        // Non-empty dictionary should produce a hint that names the
+        // canonical terms verbatim, so the reference-aware system
+        // prompt can concatenate it and preserve the custom-vocabulary
+        // biasing that the standard cleanup path enjoys.
+        let entry = DictionaryEntry(
+            term: "Parleq",
+            context: "a dictation app",
+            aliases: ["parlay", "parlez"],
+            biasing: .llmOnly
+        )
+        let hint = SystemPrompts.dictionaryHint(dictionary: [entry])
+        XCTAssertTrue(hint.contains("Parleq"), "Canonical spelling must appear")
+        XCTAssertTrue(hint.contains("parlay") || hint.contains("parlez"),
+                      "At least one alias must surface so the LLM can map it back")
+        XCTAssertFalse(hint.isEmpty)
+    }
+
+    // MARK: - Reference-aware first turn
+
     func test_text_only_reference_is_inlined_in_system_content_no_image_parts() throws {
         // A .text reference should be inlined in the text content string,
         // and the first-turn message should contain NO image parts.

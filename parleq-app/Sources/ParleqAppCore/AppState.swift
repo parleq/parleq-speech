@@ -664,6 +664,11 @@ public final class AppState {
             let urls = panel.urls
             Task.detached(priority: .userInitiated) {
                 for url in urls {
+                    // NSOpenPanel only returns file:// URLs, but guard
+                    // defensively. File-type validation (image / PDF /
+                    // safe text formats) lives inside reference(forFileAt:)
+                    // — unsupported types throw and surface as errorMessage.
+                    guard url.isFileURL else { continue }
                     do {
                         let ref = try ScreenCaptureKitReferenceCapture.reference(forFileAt: url)
                         await MainActor.run {
@@ -1459,7 +1464,16 @@ private func streamCleanupOrRefine(
         // current cleaned text and re-treat the instruction as a
         // fresh ask. Document the regression possibility in the
         // prompt itself by labeling the prior output.
-        systemPrompt = PromptBuilder.referenceAwareSystem
+        // The reference-aware prompt is its own self-contained system
+        // message, but we still want the user's custom-dictionary
+        // canonical-spelling hints — exactly the turn where on-screen
+        // product / jargon context is most likely to come up. Append
+        // the dictionary hint when non-empty so the LLM can bias toward
+        // the user's preferred spellings on reference-aware turns too.
+        let dictHint = SystemPrompts.dictionaryHint(dictionary: customDictionary)
+        systemPrompt = dictHint.isEmpty
+            ? PromptBuilder.referenceAwareSystem
+            : PromptBuilder.referenceAwareSystem + "\n\n" + dictHint
         var firstTurn = PromptBuilder.buildFirstTurnMessage(
             references: references,
             destination: pasteDestinationLabel,
@@ -1558,7 +1572,23 @@ private func streamCleanupOrRefine(
         }
         return CleanupOutcome(text: final, failureMessage: nil)
     } catch {
-        let logLine = "[parleq] LLM \(asRefine ? "refine" : "cleanup") stream failed: \(error). Using fallback text.\n"
+        // Log the error SHAPE but strip any HTTP response body the
+        // provider's LLMError cases would otherwise carry into
+        // ~/.parleq/app.log. `LLMError.logSafeDescription` covers all
+        // five cases (.badStatus, .malformedResponse, .requestFailed,
+        // .missingAPIKey, …) — BedrockBearerProvider in particular
+        // embeds up to 400 chars of body preview in .malformedResponse
+        // detail strings, which would otherwise persist unredacted on
+        // disk. The full descriptive error still reaches the user via
+        // the cleanupFailureMessage path below; only the on-disk log
+        // is sanitized.
+        let logSafeDescription: String
+        if let llmError = error as? LLMError {
+            logSafeDescription = llmError.logSafeDescription
+        } else {
+            logSafeDescription = String(describing: error)
+        }
+        let logLine = "[parleq] LLM \(asRefine ? "refine" : "cleanup") stream failed: \(logSafeDescription). Using fallback text.\n"
         FileHandle.standardError.write(logLine.data(using: .utf8) ?? Data())
         // Build a user-facing recovery hint: prefer the provider's
         // own `cleanupFailureHint` (auth-mode-aware, points the user

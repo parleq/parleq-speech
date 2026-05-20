@@ -30,12 +30,31 @@ import Foundation
 /// `max_completion_tokens` instead of `max_tokens`, and no
 /// `temperature` key in the request body.
 ///
-/// The check is exact-match against the canonical lowercase IDs for
-/// the five currently-released o-series models. New o-series releases
-/// should be added here and to the model option lists in SettingsWindow.
-internal func isOpenAIReasoningModel(_ model: String) -> Bool {
+/// Detection is prefix-aware rather than exact-match so dated
+/// snapshot IDs entered via the Custom… route (e.g. "o1-2024-12-17",
+/// "o4-mini-2025-04-16") route through the reasoning parameter shape
+/// instead of falling through to the standard shape and causing a 400.
+/// Pattern: exact match OR `prefix-` pattern (e.g. "o1" matches
+/// "o1" and "o1-2024-12-17"; "o4-mini" matches "o4-mini" and
+/// "o4-mini-2025-04-16").
+public func isOpenAIReasoningModel(_ model: String) -> Bool {
     let m = model.lowercased()
-    return m == "o1" || m == "o1-mini"
-        || m == "o3" || m == "o3-mini"
-        || m == "o4-mini"
+    // Enumerate all known o-series prefixes. Each entry is checked
+    // as an exact match ("o1") AND as a versioned-snapshot prefix
+    // ("o1-2024-12-17"). Add new o-series families here when released.
+    // Prefixes ordered longest-first as a readability convention, but
+    // ordering doesn't affect the result: the function returns Bool, so
+    // any matching prefix produces `true` regardless of which one hits
+    // first. The mini vs non-mini distinction (for vision capability)
+    // is resolved at call sites (e.g. AzureOpenAIProvider.supportsVision)
+    // not here. The prefix-aware match catches dated snapshot IDs such
+    // as "o1-2024-12-17" and "o4-mini-2025-04-16" that users enter
+    // via the Custom… route.
+    let prefixes = ["o1-mini", "o3-mini", "o4-mini", "o1", "o3"]
+    for prefix in prefixes {
+        if m == prefix || m.hasPrefix(prefix + "-") {
+            return true
+        }
+    }
+    return false
 }

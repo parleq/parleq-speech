@@ -376,8 +376,18 @@ extension ScreenCaptureKitReferenceCapture {
     /// into memory. captureMode is auto-detected from UTI:
     /// - image/* types → .image with the raw file bytes
     /// - PDF → .text via PDFKit text extraction
-    /// - everything else (text, source files, etc.) → .text (UTF-8)
-    /// Throws on unreadable files or unsupported types.
+    /// - recognized text formats → .text (UTF-8)
+    /// Throws on unreadable files or unsupported/disallowed types.
+    ///
+    /// The text-fallback path requires EITHER a specific safe UTType
+    /// (html, json, xml, yaml, delimitedText, sourceCode, shellScript,
+    /// propertyList) OR an explicit file extension from the curated
+    /// allowlist. The broad `.text` / `.plainText` supertype is NOT
+    /// accepted here because macOS assigns it to anything UTF-8
+    /// readable — including ~/.ssh/id_rsa, ~/.aws/credentials, and
+    /// other sensitive dotfiles. Extension-gating is the realistic
+    /// safety net; UTType conformance is the secondary check for
+    /// well-typed source files that carry the right UTI.
     public static func reference(forFileAt url: URL) throws -> Reference {
         let utType = try url.resourceValues(forKeys: [.contentTypeKey]).contentType
         let label = url.lastPathComponent
@@ -414,8 +424,74 @@ extension ScreenCaptureKitReferenceCapture {
             )
         }
 
-        // Fallback: treat as text. Reads as UTF-8; if that fails,
-        // surfaces the underlying error.
+        // Text fallback: require either a specific safe UTType OR a
+        // recognized text-file extension. The broad .plainText / .text
+        // supertypes are intentionally excluded — they match anything
+        // UTF-8 readable, including SSH keys, credential files, and
+        // dotfiles with no extension.
+        let safeRichTextTypes: [UTType] = [
+            .html, .json, .xml, .yaml, .propertyList,
+            .delimitedText, .sourceCode, .shellScript,
+        ]
+        // Files with an explicit extension in this set are allowed even
+        // when macOS assigns a generic UTType. No-extension files (id_rsa,
+        // credentials, etc.) are rejected by the empty-extension guard.
+        let safeTextExtensions: Set<String> = [
+            "txt", "md", "markdown", "rst", "org", "adoc",
+            "json", "jsonc", "yaml", "yml", "toml",
+            "xml", "html", "htm",
+            "csv", "tsv",
+            "swift", "py", "rs", "go", "js", "ts", "jsx", "tsx",
+            "java", "kt", "c", "cpp", "cc", "h", "hpp", "m", "mm",
+            "sh", "bash", "zsh", "fish",
+            "log", "diff", "patch",
+            "plist", "strings",
+        ]
+        let isRichText = safeRichTextTypes.contains { utType?.conforms(to: $0) == true }
+        let ext = url.pathExtension.lowercased()
+        let isAllowedTextExt = !ext.isEmpty && safeTextExtensions.contains(ext)
+        guard isRichText || isAllowedTextExt else {
+            throw NSError(
+                domain: "ParleqReferenceCapture",
+                code: 1001,
+                userInfo: [NSLocalizedDescriptionKey:
+                    "File type not allowed as a reference. Drag images, PDFs, " +
+                    "or recognized text formats (txt, md, json, source code, etc.)."]
+            )
+        }
+
+        // Symlink re-check: if the URL leaf is a symlink, the resolved
+        // target must ALSO pass the same allowlist. Without this, a symlink
+        // named "notes.txt" pointing to "~/.ssh/id_rsa" passes the extension
+        // check above (URL inspects the symlink's own name, not the target)
+        // and String(contentsOf:) silently follows the symlink and reads the
+        // target's bytes. Narrow defense: catches benign-extension symlinks
+        // pointing to non-allowlisted targets; does NOT catch the case where
+        // an attacker crafts a symlink whose target also has a matching
+        // extension (e.g. notes.txt → secrets.txt). We use isSymbolicLinkKey
+        // rather than `resolved != url` because resolvingSymlinksInPath()
+        // also normalizes parent-directory symlinks like /tmp → /private/tmp,
+        // which would fire on almost every temp-directory drop without
+        // catching any actual attack.
+        let isSymlink = (try? url.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) ?? false
+        if isSymlink {
+            let resolved = url.resolvingSymlinksInPath()
+            let resolvedType = try? resolved.resourceValues(forKeys: [.contentTypeKey]).contentType
+            let resolvedExt = resolved.pathExtension.lowercased()
+            let resolvedIsImage = resolvedType?.conforms(to: .image) == true
+            let resolvedIsPDF = resolvedType?.conforms(to: .pdf) == true
+            let resolvedIsRichText = safeRichTextTypes.contains { resolvedType?.conforms(to: $0) == true }
+            let resolvedIsAllowedTextExt = !resolvedExt.isEmpty && safeTextExtensions.contains(resolvedExt)
+            guard resolvedIsImage || resolvedIsPDF || resolvedIsRichText || resolvedIsAllowedTextExt else {
+                throw NSError(
+                    domain: "ParleqReferenceCapture",
+                    code: 1001,
+                    userInfo: [NSLocalizedDescriptionKey:
+                        "Symlink target file type not allowed as a reference."]
+                )
+            }
+        }
+
         let text = try String(contentsOf: url, encoding: .utf8)
         return Reference(
             id: UUID(),

@@ -173,7 +173,6 @@ final class LLMProviderCapabilityTests: XCTestCase {
     func test_azure_gpt_4o_supports_vision() {
         let provider = AzureOpenAIProvider(
             model: "gpt-4o",
-            family: .standard,
             resource: "test-resource",
             deployment: "test-deployment",
             apiVersion: "2024-08-01-preview"
@@ -184,12 +183,35 @@ final class LLMProviderCapabilityTests: XCTestCase {
     func test_azure_gpt_4o_mini_supports_vision() {
         let provider = AzureOpenAIProvider(
             model: "gpt-4o-mini",
-            family: .standard,
             resource: "test-resource",
             deployment: "test-deployment",
             apiVersion: "2024-08-01-preview"
         )
         XCTAssertTrue(provider.supportsVision, "GPT-4o-mini on Azure should support vision")
+    }
+
+    func test_azure_gpt_4o_dated_snapshot_supports_vision() {
+        // Dated snapshots like "gpt-4o-2024-11-20" enterable via Custom…
+        // must keep vision capability.
+        let provider = AzureOpenAIProvider(
+            model: "gpt-4o-2024-11-20",
+            resource: "test-resource",
+            deployment: "test-deployment",
+            apiVersion: "2024-12-01-preview"
+        )
+        XCTAssertTrue(provider.supportsVision, "Dated gpt-4o snapshot must report vision")
+    }
+
+    func test_azure_gpt_4o_audio_preview_is_text_only() {
+        // The gpt-4o-audio-preview variant shares the gpt-4o prefix but
+        // does NOT accept image inputs through Chat Completions.
+        let provider = AzureOpenAIProvider(
+            model: "gpt-4o-audio-preview",
+            resource: "test-resource",
+            deployment: "test-deployment",
+            apiVersion: "2024-12-01-preview"
+        )
+        XCTAssertFalse(provider.supportsVision, "gpt-4o-audio-preview is voice I/O, no images")
     }
 
     // gpt-4-turbo test removed: the SKU was dropped from the curated
@@ -202,7 +224,6 @@ final class LLMProviderCapabilityTests: XCTestCase {
     func test_azure_gpt_4_1_supports_vision() {
         let provider = AzureOpenAIProvider(
             model: "gpt-4.1",
-            family: .standard,
             resource: "test-resource",
             deployment: "test-deployment",
             apiVersion: "2025-01-01-preview"
@@ -213,7 +234,6 @@ final class LLMProviderCapabilityTests: XCTestCase {
     func test_azure_gpt_4_1_mini_supports_vision() {
         let provider = AzureOpenAIProvider(
             model: "gpt-4.1-mini",
-            family: .standard,
             resource: "test-resource",
             deployment: "test-deployment",
             apiVersion: "2025-01-01-preview"
@@ -224,7 +244,6 @@ final class LLMProviderCapabilityTests: XCTestCase {
     func test_azure_gpt_4_1_nano_is_text_only() {
         let provider = AzureOpenAIProvider(
             model: "gpt-4.1-nano",
-            family: .standard,
             resource: "test-resource",
             deployment: "test-deployment",
             apiVersion: "2025-01-01-preview"
@@ -237,7 +256,6 @@ final class LLMProviderCapabilityTests: XCTestCase {
     func test_azure_o1_supports_vision() {
         let provider = AzureOpenAIProvider(
             model: "o1",
-            family: .reasoning,
             resource: "test-resource",
             deployment: "test-deployment",
             apiVersion: "2024-12-01-preview"
@@ -248,7 +266,6 @@ final class LLMProviderCapabilityTests: XCTestCase {
     func test_azure_o1_mini_is_text_only() {
         let provider = AzureOpenAIProvider(
             model: "o1-mini",
-            family: .reasoning,
             resource: "test-resource",
             deployment: "test-deployment",
             apiVersion: "2024-12-01-preview"
@@ -259,7 +276,6 @@ final class LLMProviderCapabilityTests: XCTestCase {
     func test_azure_o3_supports_vision() {
         let provider = AzureOpenAIProvider(
             model: "o3",
-            family: .reasoning,
             resource: "test-resource",
             deployment: "test-deployment",
             apiVersion: "2025-01-01-preview"
@@ -270,7 +286,6 @@ final class LLMProviderCapabilityTests: XCTestCase {
     func test_azure_o3_mini_is_text_only() {
         let provider = AzureOpenAIProvider(
             model: "o3-mini",
-            family: .reasoning,
             resource: "test-resource",
             deployment: "test-deployment",
             apiVersion: "2025-01-01-preview"
@@ -281,12 +296,45 @@ final class LLMProviderCapabilityTests: XCTestCase {
     func test_azure_o4_mini_supports_vision() {
         let provider = AzureOpenAIProvider(
             model: "o4-mini",
-            family: .reasoning,
             resource: "test-resource",
             deployment: "test-deployment",
             apiVersion: "2025-04-01-preview"
         )
         XCTAssertTrue(provider.supportsVision, "o4-mini on Azure should support vision")
+    }
+
+    // MARK: - AzureOpenAIProvider — family auto-detection from model name
+
+    /// M2 fix: buildRequestBody must use max_completion_tokens for
+    /// o4-mini regardless of any stored Family value. The old code
+    /// consulted `self.family`; the fixed code calls
+    /// isOpenAIReasoningModel(model) directly so each tier (cleanup +
+    /// context) gets the correct parameter shape independently.
+    func test_azure_o4_mini_request_body_uses_max_completion_tokens() {
+        // Construct with the new family-free init to exercise the fixed path.
+        let provider = AzureOpenAIProvider(
+            model: "o4-mini",
+            resource: "test-resource",
+            deployment: "test-deployment",
+            apiVersion: "2025-04-01-preview"
+        )
+        // isOpenAIReasoningModel must return true for o4-mini so the
+        // provider sends max_completion_tokens instead of max_tokens.
+        XCTAssertTrue(isOpenAIReasoningModel(provider.model),
+            "o4-mini must be detected as a reasoning model for correct request-body shape")
+    }
+
+    func test_azure_gpt4o_mini_request_body_uses_max_tokens() {
+        let provider = AzureOpenAIProvider(
+            model: "gpt-4o-mini",
+            resource: "test-resource",
+            deployment: "test-deployment",
+            apiVersion: "2024-08-01-preview"
+        )
+        // isOpenAIReasoningModel must return false for gpt-4o-mini so
+        // the provider sends max_tokens + temperature (standard shape).
+        XCTAssertFalse(isOpenAIReasoningModel(provider.model),
+            "gpt-4o-mini must not be detected as a reasoning model")
     }
 
     // MARK: - OpenAIProvider (api.openai.com direct)
@@ -346,5 +394,47 @@ final class LLMProviderCapabilityTests: XCTestCase {
     func test_openai_o4_mini_supports_vision() {
         let provider = OpenAIProvider(model: "o4-mini")
         XCTAssertTrue(provider.supportsVision, "o4-mini on OpenAI direct should support vision")
+    }
+
+    // MARK: - Dated snapshot IDs (prefix-aware detection)
+
+    func test_openai_o1_dated_snapshot_is_reasoning() {
+        // Dated snapshots entered via Custom… must route to reasoning
+        // parameter shape (max_completion_tokens, no temperature).
+        XCTAssertTrue(isOpenAIReasoningModel("o1-2024-12-17"),
+            "Dated o1 snapshot should be detected as reasoning model")
+    }
+
+    func test_openai_o4_mini_dated_snapshot_is_reasoning() {
+        XCTAssertTrue(isOpenAIReasoningModel("o4-mini-2025-04-16"),
+            "Dated o4-mini snapshot should be detected as reasoning model")
+    }
+
+    func test_openai_o1_mini_dated_snapshot_is_reasoning() {
+        XCTAssertTrue(isOpenAIReasoningModel("o1-mini-2024-09-12"),
+            "Dated o1-mini snapshot should be detected as reasoning model")
+    }
+
+    func test_openai_o1_mini_dated_snapshot_is_text_only() {
+        // o1-mini is text-only regardless of snapshot date.
+        let provider = OpenAIProvider(model: "o1-mini-2024-09-12")
+        XCTAssertFalse(provider.supportsVision,
+            "Dated o1-mini snapshot should be text-only (no vision)")
+    }
+
+    // MARK: - gpt-4o allowlist (audio/realtime variants excluded)
+
+    func test_openai_gpt_4o_audio_preview_not_vision() {
+        // gpt-4o-audio-preview matches "gpt-4o" by substring but does
+        // NOT accept image inputs through Chat Completions.
+        let provider = OpenAIProvider(model: "gpt-4o-audio-preview")
+        XCTAssertFalse(provider.supportsVision,
+            "gpt-4o-audio-preview must not claim vision support")
+    }
+
+    func test_openai_gpt_4o_realtime_preview_not_vision() {
+        let provider = OpenAIProvider(model: "gpt-4o-realtime-preview")
+        XCTAssertFalse(provider.supportsVision,
+            "gpt-4o-realtime-preview must not claim vision support")
     }
 }

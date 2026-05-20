@@ -132,13 +132,24 @@ with macOS and require no separate attribution:
 
 - **AVFoundation** — microphone capture and audio conversion
 - **AppKit / SwiftUI** — overlay panel, menu bar, Settings window
+- **Combine** — reactive state in `PasteTargetTracker` and the
+  overlay's reference / model badge surfaces
 - **CoreGraphics** — `CGEventTap` for the global hotkey listener
+  and the hold-pick click interception
+- **CoreVideo** — `CVPixelBuffer` handling in the reference-window
+  capture pipeline
 - **AudioToolbox** / **CoreAudio** — input device routing (built-in
   mic preference when the system default is Bluetooth)
-- **Security** — Keychain (`kSecClassGenericPassword`) for the
-  Gemini API key
+- **PDFKit** — PDF text extraction for file-picker references
+- **ScreenCaptureKit** — window thumbnail and frame capture for
+  reference context (with Screen Recording permission)
+- **Security** — Keychain (`kSecClassGenericPassword`) for each
+  provider's credentials
 - **ServiceManagement** — login-item registration (when launch-on-
   login is enabled in Settings)
+- **UniformTypeIdentifiers** — file-type detection for the
+  reference file picker + drag-and-drop
+- **Vision** — `VNRecognizeTextRequest` OCR on captured window frames
 
 ---
 

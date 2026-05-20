@@ -143,12 +143,6 @@ private final class WizardModel: ObservableObject {
     /// "apiKey" (default) or "azureAd". Drives whether the wizard's
     /// Azure step shows the key-paste field or the `az login` blurb.
     @Published var pendingAzureAuthMode = "apiKey"
-    /// "standard" (gpt-4o family, default) or "reasoning" (gpt-5,
-    /// o-series). Drives the request-shape branching in
-    /// `AzureOpenAIProvider.buildRequestBody`. Azure routes by
-    /// deployment name, not model name, so this has to be declared
-    /// rather than inferred.
-    @Published var pendingAzureFamily = "standard"
     @Published var pendingVertexProject = ""
     @Published var pendingVertexRegion = "us-central1"
     /// "adc" (default) or "serviceAccount". Drives whether the
@@ -223,8 +217,6 @@ private final class WizardModel: ObservableObject {
             c.azureDeployment = pendingAzureDeployment.trimmingCharacters(in: .whitespacesAndNewlines)
             c.azureAuthMode = ["apiKey", "azureAd"].contains(pendingAzureAuthMode)
                 ? pendingAzureAuthMode : "apiKey"
-            c.azureFamily = ["standard", "reasoning"].contains(pendingAzureFamily)
-                ? pendingAzureFamily : "standard"
         default:
             break
         }
@@ -804,18 +796,7 @@ private struct ConfigureProviderStep: View {
                     .textFieldStyle(.roundedBorder)
                     .frame(maxWidth: 280)
             }
-            HStack {
-                Text("Family:")
-                    .frame(width: 90, alignment: .trailing)
-                Picker("", selection: $model.pendingAzureFamily) {
-                    Text("Standard (gpt-4o, gpt-4)").tag("standard")
-                    Text("Reasoning (gpt-5, o-series)").tag("reasoning")
-                }
-                .labelsHidden()
-                .pickerStyle(.menu)
-                .frame(maxWidth: 280, alignment: .leading)
-            }
-            Text("Azure routes by deployment name; Parleq needs to know whether the underlying model is a reasoning model so it can build the correct request shape (`max_completion_tokens` vs `max_tokens`).")
+            Text("Azure routes by deployment name. Parleq auto-detects the model family (standard vs. reasoning) from the model name, so `max_completion_tokens` vs `max_tokens` is handled automatically.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

@@ -20,7 +20,7 @@ const highlights = [
   },
   {
     title: 'Use the AI you already have',
-    body: 'Plug in whichever AI provider fits your situation: Google Gemini for personal use, AWS Bedrock (Claude or GPT-OSS) for an AWS shop, Google Vertex AI for a GCP shop, or Azure OpenAI for a Microsoft shop. Or skip cleanup entirely and paste the raw transcript. Each provider works with both pasted API keys and the same sign-in your other tools use — gcloud, az login, AWS SSO, IAM keys, or scoped Bedrock API keys.',
+    body: 'Plug in whichever AI provider fits your situation: Google Gemini or OpenAI direct for personal use, AWS Bedrock (Claude or GPT-OSS) for an AWS shop, Google Vertex AI for a GCP shop, or Azure OpenAI for a Microsoft shop. Or skip cleanup entirely and paste the raw transcript. Each provider works with both pasted API keys and the same sign-in your other tools use — gcloud, az login, AWS SSO, IAM keys, or scoped Bedrock API keys.',
   },
   {
     title: 'Teach it the words it gets wrong',
@@ -29,6 +29,10 @@ const highlights = [
   {
     title: 'Pastes where you started, not where you ended',
     body: 'The app you were in when you pressed the hotkey is captured at that moment. If your attention drifts mid-dictation, the cleaned text still lands in the right window. Per-app overrides skip the trailing space for terminals and other apps that handle their own spacing.',
+  },
+  {
+    title: 'Reference Windows',
+    body: 'Attach a window, file, or clipboard snapshot as context before dictating. The LLM sees what you\'re looking at — a ticket, an email, a diff — so your spoken words land with the right specificity. Window captures are PNG-in-memory only: never written to disk, released when the session ends, sent only to your configured LLM endpoint.',
   },
   {
     title: 'Compliance-friendly by default',
@@ -281,7 +285,7 @@ const highlights = [
         </li>
         <li class="flex gap-4">
           <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums">3.</span>
-          <div>Launch from Applications. Grant <strong class="font-semibold text-[color:var(--color-text)]">Microphone</strong> + <strong class="font-semibold text-[color:var(--color-text)]">Accessibility</strong> permissions on first launch.</div>
+          <div>Launch from Applications. Grant <strong class="font-semibold text-[color:var(--color-text)]">Microphone</strong> + <strong class="font-semibold text-[color:var(--color-text)]">Accessibility</strong> permissions on first launch. <strong class="font-semibold text-[color:var(--color-text)]">Screen Recording</strong> is requested lazily the first time you use Reference Windows — not at startup.</div>
         </li>
         <li class="flex gap-4">
           <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums">4.</span>

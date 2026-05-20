@@ -155,3 +155,42 @@ public protocol LLMProvider: Sendable {
 extension LLMProvider {
     func cleanupFailureHint(for error: LLMError) -> String? { nil }
 }
+
+extension LLMError {
+    /// Description suitable for ~/.parleq/app.log — strips API
+    /// response bodies that could contain account metadata, request
+    /// IDs, or other context that shouldn't persist on disk.
+    ///
+    /// Use this from any code path that writes errors to the disk
+    /// log. User-facing surfaces (overlays, notifications) can still
+    /// show the full `description` since they are memory-only.
+    ///
+    /// BedrockBearerProvider embeds up to 400 chars of response body
+    /// in `.malformedResponse` detail strings (e.g. "Body preview:
+    /// …"). The aggressive truncation here (100 chars) strips that.
+    public var logSafeDescription: String {
+        switch self {
+        case .missingAPIKey:
+            return "LLMError.missingAPIKey"
+        case .missingCredentials(let detail):
+            // Credential detail strings are user-authored (key names,
+            // command hints) — safe to log in full.
+            return "LLMError.missingCredentials(\(detail))"
+        case .badStatus(let code, _):
+            // Strip the body — it can contain request IDs, account
+            // metadata, and provider-specific context strings.
+            return "LLMError.badStatus(\(code), <body redacted>)"
+        case .malformedResponse(let detail):
+            // Some providers embed response-body previews in this
+            // detail (BedrockBearerProvider does via "Body preview: …").
+            // Truncate aggressively to prevent body content from reaching
+            // the disk log even through this indirect path.
+            let truncated = String(detail.prefix(100))
+            return "LLMError.malformedResponse(\(truncated))"
+        case .requestFailed(let underlying):
+            // The underlying error is a URLSession/network error —
+            // safe to log (no response body embedded here).
+            return "LLMError.requestFailed(\(String(describing: underlying)))"
+        }
+    }
+}
