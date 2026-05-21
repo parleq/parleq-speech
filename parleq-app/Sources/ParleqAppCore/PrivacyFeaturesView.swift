@@ -51,7 +51,8 @@ struct PrivacyFeaturesSectionContent: View {
                     title: "Custom dictionary",
                     description: "When off, Parleq ignores your custom-dictionary entries when building the LLM cleanup prompt. Your entries are preserved — turning this back on restores them. Turn off to ensure no custom terms are sent to the LLM.",
                     isOn: featureToggleBinding(mdmKey: "customDictionaryEnabled",
-                                              realKeyPath: \.customDictionaryEnabled)
+                                              realKeyPath: \.customDictionaryEnabled),
+                    mdmKey: "customDictionaryEnabled"
                 )
                 .disabled(model.managedKeys.contains("customDictionaryEnabled"))
             }
@@ -62,7 +63,8 @@ struct PrivacyFeaturesSectionContent: View {
                     title: "Custom model picker",
                     description: "When off, the \u{201C}Custom\u{2026}\u{201D} entry is removed from every provider's model dropdown. An already-saved custom model ID continues to work — this only prevents entering new ones.",
                     isOn: featureToggleBinding(mdmKey: "customModelEntryEnabled",
-                                              realKeyPath: \.customModelEntryEnabled)
+                                              realKeyPath: \.customModelEntryEnabled),
+                    mdmKey: "customModelEntryEnabled"
                 )
                 .disabled(model.managedKeys.contains("customModelEntryEnabled"))
             }
@@ -90,7 +92,8 @@ struct PrivacyFeaturesSectionContent: View {
                     title: "Reference windows",
                     description: "Master switch for the entire Reference Windows feature. When off, the reference-attach button, chip strip, and drag-drop zone are hidden. Sub-toggles below become moot but are preserved for when you re-enable.",
                     isOn: featureToggleBinding(mdmKey: "referenceWindowsEnabled",
-                                              realKeyPath: \.referenceWindowsEnabled)
+                                              realKeyPath: \.referenceWindowsEnabled),
+                    mdmKey: "referenceWindowsEnabled"
                 )
                 .disabled(model.managedKeys.contains("referenceWindowsEnabled"))
 
@@ -103,7 +106,8 @@ struct PrivacyFeaturesSectionContent: View {
                         title: "Clipboard as reference",
                         description: "When off, the \u{201C}Add from clipboard\u{201D} item is removed from the overlay\u{2019}s + menu.",
                         isOn: featureToggleBinding(mdmKey: "clipboardReferenceEnabled",
-                                                   realKeyPath: \.clipboardReferenceEnabled)
+                                                   realKeyPath: \.clipboardReferenceEnabled),
+                        mdmKey: "clipboardReferenceEnabled"
                     )
                     .disabled(parentOff || model.managedKeys.contains("clipboardReferenceEnabled"))
                     .opacity(parentOff ? 0.5 : 1)
@@ -112,7 +116,8 @@ struct PrivacyFeaturesSectionContent: View {
                         title: "Image-mode references",
                         description: "When off, the T / \u{1F441} mode toggle is removed from every reference chip, and captured references always use text-mode (OCR). Prevents screenshots from being sent to the LLM.",
                         isOn: featureToggleBinding(mdmKey: "imageReferenceEnabled",
-                                                   realKeyPath: \.imageReferenceEnabled)
+                                                   realKeyPath: \.imageReferenceEnabled),
+                        mdmKey: "imageReferenceEnabled"
                     )
                     .disabled(parentOff || model.managedKeys.contains("imageReferenceEnabled"))
                     .opacity(parentOff ? 0.5 : 1)
@@ -121,7 +126,8 @@ struct PrivacyFeaturesSectionContent: View {
                         title: "File references (picker + drag-drop)",
                         description: "When off, the \u{201C}Add file\u{2026}\u{201D} picker item and the overlay\u{2019}s drag-drop affordance are hidden. Window-capture and clipboard references remain available.",
                         isOn: featureToggleBinding(mdmKey: "fileReferenceEnabled",
-                                                   realKeyPath: \.fileReferenceEnabled)
+                                                   realKeyPath: \.fileReferenceEnabled),
+                        mdmKey: "fileReferenceEnabled"
                     )
                     .disabled(parentOff || model.managedKeys.contains("fileReferenceEnabled"))
                     .opacity(parentOff ? 0.5 : 1)
@@ -133,14 +139,18 @@ struct PrivacyFeaturesSectionContent: View {
 
     // MARK: - Helpers
 
-    /// One toggle row: title + description on the left, toggle on the
-    /// right. Matches the visual density of other Settings cards.
+    /// One toggle row: title + description on the left, toggle + lock
+    /// indicator on the right. The lock icon appears when `mdmKey` is
+    /// in `model.managedKeys`; the toggle is disabled by the caller via
+    /// `.disabled(...)`.
     @ViewBuilder
     private func featureToggleRow(
         title: String,
         description: String,
-        isOn: Binding<Bool>
+        isOn: Binding<Bool>,
+        mdmKey: String? = nil
     ) -> some View {
+        let isManaged = mdmKey.map { model.managedKeys.contains($0) } ?? false
         HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
@@ -149,11 +159,19 @@ struct PrivacyFeaturesSectionContent: View {
                     .font(.system(size: 12))
                     .foregroundStyle(Color(NSColor.secondaryLabelColor))
                     .fixedSize(horizontal: false, vertical: true)
+                // Always-visible "Managed by your organization." caption so
+                // the lock affordance is consistent with the picker rows
+                // (where ManagedCaption sits below the picker). Discoverable
+                // without requiring a hover on the lock icon.
+                ManagedCaption(isManaged: isManaged)
             }
             Spacer(minLength: 8)
-            Toggle("", isOn: isOn)
-                .labelsHidden()
-                .toggleStyle(.switch)
+            HStack(spacing: 6) {
+                ManagedIndicator(isManaged: isManaged)
+                Toggle("", isOn: isOn)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+            }
         }
     }
 

@@ -46,13 +46,15 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
 
     <!-- Supported keys table -->
     <h2 class="mt-12 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
-      Supported keys (Phase 5)
+      Supported keys
     </h2>
     <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      The table below lists the keys Parleq accepts in Phase 5. All are Boolean. The default value (used when the key is absent) is <strong class="text-[color:var(--color-text)]">true</strong> &mdash; all features on, which is what individual users get without any MDM profile.
+      Parleq accepts two categories of managed keys: <strong class="text-[color:var(--color-text)]">feature toggles</strong> (Boolean, default <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">true</code>) and <strong class="text-[color:var(--color-text)]">provider/model lockdown</strong> (String or [String]).
     </p>
 
-    <div class="mt-6 overflow-x-auto rounded-xl border border-[color:var(--color-border)]">
+    <h3 class="mt-8 font-display text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Feature toggles</h3>
+
+    <div class="mt-4 overflow-x-auto rounded-xl border border-[color:var(--color-border)]">
       <table class="w-full text-[14px] text-[color:var(--color-text-muted)]">
         <thead class="border-b border-[color:var(--color-border)] bg-[color:var(--color-surface)]">
           <tr>
@@ -103,10 +105,76 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
             <td class="px-4 py-3 font-mono text-[13px] text-[color:var(--color-text)]">autoUpdateEnabled</td>
             <td class="px-4 py-3">Boolean</td>
             <td class="px-4 py-3">true</td>
-            <td class="px-4 py-3">Disables Sparkle&rsquo;s automatic appcast checks. The &ldquo;Automatically check for updates&rdquo; toggle in Settings is disabled and shows &ldquo;Managed by your organization.&rdquo; The manual &ldquo;Check for Updates Now&rdquo; button remains functional.</td>
+            <td class="px-4 py-3">Disables Sparkle&rsquo;s automatic appcast checks. The &ldquo;Automatically check for updates&rdquo; toggle in Settings is disabled and shows a lock icon with &ldquo;Managed by your organization.&rdquo; The manual &ldquo;Check for Updates Now&rdquo; button remains functional.</td>
           </tr>
         </tbody>
       </table>
+    </div>
+
+    <!-- Provider / model lockdown keys -->
+    <h3 class="mt-10 font-display text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Provider and model lockdown</h3>
+    <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      These keys restrict which LLM providers and models users can pick. Parleq has two tiers &mdash; <strong class="text-[color:var(--color-text)]">Cleanup</strong> (used for normal dictation) and <strong class="text-[color:var(--color-text)]">Context</strong> (used when references are attached) &mdash; and each tier has an independent set of keys.
+    </p>
+
+    <div class="mt-6 overflow-x-auto rounded-xl border border-[color:var(--color-border)]">
+      <table class="w-full text-[14px] text-[color:var(--color-text-muted)]">
+        <thead class="border-b border-[color:var(--color-border)] bg-[color:var(--color-surface)]">
+          <tr>
+            <th class="px-4 py-3 text-left font-semibold text-[color:var(--color-text)]">Key</th>
+            <th class="px-4 py-3 text-left font-semibold text-[color:var(--color-text)]">Type</th>
+            <th class="px-4 py-3 text-left font-semibold text-[color:var(--color-text)]">Behavior</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-[color:var(--color-border)]">
+          <tr class="bg-[color:var(--color-bg)]">
+            <td class="px-4 py-3 font-mono text-[13px] text-[color:var(--color-text)]">cleanupProvider</td>
+            <td class="px-4 py-3 font-mono text-[13px]">String</td>
+            <td class="px-4 py-3"><strong class="text-[color:var(--color-text)]">Pin.</strong> Forces a single provider. The picker is disabled and shows only this value. Valid values: <code class="font-mono text-[12px]">gemini</code>, <code class="font-mono text-[12px]">vertex</code>, <code class="font-mono text-[12px]">bedrock</code>, <code class="font-mono text-[12px]">bedrock-bearer</code>, <code class="font-mono text-[12px]">azure</code>, <code class="font-mono text-[12px]">openai</code>.</td>
+          </tr>
+          <tr class="bg-[color:var(--color-surface)]">
+            <td class="px-4 py-3 font-mono text-[13px] text-[color:var(--color-text)]">cleanupAllowedProviders</td>
+            <td class="px-4 py-3 font-mono text-[13px]">[String]</td>
+            <td class="px-4 py-3"><strong class="text-[color:var(--color-text)]">Allowlist.</strong> Restricts the picker to a subset of providers; the user can still choose among them. A lock icon indicates the restriction. If the user&rsquo;s stored provider is not in the allowed list, it resets to the first entry.</td>
+          </tr>
+          <tr class="bg-[color:var(--color-bg)]">
+            <td class="px-4 py-3 font-mono text-[13px] text-[color:var(--color-text)]">cleanupModel</td>
+            <td class="px-4 py-3 font-mono text-[13px]">String</td>
+            <td class="px-4 py-3"><strong class="text-[color:var(--color-text)]">Pin.</strong> Forces a single model. The model picker is disabled.</td>
+          </tr>
+          <tr class="bg-[color:var(--color-surface)]">
+            <td class="px-4 py-3 font-mono text-[13px] text-[color:var(--color-text)]">cleanupAllowedModels</td>
+            <td class="px-4 py-3 font-mono text-[13px]">[String]</td>
+            <td class="px-4 py-3"><strong class="text-[color:var(--color-text)]">Allowlist.</strong> Restricts the model picker to a subset. &ldquo;Custom&hellip;&rdquo; is also hidden when this is set (even if <code class="font-mono text-[12px]">customModelEntryEnabled</code> is true). If the stored model is not in the allowed list, it resets to the first entry.</td>
+          </tr>
+          <tr class="bg-[color:var(--color-bg)]">
+            <td class="px-4 py-3 font-mono text-[13px] text-[color:var(--color-text)]">contextProvider</td>
+            <td class="px-4 py-3 font-mono text-[13px]">String</td>
+            <td class="px-4 py-3">Same as <code class="font-mono text-[12px]">cleanupProvider</code>, applied to the Context tier.</td>
+          </tr>
+          <tr class="bg-[color:var(--color-surface)]">
+            <td class="px-4 py-3 font-mono text-[13px] text-[color:var(--color-text)]">contextAllowedProviders</td>
+            <td class="px-4 py-3 font-mono text-[13px]">[String]</td>
+            <td class="px-4 py-3">Same as <code class="font-mono text-[12px]">cleanupAllowedProviders</code>, applied to the Context tier.</td>
+          </tr>
+          <tr class="bg-[color:var(--color-bg)]">
+            <td class="px-4 py-3 font-mono text-[13px] text-[color:var(--color-text)]">contextModel</td>
+            <td class="px-4 py-3 font-mono text-[13px]">String</td>
+            <td class="px-4 py-3">Same as <code class="font-mono text-[12px]">cleanupModel</code>, applied to the Context tier.</td>
+          </tr>
+          <tr class="bg-[color:var(--color-surface)]">
+            <td class="px-4 py-3 font-mono text-[13px] text-[color:var(--color-text)]">contextAllowedModels</td>
+            <td class="px-4 py-3 font-mono text-[13px]">[String]</td>
+            <td class="px-4 py-3">Same as <code class="font-mono text-[12px]">cleanupAllowedModels</code>, applied to the Context tier.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="mt-6 rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5">
+      <p class="text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">
+        <strong class="text-[color:var(--color-text)]">Pin vs allowlist precedence:</strong> When both a pin key (<code class="font-mono text-[12px]">cleanupProvider</code>) and an allowlist key (<code class="font-mono text-[12px]">cleanupAllowedProviders</code>) are set for the same tier, the <strong class="text-[color:var(--color-text)]">pin wins</strong> &mdash; it is strictly more restrictive. The allowlist is effectively ignored because the picker is already disabled by the pin. The same rule applies to the model keys and to the context tier.
+      </p>
     </div>
 
     <!-- Sample .mobileconfig -->
@@ -137,46 +205,51 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
       &lt;key&gt;PayloadDisplayName&lt;/key&gt;
       &lt;string&gt;Parleq managed preferences&lt;/string&gt;
 
-      &lt;!-- Target bundle ID --&gt;
-      &lt;key&gt;PayloadApplicationID&lt;/key&gt;
-      &lt;string&gt;com.parleq.app&lt;/string&gt;
-
-      &lt;!-- Forced (user cannot override) --&gt;
-      &lt;key&gt;Forced&lt;/key&gt;
-      &lt;array&gt;
+      &lt;!-- mdmclient reads PayloadContent &rarr; bundle ID &rarr; Forced
+           &rarr; [mcx_preference_settings] and materializes the keys
+           into /Library/Managed Preferences/com.parleq.app.plist so
+           CFPreferencesAppValueIsForced returns true for each. --&gt;
+      &lt;key&gt;PayloadContent&lt;/key&gt;
+      &lt;dict&gt;
+        &lt;key&gt;com.parleq.app&lt;/key&gt;
         &lt;dict&gt;
-          &lt;key&gt;mcx_preference_settings&lt;/key&gt;
-          &lt;dict&gt;
-            &lt;!-- Allow reference windows --&gt;
-            &lt;key&gt;referenceWindowsEnabled&lt;/key&gt;
-            &lt;true/&gt;
+          &lt;key&gt;Forced&lt;/key&gt;
+          &lt;array&gt;
+            &lt;dict&gt;
+              &lt;key&gt;mcx_preference_settings&lt;/key&gt;
+              &lt;dict&gt;
+                &lt;!-- Allow reference windows --&gt;
+                &lt;key&gt;referenceWindowsEnabled&lt;/key&gt;
+                &lt;true/&gt;
 
-            &lt;!-- Allow clipboard references --&gt;
-            &lt;key&gt;clipboardReferenceEnabled&lt;/key&gt;
-            &lt;true/&gt;
+                &lt;!-- Allow clipboard references --&gt;
+                &lt;key&gt;clipboardReferenceEnabled&lt;/key&gt;
+                &lt;true/&gt;
 
-            &lt;!-- Disable image-mode (no screenshots to LLM) --&gt;
-            &lt;key&gt;imageReferenceEnabled&lt;/key&gt;
-            &lt;false/&gt;
+                &lt;!-- Disable image-mode (no screenshots to LLM) --&gt;
+                &lt;key&gt;imageReferenceEnabled&lt;/key&gt;
+                &lt;false/&gt;
 
-            &lt;!-- Disable file picker + drag-drop --&gt;
-            &lt;key&gt;fileReferenceEnabled&lt;/key&gt;
-            &lt;false/&gt;
+                &lt;!-- Disable file picker + drag-drop --&gt;
+                &lt;key&gt;fileReferenceEnabled&lt;/key&gt;
+                &lt;false/&gt;
 
-            &lt;!-- Allow custom dictionary --&gt;
-            &lt;key&gt;customDictionaryEnabled&lt;/key&gt;
-            &lt;true/&gt;
+                &lt;!-- Allow custom dictionary --&gt;
+                &lt;key&gt;customDictionaryEnabled&lt;/key&gt;
+                &lt;true/&gt;
 
-            &lt;!-- Restrict model picker to curated list --&gt;
-            &lt;key&gt;customModelEntryEnabled&lt;/key&gt;
-            &lt;false/&gt;
+                &lt;!-- Restrict model picker to curated list --&gt;
+                &lt;key&gt;customModelEntryEnabled&lt;/key&gt;
+                &lt;false/&gt;
 
-            &lt;!-- Manage auto-update centrally --&gt;
-            &lt;key&gt;autoUpdateEnabled&lt;/key&gt;
-            &lt;false/&gt;
-          &lt;/dict&gt;
+                &lt;!-- Manage auto-update centrally --&gt;
+                &lt;key&gt;autoUpdateEnabled&lt;/key&gt;
+                &lt;false/&gt;
+              &lt;/dict&gt;
+            &lt;/dict&gt;
+          &lt;/array&gt;
         &lt;/dict&gt;
-      &lt;/array&gt;
+      &lt;/dict&gt;
     &lt;/dict&gt;
   &lt;/array&gt;
 
@@ -248,7 +321,7 @@ defaults read com.parleq.app autoUpdateEnabled</code></pre>
       <pre class="text-[13px] text-[color:var(--color-text-muted)]"><code>sudo defaults read /Library/Managed\ Preferences/com.parleq.app</code></pre>
     </div>
     <p class="mt-4 text-[14px] leading-relaxed text-[color:var(--color-text-subtle)]">
-      A Compliance Audit menu item (Settings &rarr; Help &rarr; View Managed Configuration&hellip;) is planned for a future release and will show all managed keys, their effective values, and their source without needing Terminal access.
+      For verification without Terminal access, open the Parleq menu bar item and choose <strong class="text-[color:var(--color-text)]">View Managed Configuration&hellip;</strong>. The Compliance Audit dialog lists every managed-eligible key with its current effective value and source (Managed / User / Default), and includes a <em>Copy snapshot</em> button that places the full state as JSON on the clipboard so an IT admin can verify policy uptake without screen-sharing.
     </p>
 
     <!-- Local testing without an MDM -->
@@ -267,8 +340,20 @@ defaults read com.parleq.app autoUpdateEnabled</code></pre>
       <pre class="text-[13px] leading-[1.7] text-[color:var(--color-text-muted)] whitespace-pre overflow-x-auto"><code># 1. Create the directory if it doesn't exist
 sudo mkdir -p "/Library/Managed Preferences"
 
-# 2. Write the managed plist
-sudo defaults write "/Library/Managed Preferences/com.parleq.app" referenceWindowsEnabled -bool false
+# 2. Write the managed plist directly. Do NOT use `defaults write` here —
+#    its path-domain parser falls back to ~/Library/Preferences/ when the
+#    path contains multiple dots (com.parleq.app is three dots), so the
+#    file silently lands in the user domain instead of Managed.
+sudo tee "/Library/Managed Preferences/com.parleq.app.plist" &gt; /dev/null &lt;&lt;'EOF'
+&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"&gt;
+&lt;plist version="1.0"&gt;
+&lt;dict&gt;
+    &lt;key&gt;referenceWindowsEnabled&lt;/key&gt;
+    &lt;false/&gt;
+&lt;/dict&gt;
+&lt;/plist&gt;
+EOF
 
 # 3. Verify the file landed correctly
 sudo plutil -p "/Library/Managed Preferences/com.parleq.app.plist"
@@ -293,10 +378,9 @@ sudo killall cfprefsd
       Future schema additions
     </h2>
     <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      Phase 5 covers the seven feature-toggle keys above. Later phases will add:
+      The schema documented above &mdash; seven feature toggles plus the provider/model lockdown keys (cleanupProvider / cleanupAllowedProviders / cleanupModel / cleanupAllowedModels and their context-tier equivalents) &mdash; is what ships today. Future phases will add:
     </p>
     <ul class="mt-4 space-y-2 text-[16px] leading-relaxed text-[color:var(--color-text-muted)] list-disc list-inside">
-      <li>Provider and model lockdown (<code class="font-mono text-[13px]">cleanupProvider</code>, <code class="font-mono text-[13px]">cleanupAllowedModels</code>, and equivalents for the context tier)</li>
       <li>Authentication-mode restrictions (<code class="font-mono text-[13px]">azureAuthMode</code>, <code class="font-mono text-[13px]">bedrockAuthMode</code>, <code class="font-mono text-[13px]">staticApiKeysAllowed</code>)</li>
       <li>Sparkle managed feed URL (<code class="font-mono text-[13px]">sparkleUpdateFeedURL</code>) for corporate appcast hosting</li>
       <li>Operational policy (<code class="font-mono text-[13px]">loggingMode: "lengthOnly"</code>) for compliance-sensitive deployments</li>

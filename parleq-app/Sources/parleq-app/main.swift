@@ -359,11 +359,26 @@ struct ParleqApp {
             // via the UpdaterBox @unchecked-Sendable shim so menu /
             // settings closures can capture it without a Swift 6
             // strict-concurrency complaint.
+            // MDM autoUpdateEnabled enforcement: when an admin pushes
+            // autoUpdateEnabled=false we must apply the policy BEFORE
+            // Sparkle starts its background-check loop, otherwise the
+            // first periodic-check tick could fire between init and
+            // the policy assignment. We init the controller with
+            // startingUpdater:false, set automaticallyChecksForUpdates
+            // from MDM (or leave Sparkle's default for unmanaged),
+            // then start the updater manually. Manual menu-bar
+            // "Check for Updates..." still works either way — that
+            // path is independent of the automatic-checks setting.
+            let managedAutoUpdate = ManagedConfig.managedBool(forKey: "autoUpdateEnabled")
             let updaterController = SPUStandardUpdaterController(
-                startingUpdater: true,
+                startingUpdater: false,
                 updaterDelegate: nil,
                 userDriverDelegate: nil
             )
+            if let managed = managedAutoUpdate {
+                updaterController.updater.automaticallyChecksForUpdates = managed
+            }
+            updaterController.startUpdater()
             updaterBox.value = updaterController
             // Make the live updater visible to Settings → Updates so
             // its toggle reads the real `automaticallyChecksForUpdates`
@@ -375,6 +390,9 @@ struct ParleqApp {
             menuBar.onOpenWizard = { wizard.show() }
             menuBar.onCheckForUpdates = { [weak updaterController] in
                 updaterController?.checkForUpdates(nil)
+            }
+            menuBar.onViewManagedConfig = {
+                ManagedConfigAuditWindowController.shared.show()
             }
 
             // Microphone selector (#25). The menu submenu writes the

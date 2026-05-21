@@ -29,6 +29,30 @@ public enum ManagedConfig {
     /// Matches the app's CFBundleIdentifier in Info.plist.
     public static let bundleID = "com.parleq.app"
 
+    /// Every managed-eligible key across Phase 1 (7 Bool keys) and
+    /// Phase 2 (8 string/array keys). This is the single source of
+    /// truth consumed by the Compliance Audit dialog, `allKeys`, and
+    /// test coverage checks. autoUpdateEnabled is the Sparkle-side Bool.
+    public static let allKeys: [String] = [
+        // Phase 1 — Bool feature toggles
+        "referenceWindowsEnabled",
+        "clipboardReferenceEnabled",
+        "imageReferenceEnabled",
+        "fileReferenceEnabled",
+        "customDictionaryEnabled",
+        "customModelEntryEnabled",
+        "autoUpdateEnabled",
+        // Phase 2 — String / [String] provider & model lockdown
+        "cleanupProvider",
+        "cleanupAllowedProviders",
+        "cleanupModel",
+        "cleanupAllowedModels",
+        "contextProvider",
+        "contextAllowedProviders",
+        "contextModel",
+        "contextAllowedModels",
+    ]
+
     /// Emit a one-line startup summary of which managed keys were
     /// detected. Call this once after Config.load() completes so the
     /// user or admin can confirm via `tail ~/.parleq/app.log` that a
@@ -51,6 +75,12 @@ public enum ManagedConfig {
             let kvPairs = managedKeys.sorted().map { key -> String in
                 if let val = managedBool(forKey: key) {
                     return "\(key)=\(val ? "true" : "false")"
+                }
+                if let val = managedString(forKey: key) {
+                    return "\(key)=\(val)"
+                }
+                if let val = managedStringArray(forKey: key) {
+                    return "\(key)=[\(val.joined(separator: ","))]"
                 }
                 return key
             }.joined(separator: ", ")
@@ -95,5 +125,47 @@ public enum ManagedConfig {
             return intValue != 0
         }
         return nil
+    }
+
+    /// Returns the MDM-managed String for `key`, or nil if the key is
+    /// not managed or is not a string value. Same CFPreferencesAppValueIsForced
+    /// semantics as `managedBool` — only values from /Library/Managed
+    /// Preferences return non-nil; user-domain writes return nil.
+    public static func managedString(forKey key: String) -> String? {
+        let appID = bundleID as CFString
+        let cfKey = key as CFString
+        guard CFPreferencesAppValueIsForced(cfKey, appID) else {
+            return nil
+        }
+        guard let raw = CFPreferencesCopyAppValue(cfKey, appID) else {
+            return nil
+        }
+        // Bridge CFString → Swift String.
+        return raw as? String
+    }
+
+    /// Returns the MDM-managed [String] for `key`, or nil if the key is
+    /// not managed or is not an array value. Filters out any non-String
+    /// elements in the CFArray to ensure the caller always gets a clean
+    /// [String] (malformed profiles occasionally include mixed-type arrays).
+    ///
+    /// Same CFPreferencesAppValueIsForced semantics as `managedBool`.
+    public static func managedStringArray(forKey key: String) -> [String]? {
+        let appID = bundleID as CFString
+        let cfKey = key as CFString
+        guard CFPreferencesAppValueIsForced(cfKey, appID) else {
+            return nil
+        }
+        guard let raw = CFPreferencesCopyAppValue(cfKey, appID) else {
+            return nil
+        }
+        // CFArray bridges to [Any] in Swift. Filter to String elements only.
+        guard let array = raw as? [Any] else {
+            return nil
+        }
+        let strings = array.compactMap { $0 as? String }
+        // Return nil for an empty or fully non-String array — treat
+        // a managed empty array as "no restriction" to avoid accidental lockout.
+        return strings.isEmpty ? nil : strings
     }
 }

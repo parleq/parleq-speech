@@ -63,12 +63,15 @@ struct UpdatesSectionContent: View {
 
             SettingsCard {
                 VStack(alignment: .leading, spacing: 10) {
-                    Toggle("Automatically check for updates", isOn: automaticChecksBinding())
-                        .disabled(isAutoUpdateManaged)
+                    HStack {
+                        Toggle("Automatically check for updates", isOn: automaticChecksBinding())
+                            .disabled(isAutoUpdateManaged)
+                        ManagedIndicator(isManaged: isAutoUpdateManaged)
+                    }
                     if isAutoUpdateManaged {
-                        SettingsCaption("This setting is managed by your organization.")
+                        ManagedCaption(isManaged: true)
                     } else {
-                    SettingsCaption("When on, Parleq checks for a newer release on launch and once every 24 hours afterwards. When off, only the “Check for Updates Now” button below (and the menu-bar “Check for Updates…” item) trigger a check. The very first time you launch a Parleq build with auto-updates, Sparkle asks for your choice via a prompt — this toggle reflects (and overrides) what you picked there.")
+                        SettingsCaption("When on, Parleq checks for a newer release on launch and once every 24 hours afterwards. When off, only the \u{201C}Check for Updates Now\u{201D} button below (and the menu-bar \u{201C}Check for Updates\u{2026}\u{201D} item) trigger a check. The very first time you launch a Parleq build with auto-updates, Sparkle asks for your choice via a prompt \u{2014} this toggle reflects (and overrides) what you picked there.")
                     }
                 }
             }

@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>PayloadDisplayName</key>
+    <string>Parleq Managed Configuration (Example)</string>
+    <key>PayloadDescription</key>
+    <string>Example enterprise policy for Parleq. Restricts LLM provider and model choices to Azure OpenAI, disables image-mode references and the custom model picker, and manages auto-update centrally. Customize before deploying to your fleet.</string>
+    <key>PayloadIdentifier</key>
+    <string>com.parleq.managed-config.example</string>
+    <key>PayloadType</key>
+    <string>Configuration</string>
+    <key>PayloadUUID</key>
+    <string>4F41D1F4-C5E2-4C9C-92B4-613BD26D6F85</string>
+    <key>PayloadVersion</key>
+    <integer>1</integer>
+    <key>PayloadOrganization</key>
+    <string>Example Corp</string>
+    <key>PayloadContent</key>
+    <array>
+        <dict>
+            <key>PayloadType</key>
+            <string>com.apple.ManagedClient.preferences</string>
+            <key>PayloadIdentifier</key>
+            <string>com.parleq.managed-config.example.payload</string>
+            <key>PayloadUUID</key>
+            <string>A39C2449-DFAF-4B94-AB91-B2EE6F7BC0CB</string>
+            <key>PayloadVersion</key>
+            <integer>1</integer>
+            <key>PayloadDisplayName</key>
+            <string>Parleq managed preferences</string>
+
+            <!-- Apple's standard nested structure for managed
+                 preferences. mdmclient reads PayloadContent → bundle
+                 ID → Forced → [mcx_preference_settings] and writes
+                 the resulting key/value pairs to
+                 /Library/Managed Preferences/com.parleq.app.plist
+                 so that CFPreferencesAppValueIsForced returns true
+                 for each key from the app side. -->
+            <key>PayloadContent</key>
+            <dict>
+                <key>com.parleq.app</key>
+                <dict>
+                    <key>Forced</key>
+                    <array>
+                        <dict>
+                            <key>mcx_preference_settings</key>
+                            <dict>
+
+                                <!-- ═══ Provider/model lockdown ═══════════════════════════════ -->
+
+                                <!-- Restrict cleanup tier to Azure or OpenAI.
+                                     Use cleanupProvider (String) to pin to a single provider,
+                                     OR cleanupAllowedProviders ([String]) to offer a subset.
+                                     When both are set, the pin wins.
+
+                                     Allowed provider IDs: gemini, vertex, bedrock,
+                                     bedrock-bearer, azure, openai -->
+                                <key>cleanupAllowedProviders</key>
+                                <array>
+                                    <string>azure</string>
+                                    <string>openai</string>
+                                </array>
+
+                                <!-- Restrict cleanup model to GPT-4o family.
+                                     Use cleanupModel (String) to pin to a single model,
+                                     OR cleanupAllowedModels ([String]) to offer a subset.
+                                     When both are set, the pin wins.
+
+                                     Best practice: when using allowlists for both
+                                     provider AND model, choose model IDs that are
+                                     valid for at least one allowed provider. Parleq
+                                     filters the picker per-provider at render time,
+                                     so listing cross-provider models works but the
+                                     user only sees models valid for their chosen
+                                     provider. -->
+                                <key>cleanupAllowedModels</key>
+                                <array>
+                                    <string>gpt-4o</string>
+                                    <string>gpt-4o-mini</string>
+                                </array>
+
+                                <!-- ═══ Feature toggles ════════════════════════════════════════ -->
+
+                                <!-- Keep reference windows enabled — users can attach windows,
+                                     clipboard, and files to their dictations. -->
+                                <key>referenceWindowsEnabled</key>
+                                <true/>
+
+                                <!-- Clipboard reference: allowed. -->
+                                <key>clipboardReferenceEnabled</key>
+                                <true/>
+
+                                <!-- Image-mode references: disabled.
+                                     All captured references use OCR (text mode) only.
+                                     No screenshots are ever sent to the LLM. -->
+                                <key>imageReferenceEnabled</key>
+                                <false/>
+
+                                <!-- File references: disabled.
+                                     Hides the "Add file…" picker and drag-drop affordance.
+                                     Window-capture and clipboard remain available. -->
+                                <key>fileReferenceEnabled</key>
+                                <false/>
+
+                                <!-- Custom dictionary: allowed. -->
+                                <key>customDictionaryEnabled</key>
+                                <true/>
+
+                                <!-- Custom model picker: disabled.
+                                     Users must pick from the curated model list; the
+                                     "Custom…" entry is hidden. Defense-in-depth: any
+                                     non-curated model already in config is reset to the
+                                     provider default at startup. -->
+                                <key>customModelEntryEnabled</key>
+                                <false/>
+
+                                <!-- Auto-update: managed centrally.
+                                     The "Automatically check for updates" toggle in Settings
+                                     is locked off. IT deploys Parleq updates via package
+                                     management (Jamf, Munki, etc.) on their own cadence. -->
+                                <key>autoUpdateEnabled</key>
+                                <false/>
+
+                            </dict>
+                        </dict>
+                    </array>
+                </dict>
+            </dict>
+        </dict>
+    </array>
+</dict>
+</plist>

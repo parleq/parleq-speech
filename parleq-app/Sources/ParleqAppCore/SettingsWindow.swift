@@ -1206,7 +1206,13 @@ struct SettingsView: View {
 
     @ViewBuilder
     private var tierConfiguration: some View {
-        SettingsCard {
+        // Resolve MDM allowlist values once so the pickers can filter.
+        let cleanupAllowedProviders = ManagedConfig.managedStringArray(forKey: "cleanupAllowedProviders")
+        let cleanupAllowedModels    = ManagedConfig.managedStringArray(forKey: "cleanupAllowedModels")
+        let contextAllowedProviders = ManagedConfig.managedStringArray(forKey: "contextAllowedProviders")
+        let contextAllowedModels    = ManagedConfig.managedStringArray(forKey: "contextAllowedModels")
+
+        return SettingsCard {
             VStack(alignment: .leading, spacing: 18) {
                 // CLEANUP TIER
                 VStack(alignment: .leading, spacing: 6) {
@@ -1215,7 +1221,12 @@ struct SettingsView: View {
                     Text("Used for normal dictation cleanup.")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
-                    HStack(spacing: 12) {
+                    // .top alignment so the Provider and Model labels +
+                    // pickers stay vertically aligned regardless of which
+                    // column has a "Managed by your organization." caption
+                    // below it (captions inflate VStack height; without
+                    // .top the shorter column gets centered upward).
+                    HStack(alignment: .top, spacing: 12) {
                         tierProviderPicker(
                             selection: Binding(
                                 get: { model.cleanupProvider },
@@ -1229,7 +1240,11 @@ struct SettingsView: View {
                                     model.save()
                                 }
                             ),
-                            label: "Provider"
+                            label: "Provider",
+                            pinnedKey: "cleanupProvider",
+                            allowlistKey: "cleanupAllowedProviders",
+                            allowedValues: cleanupAllowedProviders,
+                            modelAllowlist: cleanupAllowedModels
                         )
                         tierModelPicker(
                             forProvider: model.cleanupProvider,
@@ -1241,7 +1256,10 @@ struct SettingsView: View {
                                     model.save()
                                 }
                             ),
-                            label: "Model"
+                            label: "Model",
+                            pinnedKey: "cleanupModel",
+                            allowlistKey: "cleanupAllowedModels",
+                            allowedModels: cleanupAllowedModels
                         )
                     }
                 }
@@ -1260,7 +1278,7 @@ struct SettingsView: View {
                     Text("Used when references are attached. Vision-capable models marked 👁.")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
-                    HStack(spacing: 12) {
+                    HStack(alignment: .top, spacing: 12) {
                         tierProviderPicker(
                             selection: Binding(
                                 get: { model.contextProvider },
@@ -1274,7 +1292,11 @@ struct SettingsView: View {
                                     model.save()
                                 }
                             ),
-                            label: "Provider"
+                            label: "Provider",
+                            pinnedKey: "contextProvider",
+                            allowlistKey: "contextAllowedProviders",
+                            allowedValues: contextAllowedProviders,
+                            modelAllowlist: contextAllowedModels
                         )
                         tierModelPicker(
                             forProvider: model.contextProvider,
@@ -1286,7 +1308,10 @@ struct SettingsView: View {
                                     model.save()
                                 }
                             ),
-                            label: "Model"
+                            label: "Model",
+                            pinnedKey: "contextModel",
+                            allowlistKey: "contextAllowedModels",
+                            allowedModels: contextAllowedModels
                         )
                     }
                 }
@@ -1294,28 +1319,96 @@ struct SettingsView: View {
         }
     }
 
+    /// Provider picker for a tier (cleanup or context).
+    ///
+    /// When `pinnedKey` is in `managedKeys` the picker is replaced by a
+    /// fixed label (single value, disabled — the IT admin pinned it). The
+    /// `ManagedIndicator` appears next to the picker in all managed cases.
+    ///
+    /// When `allowlistKey` is in `managedKeys` the picker is shown but only
+    /// the allowed subset of providers is offered; the lock icon signals the
+    /// restriction. If neither key is managed, all configured providers appear
+    /// and the indicator is hidden.
     private func tierProviderPicker(
         selection: Binding<String>,
-        label: String
+        label: String,
+        pinnedKey: String? = nil,
+        allowlistKey: String? = nil,
+        allowedValues: [String]? = nil,
+        modelAllowlist: [String]? = nil
     ) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
+        let isPinned    = pinnedKey.map    { model.managedKeys.contains($0) } ?? false
+        let isAllowlist = allowlistKey.map { model.managedKeys.contains($0) } ?? false
+        let isManaged   = isPinned || isAllowlist
+
+        return VStack(alignment: .leading, spacing: 3) {
             Text(label)
                 .font(.system(size: 10))
                 .foregroundStyle(.tertiary)
-            Picker(label, selection: selection) {
-                ForEach(SettingsModel.providerOptions) { option in
-                    HStack {
-                        Text(option.displayName)
-                        if !ProviderRegistry.isConfigured(option.id) {
-                            Text("(not configured)")
-                                .foregroundStyle(.tertiary)
+            HStack(spacing: 4) {
+                if isPinned {
+                    // Pinned — show as a disabled fixed-value control.
+                    let displayName = SettingsModel.providerOptions
+                        .first { $0.id == selection.wrappedValue }?.displayName
+                        ?? selection.wrappedValue
+                    Text(displayName)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            RoundedRectangle(cornerRadius: 5)
+                                .fill(Color.secondary.opacity(0.1))
+                        )
+                        .frame(maxWidth: 220, alignment: .leading)
+                } else {
+                    // Allowlist or unrestricted.
+                    let options: [SettingsModel.ProviderOption] = {
+                        // Start with the provider allowlist filter (or all
+                        // providers if no provider allowlist is active).
+                        var filtered: [SettingsModel.ProviderOption]
+                        if let allowed = allowedValues, isAllowlist {
+                            filtered = SettingsModel.providerOptions.filter { allowed.contains($0.id) }
+                        } else {
+                            filtered = SettingsModel.providerOptions
+                        }
+                        // Additional filter: when a MODEL allowlist is active,
+                        // hide providers that have no model compatible with the
+                        // allowlist. Prevents the confusing UX where a user
+                        // picks a provider, sees its full model list, picks one
+                        // that's not in the allowlist, then has it silently
+                        // reverted by Config.load on next launch. Providers
+                        // with at least one compatible model stay visible.
+                        if let allowedModels = modelAllowlist, !allowedModels.isEmpty {
+                            filtered = filtered.filter { providerOption in
+                                allowedModels.contains { modelID in
+                                    ModelCatalog.isCanonical(provider: providerOption.id, model: modelID)
+                                }
+                            }
+                        }
+                        return filtered
+                    }()
+                    Picker(label, selection: selection) {
+                        ForEach(options) { option in
+                            HStack {
+                                Text(option.displayName)
+                                if !ProviderRegistry.isConfigured(option.id) {
+                                    Text("(not configured)")
+                                        .foregroundStyle(.tertiary)
+                                }
+                            }
+                            .tag(option.id)
                         }
                     }
-                    .tag(option.id)
+                    .labelsHidden()
+                    .frame(maxWidth: 220)
+                    // Only disable on pin. Allowlist semantics let the user
+                    // pick among the allowed values, so the picker stays
+                    // interactive even when MDM has restricted the options.
                 }
+                ManagedIndicator(isManaged: isManaged)
             }
-            .labelsHidden()
-            .frame(maxWidth: 220)
+            ManagedCaption(isManaged: isManaged)
         }
     }
 
@@ -1324,21 +1417,67 @@ struct SettingsView: View {
     /// model ID since real IDs never start with underscores.
     private static let customModelTag = "__custom__"
 
+    /// Model picker for a tier (cleanup or context).
+    ///
+    /// MDM semantics (same as provider picker):
+    ///   - `pinnedKey` in managedKeys → fixed label, no picker, lock icon.
+    ///   - `allowlistKey` in managedKeys → picker restricted to `allowedModels`,
+    ///     lock icon, user can still choose among the allowed subset.
+    ///   - Neither managed → curated list + "Custom…" (if enabled).
     private func tierModelPicker(
         forProvider provider: String,
         selection: Binding<String>,
-        label: String
+        label: String,
+        pinnedKey: String? = nil,
+        allowlistKey: String? = nil,
+        allowedModels: [String]? = nil
     ) -> some View {
-        let models: [(value: String, label: String)]
+        let allModels: [(value: String, label: String)]
         switch provider {
-        case "gemini":         models = Self.geminiModelOptions
-        case "vertex":         models = Self.vertexModelOptions
-        case "bedrock":        models = Self.bedrockModelOptions
-        case "bedrock-bearer": models = Self.bedrockBearerModelOptions
-        case "azure":          models = Self.azureModelOptions
-        case "openai":         models = Self.openAIModelOptions
-        default:               models = []
+        case "gemini":         allModels = Self.geminiModelOptions
+        case "vertex":         allModels = Self.vertexModelOptions
+        case "bedrock":        allModels = Self.bedrockModelOptions
+        case "bedrock-bearer": allModels = Self.bedrockBearerModelOptions
+        case "azure":          allModels = Self.azureModelOptions
+        case "openai":         allModels = Self.openAIModelOptions
+        default:               allModels = []
         }
+
+        let isPinned    = pinnedKey.map    { model.managedKeys.contains($0) } ?? false
+        let isAllowlist = allowlistKey.map { model.managedKeys.contains($0) } ?? false
+        let isManaged   = isPinned || isAllowlist
+
+        // Compute the effective model list for this picker invocation.
+        let models: [(value: String, label: String)] = {
+            guard let allowed = allowedModels, isAllowlist else {
+                return allModels
+            }
+            // Cross-provider allowlist safety: filter allowed IDs to those
+            // that ARE canonical for the current provider. An admin who
+            // pushes a cross-provider allowlist like
+            // ["gemini-2.5-flash", "gpt-4o"] without a provider lockdown
+            // gets per-provider filtering automatically — Gemini users
+            // only see gemini-2.5-flash; OpenAI users only see gpt-4o.
+            // Bare IDs not in any catalog are still passed through under
+            // the current provider's umbrella (treated as a custom value
+            // that the admin authorized).
+            let mapped = allowed.compactMap { id -> (value: String, label: String)? in
+                if let found = allModels.first(where: { $0.value == id }) {
+                    return found
+                }
+                // If the ID is canonical for some OTHER provider, exclude
+                // it from THIS provider's picker — it would produce an
+                // invalid wire combination at runtime.
+                let belongsToOtherProvider = ["gemini", "vertex", "bedrock", "bedrock-bearer", "azure", "openai"]
+                    .filter { $0 != provider }
+                    .contains { ModelCatalog.isCanonical(provider: $0, model: id) }
+                if belongsToOtherProvider {
+                    return nil
+                }
+                return (id, id) // bare ID not in any catalog — custom value
+            }
+            return mapped.isEmpty ? allModels : mapped
+        }()
 
         // Build a picker binding that maps the sentinel "Custom…" tag
         // to/from the actual model-name string.
@@ -1369,35 +1508,64 @@ struct SettingsView: View {
             Text(label)
                 .font(.system(size: 10))
                 .foregroundStyle(.tertiary)
-            Picker(label, selection: pickerBinding) {
-                ForEach(models, id: \.value) { opt in
-                    Text(opt.label).tag(opt.value)
-                }
-                if !models.isEmpty {
-                    Divider()
-                }
-                if models.isEmpty {
-                    Text("—").tag(selection.wrappedValue)
-                } else if model.customModelEntryEnabled {
-                    // "Custom…" entry hidden when customModelEntryEnabled
-                    // is false — users are restricted to the curated list.
-                    Text("Custom…").tag(Self.customModelTag)
-                }
-            }
-            .labelsHidden()
-            .frame(maxWidth: 280)
-            .disabled(models.isEmpty)
 
-            // Show the text field only when Custom is selected AND the
-            // entry path is enabled. If the feature is disabled and a
-            // custom model is already saved, the picker will still show
-            // it as the current value (no forced sanitization) — the
-            // field just can't be interacted with.
-            if isCustom && model.customModelEntryEnabled {
-                TextField("Model ID", text: selection)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(size: 11))
+            if isPinned {
+                // Pinned — show the model value as a fixed disabled display.
+                HStack(spacing: 4) {
+                    let displayLabel = allModels.first { $0.value == selection.wrappedValue }?.label
+                        ?? selection.wrappedValue
+                    Text(displayLabel)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            RoundedRectangle(cornerRadius: 5)
+                                .fill(Color.secondary.opacity(0.1))
+                        )
+                        .frame(maxWidth: 280, alignment: .leading)
+                    ManagedIndicator(isManaged: true)
+                }
+                ManagedCaption(isManaged: true)
+            } else {
+                HStack(spacing: 4) {
+                    Picker(label, selection: pickerBinding) {
+                        ForEach(models, id: \.value) { opt in
+                            Text(opt.label).tag(opt.value)
+                        }
+                        if !models.isEmpty {
+                            Divider()
+                        }
+                        if models.isEmpty {
+                            Text("—").tag(selection.wrappedValue)
+                        } else if model.customModelEntryEnabled && !isManaged {
+                            // "Custom…" entry hidden when customModelEntryEnabled
+                            // is false OR when the model list is MDM-managed.
+                            Text("Custom…").tag(Self.customModelTag)
+                        }
+                    }
+                    .labelsHidden()
                     .frame(maxWidth: 280)
+                    // Only disable on pin or empty list. Allowlist semantics
+                    // let the user pick among the allowed values, so the
+                    // picker stays interactive when MDM has restricted the
+                    // model set.
+                    .disabled(models.isEmpty)
+                    ManagedIndicator(isManaged: isManaged)
+                }
+                ManagedCaption(isManaged: isManaged)
+
+                // Show the text field only when Custom is selected AND the
+                // entry path is enabled. If the feature is disabled and a
+                // custom model is already saved, the picker will still show
+                // it as the current value (no forced sanitization) — the
+                // field just can't be interacted with.
+                if isCustom && model.customModelEntryEnabled && !isManaged {
+                    TextField("Model ID", text: selection)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 11))
+                        .frame(maxWidth: 280)
+                }
             }
         }
     }
