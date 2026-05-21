@@ -161,6 +161,26 @@ struct ParleqApp {
         // the context tier (logging "context-model enabled") when they
         // differ. The `label` parameter appears in log lines only.
         let makeProvider: (ModelIdentifier, String) -> (any LLMProvider)? = { id, label in
+            // Phase 5 — runtime auth-path gate. Check BEFORE any provider
+            // construction: if staticApiKeysAllowed=false is managed and the
+            // provider's currently-configured auth path is static-key-based,
+            // return a BlockedProvider sentinel instead of the real provider.
+            // BlockedProvider.generateStreaming immediately throws
+            // .authPathBlocked, which streamCleanupOrRefine routes through
+            // cleanupFailureHint so the overlay shows an actionable message.
+            let authModeForGate: String?
+            switch id.provider.lowercased() {
+            case "vertex":  authModeForGate = config.vertexAuthMode
+            case "azure":   authModeForGate = config.azureAuthMode
+            case "bedrock": authModeForGate = config.awsAuthMode
+            default:        authModeForGate = nil
+            }
+            if ManagedConfig.isProviderAuthPathBlocked(provider: id.provider, authMode: authModeForGate) {
+                let msg = "Your cleanup provider's auth path is disabled by your organization. Open Settings \u{2192} LLM and select a federated-auth provider (Azure with Entra ID, Bedrock with SSO, or Vertex with ADC)."
+                logStderr("[parleq] LLM \(label) BLOCKED by staticApiKeysAllowed=false (provider=\(id.provider) authMode=\(authModeForGate ?? "api-key")). Will surface error to user.")
+                return BlockedProvider(providerID: id.provider, model: id.model, message: msg)
+            }
+
             switch id.provider.lowercased() {
             case "bedrock":
                 if config.awsAuthMode.lowercased() == "bedrockapikey" || config.awsAuthMode == "bedrockApiKey" {
@@ -400,11 +420,26 @@ struct ParleqApp {
             // persistent delegate class. The API remains functional.
             if let rawFeedURL = ManagedConfig.managedString(forKey: "sparkleUpdateFeedURL") {
                 let trimmed = rawFeedURL.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !trimmed.isEmpty, let feedURL = URL(string: trimmed), trimmed.hasPrefix("https://") {
+                // Strict validation (centralized via ManagedConfig.validateFeedURL):
+                //   - scheme is exactly "https" (case-insensitive)
+                //   - non-empty host
+                //   - no embedded userinfo (user:password@) — those would
+                //     ship credentials to the appcast server and leak via
+                //     logs / URL inspection. An admin pushing such a URL
+                //     is misconfiguring; reject and fall back.
+                //   - no query / fragment containing token-like params
+                //     (we just reject any url with a non-nil query for
+                //     simplicity — appcasts are static XML, no query needed).
+                if let feedURL = ManagedConfig.validateFeedURL(trimmed) {
                     updaterController.updater.setFeedURL(feedURL)
-                    logStderr("[parleq] sparkleUpdateFeedURL: accepted managed URL '\(trimmed)' — appcast will be fetched from this URL; EdDSA signature verification remains enforced by Info.plist SUPublicEDKey")
+                    // Log only the scheme+host so any path/query/userinfo
+                    // doesn't leak via app.log. The user gets confirmation
+                    // that a managed feed is active without exposing the
+                    // full URL to anyone who tails the log.
+                    let safeOrigin = "\(feedURL.scheme ?? "https")://\(feedURL.host ?? "?")"
+                    logStderr("[parleq] sparkleUpdateFeedURL: accepted managed feed at \(safeOrigin) — appcast will be fetched from this origin; EdDSA signature verification remains enforced by Info.plist SUPublicEDKey")
                 } else {
-                    logStderr("[parleq] sparkleUpdateFeedURL: rejected managed value '\(trimmed)' — must be a valid https:// URL; using Info.plist SUFeedURL instead")
+                    logStderr("[parleq] sparkleUpdateFeedURL: rejected managed value — must be a valid https:// URL with a non-empty host, no embedded credentials, and no query parameters; using Info.plist SUFeedURL instead")
                 }
             }
             updaterController.startUpdater()

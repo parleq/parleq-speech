@@ -637,11 +637,13 @@ public struct Config: Sendable {
         // can surface it. Validation mirrors the main.swift accept/reject
         // criteria: must be a non-empty https:// URL.
         if let rawFeedURL = ManagedConfig.managedString(forKey: "sparkleUpdateFeedURL") {
-            let trimmed = rawFeedURL.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty, URL(string: trimmed) != nil, trimmed.hasPrefix("https://") {
+            // Centralized strict validation (see ManagedConfig.validateFeedURL):
+            // scheme=https, non-empty host, no userinfo, no query. The shared
+            // validator keeps main.swift, Config, and the audit view in sync.
+            if ManagedConfig.validateFeedURL(rawFeedURL) != nil {
                 managedKeys.insert("sparkleUpdateFeedURL")
             } else {
-                configLogStderr("[parleq] sparkleUpdateFeedURL: rejected managed value '\(trimmed)' — must be a valid https:// URL; using Info.plist SUFeedURL instead")
+                configLogStderr("[parleq] sparkleUpdateFeedURL: rejected managed value — must be a valid https:// URL with non-empty host, no embedded credentials, no query parameters; using Info.plist SUFeedURL instead")
             }
         }
 
@@ -665,21 +667,23 @@ public struct Config: Sendable {
             }
         }
 
-        // MDM overlay — Phase 4: auth-mode restrictions.
+        // MDM overlay — Phase 4 + Phase 5: auth-mode restrictions.
         //
-        // staticApiKeysAllowed (Bool) — master switch for credential-entry UI.
-        // When false, every "Set … API key" / "Set … Service Account JSON" /
-        // "Set … Bearer Key" affordance across all provider credentials cards
-        // is hidden. The UI-side gate lives in SettingsWindow.swift; this
-        // block just records the key in managedKeys so Settings can consult it.
+        // staticApiKeysAllowed (Bool) — master switch for both the credential-
+        // entry UI (Phase 4) and runtime provider construction (Phase 5).
         //
-        // Defense-in-depth note: an already-stored static API key CONTINUES
-        // to work at runtime — Phase 4 only hides the UI for adding/changing
-        // keys. Refusing to USE stored static keys when staticApiKeysAllowed
-        // is false is a future enhancement: it would require either rotating
-        // the user back to a federated auth mode (interactive) or refusing
-        // dictation outright (disruptive). For now, UI-level hiding is the
-        // policy enforcement surface.
+        // When false:
+        //   • Every "Set … API key" / "Set … Service Account JSON" /
+        //     "Set … Bearer Key" affordance is hidden (Phase 4, UI gate).
+        //   • makeProvider in main.swift REFUSES to construct any provider
+        //     whose currently-configured auth path is static-key-based
+        //     (Phase 5, runtime gate). The single source of truth for which
+        //     provider/authMode combinations are blocked is
+        //     ManagedConfig.isProviderAuthPathBlocked(provider:authMode:).
+        //
+        // This block records the key in managedKeys so Settings and main.swift
+        // can consult it. The write side (UI) and runtime side (provider
+        // construction) both read managedKeys before proceeding.
         if ManagedConfig.managedBool(forKey: "staticApiKeysAllowed") != nil {
             managedKeys.insert("staticApiKeysAllowed")
         }
@@ -775,26 +779,36 @@ public struct Config: Sendable {
                     return !belongsElsewhere  // bare custom IDs allowed
                 }
                 if compatibleAllowed.isEmpty, let firstAllowed = allowedModels.first {
-                    // The admin's allowlist has NO models compatible with
-                    // the current provider — usually because they pushed a
-                    // model allowlist without an accompanying provider pin
-                    // (or pinned the wrong provider for the model set).
-                    // Snap the provider to one that owns the first allowed
-                    // model rather than producing an invalid provider/model
-                    // pair like provider=gemini, model=gpt-4o.
-                    let owningProvider = ["gemini", "vertex", "bedrock", "bedrock-bearer", "azure", "openai"]
-                        .first { ModelCatalog.isCanonical(provider: $0, model: firstAllowed) }
-                    if let owning = owningProvider {
-                        configLogStderr("[parleq] cleanupAllowedModels: no allowed model compatible with provider '\(c.llmProvider)'; snapping provider to '\(owning)' which owns '\(firstAllowed)'")
-                        c.llmProvider = owning
-                        c.llmModel = firstAllowed
-                    } else {
-                        // Couldn't identify owning provider (allowlist
-                        // contains only bare custom IDs). Reset model to
-                        // current provider's default; user can change.
+                    // No allowed model is compatible with the current
+                    // provider. Provider policy takes precedence over the
+                    // model allowlist: if cleanupProvider is pinned (or
+                    // restricted by an allowlist), we must NOT snap the
+                    // provider — that would override a stricter policy with
+                    // a looser one. The admin's combined policy is
+                    // contradictory; respect the provider directive, reset
+                    // the model to the provider's default, and log loudly
+                    // so the admin can fix the conflict.
+                    let providerPinnedOrAllowlisted = managedKeys.contains("cleanupProvider")
+                        || managedKeys.contains("cleanupAllowedProviders")
+                    if providerPinnedOrAllowlisted {
                         let original = c.llmModel
                         c.llmModel = ModelCatalog.defaultModel(forProvider: c.llmProvider)
-                        configLogStderr("[parleq] cleanupAllowedModels: empty allowlist for provider '\(c.llmProvider)' with no identifiable owning provider; reset model '\(original)' to '\(c.llmModel)'")
+                        configLogStderr("[parleq] cleanupAllowedModels: contradictory policy — no allowed model compatible with managed provider '\(c.llmProvider)'. Keeping provider per directive and resetting model '\(original)' to default '\(c.llmModel)'. Fix the policy: either expand cleanupAllowedModels to include a '\(c.llmProvider)' model, or change cleanupProvider.")
+                    } else {
+                        // Provider is user-controlled. Snap to the
+                        // owning provider so the policy + user produce
+                        // a valid runtime config.
+                        let owningProvider = ["gemini", "vertex", "bedrock", "bedrock-bearer", "azure", "openai"]
+                            .first { ModelCatalog.isCanonical(provider: $0, model: firstAllowed) }
+                        if let owning = owningProvider {
+                            configLogStderr("[parleq] cleanupAllowedModels: no allowed model compatible with provider '\(c.llmProvider)'; snapping provider to '\(owning)' which owns '\(firstAllowed)'")
+                            c.llmProvider = owning
+                            c.llmModel = firstAllowed
+                        } else {
+                            let original = c.llmModel
+                            c.llmModel = ModelCatalog.defaultModel(forProvider: c.llmProvider)
+                            configLogStderr("[parleq] cleanupAllowedModels: empty allowlist for provider '\(c.llmProvider)' with no identifiable owning provider; reset model '\(original)' to '\(c.llmModel)'")
+                        }
                     }
                 } else if !compatibleAllowed.contains(c.llmModel), let first = compatibleAllowed.first {
                     configLogStderr("[parleq] cleanupAllowedModels: stored model '\(c.llmModel)' not in allowed list (filtered to provider '\(c.llmProvider)'); reset to '\(first)'")
@@ -864,16 +878,28 @@ public struct Config: Sendable {
                     return !belongsElsewhere
                 }
                 if compatibleAllowed.isEmpty, let firstAllowed = allowedModels.first {
-                    let owningProvider = ["gemini", "vertex", "bedrock", "bedrock-bearer", "azure", "openai"]
-                        .first { ModelCatalog.isCanonical(provider: $0, model: firstAllowed) }
-                    if let owning = owningProvider {
-                        configLogStderr("[parleq] contextAllowedModels: no allowed model compatible with provider '\(contextProvider)'; snapping provider to '\(owning)' which owns '\(firstAllowed)'")
-                        contextProvider = owning
-                        contextModelName = firstAllowed
-                    } else {
+                    // Same precedence rule as cleanup tier: when context
+                    // provider is itself managed, the provider directive
+                    // wins. Don't snap to a different provider that would
+                    // override the stricter policy.
+                    let providerPinnedOrAllowlisted = managedKeys.contains("contextProvider")
+                        || managedKeys.contains("contextAllowedProviders")
+                    if providerPinnedOrAllowlisted {
                         let original = contextModelName
                         contextModelName = ModelCatalog.defaultModel(forProvider: contextProvider)
-                        configLogStderr("[parleq] contextAllowedModels: empty allowlist for provider '\(contextProvider)' with no identifiable owning provider; reset model '\(original)' to '\(contextModelName)'")
+                        configLogStderr("[parleq] contextAllowedModels: contradictory policy — no allowed model compatible with managed provider '\(contextProvider)'. Keeping provider per directive and resetting model '\(original)' to default '\(contextModelName)'. Fix the policy: either expand contextAllowedModels to include a '\(contextProvider)' model, or change contextProvider.")
+                    } else {
+                        let owningProvider = ["gemini", "vertex", "bedrock", "bedrock-bearer", "azure", "openai"]
+                            .first { ModelCatalog.isCanonical(provider: $0, model: firstAllowed) }
+                        if let owning = owningProvider {
+                            configLogStderr("[parleq] contextAllowedModels: no allowed model compatible with provider '\(contextProvider)'; snapping provider to '\(owning)' which owns '\(firstAllowed)'")
+                            contextProvider = owning
+                            contextModelName = firstAllowed
+                        } else {
+                            let original = contextModelName
+                            contextModelName = ModelCatalog.defaultModel(forProvider: contextProvider)
+                            configLogStderr("[parleq] contextAllowedModels: empty allowlist for provider '\(contextProvider)' with no identifiable owning provider; reset model '\(original)' to '\(contextModelName)'")
+                        }
                     }
                 } else if !compatibleAllowed.contains(contextModelName), let first = compatibleAllowed.first {
                     configLogStderr("[parleq] contextAllowedModels: stored model '\(contextModelName)' not in allowed list (filtered to provider '\(contextProvider)'); reset to '\(first)'")
@@ -1084,7 +1110,13 @@ public struct Config: Sendable {
             "aws": [
                 "region": config.awsRegion,
                 "profile": config.awsProfile ?? "",
-                "auth_mode": config.awsAuthMode,
+                // Phase 5: when bedrockAuthMode is managed, preserve the
+                // existing on-disk auth_mode so removing the MDM profile
+                // restores the user's pre-MDM choice. Symmetric with the
+                // provider/model preservation logic above.
+                "auth_mode": config.managedKeys.contains("bedrockAuthMode")
+                    ? ((existingDict["aws"] as? [String: Any])?["auth_mode"] as? String ?? config.awsAuthMode)
+                    : config.awsAuthMode,
             ],
             "vertex": [
                 "project": config.vertexProject,
@@ -1096,7 +1128,11 @@ public struct Config: Sendable {
                 "resource": config.azureResource,
                 "deployment": config.azureDeployment,
                 "api_version": config.azureApiVersion,
-                "auth_mode": config.azureAuthMode,
+                // Phase 5: preserve on-disk azure.auth_mode when
+                // azureAuthMode is managed (same rationale as aws.auth_mode).
+                "auth_mode": config.managedKeys.contains("azureAuthMode")
+                    ? ((existingDict["azure"] as? [String: Any])?["auth_mode"] as? String ?? config.azureAuthMode)
+                    : config.azureAuthMode,
             ],
             "wizard": [
                 "completed": config.wizardCompleted,

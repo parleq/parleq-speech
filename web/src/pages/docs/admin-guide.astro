@@ -130,10 +130,10 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
 
     <h3 class="mt-8 font-display text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Auth-mode lockdown</h3>
     <p class="mt-3 text-[15px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      Your security policy requires federated identity throughout &mdash; no static API keys on developer laptops. Force Entra ID for Azure and AWS SSO for Bedrock, and globally disable all API-key entry UI so users cannot paste in personal credentials.
+      Your security policy requires federated identity throughout &mdash; no static API keys on developer laptops. Force Entra ID for Azure and AWS SSO for Bedrock, and globally disable all API-key auth paths so users cannot use personal credentials even if they were previously stored in the Keychain.
     </p>
     <div class="mt-4 overflow-x-auto rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
-      <pre class="text-[13px] leading-[1.7] text-[color:var(--color-text-muted)] whitespace-pre overflow-x-auto"><code>&lt;!-- Master switch: hide every "Set ... API key" button across all providers --&gt;
+      <pre class="text-[13px] leading-[1.7] text-[color:var(--color-text-muted)] whitespace-pre overflow-x-auto"><code>&lt;!-- Master switch: hides API-key entry UI AND blocks static-key auth at runtime --&gt;
 &lt;key&gt;staticApiKeysAllowed&lt;/key&gt;
 &lt;false/&gt;
 
@@ -146,8 +146,31 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
 &lt;string&gt;sso&lt;/string&gt;</code></pre>
     </div>
     <p class="mt-4 text-[14px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      With this configuration: the Azure credentials card shows a pinned &ldquo;Microsoft Entra ID&rdquo; label and hides the API key row; the Bedrock card shows a pinned &ldquo;AWS CLI session (SSO)&rdquo; label and hides the static-credentials and Bedrock-API-key rows; Gemini, OpenAI direct, and Bedrock bearer cards all hide their key-entry buttons. Federated-auth controls (&ldquo;Auth uses your local <code class="font-mono text-[12px]">az login</code> session&rdquo;, <code class="font-mono text-[12px]">aws sso login</code>) remain fully accessible. Already-stored static keys continue to work at runtime &mdash; the UI restriction prevents adding or replacing keys, not using ones already in the Keychain.
+      With this configuration: the Azure credentials card shows a pinned &ldquo;Microsoft Entra ID&rdquo; label and hides the API key row; the Bedrock card shows a pinned &ldquo;AWS CLI session (SSO)&rdquo; label and hides the static-credentials and Bedrock-API-key rows; Gemini, OpenAI direct, and Bedrock bearer cards all hide their key-entry buttons and show an &ldquo;Auth disabled by org&rdquo; badge in the card header. Federated-auth controls (&ldquo;Auth uses your local <code class="font-mono text-[12px]">az login</code> session&rdquo;, <code class="font-mono text-[12px]">aws sso login</code>) remain fully accessible. <strong>Runtime enforcement:</strong> Parleq will refuse to use any static-key auth path even if credentials are already stored in the Keychain &mdash; previously-stored keys are not deleted, but they are not used while the policy is active. The provider picker annotates Gemini, OpenAI direct, and Bedrock bearer with &ldquo;(disabled by your organization)&rdquo; so users understand why cleanup is unavailable for those providers. Removing the MDM profile and restarting Parleq immediately restores access to all previously-stored credentials.
     </p>
+    <p class="mt-3 text-[14px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      <strong>Provider availability under <code class="font-mono text-[12px]">staticApiKeysAllowed: false</code>:</strong>
+    </p>
+    <table class="mt-2 w-full text-[13px] leading-relaxed text-[color:var(--color-text-muted)]">
+      <thead>
+        <tr class="border-b border-[color:var(--color-border)] text-left text-[12px] font-semibold uppercase tracking-wide">
+          <th class="pb-2 pr-4">Provider</th>
+          <th class="pb-2 pr-4">Auth mode</th>
+          <th class="pb-2">Available?</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-[color:var(--color-border)]">
+        <tr><td class="py-1.5 pr-4 font-mono">gemini</td><td class="py-1.5 pr-4">API key (only option)</td><td class="py-1.5 text-red-600 dark:text-red-400">Blocked</td></tr>
+        <tr><td class="py-1.5 pr-4 font-mono">openai</td><td class="py-1.5 pr-4">API key (only option)</td><td class="py-1.5 text-red-600 dark:text-red-400">Blocked</td></tr>
+        <tr><td class="py-1.5 pr-4 font-mono">bedrock-bearer</td><td class="py-1.5 pr-4">Bedrock API key (only option)</td><td class="py-1.5 text-red-600 dark:text-red-400">Blocked</td></tr>
+        <tr><td class="py-1.5 pr-4 font-mono">vertex</td><td class="py-1.5 pr-4">serviceAccount (JSON key)</td><td class="py-1.5 text-red-600 dark:text-red-400">Blocked</td></tr>
+        <tr><td class="py-1.5 pr-4 font-mono">vertex</td><td class="py-1.5 pr-4">adc (gcloud ADC)</td><td class="py-1.5 text-green-700 dark:text-green-400">Available</td></tr>
+        <tr><td class="py-1.5 pr-4 font-mono">azure</td><td class="py-1.5 pr-4">apiKey</td><td class="py-1.5 text-red-600 dark:text-red-400">Blocked</td></tr>
+        <tr><td class="py-1.5 pr-4 font-mono">azure</td><td class="py-1.5 pr-4">azureAd (Entra ID)</td><td class="py-1.5 text-green-700 dark:text-green-400">Available</td></tr>
+        <tr><td class="py-1.5 pr-4 font-mono">bedrock</td><td class="py-1.5 pr-4">static / bedrockApiKey</td><td class="py-1.5 text-red-600 dark:text-red-400">Blocked</td></tr>
+        <tr><td class="py-1.5 pr-4 font-mono">bedrock</td><td class="py-1.5 pr-4">sso (AWS SSO)</td><td class="py-1.5 text-green-700 dark:text-green-400">Available</td></tr>
+      </tbody>
+    </table>
 
     <h3 class="mt-8 font-display text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Compliance-first lockdown</h3>
     <p class="mt-3 text-[15px] leading-[1.7] text-[color:var(--color-text-muted)]">

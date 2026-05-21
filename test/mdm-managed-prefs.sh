@@ -1,17 +1,67 @@
 #!/usr/bin/env bash
-# mdm-managed-prefs.sh — the ONLY script that needs root.
+# ============================================================================
+# LOCAL DEVELOPER TESTING TOOL — NOT SHIPPED TO END USERS
+# ============================================================================
 #
-# Hardcodes its target to /Library/Managed Preferences/com.parleq.app.plist
-# so that passwordless sudo on this script grants the minimum surface area
-# (write/clear that single file + invalidate cfprefsd). Anyone — script,
-# attacker, or bug — invoking this with sudo can only touch that one file.
-# It cannot be coerced into writing anywhere else, executing other
-# binaries, or stealing broader privilege.
+# This script exists to let a Parleq developer manually exercise the MDM
+# (Managed Configuration, issue #39) read overlay without enrolling their
+# Mac in a real MDM service like Jamf / Kandji / Mosyle. It is never run
+# by the Parleq app itself, never run during `swift build` or `swift test`,
+# never invoked from CI, and is not part of any release artifact. It lives
+# in `test/` purely as a development aid documented in the testing protocol
+# for issue #39.
 #
-# Sudoers entry (one line; replace <USER> with your username and
-# <ABSOLUTE-PATH-TO-SCRIPT> with the absolute path of this file in
-# your checkout — the script lives at <repo-root>/test/mdm-managed-prefs.sh):
-#   <USER> ALL=(ALL) NOPASSWD: <ABSOLUTE-PATH-TO-SCRIPT>
+# WHY IT NEEDS ROOT
+#
+# macOS MDM policies are read from `/Library/Managed Preferences/`, which
+# is owned by `root:wheel` and only writable by privileged processes. A
+# real MDM agent (mdmclient) writes there as part of profile installation.
+# To test our app-side read overlay (`ManagedConfig.swift`) without
+# installing real profiles, this script writes the same target plist
+# directly.
+#
+# SECURITY DESIGN
+#
+# The script is the ONLY place that touches `/Library/Managed Preferences/`
+# and:
+#   - Hardcodes its target to `/Library/Managed Preferences/com.parleq.app.plist`
+#     (`readonly MANAGED_PLIST`). Cannot be coerced into writing elsewhere.
+#   - Hardcodes the plist envelope. Callers only supply the inner <dict>
+#     body via stdin; the script wraps it. Cannot inject extra payloads.
+#   - Validates the resulting file with `plutil -lint` before leaving it
+#     in place. Malformed output is deleted; the user sees a loud error.
+#   - Only two subcommands: `clear` and `write`. No shell metacharacter
+#     handling, no eval, no exec of arbitrary commands.
+#   - `set -euo pipefail`. Failures abort loudly.
+#
+# So passwordless sudo on THIS script grants the ability to manage exactly
+# one specific plist file. Compromise of the script's contents (e.g. an
+# attacker rewriting the worktree-local copy) is the main residual risk;
+# see the "Paranoid setups" section below for the root-owned deployment
+# pattern that mitigates that.
+#
+# Sudoers entry — TWO PATTERNS depending on your threat model:
+#
+# Solo-dev iteration (acceptable for personal machines):
+#   <USER> ALL=(ALL) NOPASSWD: <ABSOLUTE-PATH-TO-THIS-SCRIPT>
+#   Replace <USER> with your username and <ABSOLUTE-PATH-TO-THIS-SCRIPT>
+#   with the worktree path, e.g.:
+#   .../parleq-worktrees/issue-39-managed-config-phase-N/test/mdm-managed-prefs.sh
+#
+# Caveat: the worktree path is USER-WRITABLE. A compromised process
+# running as your user could rewrite this script and gain a
+# passwordless root execution path. The script's internal safeguards
+# (hardcoded target path, plutil validation) only matter if the
+# script contents stay trusted.
+#
+# Paranoid / shared-machine / multi-user setups (recommended):
+#   1. Install a root-owned copy outside the worktree:
+#        sudo install -o root -g wheel -m 0755 \
+#            /path/to/this/script \
+#            /usr/local/sbin/parleq-mdm-managed-prefs
+#   2. Sudoers entry points at the root-owned copy:
+#        <USER> ALL=(ALL) NOPASSWD: /usr/local/sbin/parleq-mdm-managed-prefs
+#   3. Re-install whenever this script changes upstream.
 #
 # Usage:
 #   sudo mdm-managed-prefs.sh clear

@@ -1,10 +1,29 @@
 #!/usr/bin/env bash
-# mdm-test-scenario.sh — orchestrate Phase 2 MDM test scenarios.
+# ============================================================================
+# LOCAL DEVELOPER TESTING TOOL — NOT SHIPPED TO END USERS
+# ============================================================================
 #
-# Runs unprivileged. Calls mdm-managed-prefs.sh via sudo for the ONLY
-# step that genuinely needs root (writing /Library/Managed Preferences/).
-# Everything else (killing user-owned Parleq processes, launching the
-# worktree-built Parleq.app, reading log lines) runs as the user.
+# Orchestrator for the named MDM test scenarios covering issue #39 (Managed
+# Configuration). This script is never run by the Parleq app, never invoked
+# from `swift build` / `swift test` / CI, and not part of any release
+# artifact. It lives in `test/` purely as a developer aid for manual
+# end-to-end testing of the MDM read overlay.
+#
+# DESIGN: PRIVILEGE MINIMIZATION
+#
+# This orchestrator itself runs UNPRIVILEGED. The only privileged step
+# (writing to /Library/Managed Preferences/, which requires root) is
+# delegated to the companion script `mdm-managed-prefs.sh`, which is the
+# only piece that needs passwordless sudo. See that script's header for
+# its security design.
+#
+# Everything this orchestrator does directly:
+#   - Killing user-owned Parleq processes (pkill on `Parleq.app` — no sudo)
+#   - Launching the worktree-built Parleq.app (open — no sudo)
+#   - Reading the user's own ~/.parleq/app.log
+#   - Extracting a sample mobileconfig fragment via PlistBuddy
+#
+# None of those operations require elevated privileges.
 #
 # Usage:
 #   ./mdm-test-scenario.sh                       # list available scenarios
@@ -315,6 +334,74 @@ case "$scenario" in
         restart_parleq
         ;;
 
+    test22-runtime-rejection-gemini)
+        # Phase 5: push staticApiKeysAllowed=false and verify RUNTIME rejection.
+        # Verify:
+        #   1. Startup log shows "BLOCKED by staticApiKeysAllowed=false" for the
+        #      Gemini provider (when cleanup is configured to use Gemini).
+        #   2. Gemini card shows "Auth disabled by org" badge in header.
+        #   3. Provider picker shows "(disabled by your organization)" next to Gemini.
+        #   4. Dictating with Gemini as the cleanup provider surfaces the
+        #      "auth path disabled" message in the overlay rather than the raw
+        #      transcript appearing without any failure indication.
+        #   5. Compliance Audit: staticApiKeysAllowed=false, source=Managed.
+        #   (contrast with test18 which only verifies UI — this verifies runtime)
+        write_scenario '    <key>staticApiKeysAllowed</key>
+    <false/>'
+        restart_parleq
+        echo "--- verifying runtime block in startup log ---"
+        sleep 1
+        if [ -f ~/.parleq/app.log ]; then
+            tail -30 ~/.parleq/app.log \
+                | grep -E "BLOCKED by staticApiKeysAllowed|authPathBlocked" \
+                || echo "(no block log line found — may need to dictate once to trigger the cleanup path)"
+        fi
+        ;;
+
+    test23-runtime-rejection-azure-apikey)
+        # Phase 5: push staticApiKeysAllowed=false with Azure in apiKey mode.
+        # Verify:
+        #   1. Azure card shows "Auth disabled by org" badge (apiKey mode blocked).
+        #   2. The auth-mode picker REMAINS visible — user can switch to azureAd.
+        #   3. After switching to azureAd in Settings, the badge disappears and
+        #      Azure is available again (adc federated path is unblocked).
+        #   4. A dictation attempt with Azure/apiKey surfaces the auth-path-blocked
+        #      overlay message, not a raw API-key-missing error.
+        write_scenario '    <key>staticApiKeysAllowed</key>
+    <false/>'
+        restart_parleq
+        echo "Manual verification:"
+        echo "  1. Open Settings → LLM → Azure OpenAI credentials card"
+        echo "  2. Confirm 'Auth disabled by org' badge appears (apiKey mode)"
+        echo "  3. Confirm auth-mode picker (apiKey / azureAd) is still visible"
+        echo "  4. Switch to azureAd — badge should disappear"
+        ;;
+
+    test24-vertex-adc-still-works)
+        # Phase 5: push staticApiKeysAllowed=false with Vertex in adc mode.
+        # Verify that ADC (Application Default Credentials) is NOT blocked —
+        # it is a federated auth path and must remain available even when
+        # the master switch is off.
+        # Verify:
+        #   1. Vertex card does NOT show "Auth disabled by org" badge (adc mode).
+        #   2. No "BLOCKED" log line for vertex in startup log.
+        #   3. Provider picker does NOT show "(disabled by your organization)"
+        #      next to Vertex.
+        #   4. Dictation with Vertex/adc selected proceeds normally (assuming
+        #      gcloud credentials are available).
+        write_scenario '    <key>staticApiKeysAllowed</key>
+    <false/>'
+        restart_parleq
+        echo "--- verifying Vertex ADC is NOT blocked ---"
+        sleep 1
+        if [ -f ~/.parleq/app.log ]; then
+            tail -30 ~/.parleq/app.log \
+                | grep -E "BLOCKED.*vertex|vertex.*BLOCKED" \
+                && echo "FAIL: vertex appears in BLOCKED log line" \
+                || echo "PASS: no vertex BLOCK log line (ADC path is unblocked)"
+        fi
+        ;;
+
     "")
         echo "Available scenarios:"
         echo "  clear                          remove managed config + relaunch"
@@ -339,6 +426,9 @@ case "$scenario" in
         echo "  test19-azure-pinned-to-azuread Phase 4: azureAuthMode=azureAd"
         echo "  test20-bedrock-pinned-to-sso   Phase 4: bedrockAuthMode=sso"
         echo "  test21-auth-mode-combined      Phase 4: all three auth-mode keys combined"
+        echo "  test22-runtime-rejection-gemini  Phase 5: Gemini blocked at runtime (no network call)"
+        echo "  test23-runtime-rejection-azure-apikey  Phase 5: Azure apiKey blocked; azureAd remains"
+        echo "  test24-vertex-adc-still-works  Phase 5: Vertex ADC unblocked under master switch off"
         exit 1
         ;;
 

@@ -86,6 +86,14 @@ public enum ManagedConfig {
                     return "\(key)=\(val ? "true" : "false")"
                 }
                 if let val = managedString(forKey: key) {
+                    // Sanitize URLs (only key that may contain userinfo /
+                    // query tokens we don't want in the log). Other String
+                    // managed keys (provider/model/auth-mode IDs) are
+                    // non-sensitive.
+                    if key == "sparkleUpdateFeedURL", let url = validateFeedURL(val) {
+                        let safe = "\(url.scheme ?? "https")://\(url.host ?? "?")"
+                        return "\(key)=\(safe)"
+                    }
                     return "\(key)=\(val)"
                 }
                 if let val = managedStringArray(forKey: key) {
@@ -151,6 +159,118 @@ public enum ManagedConfig {
         }
         // Bridge CFString → Swift String.
         return raw as? String
+    }
+
+    /// Returns true when `staticApiKeysAllowed=false` is managed AND the
+    /// given provider/authMode combination uses a static-key auth path that
+    /// the master switch blocks at runtime.
+    ///
+    /// This is the single source of truth for the Phase 5 runtime gate.
+    /// Both `main.swift`'s `makeProvider` and the Settings UI consult this
+    /// method rather than duplicating the per-provider logic.
+    ///
+    /// Provider-by-provider matrix:
+    ///
+    ///   | Provider       | Auth mode      | Blocked |
+    ///   |----------------|----------------|---------|
+    ///   | gemini         | (api-key only) | always  |
+    ///   | openai         | (api-key only) | always  |
+    ///   | bedrock-bearer | (api-key only) | always  |
+    ///   | vertex         | serviceAccount | YES     |
+    ///   | vertex         | adc            | NO      |
+    ///   | azure          | apiKey         | YES     |
+    ///   | azure          | azureAd        | NO      |
+    ///   | bedrock        | static         | YES     |
+    ///   | bedrock        | bedrockApiKey  | YES     |
+    ///   | bedrock        | sso            | NO      |
+    ///   | none / unknown | —              | NO      |
+    ///
+    /// Strict validator for the managed `sparkleUpdateFeedURL` value.
+    /// Centralized so `main.swift`, `Config.applyManagedOverlay`, and
+    /// `ManagedConfigAuditView` all agree on what "valid" means.
+    /// Requirements:
+    ///   - scheme is exactly "https" (case-insensitive)
+    ///   - non-empty host
+    ///   - no embedded userinfo (user:password@host would ship credentials)
+    ///   - no query parameters (appcasts are static XML; a query suggests
+    ///     a tokenized URL that would leak via logs)
+    ///
+    /// Returns the parsed URL on success, nil if any check fails.
+    public static func validateFeedURL(_ raw: String) -> URL? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              let url = URL(string: trimmed),
+              let scheme = url.scheme?.lowercased(), scheme == "https",
+              let host = url.host, !host.isEmpty,
+              (url.user == nil || url.user?.isEmpty == true),
+              (url.password == nil || url.password?.isEmpty == true),
+              url.query == nil
+        else {
+            return nil
+        }
+        return url
+    }
+
+    /// Returns false when `staticApiKeysAllowed` is not managed or is true.
+    public static func isProviderAuthPathBlocked(provider: String, authMode: String?) -> Bool {
+        // Only active when staticApiKeysAllowed is managed AND set to false.
+        guard managedBool(forKey: "staticApiKeysAllowed") == false else {
+            return false
+        }
+        return isProviderAuthPathBlocked(
+            provider: provider,
+            authMode: authMode,
+            staticApiKeysAllowed: false
+        )
+    }
+
+    /// Internal/test-visible variant that takes `staticApiKeysAllowed`
+    /// as an explicit parameter rather than reading from CFPreferences.
+    /// Lets unit tests exercise the real matrix without needing a live
+    /// MDM profile. Production code goes through the no-arg public
+    /// variant above.
+    static func isProviderAuthPathBlocked(
+        provider: String,
+        authMode: String?,
+        staticApiKeysAllowed: Bool
+    ) -> Bool {
+        // Master switch on → nothing is ever blocked.
+        guard !staticApiKeysAllowed else { return false }
+
+        switch provider.lowercased() {
+        case "gemini":
+            // API-key only — always blocked when master switch is off.
+            return true
+        case "openai":
+            // API-key only — always blocked.
+            return true
+        case "bedrock-bearer":
+            // Bearer-token only — always blocked.
+            return true
+        case "vertex":
+            // serviceAccount path uses a static JSON key (Keychain-stored).
+            // adc (Application Default Credentials via gcloud) is federated.
+            // Nil-default is "adc" (federated) — matches Config.swift's
+            // vertexAuthMode default and means an uninitialized vertex
+            // config doesn't accidentally appear blocked.
+            return (authMode ?? "adc") == "serviceAccount"
+        case "azure":
+            // apiKey path uses a static resource API key (Keychain-stored).
+            // azureAd (Entra ID via az login) is federated.
+            // Nil-default is "apiKey" (blocked) — matches Config.swift's
+            // azureAuthMode default. Asymmetric with Vertex above; that's
+            // intentional and reflects the two providers' default auth
+            // modes, not a policy difference.
+            return (authMode ?? "apiKey") == "apiKey"
+        case "bedrock":
+            // static and bedrockApiKey are static-key paths.
+            // sso (AWS CLI session) is federated.
+            let mode = (authMode ?? "sso").lowercased()
+            return mode == "static" || mode == "bedrockapikey"
+        default:
+            // "none" and any unknown future provider — never blocked.
+            return false
+        }
     }
 
     /// Returns the MDM-managed [String] for `key`, or nil if the key is

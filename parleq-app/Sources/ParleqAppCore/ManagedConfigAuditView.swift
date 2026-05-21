@@ -139,16 +139,16 @@ private func resolveAuditRow(key: String, config: Config, defaults: Config) -> (
 
     // MARK: Phase 3 — operational policy keys
     case "sparkleUpdateFeedURL":
-        // Validate the managed value using the same accept/reject criteria
-        // as Config.applyManagedOverlay and main.swift: must be a non-empty
-        // https:// URL. Show the managed value when valid; show Default
-        // (Info.plist SUFeedURL) when absent or invalid.
+        // Centralized validation (see ManagedConfig.validateFeedURL): strict
+        // scheme=https, non-empty host, no userinfo, no query. Display only
+        // scheme://host to avoid leaking any path/query/userinfo through the
+        // audit dialog — the snapshot can be copied to a clipboard, and a
+        // tokenized URL on a clipboard is the same threat model as logging.
         if let raw = ManagedConfig.managedString(forKey: key) {
-            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty, URL(string: trimmed) != nil, trimmed.hasPrefix("https://") {
-                return (trimmed, .managed)
+            if let url = ManagedConfig.validateFeedURL(raw) {
+                let safe = "\(url.scheme ?? "https")://\(url.host ?? "?")"
+                return (safe, .managed)
             }
-            // Invalid managed value — treated as unmanaged by Config.applyManagedOverlay.
             return ("(invalid — using Info.plist SUFeedURL)", .default)
         }
         return ("(Info.plist SUFeedURL)", .default)
@@ -171,10 +171,34 @@ private func resolveAuditRow(key: String, config: Config, defaults: Config) -> (
 
     case "staticApiKeysAllowed":
         // Bool master switch. Default is true (API key entry is allowed).
-        // A managed false value hides all credential-entry affordances in
-        // the provider credentials section.
+        // Phase 5: when false, also enforces runtime auth-path blocking.
+        // Append a compact summary of which provider/authMode combinations
+        // are currently blocked given the user's stored config — useful for
+        // an IT admin confirming the policy has taken effect as expected.
         if let managedVal = ManagedConfig.managedBool(forKey: "staticApiKeysAllowed") {
-            return ("\(managedVal ? "true" : "false")", .managed)
+            let valStr = managedVal ? "true" : "false"
+            if !managedVal {
+                // Build a per-provider blocked summary based on the user's
+                // stored config. Only include providers whose current auth
+                // mode is blocked (fully-blocked ones appear regardless of mode).
+                let providerAuthModes: [(String, String?)] = [
+                    ("gemini",         nil),
+                    ("openai",         nil),
+                    ("bedrock-bearer", nil),
+                    ("vertex",         config.vertexAuthMode),
+                    ("azure",          config.azureAuthMode),
+                    ("bedrock",        config.awsAuthMode),
+                ]
+                let blocked = providerAuthModes
+                    .filter { ManagedConfig.isProviderAuthPathBlocked(provider: $0.0, authMode: $0.1) }
+                    .map { $0.0 }
+                if blocked.isEmpty {
+                    return ("\(valStr) (no providers blocked — all using federated auth)", .managed)
+                } else {
+                    return ("\(valStr) — blocked: \(blocked.joined(separator: ", "))", .managed)
+                }
+            }
+            return (valStr, .managed)
         }
         return ("true", .default)
 

@@ -500,7 +500,7 @@ public final class BedrockProvider: LLMProvider, @unchecked Sendable {
     private static func isAuthFailure(_ error: LLMError) -> Bool {
         switch error {
         case .missingCredentials: return true
-        case .missingAPIKey, .badStatus, .malformedResponse, .requestFailed:
+        case .missingAPIKey, .badStatus, .malformedResponse, .requestFailed, .authPathBlocked:
             return false
         }
     }
@@ -541,6 +541,8 @@ public final class BedrockProvider: LLMProvider, @unchecked Sendable {
             // Gemini-shaped (.missingAPIKey doesn't apply to Bedrock)
             // or generic — fall through to AppState's generic hint.
             return nil
+        case .authPathBlocked(let msg):
+            return msg
         }
     }
 }

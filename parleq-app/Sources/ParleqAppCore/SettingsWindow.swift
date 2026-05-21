@@ -1392,7 +1392,19 @@ struct SettingsView: View {
                         ForEach(options) { option in
                             HStack {
                                 Text(option.displayName)
-                                if !ProviderRegistry.isConfigured(option.id) {
+                                // Phase 5: annotate providers whose entire
+                                // auth path is blocked by staticApiKeysAllowed=false.
+                                // Mixed-auth providers (Azure, Bedrock IAM, Vertex)
+                                // that still have a federated path are NOT annotated
+                                // here — their credential card shows the blocked state
+                                // for the static mode only. Only fully-blocked providers
+                                // (no federated fallback) get the "(disabled by org)"
+                                // tag in the picker so the user understands upfront
+                                // that selecting them will produce a cleanup error.
+                                if ManagedConfig.isProviderAuthPathBlocked(provider: option.id, authMode: authModeForProvider(option.id)) {
+                                    Text("(disabled by your organization)")
+                                        .foregroundStyle(.red.opacity(0.8))
+                                } else if !ProviderRegistry.isConfigured(option.id) {
                                     Text("(not configured)")
                                         .foregroundStyle(.tertiary)
                                 }
@@ -1408,7 +1420,38 @@ struct SettingsView: View {
                 }
                 ManagedIndicator(isManaged: isManaged)
             }
-            ManagedCaption(isManaged: isManaged)
+            // Phase 5: when the currently-selected provider is blocked,
+            // show an actionable caption below the picker (in addition to
+            // the "(disabled by your organization)" tag in the picker row).
+            let selectedBlocked = ManagedConfig.isProviderAuthPathBlocked(
+                provider: selection.wrappedValue,
+                authMode: authModeForProvider(selection.wrappedValue)
+            )
+            if selectedBlocked {
+                HStack(spacing: 4) {
+                    ManagedIndicator(isManaged: true)
+                    Text("Disabled by your organization (requires static API key). Select a federated-auth provider to restore cleanup.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.red.opacity(0.8))
+                }
+            } else {
+                ManagedCaption(isManaged: isManaged)
+            }
+        }
+    }
+
+    /// Returns the currently-configured auth mode string for a given
+    /// provider, used by the picker to determine if the provider's
+    /// auth path is blocked by staticApiKeysAllowed=false (Phase 5).
+    /// Mixed-auth providers (Azure, Bedrock IAM, Vertex) return their
+    /// stored auth mode; API-key-only providers return nil (the gate
+    /// treats nil as the default static-key path and blocks it).
+    private func authModeForProvider(_ providerID: String) -> String? {
+        switch providerID {
+        case "azure":          return model.azureAuthMode
+        case "bedrock":        return model.awsAuthMode
+        case "vertex":         return model.vertexAuthMode
+        default:               return nil  // gemini, openai, bedrock-bearer: api-key only
         }
     }
 
@@ -1577,10 +1620,15 @@ struct SettingsView: View {
     /// Context" / "Used for Cleanup + Context" label rendered inline
     /// with the provider title when the provider is actively selected
     /// for at least one tier.
+    /// `isAuthPathBlocked` (Phase 5) — when true, shows an
+    /// "Auth disabled by org" badge alongside the configured status
+    /// so the user knows the provider won't work even if credentials
+    /// are stored.
     private func credentialCardHeader(
         title: String,
         isConfigured: Bool,
-        activeBadge: String? = nil
+        activeBadge: String? = nil,
+        isAuthPathBlocked: Bool = false
     ) -> some View {
         HStack {
             Text(title)
@@ -1594,6 +1642,19 @@ struct SettingsView: View {
                     .background(
                         RoundedRectangle(cornerRadius: 4)
                             .fill(Color.secondary.opacity(0.12))
+                    )
+            }
+            if isAuthPathBlocked {
+                // Phase 5: badge shown when staticApiKeysAllowed=false
+                // and the provider has no usable federated auth path.
+                Text("Auth disabled by org")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.red.opacity(0.9))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(Color.red.opacity(0.10))
                     )
             }
             Spacer()
@@ -1685,12 +1746,12 @@ struct SettingsView: View {
 
     @ViewBuilder
     private func geminiCredentialsCard(badge: String?) -> some View {
-        // Phase 4: staticApiKeysAllowed=false hides the API key entry affordance.
+        // Phase 4+5: staticApiKeysAllowed=false hides the API key entry
+        // affordance AND marks the card as auth-path-blocked (Phase 5).
         // Gemini (direct API) is API-key only — no federated auth path.
-        let apiKeysBlocked = model.managedKeys.contains("staticApiKeysAllowed")
-            && (ManagedConfig.managedBool(forKey: "staticApiKeysAllowed") == false)
+        let apiKeysBlocked = ManagedConfig.isProviderAuthPathBlocked(provider: "gemini", authMode: nil)
         SettingsCard {
-            credentialCardHeader(title: "Gemini (Google API)", isConfigured: model.geminiKeyIsSet, activeBadge: badge)
+            credentialCardHeader(title: "Gemini (Google API)", isConfigured: model.geminiKeyIsSet, activeBadge: badge, isAuthPathBlocked: apiKeysBlocked)
             if apiKeysBlocked {
                 HStack(spacing: 6) {
                     ManagedIndicator(isManaged: true)
@@ -1707,15 +1768,19 @@ struct SettingsView: View {
 
     @ViewBuilder
     private func vertexCredentialsCard(badge: String?) -> some View {
-        // Phase 4: staticApiKeysAllowed=false hides the service-account JSON
+        // Phase 4+5: staticApiKeysAllowed=false hides the service-account JSON
         // entry button. ADC (gcloud) auth is federated and stays available.
-        let apiKeysBlocked = model.managedKeys.contains("staticApiKeysAllowed")
-            && (ManagedConfig.managedBool(forKey: "staticApiKeysAllowed") == false)
+        // Phase 5: isAuthPathBlocked is false for Vertex (ADC is a valid
+        // federated fallback) unless the user has selected serviceAccount mode
+        // AND staticApiKeysAllowed=false — in that case the card shows the
+        // "Auth disabled by org" badge so the user knows to switch to ADC.
+        let apiKeysBlocked = ManagedConfig.isProviderAuthPathBlocked(provider: "vertex", authMode: model.vertexAuthMode)
         SettingsCard {
             credentialCardHeader(
                 title: "Gemini (Vertex / Google Cloud)",
                 isConfigured: model.vertexServiceAccountJSONSet,
-                activeBadge: badge
+                activeBadge: badge,
+                isAuthPathBlocked: apiKeysBlocked
             )
             TextField("GCP project ID", text: bind(\.vertexProject))
                 .textFieldStyle(.roundedBorder)
@@ -1778,17 +1843,22 @@ struct SettingsView: View {
 
     @ViewBuilder
     private func bedrockCredentialsCard(badge: String?) -> some View {
-        // Phase 4: bedrockAuthMode pins the auth mode picker (Bedrock IAM only).
+        // Phase 4+5: bedrockAuthMode pins the auth mode picker (Bedrock IAM only).
         // staticApiKeysAllowed=false hides the "bedrockApiKey" and "static"
         // credential-entry controls (both involve user-supplied secrets).
+        // Phase 5: isAuthPathBlocked is true only when the current awsAuthMode
+        // is static or bedrockApiKey AND staticApiKeysAllowed=false. SSO stays
+        // available. The "Auth disabled by org" badge in the card header signals
+        // that the current mode is blocked; the auth-mode picker remains visible
+        // so the user can switch to SSO to escape the blocked state.
         let bedrockModePinned = model.managedKeys.contains("bedrockAuthMode")
-        let apiKeysBlocked = model.managedKeys.contains("staticApiKeysAllowed")
-            && (ManagedConfig.managedBool(forKey: "staticApiKeysAllowed") == false)
+        let apiKeysBlocked = ManagedConfig.isProviderAuthPathBlocked(provider: "bedrock", authMode: model.awsAuthMode)
         SettingsCard {
             credentialCardHeader(
                 title: "Bedrock (AWS IAM)",
                 isConfigured: model.awsStaticCredentialsSet || model.bedrockAPIKeySet,
-                activeBadge: badge
+                activeBadge: badge,
+                isAuthPathBlocked: apiKeysBlocked
             )
             TextField("Region", text: bind(\.awsRegion))
                 .textFieldStyle(.roundedBorder)
@@ -1863,17 +1933,17 @@ struct SettingsView: View {
 
     @ViewBuilder
     private func bedrockBearerCredentialsCard(badge: String?) -> some View {
-        // Phase 4: staticApiKeysAllowed=false hides the Bearer key entry.
-        // Bedrock bearer (bedrock-bearer) uses only API-key auth — there is
-        // no federated path for this provider variant, so the entire
-        // credential-entry surface is hidden when api keys are blocked.
-        let apiKeysBlocked = model.managedKeys.contains("staticApiKeysAllowed")
-            && (ManagedConfig.managedBool(forKey: "staticApiKeysAllowed") == false)
+        // Phase 4+5: staticApiKeysAllowed=false hides the Bearer key entry
+        // AND marks the card auth-path-blocked (Phase 5). Bedrock bearer uses
+        // only API-key auth — no federated path — so the card is always
+        // blocked when the master switch is off.
+        let apiKeysBlocked = ManagedConfig.isProviderAuthPathBlocked(provider: "bedrock-bearer", authMode: nil)
         SettingsCard {
             credentialCardHeader(
                 title: "Bedrock (bearer token)",
                 isConfigured: model.bedrockAPIKeySet,
-                activeBadge: badge
+                activeBadge: badge,
+                isAuthPathBlocked: apiKeysBlocked
             )
             if apiKeysBlocked {
                 HStack(spacing: 6) {
@@ -1891,18 +1961,22 @@ struct SettingsView: View {
 
     @ViewBuilder
     private func azureCredentialsCard(badge: String?) -> some View {
-        // Phase 4: azureAuthMode pins the auth-mode picker.
+        // Phase 4+5: azureAuthMode pins the auth-mode picker.
         // staticApiKeysAllowed=false hides the "Set API key" button
         // (apiKey mode only). The azureAd controls (az login / Entra ID)
         // remain visible regardless of staticApiKeysAllowed.
+        // Phase 5: isAuthPathBlocked when apiKey mode is selected AND the
+        // master switch is off. The "Auth disabled by org" badge in the
+        // header signals the current mode is blocked; the auth-mode picker
+        // stays visible so the user can switch to azureAd to escape.
         let azureModePinned = model.managedKeys.contains("azureAuthMode")
-        let apiKeysBlocked = model.managedKeys.contains("staticApiKeysAllowed")
-            && (ManagedConfig.managedBool(forKey: "staticApiKeysAllowed") == false)
+        let apiKeysBlocked = ManagedConfig.isProviderAuthPathBlocked(provider: "azure", authMode: model.azureAuthMode)
         SettingsCard {
             credentialCardHeader(
                 title: "Azure OpenAI",
                 isConfigured: model.azureAPIKeySet,
-                activeBadge: badge
+                activeBadge: badge,
+                isAuthPathBlocked: apiKeysBlocked
             )
             TextField("Resource name or full hostname", text: bind(\.azureResource))
                 .textFieldStyle(.roundedBorder)
@@ -1962,15 +2036,17 @@ struct SettingsView: View {
 
     @ViewBuilder
     private func openAICredentialsCard(badge: String?) -> some View {
-        // Phase 4: staticApiKeysAllowed=false hides the API key entry.
-        // OpenAI direct is API-key only — no federated auth path.
-        let apiKeysBlocked = model.managedKeys.contains("staticApiKeysAllowed")
-            && (ManagedConfig.managedBool(forKey: "staticApiKeysAllowed") == false)
+        // Phase 4+5: staticApiKeysAllowed=false hides the API key entry
+        // AND marks the card auth-path-blocked (Phase 5). OpenAI direct is
+        // API-key only — no federated auth path — so always blocked when the
+        // master switch is off.
+        let apiKeysBlocked = ManagedConfig.isProviderAuthPathBlocked(provider: "openai", authMode: nil)
         SettingsCard {
             credentialCardHeader(
                 title: "OpenAI (direct API)",
                 isConfigured: model.openAIAPIKeySet,
-                activeBadge: badge
+                activeBadge: badge,
+                isAuthPathBlocked: apiKeysBlocked
             )
             if apiKeysBlocked {
                 HStack(spacing: 6) {
