@@ -1685,15 +1685,32 @@ struct SettingsView: View {
 
     @ViewBuilder
     private func geminiCredentialsCard(badge: String?) -> some View {
+        // Phase 4: staticApiKeysAllowed=false hides the API key entry affordance.
+        // Gemini (direct API) is API-key only — no federated auth path.
+        let apiKeysBlocked = model.managedKeys.contains("staticApiKeysAllowed")
+            && (ManagedConfig.managedBool(forKey: "staticApiKeysAllowed") == false)
         SettingsCard {
             credentialCardHeader(title: "Gemini (Google API)", isConfigured: model.geminiKeyIsSet, activeBadge: badge)
-            GeminiAPIKeyRow(model: model)
+            if apiKeysBlocked {
+                HStack(spacing: 6) {
+                    ManagedIndicator(isManaged: true)
+                    Text("API key entry disabled by your organization.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                GeminiAPIKeyRow(model: model)
+            }
             SettingsCaption("Auth uses the GEMINI_API_KEY environment variable, then the macOS Keychain (set via the button above). Restart to apply.")
         }
     }
 
     @ViewBuilder
     private func vertexCredentialsCard(badge: String?) -> some View {
+        // Phase 4: staticApiKeysAllowed=false hides the service-account JSON
+        // entry button. ADC (gcloud) auth is federated and stays available.
+        let apiKeysBlocked = model.managedKeys.contains("staticApiKeysAllowed")
+            && (ManagedConfig.managedBool(forKey: "staticApiKeysAllowed") == false)
         SettingsCard {
             credentialCardHeader(
                 title: "Gemini (Vertex / Google Cloud)",
@@ -1711,18 +1728,47 @@ struct SettingsView: View {
             HStack(alignment: .center) {
                 Text("Auth mode")
                     .frame(minWidth: 90, alignment: .leading)
-                Picker("", selection: bind(\.vertexAuthMode)) {
-                    Text("gcloud (ADC)").tag("adc")
-                    Text("Service account JSON").tag("serviceAccount")
+                if apiKeysBlocked {
+                    // Fixed disabled label — matches the Azure / Bedrock
+                    // pinned-mode pattern. Avoids the deceptive state where
+                    // a single-option segmented picker would visually
+                    // highlight ADC while the underlying `vertexAuthMode`
+                    // storage still held `serviceAccount`. By rendering a
+                    // label instead of a picker, the user's stored
+                    // preference (whatever it is) is preserved on disk and
+                    // restored when MDM is removed.
+                    Text("gcloud (ADC)")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            RoundedRectangle(cornerRadius: 5)
+                                .fill(Color.secondary.opacity(0.1))
+                        )
+                    ManagedIndicator(isManaged: true)
+                } else {
+                    Picker("", selection: bind(\.vertexAuthMode)) {
+                        Text("gcloud (ADC)").tag("adc")
+                        Text("Service account JSON").tag("serviceAccount")
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .frame(maxWidth: 320)
                 }
-                .labelsHidden()
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 320)
                 Spacer()
             }
-            if model.vertexAuthMode == "serviceAccount" {
+            if model.vertexAuthMode == "serviceAccount" && !apiKeysBlocked {
                 VertexServiceAccountRow(model: model)
                 SettingsCaption("Paste the JSON key file you downloaded from GCP IAM → Service Accounts → Keys → Add Key. The whole JSON is stored in the macOS Keychain, never in `~/.parleq/config.json`. Parleq mints short-lived OAuth tokens directly via the SA's RSA private key — no `gcloud` CLI required. Grant the SA the Vertex AI User role on this project.")
+            } else if apiKeysBlocked {
+                HStack(spacing: 6) {
+                    ManagedIndicator(isManaged: true)
+                    Text("Service account JSON entry disabled by your organization.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+                SettingsCaption("Auth uses your local Application Default Credentials. Run `gcloud auth application-default login` once to sign in; Parleq calls `gcloud auth application-default print-access-token` per session to mint short-lived OAuth tokens (cached in memory). The `gcloud` CLI must be on PATH.")
             } else {
                 SettingsCaption("Auth uses your local Application Default Credentials. Run `gcloud auth application-default login` once to sign in; Parleq calls `gcloud auth application-default print-access-token` per session to mint short-lived OAuth tokens (cached in memory). The `gcloud` CLI must be on PATH.")
             }
@@ -1732,6 +1778,12 @@ struct SettingsView: View {
 
     @ViewBuilder
     private func bedrockCredentialsCard(badge: String?) -> some View {
+        // Phase 4: bedrockAuthMode pins the auth mode picker (Bedrock IAM only).
+        // staticApiKeysAllowed=false hides the "bedrockApiKey" and "static"
+        // credential-entry controls (both involve user-supplied secrets).
+        let bedrockModePinned = model.managedKeys.contains("bedrockAuthMode")
+        let apiKeysBlocked = model.managedKeys.contains("staticApiKeysAllowed")
+            && (ManagedConfig.managedBool(forKey: "staticApiKeysAllowed") == false)
         SettingsCard {
             credentialCardHeader(
                 title: "Bedrock (AWS IAM)",
@@ -1743,21 +1795,63 @@ struct SettingsView: View {
             HStack(alignment: .center) {
                 Text("Auth mode")
                     .frame(minWidth: 90, alignment: .leading)
-                Picker("", selection: bind(\.awsAuthMode)) {
-                    Text("Bedrock API key").tag("bedrockApiKey")
-                    Text("AWS CLI session").tag("sso")
-                    Text("Static credentials").tag("static")
+                if bedrockModePinned {
+                    // Pinned — show as a fixed disabled label (same pattern as
+                    // tier provider/model pickers). No interactive picker.
+                    let modeLabel: String = {
+                        switch model.awsAuthMode {
+                        case "bedrockApiKey": return "Bedrock API key"
+                        case "static":        return "Static credentials"
+                        default:              return "AWS CLI session (SSO)"
+                        }
+                    }()
+                    Text(modeLabel)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(RoundedRectangle(cornerRadius: 5).fill(Color.secondary.opacity(0.1)))
+                    ManagedIndicator(isManaged: true)
+                } else {
+                    Picker("", selection: bind(\.awsAuthMode)) {
+                        Text("Bedrock API key").tag("bedrockApiKey")
+                        Text("AWS CLI session").tag("sso")
+                        Text("Static credentials").tag("static")
+                    }
+                    .labelsHidden()
+                    .frame(maxWidth: 280)
                 }
-                .labelsHidden()
-                .frame(maxWidth: 280)
                 Spacer()
             }
+            if bedrockModePinned {
+                ManagedCaption(isManaged: true)
+            }
+            // Credential-entry controls shown only for the current auth mode,
+            // and only when api keys are not blocked by staticApiKeysAllowed.
             switch model.awsAuthMode {
             case "bedrockApiKey":
-                BedrockAPIKeyRow(model: model)
+                if apiKeysBlocked {
+                    HStack(spacing: 6) {
+                        ManagedIndicator(isManaged: true)
+                        Text("API key entry disabled by your organization.")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                    }
+                } else {
+                    BedrockAPIKeyRow(model: model)
+                }
                 SettingsCaption("Bedrock API keys are scoped to Bedrock specifically — no IAM policy understanding required. Generate one in the AWS Bedrock console → API keys → Create. Stored in the macOS Keychain. Restart to apply.")
             case "static":
-                AWSStaticCredentialsRow(model: model)
+                if apiKeysBlocked {
+                    HStack(spacing: 6) {
+                        ManagedIndicator(isManaged: true)
+                        Text("Static credential entry disabled by your organization.")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                    }
+                } else {
+                    AWSStaticCredentialsRow(model: model)
+                }
                 SettingsCaption("Long-lived AWS access keys stored in the macOS Keychain. Pasted keys never appear in `~/.parleq/config.json` or any plaintext file. Restart to apply.")
             default: // "sso"
                 TextField("AWS profile (optional)", text: bind(\.awsProfile))
@@ -1769,19 +1863,41 @@ struct SettingsView: View {
 
     @ViewBuilder
     private func bedrockBearerCredentialsCard(badge: String?) -> some View {
+        // Phase 4: staticApiKeysAllowed=false hides the Bearer key entry.
+        // Bedrock bearer (bedrock-bearer) uses only API-key auth — there is
+        // no federated path for this provider variant, so the entire
+        // credential-entry surface is hidden when api keys are blocked.
+        let apiKeysBlocked = model.managedKeys.contains("staticApiKeysAllowed")
+            && (ManagedConfig.managedBool(forKey: "staticApiKeysAllowed") == false)
         SettingsCard {
             credentialCardHeader(
                 title: "Bedrock (bearer token)",
                 isConfigured: model.bedrockAPIKeySet,
                 activeBadge: badge
             )
-            BedrockAPIKeyRow(model: model)
+            if apiKeysBlocked {
+                HStack(spacing: 6) {
+                    ManagedIndicator(isManaged: true)
+                    Text("API key entry disabled by your organization.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                BedrockAPIKeyRow(model: model)
+            }
             SettingsCaption("Bedrock API keys provide a simpler auth path — no IAM policy work required. Generate one in the AWS Bedrock console → API keys → Create. Stored in the macOS Keychain. Restart to apply.")
         }
     }
 
     @ViewBuilder
     private func azureCredentialsCard(badge: String?) -> some View {
+        // Phase 4: azureAuthMode pins the auth-mode picker.
+        // staticApiKeysAllowed=false hides the "Set API key" button
+        // (apiKey mode only). The azureAd controls (az login / Entra ID)
+        // remain visible regardless of staticApiKeysAllowed.
+        let azureModePinned = model.managedKeys.contains("azureAuthMode")
+        let apiKeysBlocked = model.managedKeys.contains("staticApiKeysAllowed")
+            && (ManagedConfig.managedBool(forKey: "staticApiKeysAllowed") == false)
         SettingsCard {
             credentialCardHeader(
                 title: "Azure OpenAI",
@@ -1797,19 +1913,47 @@ struct SettingsView: View {
             HStack(alignment: .center) {
                 Text("Auth mode")
                     .frame(minWidth: 110, alignment: .leading)
-                Picker("", selection: bind(\.azureAuthMode)) {
-                    Text("API key").tag("apiKey")
-                    Text("Microsoft Entra ID").tag("azureAd")
+                if azureModePinned {
+                    // Pinned — show as a fixed disabled label.
+                    let modeLabel = model.azureAuthMode == "azureAd" ? "Microsoft Entra ID" : "API key"
+                    Text(modeLabel)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(RoundedRectangle(cornerRadius: 5).fill(Color.secondary.opacity(0.1)))
+                    ManagedIndicator(isManaged: true)
+                } else {
+                    Picker("", selection: bind(\.azureAuthMode)) {
+                        Text("API key").tag("apiKey")
+                        Text("Microsoft Entra ID").tag("azureAd")
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .frame(maxWidth: 320)
                 }
-                .labelsHidden()
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 320)
                 Spacer()
             }
+            if azureModePinned {
+                ManagedCaption(isManaged: true)
+            }
+            // Credential-entry controls:
+            //   azureAd mode → az login / Entra ID caption (no API key needed)
+            //   apiKey mode  → AzureAPIKeyRow, unless staticApiKeysAllowed=false
             if model.azureAuthMode == "azureAd" {
                 SettingsCaption("Auth uses your local `az login` session. Parleq calls `az account get-access-token --resource https://cognitiveservices.azure.com/` per session to mint short-lived OAuth bearers (cached for 50 min in memory). The Azure CLI must be on PATH. Restart to apply.")
             } else {
-                AzureAPIKeyRow(model: model)
+                // apiKey mode
+                if apiKeysBlocked {
+                    HStack(spacing: 6) {
+                        ManagedIndicator(isManaged: true)
+                        Text("API key entry disabled by your organization.")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                    }
+                } else {
+                    AzureAPIKeyRow(model: model)
+                }
                 SettingsCaption("Resource API key from the Keys and Endpoint page of your Azure OpenAI resource. Stored in the macOS Keychain. Restart to apply.")
             }
             SettingsCaption("Azure routes by deployment name, not model name — set the deployment to match what you created in the Azure portal. The Resource field accepts either a bare resource name (e.g. `my-openai`, builds the classic `*.openai.azure.com` URL) or a full hostname (e.g. `my-resource.cognitiveservices.azure.com` or `*.services.ai.azure.com` for newer Foundry resources). Bump the API version to a current preview (e.g. `2025-04-01-preview`) for gpt-5-series models.")
@@ -1818,13 +1962,26 @@ struct SettingsView: View {
 
     @ViewBuilder
     private func openAICredentialsCard(badge: String?) -> some View {
+        // Phase 4: staticApiKeysAllowed=false hides the API key entry.
+        // OpenAI direct is API-key only — no federated auth path.
+        let apiKeysBlocked = model.managedKeys.contains("staticApiKeysAllowed")
+            && (ManagedConfig.managedBool(forKey: "staticApiKeysAllowed") == false)
         SettingsCard {
             credentialCardHeader(
                 title: "OpenAI (direct API)",
                 isConfigured: model.openAIAPIKeySet,
                 activeBadge: badge
             )
-            OpenAIAPIKeyRow(model: model)
+            if apiKeysBlocked {
+                HStack(spacing: 6) {
+                    ManagedIndicator(isManaged: true)
+                    Text("API key entry disabled by your organization.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                OpenAIAPIKeyRow(model: model)
+            }
             SettingsCaption("API key from platform.openai.com → API keys → Create new secret key. Stored in the macOS Keychain — never written to ~/.parleq/config.json or any plaintext file. Restart to apply.")
             SettingsCaption("Routes directly to api.openai.com without any Azure intermediary. For data-residency requirements that mandate Azure infrastructure, use Azure OpenAI instead — the model quality is equivalent.")
         }

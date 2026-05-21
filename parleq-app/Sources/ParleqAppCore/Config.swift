@@ -665,6 +665,64 @@ public struct Config: Sendable {
             }
         }
 
+        // MDM overlay — Phase 4: auth-mode restrictions.
+        //
+        // staticApiKeysAllowed (Bool) — master switch for credential-entry UI.
+        // When false, every "Set … API key" / "Set … Service Account JSON" /
+        // "Set … Bearer Key" affordance across all provider credentials cards
+        // is hidden. The UI-side gate lives in SettingsWindow.swift; this
+        // block just records the key in managedKeys so Settings can consult it.
+        //
+        // Defense-in-depth note: an already-stored static API key CONTINUES
+        // to work at runtime — Phase 4 only hides the UI for adding/changing
+        // keys. Refusing to USE stored static keys when staticApiKeysAllowed
+        // is false is a future enhancement: it would require either rotating
+        // the user back to a federated auth mode (interactive) or refusing
+        // dictation outright (disruptive). For now, UI-level hiding is the
+        // policy enforcement surface.
+        if ManagedConfig.managedBool(forKey: "staticApiKeysAllowed") != nil {
+            managedKeys.insert("staticApiKeysAllowed")
+        }
+
+        // azureAuthMode (String) — pin Azure auth mode.
+        // Recognized values: "apiKey" (default), "azureAd".
+        // When managed, the Azure auth-mode picker is replaced by a fixed
+        // disabled label, and the credential controls that don't match the
+        // pinned mode are hidden. Unrecognized values are rejected (key NOT
+        // added to managedKeys). The stored config value is also overridden
+        // so the runtime provider sees the correct mode.
+        if let rawAzureAuthMode = ManagedConfig.managedString(forKey: "azureAuthMode") {
+            let recognized = ["apiKey", "azureAd"]
+            if recognized.contains(rawAzureAuthMode) {
+                c.azureAuthMode = rawAzureAuthMode
+                managedKeys.insert("azureAuthMode")
+            } else {
+                configLogStderr("[parleq] azureAuthMode: rejected unrecognized managed value '\(rawAzureAuthMode)' — recognized values are \(recognized.joined(separator: ", ")); treating as unmanaged")
+            }
+        }
+
+        // bedrockAuthMode (String) — pin Bedrock IAM auth mode.
+        // Recognized values: "sso" (default), "static", "bedrockApiKey".
+        //   - "sso": AWS CLI session via Soto's .sso() provider.
+        //   - "static": IAM access keys stored in the macOS Keychain.
+        //   - "bedrockApiKey": scoped Bedrock-only Bearer token.
+        // When managed, the Bedrock auth-mode picker is replaced by a fixed
+        // disabled label, and credential controls that don't match the pinned
+        // mode are hidden. Unrecognized values rejected (key NOT added to
+        // managedKeys). Note: bedrockAuthMode applies only to the Bedrock IAM
+        // provider ("bedrock"); the Bedrock bearer provider ("bedrock-bearer")
+        // uses bedrockApiKey auth exclusively and is covered by
+        // staticApiKeysAllowed instead.
+        if let rawBedrockAuthMode = ManagedConfig.managedString(forKey: "bedrockAuthMode") {
+            let recognized = ["sso", "static", "bedrockApiKey"]
+            if recognized.contains(rawBedrockAuthMode) {
+                c.awsAuthMode = rawBedrockAuthMode
+                managedKeys.insert("bedrockAuthMode")
+            } else {
+                configLogStderr("[parleq] bedrockAuthMode: rejected unrecognized managed value '\(rawBedrockAuthMode)' — recognized values are \(recognized.joined(separator: ", ")); treating as unmanaged")
+            }
+        }
+
             // MDM overlay — Phase 2: provider/model lockdown (8 string/array keys).
             //
             // Pin semantics (single String):

@@ -144,6 +144,42 @@
                                 <key>loggingMode</key>
                                 <string>lengthOnly</string>
 
+                                <!-- ═══ Auth-mode restrictions (Phase 4) ═══════════════════════ -->
+
+                                <!-- staticApiKeysAllowed — master switch for credential-entry UI.
+                                     When false, hides every "Set ... API key", "Set ... Service
+                                     Account JSON", and "Set ... Bearer key" button across ALL
+                                     provider credentials cards. Federated-auth controls (gcloud ADC,
+                                     az login, AWS SSO) remain visible and usable.
+                                     Note: already-stored static keys continue to work at runtime;
+                                     this key only prevents users from adding or replacing keys.
+                                     Uncomment to enforce no-static-keys policy:
+                                <key>staticApiKeysAllowed</key>
+                                <false/>
+                                -->
+
+                                <!-- azureAuthMode — pin Azure OpenAI authentication mode.
+                                     Recognized values: "apiKey" (default), "azureAd" (Entra ID).
+                                     When pinned to "azureAd", the API key entry row is hidden and
+                                     the picker shows a fixed "Microsoft Entra ID" label.
+                                     Unrecognized values are rejected with a log warning.
+                                     Uncomment to force Entra ID for Azure:
+                                <key>azureAuthMode</key>
+                                <string>azureAd</string>
+                                -->
+
+                                <!-- bedrockAuthMode — pin Bedrock (AWS IAM) authentication mode.
+                                     Applies to the "bedrock" provider only (not "bedrock-bearer").
+                                     Recognized values: "sso" (default — AWS CLI session),
+                                     "static" (long-lived IAM access keys), "bedrockApiKey".
+                                     When pinned to "sso", credential-entry controls for the other
+                                     modes are hidden.
+                                     Unrecognized values are rejected with a log warning.
+                                     Uncomment to force AWS SSO for Bedrock:
+                                <key>bedrockAuthMode</key>
+                                <string>sso</string>
+                                -->
+
                             </dict>
                         </dict>
                     </array>

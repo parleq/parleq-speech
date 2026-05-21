@@ -180,6 +180,47 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
       </p>
     </div>
 
+    <!-- Authentication-mode restriction keys (Phase 4) -->
+    <h3 class="mt-10 font-display text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Authentication-mode restrictions</h3>
+    <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      These keys let IT admins restrict how users authenticate to LLM providers — forcing federated identity (Entra ID, AWS SSO) and disabling static API-key entry across the board.
+    </p>
+
+    <div class="mt-6 overflow-x-auto rounded-xl border border-[color:var(--color-border)]">
+      <table class="w-full text-[14px] text-[color:var(--color-text-muted)]">
+        <thead class="border-b border-[color:var(--color-border)] bg-[color:var(--color-surface)]">
+          <tr>
+            <th class="px-4 py-3 text-left font-semibold text-[color:var(--color-text)]">Key</th>
+            <th class="px-4 py-3 text-left font-semibold text-[color:var(--color-text)]">Type</th>
+            <th class="px-4 py-3 text-left font-semibold text-[color:var(--color-text)]">Behavior</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-[color:var(--color-border)]">
+          <tr class="bg-[color:var(--color-bg)]">
+            <td class="px-4 py-3 font-mono text-[13px] text-[color:var(--color-text)]">staticApiKeysAllowed</td>
+            <td class="px-4 py-3">Boolean</td>
+            <td class="px-4 py-3"><strong class="text-[color:var(--color-text)]">Master switch.</strong> When set to <code class="font-mono text-[12px]">false</code>, hides every &ldquo;Set &hellip; API key&rdquo;, &ldquo;Set &hellip; Service Account JSON&rdquo;, and &ldquo;Set &hellip; Bearer key&rdquo; affordance across all provider credentials cards. Affected providers: Gemini, OpenAI direct, Bedrock bearer (API-key only), and the API-key paths of Azure (<code class="font-mono text-[12px]">apiKey</code> mode) and Bedrock IAM (<code class="font-mono text-[12px]">static</code> and <code class="font-mono text-[12px]">bedrockApiKey</code> modes). Federated-auth controls (gcloud ADC, <code class="font-mono text-[12px]">az login</code>, AWS SSO) remain visible and usable. Note: already-stored static keys continue to work at runtime &mdash; this key only hides the entry UI. Default: <code class="font-mono text-[12px]">true</code> (not restricted).</td>
+          </tr>
+          <tr class="bg-[color:var(--color-surface)]">
+            <td class="px-4 py-3 font-mono text-[13px] text-[color:var(--color-text)]">azureAuthMode</td>
+            <td class="px-4 py-3 font-mono text-[13px]">String</td>
+            <td class="px-4 py-3"><strong class="text-[color:var(--color-text)]">Pin Azure auth mode.</strong> Forces the Azure OpenAI credentials card to a specific authentication flavor. The auth-mode picker becomes a fixed disabled label. Recognized values: <code class="font-mono text-[12px]">apiKey</code> (default &mdash; resource API key) and <code class="font-mono text-[12px]">azureAd</code> (Microsoft Entra ID via <code class="font-mono text-[12px]">az login</code>). When pinned to <code class="font-mono text-[12px]">azureAd</code>, the &ldquo;Set API key&rdquo; button is hidden; when pinned to <code class="font-mono text-[12px]">apiKey</code>, the Entra ID controls are hidden. Precedence: <code class="font-mono text-[12px]">staticApiKeysAllowed: false</code> is a hard override &mdash; even if <code class="font-mono text-[12px]">azureAuthMode: apiKey</code> is set, the API key entry button is still hidden when the master switch is off. Unrecognized values are rejected with a log warning.</td>
+          </tr>
+          <tr class="bg-[color:var(--color-bg)]">
+            <td class="px-4 py-3 font-mono text-[13px] text-[color:var(--color-text)]">bedrockAuthMode</td>
+            <td class="px-4 py-3 font-mono text-[13px]">String</td>
+            <td class="px-4 py-3"><strong class="text-[color:var(--color-text)]">Pin Bedrock IAM auth mode.</strong> Forces the Bedrock (AWS IAM) credentials card to a specific authentication flavor. Applies to the <code class="font-mono text-[12px]">bedrock</code> provider only (not <code class="font-mono text-[12px]">bedrock-bearer</code>). Recognized values: <code class="font-mono text-[12px]">sso</code> (default &mdash; AWS CLI / SSO session), <code class="font-mono text-[12px]">static</code> (long-lived IAM access keys), <code class="font-mono text-[12px]">bedrockApiKey</code> (scoped Bedrock-only bearer token). When pinned to <code class="font-mono text-[12px]">sso</code>, credential-entry controls for the other modes are hidden; analogously for the other values. Precedence: <code class="font-mono text-[12px]">staticApiKeysAllowed: false</code> additionally hides <code class="font-mono text-[12px]">static</code> and <code class="font-mono text-[12px]">bedrockApiKey</code> credential entry even if <code class="font-mono text-[12px]">bedrockAuthMode</code> pins to one of them. Unrecognized values are rejected with a log warning.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="mt-6 rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5">
+      <p class="text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">
+        <strong class="text-[color:var(--color-text)]">Precedence:</strong> <code class="font-mono text-[12px]">staticApiKeysAllowed: false</code> is the hard outer gate. An auth-mode pin like <code class="font-mono text-[12px]">azureAuthMode: apiKey</code> permits API-key authentication <em>only if</em> <code class="font-mono text-[12px]">staticApiKeysAllowed</code> does not forbid it. To force Entra ID or AWS SSO across the board, set <code class="font-mono text-[12px]">staticApiKeysAllowed: false</code> and optionally also pin the auth mode for belt-and-suspenders clarity in the Compliance Audit dialog.
+      </p>
+    </div>
+
     <!-- Operational policy keys (Phase 3) -->
     <h3 class="mt-10 font-display text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Operational policy</h3>
     <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
@@ -417,18 +458,5 @@ sudo killall cfprefsd
 # restart Parleq &mdash; toggle is user-controllable again</code></pre>
     </div>
 
-    <!-- Future schema additions -->
-    <h2 class="mt-12 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
-      Future schema additions
-    </h2>
-    <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      The schema documented above &mdash; seven feature toggles, the provider/model lockdown keys, and the two operational policy keys &mdash; is what ships today. Future phases will add:
-    </p>
-    <ul class="mt-4 space-y-2 text-[16px] leading-relaxed text-[color:var(--color-text-muted)] list-disc list-inside">
-      <li>Authentication-mode restrictions (<code class="font-mono text-[13px]">azureAuthMode</code>, <code class="font-mono text-[13px]">bedrockAuthMode</code>, <code class="font-mono text-[13px]">staticApiKeysAllowed</code>)</li>
-    </ul>
-    <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      Track additions in <a href={`${repoUrl}/issues/39`} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">issue #39</a>.
-    </p>
   </article>
 </Layout>

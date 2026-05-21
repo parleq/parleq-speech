@@ -30,10 +30,11 @@ public enum ManagedConfig {
     public static let bundleID = "com.parleq.app"
 
     /// Every managed-eligible key across Phase 1 (7 Bool keys),
-    /// Phase 2 (8 string/array keys), and Phase 3 (2 operational
-    /// policy keys). This is the single source of truth consumed by
-    /// the Compliance Audit dialog, `allKeys`, and test coverage
-    /// checks. autoUpdateEnabled is the Sparkle-side Bool.
+    /// Phase 2 (8 string/array keys), Phase 3 (2 operational
+    /// policy keys), and Phase 4 (3 auth-mode restriction keys).
+    /// This is the single source of truth consumed by the Compliance
+    /// Audit dialog, `allKeys`, and test coverage checks.
+    /// autoUpdateEnabled is the Sparkle-side Bool.
     public static let allKeys: [String] = [
         // Phase 1 — Bool feature toggles
         "referenceWindowsEnabled",
@@ -55,6 +56,10 @@ public enum ManagedConfig {
         // Phase 3 — operational policy
         "sparkleUpdateFeedURL",
         "loggingMode",
+        // Phase 4 — auth-mode restrictions
+        "staticApiKeysAllowed",
+        "azureAuthMode",
+        "bedrockAuthMode",
     ]
 
     /// Emit a one-line startup summary of which managed keys were

@@ -167,6 +167,45 @@ private func resolveAuditRow(key: String, config: Config, defaults: Config) -> (
         }
         return ("lengthOnly", .default)
 
+    // MARK: Phase 4 — auth-mode restriction keys
+
+    case "staticApiKeysAllowed":
+        // Bool master switch. Default is true (API key entry is allowed).
+        // A managed false value hides all credential-entry affordances in
+        // the provider credentials section.
+        if let managedVal = ManagedConfig.managedBool(forKey: "staticApiKeysAllowed") {
+            return ("\(managedVal ? "true" : "false")", .managed)
+        }
+        return ("true", .default)
+
+    case "azureAuthMode":
+        // String pin. Default is "apiKey". When managed, overrides the
+        // stored config value and locks the Azure auth-mode picker.
+        // If MDM pushed an unrecognized value, Config.applyManagedOverlay
+        // rejects it and doesn't add it to managedKeys — but we surface
+        // the rejected raw value here so an admin pushing an invalid
+        // policy can see it in the audit dialog (mirrors loggingMode).
+        if !isManaged, let raw = ManagedConfig.managedString(forKey: "azureAuthMode") {
+            let recognized = ["apiKey", "azureAd"]
+            if !recognized.contains(raw) {
+                return ("(unrecognized: \(raw))", .default)
+            }
+        }
+        return formatString(config.azureAuthMode, managed: isManaged, defaultVal: defaults.azureAuthMode)
+
+    case "bedrockAuthMode":
+        // String pin. Default is "sso". When managed, overrides the
+        // stored config value (stored as awsAuthMode) and locks the
+        // Bedrock IAM auth-mode picker. Unrecognized values are
+        // surfaced as "(unrecognized: ...)" — same UX as loggingMode.
+        if !isManaged, let raw = ManagedConfig.managedString(forKey: "bedrockAuthMode") {
+            let recognized = ["sso", "static", "bedrockApiKey"]
+            if !recognized.contains(raw) {
+                return ("(unrecognized: \(raw))", .default)
+            }
+        }
+        return formatString(config.awsAuthMode, managed: isManaged, defaultVal: defaults.awsAuthMode)
+
     default:
         return ("(unknown key)", .default)
     }

@@ -257,6 +257,64 @@ case "$scenario" in
         restart_parleq
         ;;
 
+    test18-no-static-keys)
+        # Phase 4: push staticApiKeysAllowed=false (master switch).
+        # Verify:
+        #   1. Gemini card: "API key entry disabled by your organization." + lock icon.
+        #   2. OpenAI card: same.
+        #   3. Bedrock bearer card: same.
+        #   4. Azure card (apiKey mode): API key row hidden.
+        #   5. Bedrock IAM card (sso mode is default): no change to sso controls;
+        #      if user switches to static/bedrockApiKey in picker, the entry row is hidden.
+        #   6. Vertex card: "Service account JSON entry disabled"; ADC mode remains.
+        #   7. Compliance Audit: staticApiKeysAllowed=false, source=Managed.
+        write_scenario '    <key>staticApiKeysAllowed</key>
+    <false/>'
+        restart_parleq
+        ;;
+
+    test19-azure-pinned-to-azuread)
+        # Phase 4: push azureAuthMode=azureAd.
+        # Verify:
+        #   1. Azure credentials card shows pinned "Microsoft Entra ID" fixed label.
+        #   2. Auth-mode picker replaced by disabled label + lock icon.
+        #   3. "Set API key…" button hidden (azureAd doesn't use one).
+        #   4. az login caption visible.
+        #   5. Compliance Audit: azureAuthMode=azureAd, source=Managed.
+        write_scenario '    <key>azureAuthMode</key>
+    <string>azureAd</string>'
+        restart_parleq
+        ;;
+
+    test20-bedrock-pinned-to-sso)
+        # Phase 4: push bedrockAuthMode=sso (the default, but now managed/locked).
+        # Verify:
+        #   1. Bedrock IAM card shows pinned "AWS CLI session (SSO)" fixed label + lock.
+        #   2. Auth-mode picker replaced by disabled label.
+        #   3. Static-credentials row and Bedrock API key row hidden.
+        #   4. AWS profile text field visible (still used in sso mode).
+        #   5. Compliance Audit: bedrockAuthMode=sso, source=Managed.
+        write_scenario '    <key>bedrockAuthMode</key>
+    <string>sso</string>'
+        restart_parleq
+        ;;
+
+    test21-auth-mode-combined)
+        # Phase 4: all three auth-mode restriction keys in one push.
+        # Verify cumulative lockdown:
+        #   - staticApiKeysAllowed=false: API key entry hidden everywhere.
+        #   - azureAuthMode=azureAd: Azure card pinned to Entra ID.
+        #   - bedrockAuthMode=sso: Bedrock IAM pinned to SSO.
+        #   Compliance Audit shows all three keys as Managed.
+        write_scenario '    <key>staticApiKeysAllowed</key>
+    <false/>
+    <key>azureAuthMode</key>
+    <string>azureAd</string>
+    <key>bedrockAuthMode</key>
+    <string>sso</string>'
+        restart_parleq
+        ;;
+
     "")
         echo "Available scenarios:"
         echo "  clear                          remove managed config + relaunch"
@@ -277,6 +335,10 @@ case "$scenario" in
         echo "  test15-sparkle-feed-url        Phase 3: sparkleUpdateFeedURL=https://example.com/appcast.xml"
         echo "  test16-logging-mode            Phase 3: loggingMode=lengthOnly"
         echo "  test17-tier3-combined          Phase 3: both + invalid loggingMode to verify rejection"
+        echo "  test18-no-static-keys          Phase 4: staticApiKeysAllowed=false (master switch)"
+        echo "  test19-azure-pinned-to-azuread Phase 4: azureAuthMode=azureAd"
+        echo "  test20-bedrock-pinned-to-sso   Phase 4: bedrockAuthMode=sso"
+        echo "  test21-auth-mode-combined      Phase 4: all three auth-mode keys combined"
         exit 1
         ;;
 

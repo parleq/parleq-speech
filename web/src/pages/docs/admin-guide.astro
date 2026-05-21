@@ -128,6 +128,27 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
 &lt;false/&gt;</code></pre>
     </div>
 
+    <h3 class="mt-8 font-display text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Auth-mode lockdown</h3>
+    <p class="mt-3 text-[15px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      Your security policy requires federated identity throughout &mdash; no static API keys on developer laptops. Force Entra ID for Azure and AWS SSO for Bedrock, and globally disable all API-key entry UI so users cannot paste in personal credentials.
+    </p>
+    <div class="mt-4 overflow-x-auto rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
+      <pre class="text-[13px] leading-[1.7] text-[color:var(--color-text-muted)] whitespace-pre overflow-x-auto"><code>&lt;!-- Master switch: hide every "Set ... API key" button across all providers --&gt;
+&lt;key&gt;staticApiKeysAllowed&lt;/key&gt;
+&lt;false/&gt;
+
+&lt;!-- Force Azure to use Entra ID (az login) --&gt;
+&lt;key&gt;azureAuthMode&lt;/key&gt;
+&lt;string&gt;azureAd&lt;/string&gt;
+
+&lt;!-- Force Bedrock to use AWS SSO --&gt;
+&lt;key&gt;bedrockAuthMode&lt;/key&gt;
+&lt;string&gt;sso&lt;/string&gt;</code></pre>
+    </div>
+    <p class="mt-4 text-[14px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      With this configuration: the Azure credentials card shows a pinned &ldquo;Microsoft Entra ID&rdquo; label and hides the API key row; the Bedrock card shows a pinned &ldquo;AWS CLI session (SSO)&rdquo; label and hides the static-credentials and Bedrock-API-key rows; Gemini, OpenAI direct, and Bedrock bearer cards all hide their key-entry buttons. Federated-auth controls (&ldquo;Auth uses your local <code class="font-mono text-[12px]">az login</code> session&rdquo;, <code class="font-mono text-[12px]">aws sso login</code>) remain fully accessible. Already-stored static keys continue to work at runtime &mdash; the UI restriction prevents adding or replacing keys, not using ones already in the Keychain.
+    </p>
+
     <h3 class="mt-8 font-display text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Compliance-first lockdown</h3>
     <p class="mt-3 text-[15px] leading-[1.7] text-[color:var(--color-text-muted)]">
       Maximally locked: no screenshots, no file references, no custom models, auto-update managed centrally, logging policy documented for auditors, and updates fetched from an internal mirror after your security team&rsquo;s review.
@@ -204,10 +225,7 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
       <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5">
         <p class="font-semibold text-[color:var(--color-text)]">Code signature</p>
         <p class="mt-2 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">
-          Every Parleq release is signed with Apple Developer ID. The current signing Team ID is <code class="rounded bg-[color:var(--color-surface)] border border-[color:var(--color-border)] px-1.5 py-0.5 font-mono text-[13px]">XXXXXXXXXX</code>. Admins can verify this independently via Apple&rsquo;s developer registry or by running <code class="rounded bg-[color:var(--color-surface)] border border-[color:var(--color-border)] px-1.5 py-0.5 font-mono text-[13px]">codesign -dv --verbose=4 /Applications/Parleq.app 2&gt;&amp;1 | grep TeamIdentifier</code> on a downloaded build.
-        </p>
-        <p class="mt-2 text-[13px] text-[color:var(--color-text-subtle)]">
-          Note: the placeholder <code class="font-mono text-[12px]">XXXXXXXXXX</code> will be replaced with the real Team ID once the Apple Developer Program enrollment is complete. Verify the actual value from a downloaded release before adding to your approved-signer list.
+          Every Parleq release is signed with Apple Developer ID. The current signing Team ID is <code class="rounded bg-[color:var(--color-surface)] border border-[color:var(--color-border)] px-1.5 py-0.5 font-mono text-[13px]">N7S8GXC725</code>. Admins can verify this independently via Apple&rsquo;s developer registry or by running <code class="rounded bg-[color:var(--color-surface)] border border-[color:var(--color-border)] px-1.5 py-0.5 font-mono text-[13px]">codesign -dv --verbose=4 /Applications/Parleq.app 2&gt;&amp;1 | grep TeamIdentifier</code> on a downloaded build.
         </p>
       </div>
 
