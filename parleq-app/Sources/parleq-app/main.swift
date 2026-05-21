@@ -67,6 +67,7 @@ struct ParleqApp {
         // which path was taken so a developer can tell.
         let (config, configSource) = Config.load()
         logStderr("[parleq] config: \(configSource)")
+        ManagedConfig.logStartupSummary(managedKeys: config.managedKeys)
 
         // Kick off a background refresh of the LiteLLM pricing
         // table. No-ops if the on-disk cache is fresh (<24h) or a

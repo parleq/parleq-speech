@@ -265,6 +265,57 @@ public struct Config: Sendable {
     public var contextModel: ModelIdentifier?
     public var telemetryEnabled: Bool
 
+    // MARK: - Feature toggles (Phase 5 / Tier 1)
+    //
+    // Each toggle defaults to true. Users can flip them off in Settings
+    // → Privacy & Features. IT admins can force them off (or on) via
+    // /Library/Managed Preferences/com.parleq.app.plist — see
+    // ManagedConfig.swift and docs/managed-configuration for the MDM
+    // schema. The stored value in ~/.parleq/config.json is the user's
+    // choice; Config.load() overrides it when an MDM-managed value is
+    // present, and Config.save() skips managed keys so re-loading
+    // without MDM falls back cleanly to the user-stored value.
+
+    /// Master switch for the Reference Windows feature.
+    /// When false: hides the overlay's reference-attach button, chip
+    /// strip, and drop zone; ignores captureReferenceWindow calls; and
+    /// falls through to standard cleanup even if references somehow
+    /// exist in the session. Sub-toggles (clipboard/image/file) are
+    /// gated by this first.
+    public var referenceWindowsEnabled: Bool
+    /// Sub-feature of referenceWindowsEnabled.
+    /// When false: hides the "Add from clipboard" affordance in the
+    /// overlay's + menu.
+    public var clipboardReferenceEnabled: Bool
+    /// Sub-feature of referenceWindowsEnabled.
+    /// When false: hides the T/👁 mode-toggle on every ReferenceChip
+    /// and forces all new captures to .text mode. Prevents screenshots
+    /// being sent to the LLM. Existing image-mode references in the
+    /// session fall back to text-mode for prompt-building.
+    public var imageReferenceEnabled: Bool
+    /// Sub-feature of referenceWindowsEnabled.
+    /// When false: hides the "Add file…" picker and the drag-drop
+    /// affordance. Window-capture and clipboard remain available.
+    public var fileReferenceEnabled: Bool
+    /// When false: hides the dictionary editor in Settings and passes
+    /// an empty dictionary to the LLM cleanup prompt, regardless of
+    /// what entries the user has stored. The stored entries survive
+    /// the toggle — flipping back on restores them.
+    public var customDictionaryEnabled: Bool
+    /// When false: hides the "Custom…" entry in every provider's model
+    /// picker. The toggle only hides the entry path; an already-saved
+    /// custom model ID continues to work until the user picks a curated
+    /// model. Prevents users from routing to arbitrary model endpoints
+    /// in managed deployments.
+    public var customModelEntryEnabled: Bool
+
+    /// Keys whose effective values were sourced from MDM
+    /// (/Library/Managed Preferences) rather than from the user's
+    /// config file. Populated by Config.load(); never persisted to disk.
+    /// Settings rows read this to call `.disabled(managedKeys.contains(key))`.
+    /// The lock-icon badge UI (Phase 6) will also consume this.
+    public var managedKeys: Set<String>
+
     /// Sentinel value for `asr.endpoint` meaning "use in-process
     /// FluidAudio." The literal string is the retired bundled
     /// sidecar's old listen address — kept verbatim so config files
@@ -307,7 +358,14 @@ public struct Config: Sendable {
         asrEndpoint: bundledASREndpoint,
         customDictionary: [],
         contextModel: nil,
-        telemetryEnabled: false
+        telemetryEnabled: false,
+        referenceWindowsEnabled: true,
+        clipboardReferenceEnabled: true,
+        imageReferenceEnabled: true,
+        fileReferenceEnabled: true,
+        customDictionaryEnabled: true,
+        customModelEntryEnabled: true,
+        managedKeys: []
     )
 
     public static func load() -> (config: Config, source: String) {
@@ -486,6 +544,73 @@ public struct Config: Sendable {
                     c.contextModel = ModelIdentifier(provider: trimmedProvider, model: trimmedModel)
                 }
             }
+            // Feature toggles (Phase 5). All default to true; missing
+            // keys from older configs leave the feature enabled, which
+            // is the safe forward-compat behavior.
+            if let features = dict["features"] as? [String: Any] {
+                if let v = features["reference_windows_enabled"] as? Bool {
+                    c.referenceWindowsEnabled = v
+                }
+                if let v = features["clipboard_reference_enabled"] as? Bool {
+                    c.clipboardReferenceEnabled = v
+                }
+                if let v = features["image_reference_enabled"] as? Bool {
+                    c.imageReferenceEnabled = v
+                }
+                if let v = features["file_reference_enabled"] as? Bool {
+                    c.fileReferenceEnabled = v
+                }
+                if let v = features["custom_dictionary_enabled"] as? Bool {
+                    c.customDictionaryEnabled = v
+                }
+                if let v = features["custom_model_entry_enabled"] as? Bool {
+                    c.customModelEntryEnabled = v
+                }
+            }
+            // MDM overlay: check the seven managed-eligible keys.
+            // If MDM has forced a value, it overrides the user-stored
+            // value and the key is added to managedKeys so Settings
+            // can disable the relevant row. Config.save() skips managed
+            // keys so re-loading without MDM falls back to the JSON value.
+            var managedKeys = Set<String>()
+            let managedCandidates: [(jsonKey: String, mdmKey: String, apply: (Bool) -> Void)] = [
+                ("referenceWindowsEnabled",    "referenceWindowsEnabled",    { c.referenceWindowsEnabled = $0 }),
+                ("clipboardReferenceEnabled",  "clipboardReferenceEnabled",  { c.clipboardReferenceEnabled = $0 }),
+                ("imageReferenceEnabled",      "imageReferenceEnabled",      { c.imageReferenceEnabled = $0 }),
+                ("fileReferenceEnabled",       "fileReferenceEnabled",       { c.fileReferenceEnabled = $0 }),
+                ("customDictionaryEnabled",    "customDictionaryEnabled",    { c.customDictionaryEnabled = $0 }),
+                ("customModelEntryEnabled",    "customModelEntryEnabled",    { c.customModelEntryEnabled = $0 }),
+                ("autoUpdateEnabled",          "autoUpdateEnabled",          { _ in /* Sparkle-side only */ }),
+            ]
+            for candidate in managedCandidates {
+                if let forcedValue = ManagedConfig.managedBool(forKey: candidate.mdmKey) {
+                    candidate.apply(forcedValue)
+                    managedKeys.insert(candidate.mdmKey)
+                }
+            }
+            c.managedKeys = managedKeys
+
+            // Defense-in-depth: when customModelEntryEnabled is off, a
+            // non-canonical model name (whether MDM-pushed, manually
+            // edited into config.json, or left over from before the
+            // toggle flipped) must not be used at runtime. Reset to the
+            // provider's curated default and log the rejection so the
+            // user or admin can diagnose it via tail ~/.parleq/app.log.
+            if !c.customModelEntryEnabled {
+                if !ModelCatalog.isCanonical(provider: c.llmProvider, model: c.llmModel) {
+                    let original = c.llmModel
+                    c.llmModel = ModelCatalog.defaultModel(forProvider: c.llmProvider)
+                    configLogStderr("[parleq] customModelEntryEnabled=false: rejected non-canonical cleanup model '\(original)' (provider=\(c.llmProvider)); reset to '\(c.llmModel)'")
+                }
+                if let ctx = c.contextModel,
+                   !ModelCatalog.isCanonical(provider: ctx.provider, model: ctx.model) {
+                    let original = ctx.model
+                    let replacement = ModelCatalog.defaultModel(forProvider: ctx.provider)
+                    c.contextModel = ModelIdentifier(provider: ctx.provider, model: replacement)
+                    configLogStderr("[parleq] customModelEntryEnabled=false: rejected non-canonical context model '\(original)' (provider=\(ctx.provider)); reset to '\(replacement)'")
+                }
+            }
+
             return (c, "loaded \(path)")
         } catch {
             return (.default, "defaults (parse error: \(error))")
@@ -504,6 +629,32 @@ public struct Config: Sendable {
         try FileManager.default.createDirectory(
             atPath: dir, withIntermediateDirectories: true
         )
+        // Feature-toggle values are only written to disk when NOT managed
+        // by MDM. If a key is in managedKeys the user can't change it
+        // (the row is .disabled in Settings), so we skip it in save()
+        // to avoid writing a conflicting user-domain value. On re-load
+        // without MDM, the key will simply be absent from the JSON and
+        // the default (true) applies — the correct safe fallback.
+        var featuresDict: [String: Any] = [:]
+        if !config.managedKeys.contains("referenceWindowsEnabled") {
+            featuresDict["reference_windows_enabled"] = config.referenceWindowsEnabled
+        }
+        if !config.managedKeys.contains("clipboardReferenceEnabled") {
+            featuresDict["clipboard_reference_enabled"] = config.clipboardReferenceEnabled
+        }
+        if !config.managedKeys.contains("imageReferenceEnabled") {
+            featuresDict["image_reference_enabled"] = config.imageReferenceEnabled
+        }
+        if !config.managedKeys.contains("fileReferenceEnabled") {
+            featuresDict["file_reference_enabled"] = config.fileReferenceEnabled
+        }
+        if !config.managedKeys.contains("customDictionaryEnabled") {
+            featuresDict["custom_dictionary_enabled"] = config.customDictionaryEnabled
+        }
+        if !config.managedKeys.contains("customModelEntryEnabled") {
+            featuresDict["custom_model_entry_enabled"] = config.customModelEntryEnabled
+        }
+
         let dict: [String: Any] = [
             "hotkey": [
                 "binding": config.hotkeyBinding,
@@ -577,11 +728,23 @@ public struct Config: Sendable {
                     "model": model.model,
                 ]
             } as Any? ?? NSNull(),
+            "features": featuresDict,
         ]
         let data = try JSONSerialization.data(
             withJSONObject: dict, options: [.prettyPrinted, .sortedKeys]
         )
         try data.write(to: URL(fileURLWithPath: path), options: .atomic)
+    }
+}
+
+// File-scoped logger matching the `logStderr` pattern used in
+// Permissions.swift, LocalASR.swift, and similar files. Prefixed
+// differently to avoid a symbol collision if the two files are ever
+// in the same module link unit — the `config` prefix makes the origin
+// clear in grep output as well.
+private func configLogStderr(_ message: String) {
+    if let data = (message + "\n").data(using: .utf8) {
+        FileHandle.standardError.write(data)
     }
 }
 

@@ -53,6 +53,7 @@ struct UpdatesSectionContent: View {
     @State private var refreshTick = 0
 
     public var body: some View {
+        let isAutoUpdateManaged = Config.load().config.managedKeys.contains("autoUpdateEnabled")
         VStack(alignment: .leading, spacing: 14) {
             Text("Parleq checks parleq.app for newer releases and prompts you to install. Each release is signed with an Ed25519 key the app verifies before downloading, so a tampered update can't be pushed by anyone other than the maintainer.")
                 .font(.system(size: 13))
@@ -63,7 +64,12 @@ struct UpdatesSectionContent: View {
             SettingsCard {
                 VStack(alignment: .leading, spacing: 10) {
                     Toggle("Automatically check for updates", isOn: automaticChecksBinding())
+                        .disabled(isAutoUpdateManaged)
+                    if isAutoUpdateManaged {
+                        SettingsCaption("This setting is managed by your organization.")
+                    } else {
                     SettingsCaption("When on, Parleq checks for a newer release on launch and once every 24 hours afterwards. When off, only the “Check for Updates Now” button below (and the menu-bar “Check for Updates…” item) trigger a check. The very first time you launch a Parleq build with auto-updates, Sparkle asks for your choice via a prompt — this toggle reflects (and overrides) what you picked there.")
+                    }
                 }
             }
 

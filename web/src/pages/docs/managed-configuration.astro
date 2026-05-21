@@ -1,0 +1,308 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import Logo from '../../components/Logo.astro';
+
+const repoUrl = 'https://github.com/parleq/parleq-speech';
+---
+
+<Layout title="Managed Configuration (MDM) — Parleq" description="Deploy Parleq at scale with macOS Managed Configuration. IT admins can force-disable features, lock settings, and govern the app via Jamf, Kandji, Mosyle, or any MDM that speaks macOS.">
+  <header class="mx-auto flex max-w-5xl items-center justify-between px-6 pt-8">
+    <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/'} class="inline-flex items-center">
+      <Logo height="36" />
+    </a>
+    <nav class="flex items-center gap-6 text-sm font-medium text-[color:var(--color-text-muted)]">
+      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/'} class="transition-colors hover:text-[color:var(--color-text)]">Home</a>
+      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/how-it-works/'} class="transition-colors hover:text-[color:var(--color-text)]">How it works</a>
+      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/'} class="text-[color:var(--color-text)]">Docs</a>
+      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/faq/'} class="transition-colors hover:text-[color:var(--color-text)]">FAQ</a>
+      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/about/'} class="transition-colors hover:text-[color:var(--color-text)]">About</a>
+      <a href={repoUrl} class="transition-colors hover:text-[color:var(--color-text)]">GitHub &rarr;</a>
+    </nav>
+  </header>
+
+  <article class="mx-auto max-w-2xl px-6 pt-16 pb-24">
+    <p class="text-sm">
+      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/'} class="text-[color:var(--color-text-subtle)] hover:text-[color:var(--color-text-muted)]">&larr; Docs</a>
+    </p>
+
+    <p class="mt-8 text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">Enterprise &middot; IT administration</p>
+    <h1 class="mt-4 font-display text-4xl leading-[1.1] font-medium tracking-tight sm:text-5xl">
+      Managed Configuration
+    </h1>
+    <p class="mt-6 text-[17px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      Parleq supports macOS Managed Configuration so IT departments can deploy it as a governed application: disable optional features, lock settings, and prevent users from overriding them. Configuration is read from <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">/Library/Managed Preferences/com.parleq.app.plist</code>, which any MDM that speaks macOS can write &mdash; Jamf Pro, Kandji, Mosyle, Intune, Workspace ONE, Addigy, JumpCloud, and others.
+    </p>
+
+    <!-- How it works -->
+    <h2 class="mt-12 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+      How macOS Managed Configuration works
+    </h2>
+    <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      macOS Managed Configuration is a read-only preference overlay, not an SDK or agent integration. Your MDM pushes a <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">.mobileconfig</code> Configuration Profile targeting <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">com.parleq.app</code>. macOS writes the policy values to <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">/Library/Managed Preferences/com.parleq.app.plist</code>, owned by root.
+    </p>
+    <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      Parleq reads managed preferences at startup using <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">CFPreferencesAppValueIsForced</code> to detect which keys came from MDM (as opposed to the user&rsquo;s own preferences). When a key is managed, Parleq uses the MDM value and disables the corresponding Settings toggle so the user can see the policy but cannot override it. The user&rsquo;s own stored value is not erased &mdash; re-deploying without the profile restores the user&rsquo;s original preference automatically.
+    </p>
+
+    <!-- Supported keys table -->
+    <h2 class="mt-12 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+      Supported keys (Phase 5)
+    </h2>
+    <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      The table below lists the keys Parleq accepts in Phase 5. All are Boolean. The default value (used when the key is absent) is <strong class="text-[color:var(--color-text)]">true</strong> &mdash; all features on, which is what individual users get without any MDM profile.
+    </p>
+
+    <div class="mt-6 overflow-x-auto rounded-xl border border-[color:var(--color-border)]">
+      <table class="w-full text-[14px] text-[color:var(--color-text-muted)]">
+        <thead class="border-b border-[color:var(--color-border)] bg-[color:var(--color-surface)]">
+          <tr>
+            <th class="px-4 py-3 text-left font-semibold text-[color:var(--color-text)]">Key</th>
+            <th class="px-4 py-3 text-left font-semibold text-[color:var(--color-text)]">Type</th>
+            <th class="px-4 py-3 text-left font-semibold text-[color:var(--color-text)]">Default</th>
+            <th class="px-4 py-3 text-left font-semibold text-[color:var(--color-text)]">Setting to false does</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-[color:var(--color-border)]">
+          <tr class="bg-[color:var(--color-bg)]">
+            <td class="px-4 py-3 font-mono text-[13px] text-[color:var(--color-text)]">referenceWindowsEnabled</td>
+            <td class="px-4 py-3">Boolean</td>
+            <td class="px-4 py-3">true</td>
+            <td class="px-4 py-3">Hides the reference-attach button, chip strip, and drag-drop zone on the overlay. Disables Shift+hotkey staging mode. Sub-toggles below become moot.</td>
+          </tr>
+          <tr class="bg-[color:var(--color-surface)]">
+            <td class="px-4 py-3 font-mono text-[13px] text-[color:var(--color-text)] pl-8">clipboardReferenceEnabled</td>
+            <td class="px-4 py-3">Boolean</td>
+            <td class="px-4 py-3">true</td>
+            <td class="px-4 py-3">Removes the &ldquo;Add from clipboard&rdquo; item from the overlay&rsquo;s + menu. Requires <code class="font-mono text-[12px]">referenceWindowsEnabled: true</code> to have any effect.</td>
+          </tr>
+          <tr class="bg-[color:var(--color-bg)]">
+            <td class="px-4 py-3 font-mono text-[13px] text-[color:var(--color-text)] pl-8">imageReferenceEnabled</td>
+            <td class="px-4 py-3">Boolean</td>
+            <td class="px-4 py-3">true</td>
+            <td class="px-4 py-3">Removes the T/&#x1F441; mode toggle from every reference chip. All references use text-mode (OCR only) &mdash; no screenshots are sent to the LLM.</td>
+          </tr>
+          <tr class="bg-[color:var(--color-surface)]">
+            <td class="px-4 py-3 font-mono text-[13px] text-[color:var(--color-text)] pl-8">fileReferenceEnabled</td>
+            <td class="px-4 py-3">Boolean</td>
+            <td class="px-4 py-3">true</td>
+            <td class="px-4 py-3">Removes the &ldquo;Add file&hellip;&rdquo; picker item from the + menu and disables drag-drop onto the overlay. Window-capture and clipboard references remain available.</td>
+          </tr>
+          <tr class="bg-[color:var(--color-bg)]">
+            <td class="px-4 py-3 font-mono text-[13px] text-[color:var(--color-text)]">customDictionaryEnabled</td>
+            <td class="px-4 py-3">Boolean</td>
+            <td class="px-4 py-3">true</td>
+            <td class="px-4 py-3">Hides the dictionary editor in Settings and drops the vocabulary hint from all LLM cleanup prompts. The user&rsquo;s stored entries are not deleted &mdash; re-enabling restores them.</td>
+          </tr>
+          <tr class="bg-[color:var(--color-surface)]">
+            <td class="px-4 py-3 font-mono text-[13px] text-[color:var(--color-text)]">customModelEntryEnabled</td>
+            <td class="px-4 py-3">Boolean</td>
+            <td class="px-4 py-3">true</td>
+            <td class="px-4 py-3">Removes the &ldquo;Custom&hellip;&rdquo; entry from every provider&rsquo;s model dropdown. Defense-in-depth: at startup, any non-curated model name already in the config (whether hand-edited or MDM-pushed) is reset to the provider&rsquo;s curated default and logged.</td>
+          </tr>
+          <tr class="bg-[color:var(--color-bg)]">
+            <td class="px-4 py-3 font-mono text-[13px] text-[color:var(--color-text)]">autoUpdateEnabled</td>
+            <td class="px-4 py-3">Boolean</td>
+            <td class="px-4 py-3">true</td>
+            <td class="px-4 py-3">Disables Sparkle&rsquo;s automatic appcast checks. The &ldquo;Automatically check for updates&rdquo; toggle in Settings is disabled and shows &ldquo;Managed by your organization.&rdquo; The manual &ldquo;Check for Updates Now&rdquo; button remains functional.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Sample .mobileconfig -->
+    <h2 class="mt-12 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+      Sample .mobileconfig
+    </h2>
+    <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      The snippet below shows all seven Phase 5 keys set to enforce a privacy-focused posture: reference windows are allowed but image-mode and file references are disabled, auto-update is managed centrally.
+    </p>
+
+    <div class="mt-6 overflow-x-auto rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5">
+      <pre class="text-[13px] leading-[1.7] text-[color:var(--color-text-muted)] whitespace-pre overflow-x-auto"><code>&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd"&gt;
+&lt;plist version="1.0"&gt;
+&lt;dict&gt;
+  &lt;key&gt;PayloadContent&lt;/key&gt;
+  &lt;array&gt;
+    &lt;dict&gt;
+      &lt;key&gt;PayloadType&lt;/key&gt;
+      &lt;string&gt;com.apple.ManagedClient.preferences&lt;/string&gt;
+      &lt;key&gt;PayloadIdentifier&lt;/key&gt;
+      &lt;string&gt;com.example.parleq-policy.prefs&lt;/string&gt;
+      &lt;key&gt;PayloadUUID&lt;/key&gt;
+      &lt;string&gt;REPLACE-WITH-A-NEW-UUID&lt;/string&gt;
+      &lt;key&gt;PayloadVersion&lt;/key&gt;
+      &lt;integer&gt;1&lt;/integer&gt;
+      &lt;key&gt;PayloadDisplayName&lt;/key&gt;
+      &lt;string&gt;Parleq managed preferences&lt;/string&gt;
+
+      &lt;!-- Target bundle ID --&gt;
+      &lt;key&gt;PayloadApplicationID&lt;/key&gt;
+      &lt;string&gt;com.parleq.app&lt;/string&gt;
+
+      &lt;!-- Forced (user cannot override) --&gt;
+      &lt;key&gt;Forced&lt;/key&gt;
+      &lt;array&gt;
+        &lt;dict&gt;
+          &lt;key&gt;mcx_preference_settings&lt;/key&gt;
+          &lt;dict&gt;
+            &lt;!-- Allow reference windows --&gt;
+            &lt;key&gt;referenceWindowsEnabled&lt;/key&gt;
+            &lt;true/&gt;
+
+            &lt;!-- Allow clipboard references --&gt;
+            &lt;key&gt;clipboardReferenceEnabled&lt;/key&gt;
+            &lt;true/&gt;
+
+            &lt;!-- Disable image-mode (no screenshots to LLM) --&gt;
+            &lt;key&gt;imageReferenceEnabled&lt;/key&gt;
+            &lt;false/&gt;
+
+            &lt;!-- Disable file picker + drag-drop --&gt;
+            &lt;key&gt;fileReferenceEnabled&lt;/key&gt;
+            &lt;false/&gt;
+
+            &lt;!-- Allow custom dictionary --&gt;
+            &lt;key&gt;customDictionaryEnabled&lt;/key&gt;
+            &lt;true/&gt;
+
+            &lt;!-- Restrict model picker to curated list --&gt;
+            &lt;key&gt;customModelEntryEnabled&lt;/key&gt;
+            &lt;false/&gt;
+
+            &lt;!-- Manage auto-update centrally --&gt;
+            &lt;key&gt;autoUpdateEnabled&lt;/key&gt;
+            &lt;false/&gt;
+          &lt;/dict&gt;
+        &lt;/dict&gt;
+      &lt;/array&gt;
+    &lt;/dict&gt;
+  &lt;/array&gt;
+
+  &lt;key&gt;PayloadDisplayName&lt;/key&gt;
+  &lt;string&gt;Parleq policy&lt;/string&gt;
+  &lt;key&gt;PayloadIdentifier&lt;/key&gt;
+  &lt;string&gt;com.example.parleq-policy&lt;/string&gt;
+  &lt;key&gt;PayloadUUID&lt;/key&gt;
+  &lt;string&gt;REPLACE-WITH-A-NEW-UUID&lt;/string&gt;
+  &lt;key&gt;PayloadType&lt;/key&gt;
+  &lt;string&gt;Configuration&lt;/string&gt;
+  &lt;key&gt;PayloadVersion&lt;/key&gt;
+  &lt;integer&gt;1&lt;/integer&gt;
+&lt;/dict&gt;
+&lt;/plist&gt;</code></pre>
+    </div>
+
+    <p class="mt-4 text-[14px] leading-relaxed text-[color:var(--color-text-subtle)]">
+      Replace both <code class="font-mono text-[12px]">REPLACE-WITH-A-NEW-UUID</code> placeholders with unique UUIDs (e.g. from <code class="font-mono text-[12px]">uuidgen</code> in Terminal). Also replace the <code class="font-mono text-[12px]">com.example</code> identifiers with your own organization&rsquo;s reverse-DNS prefix.
+    </p>
+
+    <!-- How to deploy -->
+    <h2 class="mt-12 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+      How to deploy
+    </h2>
+    <ol class="mt-6 space-y-7 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      <li class="flex gap-4">
+        <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums">1.</span>
+        <div>
+          <p class="text-[color:var(--color-text)] font-medium">Author your profile.</p>
+          <p class="mt-2">Start from the sample snippet above. Set the keys you want to manage; omit keys you want users to control themselves. Any key absent from the profile is not managed &mdash; Parleq uses the user&rsquo;s stored preference or the built-in default.</p>
+        </div>
+      </li>
+      <li class="flex gap-4">
+        <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums">2.</span>
+        <div>
+          <p class="text-[color:var(--color-text)] font-medium">Upload to your MDM.</p>
+          <p class="mt-2">In <strong class="text-[color:var(--color-text)]">Jamf Pro</strong>: Computers &rarr; Configuration Profiles &rarr; New &rarr; Custom Schema / Application &amp; Custom Settings payload. In <strong class="text-[color:var(--color-text)]">Kandji</strong>: Library &rarr; Custom Profile &rarr; upload the .mobileconfig. In <strong class="text-[color:var(--color-text)]">Mosyle</strong>: Apple Configurator &rarr; General &rarr; Custom Configuration Profile. All other MDMs that speak macOS MDM protocol accept the same .mobileconfig format.</p>
+        </div>
+      </li>
+      <li class="flex gap-4">
+        <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums">3.</span>
+        <div>
+          <p class="text-[color:var(--color-text)] font-medium">Scope and push.</p>
+          <p class="mt-2">Assign the profile to a device group, smart group, or individual machines. The MDM pushes the profile on the next MDM check-in (typically within a few minutes). Settings take effect on Parleq&rsquo;s next launch after check-in.</p>
+        </div>
+      </li>
+    </ol>
+
+    <!-- Verification -->
+    <h2 class="mt-12 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+      Verification
+    </h2>
+    <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      To confirm a key took effect on a managed Mac, open Terminal and run:
+    </p>
+    <div class="mt-4 overflow-x-auto rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
+      <pre class="text-[13px] text-[color:var(--color-text-muted)]"><code>defaults read com.parleq.app referenceWindowsEnabled
+defaults read com.parleq.app imageReferenceEnabled
+defaults read com.parleq.app autoUpdateEnabled</code></pre>
+    </div>
+    <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      Each command prints <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">0</code> (false) or <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">1</code> (true), or <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">The domain/default pair of (com.parleq.app, &lt;key&gt;) does not exist</code> when the key is not managed.
+    </p>
+    <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      To confirm the key came from <em>managed</em> preferences (not just a user-domain write), check the managed-preferences plist directly:
+    </p>
+    <div class="mt-4 overflow-x-auto rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
+      <pre class="text-[13px] text-[color:var(--color-text-muted)]"><code>sudo defaults read /Library/Managed\ Preferences/com.parleq.app</code></pre>
+    </div>
+    <p class="mt-4 text-[14px] leading-relaxed text-[color:var(--color-text-subtle)]">
+      A Compliance Audit menu item (Settings &rarr; Help &rarr; View Managed Configuration&hellip;) is planned for a future release and will show all managed keys, their effective values, and their source without needing Terminal access.
+    </p>
+
+    <!-- Local testing without an MDM -->
+    <h2 class="mt-12 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+      Local testing without an MDM
+    </h2>
+    <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      To verify a managed config payload locally without enrolling the Mac in an MDM, you can write to <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">/Library/Managed Preferences/</code> directly with root. Two gotchas worth knowing:
+    </p>
+    <ol class="mt-4 space-y-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)] list-decimal list-inside">
+      <li><strong class="text-[color:var(--color-text)]">The directory may not exist on an unmanaged Mac.</strong> <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">/Library/Managed Preferences/</code> is created the first time an MDM enrolls the device. On a personal Mac you&rsquo;ll need to create it yourself.</li>
+      <li><strong class="text-[color:var(--color-text)]"><code class="font-mono text-[13px]">cfprefsd</code> caches managed-preferences lookups.</strong> A Parleq restart alone won&rsquo;t pick up the new plist; you also need to invalidate the daemon cache.</li>
+    </ol>
+    <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">Working recipe:</p>
+    <div class="mt-4 overflow-x-auto rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
+      <pre class="text-[13px] leading-[1.7] text-[color:var(--color-text-muted)] whitespace-pre overflow-x-auto"><code># 1. Create the directory if it doesn't exist
+sudo mkdir -p "/Library/Managed Preferences"
+
+# 2. Write the managed plist
+sudo defaults write "/Library/Managed Preferences/com.parleq.app" referenceWindowsEnabled -bool false
+
+# 3. Verify the file landed correctly
+sudo plutil -p "/Library/Managed Preferences/com.parleq.app.plist"
+
+# 4. Force the prefs daemon to invalidate its cache
+sudo killall cfprefsd
+
+# 5. Restart Parleq &mdash; the toggle should now be locked OFF and disabled</code></pre>
+    </div>
+    <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      Parleq logs a one-line summary at startup listing the MDM-managed keys it detected; tail <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">~/.parleq/app.log</code> to confirm your override was picked up.
+    </p>
+    <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">To remove the override:</p>
+    <div class="mt-4 overflow-x-auto rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
+      <pre class="text-[13px] leading-[1.7] text-[color:var(--color-text-muted)] whitespace-pre overflow-x-auto"><code>sudo rm "/Library/Managed Preferences/com.parleq.app.plist"
+sudo killall cfprefsd
+# restart Parleq &mdash; toggle is user-controllable again</code></pre>
+    </div>
+
+    <!-- Future schema additions -->
+    <h2 class="mt-12 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+      Future schema additions
+    </h2>
+    <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      Phase 5 covers the seven feature-toggle keys above. Later phases will add:
+    </p>
+    <ul class="mt-4 space-y-2 text-[16px] leading-relaxed text-[color:var(--color-text-muted)] list-disc list-inside">
+      <li>Provider and model lockdown (<code class="font-mono text-[13px]">cleanupProvider</code>, <code class="font-mono text-[13px]">cleanupAllowedModels</code>, and equivalents for the context tier)</li>
+      <li>Authentication-mode restrictions (<code class="font-mono text-[13px]">azureAuthMode</code>, <code class="font-mono text-[13px]">bedrockAuthMode</code>, <code class="font-mono text-[13px]">staticApiKeysAllowed</code>)</li>
+      <li>Sparkle managed feed URL (<code class="font-mono text-[13px]">sparkleUpdateFeedURL</code>) for corporate appcast hosting</li>
+      <li>Operational policy (<code class="font-mono text-[13px]">loggingMode: "lengthOnly"</code>) for compliance-sensitive deployments</li>
+    </ul>
+    <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      Track additions in <a href={`${repoUrl}/issues/39`} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">issue #39</a>.
+    </p>
+  </article>
+</Layout>

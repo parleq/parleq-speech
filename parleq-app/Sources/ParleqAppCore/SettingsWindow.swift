@@ -130,6 +130,24 @@ final class SettingsModel: ObservableObject {
     /// or a specific configured model. Mirrors Config.contextModel.
     @Published var contextModel: ModelIdentifier?
 
+    // MARK: - Feature toggle mirrors (Phase 5)
+
+    /// Mirror of Config.referenceWindowsEnabled.
+    @Published var referenceWindowsEnabled: Bool
+    /// Mirror of Config.clipboardReferenceEnabled.
+    @Published var clipboardReferenceEnabled: Bool
+    /// Mirror of Config.imageReferenceEnabled.
+    @Published var imageReferenceEnabled: Bool
+    /// Mirror of Config.fileReferenceEnabled.
+    @Published var fileReferenceEnabled: Bool
+    /// Mirror of Config.customDictionaryEnabled.
+    @Published var customDictionaryEnabled: Bool
+    /// Mirror of Config.customModelEntryEnabled.
+    @Published var customModelEntryEnabled: Bool
+    /// Set of Config keys currently managed by MDM. Rows for managed
+    /// keys render as `.disabled(true)`. Lock-icon badges come in Phase 6.
+    @Published var managedKeys: Set<String>
+
     // MARK: - Tier fields (cleanup + context independent provider+model)
 
     /// Cleanup tier: the provider used for normal dictation cleanup.
@@ -236,6 +254,14 @@ final class SettingsModel: ObservableObject {
         self.cleanupModelName = config.llmModel
         self.contextProvider = config.contextModel?.provider ?? config.llmProvider
         self.contextModelName = config.contextModel?.model ?? config.llmModel
+        // Feature toggles (Phase 5).
+        self.referenceWindowsEnabled = config.referenceWindowsEnabled
+        self.clipboardReferenceEnabled = config.clipboardReferenceEnabled
+        self.imageReferenceEnabled = config.imageReferenceEnabled
+        self.fileReferenceEnabled = config.fileReferenceEnabled
+        self.customDictionaryEnabled = config.customDictionaryEnabled
+        self.customModelEntryEnabled = config.customModelEntryEnabled
+        self.managedKeys = config.managedKeys
         self.initialHotkeyBinding = config.hotkeyBinding
         self.initialLlmModel = config.llmModel
         self.initialContinueOtherAudio = config.continueOtherAudio
@@ -321,6 +347,14 @@ final class SettingsModel: ObservableObject {
         self.cleanupModelName = config.llmModel
         self.contextProvider = config.contextModel?.provider ?? config.llmProvider
         self.contextModelName = config.contextModel?.model ?? config.llmModel
+        // Feature toggles (Phase 5).
+        self.referenceWindowsEnabled = config.referenceWindowsEnabled
+        self.clipboardReferenceEnabled = config.clipboardReferenceEnabled
+        self.imageReferenceEnabled = config.imageReferenceEnabled
+        self.fileReferenceEnabled = config.fileReferenceEnabled
+        self.customDictionaryEnabled = config.customDictionaryEnabled
+        self.customModelEntryEnabled = config.customModelEntryEnabled
+        self.managedKeys = config.managedKeys
         refreshUsage()
     }
 
@@ -425,6 +459,17 @@ final class SettingsModel: ObservableObject {
         let resolvedContextModel: ModelIdentifier? = (contextId == cleanupId) ? nil : contextId
         c.contextModel = resolvedContextModel
         contextModel = resolvedContextModel
+        // Feature toggles (Phase 5). Managed keys are already excluded
+        // inside Config.save() via c.managedKeys, so we just set the
+        // user-facing values unconditionally here — Config.save skips
+        // the ones in managedKeys.
+        c.referenceWindowsEnabled = referenceWindowsEnabled
+        c.clipboardReferenceEnabled = clipboardReferenceEnabled
+        c.imageReferenceEnabled = imageReferenceEnabled
+        c.fileReferenceEnabled = fileReferenceEnabled
+        c.customDictionaryEnabled = customDictionaryEnabled
+        c.customModelEntryEnabled = customModelEntryEnabled
+        c.managedKeys = managedKeys
         do {
             try Config.save(c)
         } catch {
@@ -767,50 +812,47 @@ struct SettingsView: View {
 
     /// Helper to return the canonical model list for a given provider.
     /// Used by both the tier model pickers and the onChange snap logic.
+    /// Delegates to ModelCatalog (the single-source-of-truth for the
+    /// value lists) so Config.load()'s defense-in-depth validation and
+    /// this picker stay automatically consistent.
     func modelsAvailable(forProvider provider: String) -> [String] {
-        switch provider {
-        case "gemini":         return Self.geminiModelOptions.map(\.value)
-        case "vertex":         return Self.vertexModelOptions.map(\.value)
-        case "bedrock":        return Self.bedrockModelOptions.map(\.value)
-        case "bedrock-bearer": return Self.bedrockBearerModelOptions.map(\.value)
-        case "azure":          return Self.azureModelOptions.map(\.value)
-        case "openai":         return Self.openAIModelOptions.map(\.value)
-        default:               return []
-        }
+        ModelCatalog.models(forProvider: provider)
     }
 
     /// Sidebar sections in display order. Each maps to a single
     /// detail-pane view (`hotkeySection`, `audioSection`, …) and
     /// carries a label + SF Symbol for the sidebar List.
     private enum SettingsSection: String, Hashable, CaseIterable, Identifiable {
-        case hotkey, audio, behavior, paste, cleanup, dictionary, usage, permissions, updates, advanced
+        case hotkey, audio, behavior, paste, cleanup, dictionary, usage, permissions, privacyFeatures, updates, advanced
         var id: String { rawValue }
         var label: String {
             switch self {
-            case .hotkey:      return "Hotkey"
-            case .audio:       return "Audio"
-            case .behavior:    return "Behavior"
-            case .paste:       return "Paste"
-            case .cleanup:     return "Cleanup"
-            case .dictionary:  return "Dictionary"
-            case .usage:       return "Usage"
-            case .permissions: return "Permissions"
-            case .updates:     return "Updates"
-            case .advanced:    return "Advanced"
+            case .hotkey:          return "Hotkey"
+            case .audio:           return "Audio"
+            case .behavior:        return "Behavior"
+            case .paste:           return "Paste"
+            case .cleanup:         return "Cleanup"
+            case .dictionary:      return "Dictionary"
+            case .usage:           return "Usage"
+            case .permissions:     return "Permissions"
+            case .privacyFeatures: return "Privacy & Features"
+            case .updates:         return "Updates"
+            case .advanced:        return "Advanced"
             }
         }
         var icon: String {
             switch self {
-            case .hotkey:      return "keyboard"
-            case .audio:       return "speaker.wave.2"
-            case .behavior:    return "slider.horizontal.3"
-            case .paste:       return "doc.on.clipboard"
-            case .cleanup:     return "wand.and.sparkles"
-            case .dictionary:  return "character.book.closed"
-            case .usage:       return "chart.bar"
-            case .permissions: return "lock.shield"
-            case .updates:     return "arrow.down.circle"
-            case .advanced:    return "gearshape.2"
+            case .hotkey:          return "keyboard"
+            case .audio:           return "speaker.wave.2"
+            case .behavior:        return "slider.horizontal.3"
+            case .paste:           return "doc.on.clipboard"
+            case .cleanup:         return "wand.and.sparkles"
+            case .dictionary:      return "character.book.closed"
+            case .usage:           return "chart.bar"
+            case .permissions:     return "lock.shield"
+            case .privacyFeatures: return "person.badge.shield.checkmark"
+            case .updates:         return "arrow.down.circle"
+            case .advanced:        return "gearshape.2"
             }
         }
     }
@@ -964,16 +1006,17 @@ struct SettingsView: View {
                     .padding(.bottom, 4)
 
                 switch selection {
-                case .hotkey:      hotkeySection
-                case .audio:       audioSection
-                case .behavior:    behaviorSection
-                case .paste:       pasteSection
-                case .cleanup:     cleanupSection
-                case .dictionary:  dictionarySection
-                case .usage:       usageSection
-                case .permissions: permissionsSection
-                case .updates:     updatesSection
-                case .advanced:    advancedSection
+                case .hotkey:          hotkeySection
+                case .audio:           audioSection
+                case .behavior:        behaviorSection
+                case .paste:           pasteSection
+                case .cleanup:         cleanupSection
+                case .dictionary:      dictionarySection
+                case .usage:           usageSection
+                case .permissions:     permissionsSection
+                case .privacyFeatures: privacyFeaturesSection
+                case .updates:         updatesSection
+                case .advanced:        advancedSection
                 }
             }
             .padding(.horizontal, 28)
@@ -1335,7 +1378,9 @@ struct SettingsView: View {
                 }
                 if models.isEmpty {
                     Text("—").tag(selection.wrappedValue)
-                } else {
+                } else if model.customModelEntryEnabled {
+                    // "Custom…" entry hidden when customModelEntryEnabled
+                    // is false — users are restricted to the curated list.
                     Text("Custom…").tag(Self.customModelTag)
                 }
             }
@@ -1343,7 +1388,12 @@ struct SettingsView: View {
             .frame(maxWidth: 280)
             .disabled(models.isEmpty)
 
-            if isCustom {
+            // Show the text field only when Custom is selected AND the
+            // entry path is enabled. If the feature is disabled and a
+            // custom model is already saved, the picker will still show
+            // it as the current value (no forced sanitization) — the
+            // field just can't be interacted with.
+            if isCustom && model.customModelEntryEnabled {
                 TextField("Model ID", text: selection)
                     .textFieldStyle(.roundedBorder)
                     .font(.system(size: 11))
@@ -1614,8 +1664,23 @@ struct SettingsView: View {
 
     @ViewBuilder
     private var dictionarySection: some View {
-        SettingsCard {
+        // When customDictionaryEnabled is off, the editor is visible
+        // but disabled — the user can see their entries will be
+        // restored when they re-enable the feature, but can't edit
+        // while the feature is off.
+        let isDictEnabled = model.customDictionaryEnabled
+        return SettingsCard {
             VStack(alignment: .leading, spacing: 12) {
+                if !isDictEnabled {
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.circle")
+                            .foregroundStyle(.secondary)
+                        Text("Custom dictionary is disabled. Enable it in Settings → Privacy & Features.")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.bottom, 4)
+                }
                 SettingsCaption("Names and terms the speech model commonly mishears. List alternate spellings the recognizer usually emits (comma-separated) so they all map to the same word. An optional context blurb helps the AI judge whether the topic actually matches the term. Set Biasing to LLM only when a term causes false positives at the speech-recognition layer.")
 
                 if model.dictionaryEntries.isEmpty {
@@ -1646,6 +1711,7 @@ struct SettingsView: View {
                 SettingsCaption("Applied on the next dictation — no restart needed.")
             }
         }
+        .disabled(!isDictEnabled)
     }
 
     @ViewBuilder
@@ -1686,6 +1752,11 @@ struct SettingsView: View {
     @ViewBuilder
     private var permissionsSection: some View {
         PermissionsSectionContent()
+    }
+
+    @ViewBuilder
+    private var privacyFeaturesSection: some View {
+        PrivacyFeaturesSectionContent(model: model)
     }
 
     @ViewBuilder
