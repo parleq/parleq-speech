@@ -53,7 +53,16 @@ struct UpdatesSectionContent: View {
     @State private var refreshTick = 0
 
     public var body: some View {
-        let isAutoUpdateManaged = Config.load().config.managedKeys.contains("autoUpdateEnabled")
+        let loadedConfig = Config.load().config
+        let isAutoUpdateManaged = loadedConfig.managedKeys.contains("autoUpdateEnabled")
+        let isFeedURLManaged = loadedConfig.managedKeys.contains("sparkleUpdateFeedURL")
+        let managedFeedURL: String? = {
+            guard isFeedURLManaged,
+                  let raw = ManagedConfig.managedString(forKey: "sparkleUpdateFeedURL"),
+                  !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            else { return nil }
+            return raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        }()
         VStack(alignment: .leading, spacing: 14) {
             Text("Parleq checks parleq.app for newer releases and prompts you to install. Each release is signed with an Ed25519 key the app verifies before downloading, so a tampered update can't be pushed by anyone other than the maintainer.")
                 .font(.system(size: 13))
@@ -72,6 +81,26 @@ struct UpdatesSectionContent: View {
                         ManagedCaption(isManaged: true)
                     } else {
                         SettingsCaption("When on, Parleq checks for a newer release on launch and once every 24 hours afterwards. When off, only the \u{201C}Check for Updates Now\u{201D} button below (and the menu-bar \u{201C}Check for Updates\u{2026}\u{201D} item) trigger a check. The very first time you launch a Parleq build with auto-updates, Sparkle asks for your choice via a prompt \u{2014} this toggle reflects (and overrides) what you picked there.")
+                    }
+                    if let feedURL = managedFeedURL {
+                        // When sparkleUpdateFeedURL is managed, show the
+                        // overridden URL so users understand where update
+                        // checks are going (typically a corporate mirror).
+                        // The URL is not user-editable — feed URL is not a
+                        // user-configurable setting today; only MDM can set it.
+                        HStack(alignment: .firstTextBaseline, spacing: 4) {
+                            Text("Update feed:")
+                                .font(.system(size: 12))
+                                .foregroundStyle(Color(NSColor.secondaryLabelColor))
+                            Text(feedURL)
+                                .font(.system(size: 12, design: .monospaced))
+                                .foregroundStyle(Color(NSColor.secondaryLabelColor))
+                                .textSelection(.enabled)
+                            Text("(managed by your organization)")
+                                .font(.system(size: 12))
+                                .foregroundStyle(Color.orange.opacity(0.8))
+                        }
+                        .fixedSize(horizontal: false, vertical: true)
                     }
                 }
             }

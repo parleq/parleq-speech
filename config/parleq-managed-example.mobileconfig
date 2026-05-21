@@ -122,6 +122,28 @@
                                 <key>autoUpdateEnabled</key>
                                 <false/>
 
+                                <!-- ═══ Operational policy ════════════════════════════════════ -->
+
+                                <!-- Sparkle update feed URL (optional).
+                                     Override the default https://parleq.app/appcast.xml to
+                                     point at an internal mirror your IT team hosts after
+                                     security review. Must be https://. The Ed25519 signature
+                                     check is not affected — SUPublicEDKey in the app's
+                                     Info.plist still verifies every downloaded update.
+                                     Uncomment and set to your internal mirror URL to enable:
+                                <key>sparkleUpdateFeedURL</key>
+                                <string>https://internal-mirror.example.com/parleq/appcast.xml</string>
+                                -->
+
+                                <!-- Logging mode: compliance-sensitive deployments can pin
+                                     this to "lengthOnly" to document that verbose logging
+                                     is not permitted even if a future build adds that mode.
+                                     Recognized values: "lengthOnly", "verbose".
+                                     "lengthOnly" is the default and current behavior for
+                                     all deployments regardless of this setting. -->
+                                <key>loggingMode</key>
+                                <string>lengthOnly</string>
+
                             </dict>
                         </dict>
                     </array>

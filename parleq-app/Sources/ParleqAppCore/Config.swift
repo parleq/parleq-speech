@@ -631,6 +631,40 @@ public struct Config: Sendable {
             managedKeys.insert("autoUpdateEnabled")
         }
 
+        // sparkleUpdateFeedURL is Sparkle-side only (wired in ParleqApp.main
+        // before startUpdater()). We validate the format here and record
+        // managedKeys so the Compliance Audit dialog and UpdatesView caption
+        // can surface it. Validation mirrors the main.swift accept/reject
+        // criteria: must be a non-empty https:// URL.
+        if let rawFeedURL = ManagedConfig.managedString(forKey: "sparkleUpdateFeedURL") {
+            let trimmed = rawFeedURL.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty, URL(string: trimmed) != nil, trimmed.hasPrefix("https://") {
+                managedKeys.insert("sparkleUpdateFeedURL")
+            } else {
+                configLogStderr("[parleq] sparkleUpdateFeedURL: rejected managed value '\(trimmed)' — must be a valid https:// URL; using Info.plist SUFeedURL instead")
+            }
+        }
+
+        // loggingMode — forward-compatibility hook for compliance-sensitive
+        // deployments. Parleq does not have a verbose-logging mode today; all
+        // logging is length-only by convention. This key records the IT
+        // department's preferred policy in managedKeys so the Compliance Audit
+        // dialog can surface it. The gate for an eventual future verbose mode
+        // is already wired: when a verbose-logging feature is added, check
+        // managedKeys.contains("loggingMode") and honour the stored value.
+        //
+        // Recognized values: "lengthOnly" (default) and "verbose" (anticipated
+        // future). Any other value is rejected — the key is NOT added to
+        // managedKeys so the audit shows it as Default rather than Managed.
+        if let rawLoggingMode = ManagedConfig.managedString(forKey: "loggingMode") {
+            let recognized = ["lengthOnly", "verbose"]
+            if recognized.contains(rawLoggingMode) {
+                managedKeys.insert("loggingMode")
+            } else {
+                configLogStderr("[parleq] loggingMode: rejected unrecognized managed value '\(rawLoggingMode)' — recognized values are \(recognized.joined(separator: ", ")); treating as unmanaged")
+            }
+        }
+
             // MDM overlay — Phase 2: provider/model lockdown (8 string/array keys).
             //
             // Pin semantics (single String):

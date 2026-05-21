@@ -378,6 +378,35 @@ struct ParleqApp {
             if let managed = managedAutoUpdate {
                 updaterController.updater.automaticallyChecksForUpdates = managed
             }
+            // MDM sparkleUpdateFeedURL enforcement: when an admin pushes a
+            // managed feed URL, we redirect Sparkle's appcast to that URL
+            // BEFORE startUpdater() so the very first background check uses
+            // the managed URL.
+            //
+            // CRITICAL SECURITY INVARIANT: SUPublicEDKey in Info.plist
+            // still authoritatively gates which Sparkle signatures are
+            // valid. The managed feed URL changes WHERE the appcast comes
+            // from, not WHO can sign it. An attacker who hosts a fake
+            // appcast at the managed URL cannot push an arbitrary binary
+            // without the maintainer's Ed25519 private key. The EdDSA
+            // signature check cannot be bypassed by an MDM profile.
+            //
+            // Note on setFeedURL: Sparkle's preferred pattern for dynamic
+            // feed URLs is SPUUpdaterDelegate.feedURLStringForUpdater(_:).
+            // setFeedURL is technically deprecated, but this is a one-time
+            // pre-start configuration call from a known-managed source,
+            // not a runtime alternation between multiple feeds — the
+            // deprecation warning is not actionable here without adding a
+            // persistent delegate class. The API remains functional.
+            if let rawFeedURL = ManagedConfig.managedString(forKey: "sparkleUpdateFeedURL") {
+                let trimmed = rawFeedURL.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty, let feedURL = URL(string: trimmed), trimmed.hasPrefix("https://") {
+                    updaterController.updater.setFeedURL(feedURL)
+                    logStderr("[parleq] sparkleUpdateFeedURL: accepted managed URL '\(trimmed)' — appcast will be fetched from this URL; EdDSA signature verification remains enforced by Info.plist SUPublicEDKey")
+                } else {
+                    logStderr("[parleq] sparkleUpdateFeedURL: rejected managed value '\(trimmed)' — must be a valid https:// URL; using Info.plist SUFeedURL instead")
+                }
+            }
             updaterController.startUpdater()
             updaterBox.value = updaterController
             // Make the live updater visible to Settings → Updates so

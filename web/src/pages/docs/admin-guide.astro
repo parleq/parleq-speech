@@ -1,0 +1,279 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import Logo from '../../components/Logo.astro';
+
+const repoUrl = 'https://github.com/parleq/parleq-speech';
+---
+
+<Layout title="Admin Guide — Parleq MDM Deployment" description="Step-by-step guide for IT administrators deploying Parleq via MDM (Jamf, Kandji, Mosyle, Intune, and others). Covers deployment workflow, common patterns, verification, and signed-app posture.">
+  <header class="mx-auto flex max-w-5xl items-center justify-between px-6 pt-8">
+    <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/'} class="inline-flex items-center">
+      <Logo height="36" />
+    </a>
+    <nav class="flex items-center gap-6 text-sm font-medium text-[color:var(--color-text-muted)]">
+      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/'} class="transition-colors hover:text-[color:var(--color-text)]">Home</a>
+      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/how-it-works/'} class="transition-colors hover:text-[color:var(--color-text)]">How it works</a>
+      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/'} class="text-[color:var(--color-text)]">Docs</a>
+      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/faq/'} class="transition-colors hover:text-[color:var(--color-text)]">FAQ</a>
+      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/about/'} class="transition-colors hover:text-[color:var(--color-text)]">About</a>
+      <a href={repoUrl} class="transition-colors hover:text-[color:var(--color-text)]">GitHub &rarr;</a>
+    </nav>
+  </header>
+
+  <article class="mx-auto max-w-2xl px-6 pt-16 pb-24">
+    <p class="text-sm">
+      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/'} class="text-[color:var(--color-text-subtle)] hover:text-[color:var(--color-text-muted)]">&larr; Docs</a>
+    </p>
+
+    <p class="mt-8 text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">Enterprise &middot; IT administration</p>
+    <h1 class="mt-4 font-display text-4xl leading-[1.1] font-medium tracking-tight sm:text-5xl">
+      Admin Guide
+    </h1>
+    <p class="mt-6 text-[17px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      This guide is for IT administrators deploying Parleq to a fleet of Macs via MDM. If you are a developer looking for the complete managed-key schema, see the <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/managed-configuration/'} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Managed Configuration reference</a> instead.
+    </p>
+
+    <!-- Why govern Parleq -->
+    <h2 class="mt-12 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+      Why deploy Parleq centrally?
+    </h2>
+    <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      Parleq is a local-first dictation tool: speech transcription runs on the Mac itself, and cleanup is routed to whichever LLM provider your organization has already vetted and contracted with. There is no Parleq cloud service, no audio stored on Parleq servers, and no telemetry sent to Parleq. That posture means you review one vendor (your LLM provider) rather than two. Deploying Parleq via MDM adds one more layer: your MDM profile pins the LLM provider, restricts the model list, disables optional features your security review requires off, and prevents users from changing any of it. The result is a governed dictation workflow that satisfies the same procurement checklist as other enterprise tools &mdash; without a vendor admin portal, a licensing key system, or a phone-home compliance check.
+    </p>
+
+    <!-- Deployment workflow -->
+    <h2 class="mt-12 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+      Deployment workflow
+    </h2>
+
+    <ol class="mt-6 space-y-8 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      <li class="flex gap-4">
+        <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums shrink-0">1.</span>
+        <div>
+          <p class="text-[color:var(--color-text)] font-medium">Get the sample profile.</p>
+          <p class="mt-2">Download <a href={`${repoUrl}/blob/main/config/parleq-managed-example.mobileconfig`} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline"><code class="font-mono text-[13px]">config/parleq-managed-example.mobileconfig</code></a> from the repo. It is a fully-formed <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[13px]">.mobileconfig</code> with every supported key commented and explained. You can use it as-is for testing, or trim it to the subset of keys you want to manage.</p>
+        </div>
+      </li>
+      <li class="flex gap-4">
+        <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums shrink-0">2.</span>
+        <div>
+          <p class="text-[color:var(--color-text)] font-medium">Customize for your organization.</p>
+          <p class="mt-2">Open the file in a text editor and set the keys relevant to your deployment. Replace both <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[13px]">REPLACE-WITH-A-NEW-UUID</code> placeholders with fresh UUIDs (run <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[13px]">uuidgen</code> in Terminal) and replace the <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[13px]">com.example</code> identifiers with your organization&rsquo;s reverse-DNS prefix. Any key you omit is not managed &mdash; Parleq uses the user&rsquo;s stored preference or the built-in default. See the <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/managed-configuration/'} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">full key reference</a> for all available keys and their semantics.</p>
+        </div>
+      </li>
+      <li class="flex gap-4">
+        <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums shrink-0">3.</span>
+        <div>
+          <p class="text-[color:var(--color-text)] font-medium">Upload and scope in your MDM.</p>
+          <p class="mt-2">All MDMs that speak the macOS MDM protocol accept the same <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[13px]">.mobileconfig</code> format:</p>
+          <ul class="mt-3 space-y-2 list-disc list-inside text-[15px]">
+            <li><strong class="text-[color:var(--color-text)]">Jamf Pro:</strong> Computers &rarr; Configuration Profiles &rarr; New &rarr; Application &amp; Custom Settings payload (or upload the raw file).</li>
+            <li><strong class="text-[color:var(--color-text)]">Kandji:</strong> Library &rarr; Custom Profile &rarr; upload the <code class="font-mono text-[12px]">.mobileconfig</code>.</li>
+            <li><strong class="text-[color:var(--color-text)]">Mosyle:</strong> Apple Configurator &rarr; General &rarr; Custom Configuration Profile.</li>
+            <li><strong class="text-[color:var(--color-text)]">Intune:</strong> Devices &rarr; macOS &rarr; Configuration profiles &rarr; Create &rarr; Templates &rarr; Custom.</li>
+            <li><strong class="text-[color:var(--color-text)]">Workspace ONE, Addigy, JumpCloud:</strong> follow each platform&rsquo;s equivalent Custom Profile workflow.</li>
+          </ul>
+          <p class="mt-3">Assign the profile to a device group, smart group, or individual machines. The MDM pushes it on the next check-in (typically within a few minutes).</p>
+        </div>
+      </li>
+      <li class="flex gap-4">
+        <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums shrink-0">4.</span>
+        <div>
+          <p class="text-[color:var(--color-text)] font-medium">Verify the deployment.</p>
+          <p class="mt-2">Settings take effect on Parleq&rsquo;s next launch after MDM check-in. Two ways to confirm:</p>
+          <ul class="mt-3 space-y-2 list-disc list-inside text-[15px]">
+            <li><strong class="text-[color:var(--color-text)]">In-app:</strong> menu bar &rarr; <em>View Managed Configuration&hellip;</em>. The Compliance Audit dialog lists every managed-eligible key with source (Managed / User / Default). Use the <em>Copy snapshot</em> button to export the full state as JSON for your records.</li>
+            <li><strong class="text-[color:var(--color-text)]">Terminal:</strong> <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[13px]">sudo plutil -p "/Library/Managed Preferences/com.parleq.app.plist"</code></li>
+          </ul>
+        </div>
+      </li>
+    </ol>
+
+    <!-- Common deployment patterns -->
+    <h2 class="mt-14 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+      Common deployment patterns
+    </h2>
+
+    <h3 class="mt-8 font-display text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Azure-only org</h3>
+    <p class="mt-3 text-[15px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      You have an Azure OpenAI deployment and want all Parleq traffic to go there. Pin the provider, restrict the model list to the deployments you have provisioned, and disable the custom model entry so users can&rsquo;t route around the list.
+    </p>
+    <div class="mt-4 overflow-x-auto rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
+      <pre class="text-[13px] leading-[1.7] text-[color:var(--color-text-muted)] whitespace-pre overflow-x-auto"><code>&lt;key&gt;cleanupProvider&lt;/key&gt;
+&lt;string&gt;azure&lt;/string&gt;
+&lt;key&gt;cleanupAllowedModels&lt;/key&gt;
+&lt;array&gt;
+    &lt;string&gt;gpt-4o&lt;/string&gt;
+    &lt;string&gt;gpt-4o-mini&lt;/string&gt;
+&lt;/array&gt;
+&lt;key&gt;customModelEntryEnabled&lt;/key&gt;
+&lt;false/&gt;</code></pre>
+    </div>
+
+    <h3 class="mt-8 font-display text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Bedrock-only org</h3>
+    <p class="mt-3 text-[15px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      Your org uses AWS and routes LLM calls through Bedrock for data-residency and IAM auditability. Pin to Bedrock, restrict to the Claude family, and (optionally) disable the reference-window feature if screenshot-to-LLM is not in scope.
+    </p>
+    <div class="mt-4 overflow-x-auto rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
+      <pre class="text-[13px] leading-[1.7] text-[color:var(--color-text-muted)] whitespace-pre overflow-x-auto"><code>&lt;key&gt;cleanupProvider&lt;/key&gt;
+&lt;string&gt;bedrock&lt;/string&gt;
+&lt;key&gt;cleanupAllowedModels&lt;/key&gt;
+&lt;array&gt;
+    &lt;string&gt;anthropic.claude-sonnet-4-5&lt;/string&gt;
+    &lt;string&gt;anthropic.claude-3-5-haiku-20241022-v1:0&lt;/string&gt;
+&lt;/array&gt;
+&lt;key&gt;customModelEntryEnabled&lt;/key&gt;
+&lt;false/&gt;
+&lt;key&gt;imageReferenceEnabled&lt;/key&gt;
+&lt;false/&gt;</code></pre>
+    </div>
+
+    <h3 class="mt-8 font-display text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Compliance-first lockdown</h3>
+    <p class="mt-3 text-[15px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      Maximally locked: no screenshots, no file references, no custom models, auto-update managed centrally, logging policy documented for auditors, and updates fetched from an internal mirror after your security team&rsquo;s review.
+    </p>
+    <div class="mt-4 overflow-x-auto rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
+      <pre class="text-[13px] leading-[1.7] text-[color:var(--color-text-muted)] whitespace-pre overflow-x-auto"><code>&lt;key&gt;imageReferenceEnabled&lt;/key&gt;
+&lt;false/&gt;
+&lt;key&gt;fileReferenceEnabled&lt;/key&gt;
+&lt;false/&gt;
+&lt;key&gt;customModelEntryEnabled&lt;/key&gt;
+&lt;false/&gt;
+&lt;key&gt;autoUpdateEnabled&lt;/key&gt;
+&lt;false/&gt;
+&lt;key&gt;loggingMode&lt;/key&gt;
+&lt;string&gt;lengthOnly&lt;/string&gt;
+&lt;key&gt;sparkleUpdateFeedURL&lt;/key&gt;
+&lt;string&gt;https://internal-mirror.example.com/parleq/appcast.xml&lt;/string&gt;</code></pre>
+    </div>
+
+    <!-- Verification checklist -->
+    <h2 class="mt-14 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+      Verification checklist
+    </h2>
+    <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      After deploying, confirm policy uptake with the following steps. Run these on a test machine before wide deployment.
+    </p>
+
+    <div class="mt-6 overflow-x-auto rounded-xl border border-[color:var(--color-border)]">
+      <table class="w-full text-[14px] text-[color:var(--color-text-muted)]">
+        <thead class="border-b border-[color:var(--color-border)] bg-[color:var(--color-surface)]">
+          <tr>
+            <th class="px-4 py-3 text-left font-semibold text-[color:var(--color-text)]">What to check</th>
+            <th class="px-4 py-3 text-left font-semibold text-[color:var(--color-text)]">How to verify</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-[color:var(--color-border)]">
+          <tr class="bg-[color:var(--color-bg)]">
+            <td class="px-4 py-3">MDM profile installed</td>
+            <td class="px-4 py-3">System Settings &rarr; Privacy &amp; Security &rarr; Profiles (macOS 13+), or <code class="font-mono text-[12px]">sudo profiles list</code> in Terminal.</td>
+          </tr>
+          <tr class="bg-[color:var(--color-surface)]">
+            <td class="px-4 py-3">Preferences plist written</td>
+            <td class="px-4 py-3"><code class="font-mono text-[12px]">sudo plutil -p "/Library/Managed Preferences/com.parleq.app.plist"</code> — shows every key and value pushed by the profile.</td>
+          </tr>
+          <tr class="bg-[color:var(--color-bg)]">
+            <td class="px-4 py-3">Keys detected by app</td>
+            <td class="px-4 py-3">Menu bar &rarr; <em>View Managed Configuration&hellip;</em>. Every managed key should show source=<strong>Managed</strong> (orange badge). Copy the snapshot as JSON for your records.</td>
+          </tr>
+          <tr class="bg-[color:var(--color-surface)]">
+            <td class="px-4 py-3">Settings toggles locked</td>
+            <td class="px-4 py-3">Open Settings &rarr; Privacy &amp; Features. Managed toggles should be greyed out and show a lock icon with &ldquo;Managed by your organization.&rdquo;</td>
+          </tr>
+          <tr class="bg-[color:var(--color-bg)]">
+            <td class="px-4 py-3">Provider/model picker restricted</td>
+            <td class="px-4 py-3">Open Settings &rarr; Cleanup Model. If <code class="font-mono text-[12px]">cleanupProvider</code> is pinned, only that provider should appear. If <code class="font-mono text-[12px]">cleanupAllowedModels</code> is set, only the listed models should be visible.</td>
+          </tr>
+          <tr class="bg-[color:var(--color-surface)]">
+            <td class="px-4 py-3">Startup log confirms keys</td>
+            <td class="px-4 py-3"><code class="font-mono text-[12px]">tail -30 ~/.parleq/app.log | grep "managed config"</code> — should show the count and key=value pairs of every managed key Parleq detected.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Signed-app posture -->
+    <h2 class="mt-14 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+      Signed-app and notarization posture
+    </h2>
+    <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      The statements below are what IT departments and security reviewers typically need before adding an app to their approved list. They apply to every released build of Parleq.
+    </p>
+
+    <div class="mt-6 space-y-5">
+      <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5">
+        <p class="font-semibold text-[color:var(--color-text)]">Code signature</p>
+        <p class="mt-2 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">
+          Every Parleq release is signed with Apple Developer ID. The current signing Team ID is <code class="rounded bg-[color:var(--color-surface)] border border-[color:var(--color-border)] px-1.5 py-0.5 font-mono text-[13px]">XXXXXXXXXX</code>. Admins can verify this independently via Apple&rsquo;s developer registry or by running <code class="rounded bg-[color:var(--color-surface)] border border-[color:var(--color-border)] px-1.5 py-0.5 font-mono text-[13px]">codesign -dv --verbose=4 /Applications/Parleq.app 2&gt;&amp;1 | grep TeamIdentifier</code> on a downloaded build.
+        </p>
+        <p class="mt-2 text-[13px] text-[color:var(--color-text-subtle)]">
+          Note: the placeholder <code class="font-mono text-[12px]">XXXXXXXXXX</code> will be replaced with the real Team ID once the Apple Developer Program enrollment is complete. Verify the actual value from a downloaded release before adding to your approved-signer list.
+        </p>
+      </div>
+
+      <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5">
+        <p class="font-semibold text-[color:var(--color-text)]">Notarization</p>
+        <p class="mt-2 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">
+          Every Parleq release is submitted to Apple&rsquo;s notarization service before distribution. Notarized builds pass Gatekeeper automatically on macOS 10.15+ without requiring users to right-click-open or change security preferences. You can verify notarization on a downloaded build: <code class="rounded bg-[color:var(--color-surface)] border border-[color:var(--color-border)] px-1.5 py-0.5 font-mono text-[13px]">spctl --assess --type exec --verbose /Applications/Parleq.app</code> should print <code class="rounded bg-[color:var(--color-surface)] border border-[color:var(--color-border)] px-1.5 py-0.5 font-mono text-[13px]">accepted</code>.
+        </p>
+      </div>
+
+      <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5">
+        <p class="font-semibold text-[color:var(--color-text)]">Sparkle update integrity</p>
+        <p class="mt-2 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">
+          Parleq uses the Sparkle update framework. Every downloaded update is verified against an Ed25519 public key (<code class="font-mono text-[13px]">SUPublicEDKey</code>) embedded in the app&rsquo;s <code class="font-mono text-[13px]">Info.plist</code>. The matching private key is held exclusively by the maintainer and is never part of the repo or any build artifact. This means:
+        </p>
+        <ul class="mt-3 space-y-1 text-[14px] list-disc list-inside text-[color:var(--color-text-muted)]">
+          <li>No one other than the maintainer can push a signed update, regardless of what the MDM-managed <code class="font-mono text-[12px]">sparkleUpdateFeedURL</code> points at.</li>
+          <li>If an attacker controls the appcast URL (whether via DNS spoofing or a compromised managed-config profile), they can only serve an appcast. They cannot produce a binary that passes the EdDSA signature check.</li>
+          <li>Sparkle verifies the signature before the downloaded binary touches disk. A tampered binary is rejected before execution.</li>
+        </ul>
+      </div>
+
+      <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5">
+        <p class="font-semibold text-[color:var(--color-text)]">Third-party dependencies</p>
+        <p class="mt-2 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">
+          Parleq has no third-party SDKs that phone home. The full dependency manifest is published in <a href={`${repoUrl}/blob/main/THIRD_PARTY_LICENSES.md`} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline"><code class="font-mono text-[13px]">THIRD_PARTY_LICENSES.md</code></a>. Dependencies are: Sparkle (update delivery), Soto (AWS SDK for Bedrock), swift-log (structured logging). None of these make network requests except when explicitly invoked by Parleq itself (Sparkle during update checks; Soto during Bedrock cleanup calls). There is no analytics, crash-reporting, or feature-flag SDK.
+        </p>
+      </div>
+
+      <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5">
+        <p class="font-semibold text-[color:var(--color-text)]">Managed configuration is local-only</p>
+        <p class="mt-2 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">
+          Parleq reads managed-configuration values from <code class="font-mono text-[13px]">/Library/Managed Preferences/com.parleq.app.plist</code> at startup. It never sends policy state to an external service, never reports compliance status to a Parleq endpoint, and never validates policy against a remote server. The Compliance Audit dialog (menu bar &rarr; <em>View Managed Configuration&hellip;</em>) exports state to the local clipboard for IT verification &mdash; the user decides whether to share it with IT; Parleq does not collect it automatically.
+        </p>
+      </div>
+    </div>
+
+    <!-- Local testing -->
+    <h2 class="mt-14 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+      Testing without an MDM
+    </h2>
+    <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      To validate a profile on a single Mac without enrolling it in your MDM, write the managed-preferences plist directly as root. See the full recipe in the <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/managed-configuration/'} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Managed Configuration reference &rarr; Local testing without an MDM</a>.
+    </p>
+
+    <!-- Related links -->
+    <h2 class="mt-14 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+      Related resources
+    </h2>
+    <ul class="mt-4 space-y-3 text-[16px] text-[color:var(--color-text-muted)]">
+      <li>
+        <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/managed-configuration/'} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Managed Configuration key reference</a>
+        &mdash; full schema with all 17 supported keys, types, and semantics.
+      </li>
+      <li>
+        <a href={`${repoUrl}/blob/main/config/parleq-managed-example.mobileconfig`} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Sample <code class="font-mono text-[13px]">.mobileconfig</code></a>
+        &mdash; ready-to-customize profile with every key commented.
+      </li>
+      <li>
+        <a href={`${repoUrl}/issues/39`} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Issue #39</a>
+        &mdash; tracking managed-configuration feature additions and future schema expansions.
+      </li>
+      <li>
+        <a href={`${repoUrl}/blob/main/THIRD_PARTY_LICENSES.md`} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline"><code class="font-mono text-[13px]">THIRD_PARTY_LICENSES.md</code></a>
+        &mdash; full dependency audit for security review.
+      </li>
+    </ul>
+  </article>
+</Layout>

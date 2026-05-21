@@ -137,6 +137,36 @@ private func resolveAuditRow(key: String, config: Config, defaults: Config) -> (
         }
         return ("(any)", .default)
 
+    // MARK: Phase 3 — operational policy keys
+    case "sparkleUpdateFeedURL":
+        // Validate the managed value using the same accept/reject criteria
+        // as Config.applyManagedOverlay and main.swift: must be a non-empty
+        // https:// URL. Show the managed value when valid; show Default
+        // (Info.plist SUFeedURL) when absent or invalid.
+        if let raw = ManagedConfig.managedString(forKey: key) {
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty, URL(string: trimmed) != nil, trimmed.hasPrefix("https://") {
+                return (trimmed, .managed)
+            }
+            // Invalid managed value — treated as unmanaged by Config.applyManagedOverlay.
+            return ("(invalid — using Info.plist SUFeedURL)", .default)
+        }
+        return ("(Info.plist SUFeedURL)", .default)
+
+    case "loggingMode":
+        // Forward-compatibility hook. Only "lengthOnly" and "verbose" are
+        // recognized; anything else is rejected and treated as unmanaged.
+        if let raw = ManagedConfig.managedString(forKey: key) {
+            let recognized = ["lengthOnly", "verbose"]
+            if recognized.contains(raw) {
+                return (raw, .managed)
+            }
+            // Unrecognized value — rejected by Config.applyManagedOverlay;
+            // not added to managedKeys so the effective policy is Default.
+            return ("(unrecognized: \(raw))", .default)
+        }
+        return ("lengthOnly", .default)
+
     default:
         return ("(unknown key)", .default)
     }

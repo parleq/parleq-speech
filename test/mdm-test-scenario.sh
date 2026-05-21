@@ -220,6 +220,43 @@ case "$scenario" in
         restart_parleq
         ;;
 
+    test15-sparkle-feed-url)
+        # Phase 3: push sparkleUpdateFeedURL.
+        # Verify:
+        #   1. Startup log shows: "[parleq] sparkleUpdateFeedURL: accepted managed URL ..."
+        #   2. Settings -> Updates pane shows:
+        #      "Update feed: https://example.com/appcast.xml (managed by your organization)"
+        # Compliance Audit dialog should show sparkleUpdateFeedURL with
+        # source=Managed and value=https://example.com/appcast.xml.
+        write_scenario '    <key>sparkleUpdateFeedURL</key>
+    <string>https://example.com/appcast.xml</string>'
+        restart_parleq
+        ;;
+
+    test16-logging-mode)
+        # Phase 3: push loggingMode=lengthOnly.
+        # Verify:
+        #   1. Startup log shows: "[parleq] managed config: 1 keys managed (loggingMode=lengthOnly)"
+        #   2. Compliance Audit dialog shows loggingMode row with source=Managed.
+        write_scenario '    <key>loggingMode</key>
+    <string>lengthOnly</string>'
+        restart_parleq
+        ;;
+
+    test17-tier3-combined)
+        # Phase 3: both new keys + an invalid loggingMode value to confirm
+        # rejection. Expected:
+        #   - sparkleUpdateFeedURL accepted (valid https:// URL)
+        #   - loggingMode rejected (unrecognized value "verboseUltra") with log warning
+        #   - Compliance Audit: sparkleUpdateFeedURL=Managed, loggingMode=Default
+        #   - Startup log: "[parleq] loggingMode: rejected unrecognized managed value 'verboseUltra'"
+        write_scenario '    <key>sparkleUpdateFeedURL</key>
+    <string>https://example.com/appcast.xml</string>
+    <key>loggingMode</key>
+    <string>verboseUltra</string>'
+        restart_parleq
+        ;;
+
     "")
         echo "Available scenarios:"
         echo "  clear                          remove managed config + relaunch"
@@ -237,6 +274,9 @@ case "$scenario" in
         echo "  test12-cleanup-provider-only   provider allowlist + unmanaged model (alignment)"
         echo "  test13-cleanup-model-only      model allowlist + unmanaged provider (alignment)"
         echo "  test14-context-managed         context tier pinned (provider + model)"
+        echo "  test15-sparkle-feed-url        Phase 3: sparkleUpdateFeedURL=https://example.com/appcast.xml"
+        echo "  test16-logging-mode            Phase 3: loggingMode=lengthOnly"
+        echo "  test17-tier3-combined          Phase 3: both + invalid loggingMode to verify rejection"
         exit 1
         ;;
 

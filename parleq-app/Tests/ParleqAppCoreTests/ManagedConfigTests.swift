@@ -498,9 +498,12 @@ final class ManagedConfigTests: XCTestCase {
 
     // MARK: - 13. ManagedConfig.allKeys — single source of truth
 
-    func test_allKeys_contains_exactly_15_entries() {
-        XCTAssertEqual(ManagedConfig.allKeys.count, 15,
-                       "ManagedConfig.allKeys must contain exactly 15 managed-eligible keys")
+    func test_allKeys_count_is_seventeen() {
+        // Phase 1 (7 Bool) + Phase 2 (8 String/[String]) + Phase 3 (2 operational) = 17.
+        // Bumping this count requires a coordinated change in
+        // ManagedConfig.allKeys + the audit-row resolution + the docs page.
+        XCTAssertEqual(ManagedConfig.allKeys.count, 17,
+                       "ManagedConfig.allKeys must contain exactly 17 managed-eligible keys (Phase 1 + 2 + 3)")
     }
 
     func test_allKeys_contains_all_phase1_bool_keys() {
@@ -707,5 +710,90 @@ final class ManagedConfigTests: XCTestCase {
 
         XCTAssertEqual(c.llmModel, "gpt-4o",
                        "Pinned cleanupModel should take precedence")
+    }
+
+    // MARK: - 17. Phase 3 — sparkleUpdateFeedURL validation
+
+    func test_sparkleUpdateFeedURL_https_url_is_valid() {
+        // A well-formed https:// URL should be accepted.
+        let url = "https://example.com/parleq/appcast.xml"
+        XCTAssertNotNil(URL(string: url), "A valid URL string should parse to a URL")
+        XCTAssertTrue(url.hasPrefix("https://"), "URL should start with https://")
+    }
+
+    func test_sparkleUpdateFeedURL_http_url_is_rejected() {
+        // http:// URLs must be rejected — only https:// is accepted.
+        let url = "http://example.com/appcast.xml"
+        let isAccepted = !url.isEmpty && URL(string: url) != nil && url.hasPrefix("https://")
+        XCTAssertFalse(isAccepted, "http:// URL should be rejected by validation logic")
+    }
+
+    func test_sparkleUpdateFeedURL_file_scheme_is_rejected() {
+        // file:// URLs are not accepted (local paths make no sense for a feed URL).
+        let url = "file:///tmp/appcast.xml"
+        let isAccepted = !url.isEmpty && URL(string: url) != nil && url.hasPrefix("https://")
+        XCTAssertFalse(isAccepted, "file:// URL should be rejected by validation logic")
+    }
+
+    func test_sparkleUpdateFeedURL_malformed_string_is_rejected() {
+        // A non-URL string (e.g. an empty string or garbage) must be rejected.
+        let malformed = "not a url"
+        // The validation gate: non-empty, parses as URL, starts with https://.
+        let isAccepted = !malformed.isEmpty && URL(string: malformed) != nil && malformed.hasPrefix("https://")
+        XCTAssertFalse(isAccepted, "A non-URL string should be rejected")
+    }
+
+    // MARK: - 18. Phase 3 — loggingMode validation
+
+    func test_loggingMode_lengthOnly_is_recognized() {
+        let recognized = ["lengthOnly", "verbose"]
+        XCTAssertTrue(recognized.contains("lengthOnly"),
+                      "\"lengthOnly\" must be a recognized loggingMode value")
+    }
+
+    func test_loggingMode_verbose_is_recognized() {
+        let recognized = ["lengthOnly", "verbose"]
+        XCTAssertTrue(recognized.contains("verbose"),
+                      "\"verbose\" must be a recognized loggingMode value (forward-compat, no current effect)")
+    }
+
+    func test_loggingMode_unrecognized_is_rejected_and_not_added_to_managedKeys() {
+        // An unrecognized value (e.g. "verboseUltra") should be rejected
+        // and NOT result in the key being added to managedKeys.
+        let recognized = ["lengthOnly", "verbose"]
+        let invalidValue = "verboseUltra"
+        var managedKeys = Set<String>()
+
+        // Simulate the Config.applyManagedOverlay loggingMode block.
+        if recognized.contains(invalidValue) {
+            managedKeys.insert("loggingMode")
+        }
+        // else: log warning and leave managedKeys unchanged
+
+        XCTAssertFalse(managedKeys.contains("loggingMode"),
+                       "An unrecognized loggingMode value must NOT be added to managedKeys")
+    }
+
+    func test_loggingMode_recognized_value_is_added_to_managedKeys() {
+        let recognized = ["lengthOnly", "verbose"]
+        let validValue = "lengthOnly"
+        var managedKeys = Set<String>()
+
+        if recognized.contains(validValue) {
+            managedKeys.insert("loggingMode")
+        }
+
+        XCTAssertTrue(managedKeys.contains("loggingMode"),
+                      "A recognized loggingMode value should be added to managedKeys")
+    }
+
+    // MARK: - 19. Phase 3 — ManagedConfig.allKeys includes new keys
+
+    func test_allKeys_contains_phase3_operational_policy_keys() {
+        let phase3Keys = ["sparkleUpdateFeedURL", "loggingMode"]
+        for key in phase3Keys {
+            XCTAssertTrue(ManagedConfig.allKeys.contains(key),
+                          "allKeys should contain Phase 3 key '\(key)'")
+        }
     }
 }

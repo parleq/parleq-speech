@@ -29,10 +29,11 @@ public enum ManagedConfig {
     /// Matches the app's CFBundleIdentifier in Info.plist.
     public static let bundleID = "com.parleq.app"
 
-    /// Every managed-eligible key across Phase 1 (7 Bool keys) and
-    /// Phase 2 (8 string/array keys). This is the single source of
-    /// truth consumed by the Compliance Audit dialog, `allKeys`, and
-    /// test coverage checks. autoUpdateEnabled is the Sparkle-side Bool.
+    /// Every managed-eligible key across Phase 1 (7 Bool keys),
+    /// Phase 2 (8 string/array keys), and Phase 3 (2 operational
+    /// policy keys). This is the single source of truth consumed by
+    /// the Compliance Audit dialog, `allKeys`, and test coverage
+    /// checks. autoUpdateEnabled is the Sparkle-side Bool.
     public static let allKeys: [String] = [
         // Phase 1 — Bool feature toggles
         "referenceWindowsEnabled",
@@ -51,6 +52,9 @@ public enum ManagedConfig {
         "contextAllowedProviders",
         "contextModel",
         "contextAllowedModels",
+        // Phase 3 — operational policy
+        "sparkleUpdateFeedURL",
+        "loggingMode",
     ]
 
     /// Emit a one-line startup summary of which managed keys were
