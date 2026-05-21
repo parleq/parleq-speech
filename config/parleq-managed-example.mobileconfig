@@ -146,13 +146,16 @@
 
                                 <!-- ═══ Auth-mode restrictions (Phase 4) ═══════════════════════ -->
 
-                                <!-- staticApiKeysAllowed — master switch for credential-entry UI.
+                                <!-- staticApiKeysAllowed — master switch for static-credential auth paths.
                                      When false, hides every "Set ... API key", "Set ... Service
                                      Account JSON", and "Set ... Bearer key" button across ALL
-                                     provider credentials cards. Federated-auth controls (gcloud ADC,
-                                     az login, AWS SSO) remain visible and usable.
-                                     Note: already-stored static keys continue to work at runtime;
-                                     this key only prevents users from adding or replacing keys.
+                                     provider credentials cards, AND refuses to use already-stored
+                                     static credentials at runtime. Providers with no federated-auth
+                                     fallback (Gemini, OpenAI direct, Bedrock bearer) become
+                                     unavailable; Azure/Bedrock IAM/Vertex remain usable via their
+                                     federated modes (az login / AWS SSO / gcloud ADC). Stored
+                                     credentials are not deleted — removing the profile restores
+                                     prior functionality without re-entering keys.
                                      Uncomment to enforce no-static-keys policy:
                                 <key>staticApiKeysAllowed</key>
                                 <false/>

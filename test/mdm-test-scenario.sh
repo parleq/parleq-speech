@@ -410,7 +410,7 @@ case "$scenario" in
         echo "  test3-provider-allowlist       cleanupAllowedProviders=[azure,openai]"
         echo "  test4-model-pin                pin openai + gpt-4o-mini"
         echo "  test5-model-allowlist          openai + allowed [gpt-4o, gpt-4o-mini]"
-        echo "  test6-cross-provider-snap      allowed=[gpt-4o] no provider pin"
+        echo "  test6-cross-provider-snap      allowed=[gemini-2.5-flash] no provider pin"
         echo "  test7-auto-update              autoUpdateEnabled=false"
         echo "  test8-audit-mixed              allowlist + one toggle for audit dialog"
         echo "  test9-save-preservation        provider pin to different provider"

@@ -145,7 +145,7 @@ final class SettingsModel: ObservableObject {
     /// Mirror of Config.customModelEntryEnabled.
     @Published var customModelEntryEnabled: Bool
     /// Set of Config keys currently managed by MDM. Rows for managed
-    /// keys render as `.disabled(true)`. Lock-icon badges come in Phase 6.
+    /// keys render as `.disabled(true)` with the ManagedIndicator badge.
     @Published var managedKeys: Set<String>
 
     // MARK: - Tier fields (cleanup + context independent provider+model)

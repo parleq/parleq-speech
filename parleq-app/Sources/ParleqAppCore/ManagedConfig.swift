@@ -19,7 +19,7 @@
 //
 // Config.managedKeys: Set<String> tracks which keys came from MDM so
 // Settings rows can call `.disabled(config.managedKeys.contains(key))`.
-// The lock-icon badge UI (Phase 6) will read the same set.
+// The lock-icon badge UI (see ManagedIndicator.swift) reads the same set.
 
 import CoreFoundation
 import Foundation

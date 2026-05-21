@@ -313,7 +313,7 @@ public struct Config: Sendable {
     /// (/Library/Managed Preferences) rather than from the user's
     /// config file. Populated by Config.load(); never persisted to disk.
     /// Settings rows read this to call `.disabled(managedKeys.contains(key))`.
-    /// The lock-icon badge UI (Phase 6) will also consume this.
+    /// The lock-icon badge UI (ManagedIndicator) also consumes this.
     public var managedKeys: Set<String>
 
     /// Sentinel value for `asr.endpoint` meaning "use in-process
