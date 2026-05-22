@@ -234,14 +234,15 @@ public enum ManagedConfig {
     /// `Config.applyManagedOverlay` and the UI gate agree on what "valid" means.
     ///
     /// Allowed forms:
-    ///   - The bundled-ASR sentinel string verbatim (in-process FluidAudio).
-    ///     We compare to the well-known `Config.bundledASREndpoint` literal
-    ///     here rather than importing the type to avoid a layering cycle.
-    ///   - An https:// URL with a non-empty host, no embedded userinfo, and
-    ///     no query parameters. Plain http:// is REJECTED — the unmanaged
-    ///     codepath accepts it for local-dev setups (sherpa-onnx on
-    ///     127.0.0.1), but if an admin is pushing the endpoint via MDM the
-    ///     intent is corporate routing, which must travel over TLS.
+    ///   - `Config.bundledASREndpoint` verbatim (in-process FluidAudio).
+    ///   - An https:// URL with a non-empty host, no embedded userinfo, no
+    ///     query parameters, and no fragment. Plain http:// is REJECTED —
+    ///     the unmanaged codepath accepts it for local-dev setups
+    ///     (sherpa-onnx on 127.0.0.1), but if an admin is pushing the
+    ///     endpoint via MDM the intent is corporate routing, which must
+    ///     travel over TLS. Fragments are rejected for the same reason as
+    ///     queries: a tokenized URL ending in `#token=...` would still be
+    ///     visible in the disabled TextField and the clipboard snapshot.
     ///
     /// Returns the trimmed value on success (so callers can store the
     /// validated form), or nil if any check fails.
@@ -250,7 +251,7 @@ public enum ManagedConfig {
         guard !trimmed.isEmpty else { return nil }
         // Bundled sentinel — exact match required so a misspelling falls
         // into URL validation rather than silently being treated as bundled.
-        if trimmed == "http://127.0.0.1:8767/inference" {
+        if trimmed == Config.bundledASREndpoint {
             return trimmed
         }
         guard let url = URL(string: trimmed),
@@ -258,7 +259,8 @@ public enum ManagedConfig {
               let host = url.host, !host.isEmpty,
               (url.user == nil || url.user?.isEmpty == true),
               (url.password == nil || url.password?.isEmpty == true),
-              url.query == nil
+              url.query == nil,
+              url.fragment == nil
         else {
             return nil
         }

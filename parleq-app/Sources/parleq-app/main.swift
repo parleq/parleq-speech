@@ -398,18 +398,25 @@ struct ParleqApp {
             if let managed = managedAutoUpdate {
                 updaterController.updater.automaticallyChecksForUpdates = managed
                 // Phase 7 hardening — when autoUpdateEnabled=true is
-                // pushed by MDM, also clear any user-domain
-                // `SUSkippedVersion` so a previously-skipped version
-                // can't keep the user pinned past the forced-update
-                // policy. Sparkle stores skip-version state in the
-                // user defaults; it's not part of our MDM schema, so
-                // a malicious user can write SUSkippedVersion=99.99.99
-                // to their own defaults and silently defeat the
-                // forced auto-update. Clearing on launch costs the
-                // user only a re-prompt for any update they
-                // legitimately want to skip.
+                // pushed by MDM, also clear any user-domain skip-version
+                // defaults so a previously-skipped version can't keep
+                // the user pinned past the forced-update policy.
+                // Sparkle 2.x stores skip state across THREE keys (see
+                // `[SPUSkippedUpdate clearSkippedUpdateForHost:]` in
+                // Sparkle/SPUSkippedUpdate.m): SUSkippedVersion (legacy
+                // / minor-version), SUSkippedMajorVersion, and
+                // SUSkippedMajorSubreleaseVersion. Clearing only the
+                // legacy key leaves the major-skip vector open — a
+                // user can write SUSkippedMajorVersion=99 to silently
+                // defeat the forced auto-update across a major
+                // transition. Clear all three to match Sparkle's own
+                // clear semantics. Clearing on launch costs the user
+                // only a re-prompt for any update they legitimately
+                // want to skip.
                 if managed {
                     UserDefaults.standard.removeObject(forKey: "SUSkippedVersion")
+                    UserDefaults.standard.removeObject(forKey: "SUSkippedMajorVersion")
+                    UserDefaults.standard.removeObject(forKey: "SUSkippedMajorSubreleaseVersion")
                 }
             }
             // MDM sparkleUpdateFeedURL enforcement: when an admin pushes a

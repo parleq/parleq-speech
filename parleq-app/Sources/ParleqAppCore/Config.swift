@@ -842,254 +842,254 @@ public struct Config: Sendable {
             }
         }
 
-            // MDM overlay — Phase 2: provider/model lockdown (8 string/array keys).
-            //
-            // Pin semantics (single String):
-            //   cleanupProvider / cleanupModel force the value; the picker is
-            //   disabled and shows only the pinned entry.
-            //
-            // Allowlist semantics ([String]):
-            //   cleanupAllowedProviders / cleanupAllowedModels curate the picker
-            //   to a subset; the user can still pick among them. If the currently
-            //   stored value isn't in the allowed list it is reset to the first
-            //   allowed entry.
-            //
-            // Precedence when both pin + allowlist are set for the same tier:
-            //   The pin wins (it is strictly more restrictive). The allowlist is
-            //   effectively ignored because the picker is disabled.
+        // MDM overlay — Phase 2: provider/model lockdown (8 string/array keys).
+        //
+        // Pin semantics (single String):
+        //   cleanupProvider / cleanupModel force the value; the picker is
+        //   disabled and shows only the pinned entry.
+        //
+        // Allowlist semantics ([String]):
+        //   cleanupAllowedProviders / cleanupAllowedModels curate the picker
+        //   to a subset; the user can still pick among them. If the currently
+        //   stored value isn't in the allowed list it is reset to the first
+        //   allowed entry.
+        //
+        // Precedence when both pin + allowlist are set for the same tier:
+        //   The pin wins (it is strictly more restrictive). The allowlist is
+        //   effectively ignored because the picker is disabled.
 
-            // CLEANUP TIER — provider
-            if let pinnedProvider = ManagedConfig.managedString(forKey: "cleanupProvider") {
-                c.llmProvider = pinnedProvider
-                managedKeys.insert("cleanupProvider")
-            } else if let allowedProviders = ManagedConfig.managedStringArray(forKey: "cleanupAllowedProviders") {
-                if !allowedProviders.contains(c.llmProvider), let first = allowedProviders.first {
-                    configLogStderr("[parleq] cleanupAllowedProviders: stored provider '\(c.llmProvider)' not in allowed list; reset to '\(first)'")
-                    c.llmProvider = first
-                    // Also reset model to the new provider's default when snapping provider.
-                    c.llmModel = ModelCatalog.defaultModel(forProvider: first)
-                }
-                managedKeys.insert("cleanupAllowedProviders")
+        // CLEANUP TIER — provider
+        if let pinnedProvider = ManagedConfig.managedString(forKey: "cleanupProvider") {
+            c.llmProvider = pinnedProvider
+            managedKeys.insert("cleanupProvider")
+        } else if let allowedProviders = ManagedConfig.managedStringArray(forKey: "cleanupAllowedProviders") {
+            if !allowedProviders.contains(c.llmProvider), let first = allowedProviders.first {
+                configLogStderr("[parleq] cleanupAllowedProviders: stored provider '\(c.llmProvider)' not in allowed list; reset to '\(first)'")
+                c.llmProvider = first
+                // Also reset model to the new provider's default when snapping provider.
+                c.llmModel = ModelCatalog.defaultModel(forProvider: first)
             }
+            managedKeys.insert("cleanupAllowedProviders")
+        }
 
-            // CLEANUP TIER — model (evaluated after provider snap so the
-            // model catalog lookup uses the correct provider)
-            if let pinnedModel = ManagedConfig.managedString(forKey: "cleanupModel") {
-                c.llmModel = pinnedModel
-                managedKeys.insert("cleanupModel")
-            } else if let allowedModels = ManagedConfig.managedStringArray(forKey: "cleanupAllowedModels") {
-                // Cross-provider safety: filter the allowlist to models
-                // compatible with the current (possibly pinned/snapped)
-                // provider, mirroring the picker's per-provider filter.
-                // Without this, an admin pushing a cross-provider list
-                // like ["gemini-2.5-flash", "gpt-4o"] without a provider
-                // lockdown could end up with provider=gemini + model=gpt-4o.
-                let compatibleAllowed = allowedModels.filter { id in
-                    if ModelCatalog.isCanonical(provider: c.llmProvider, model: id) {
-                        return true
-                    }
-                    let belongsElsewhere = ["gemini", "vertex", "bedrock", "bedrock-bearer", "azure", "openai"]
-                        .filter { $0 != c.llmProvider }
-                        .contains { ModelCatalog.isCanonical(provider: $0, model: id) }
-                    return !belongsElsewhere  // bare custom IDs allowed
+        // CLEANUP TIER — model (evaluated after provider snap so the
+        // model catalog lookup uses the correct provider)
+        if let pinnedModel = ManagedConfig.managedString(forKey: "cleanupModel") {
+            c.llmModel = pinnedModel
+            managedKeys.insert("cleanupModel")
+        } else if let allowedModels = ManagedConfig.managedStringArray(forKey: "cleanupAllowedModels") {
+            // Cross-provider safety: filter the allowlist to models
+            // compatible with the current (possibly pinned/snapped)
+            // provider, mirroring the picker's per-provider filter.
+            // Without this, an admin pushing a cross-provider list
+            // like ["gemini-2.5-flash", "gpt-4o"] without a provider
+            // lockdown could end up with provider=gemini + model=gpt-4o.
+            let compatibleAllowed = allowedModels.filter { id in
+                if ModelCatalog.isCanonical(provider: c.llmProvider, model: id) {
+                    return true
                 }
-                if compatibleAllowed.isEmpty, let firstAllowed = allowedModels.first {
-                    // No allowed model is compatible with the current
-                    // provider. Provider policy takes precedence over the
-                    // model allowlist: if cleanupProvider is pinned (or
-                    // restricted by an allowlist), we must NOT snap the
-                    // provider — that would override a stricter policy with
-                    // a looser one. The admin's combined policy is
-                    // contradictory; respect the provider directive, reset
-                    // the model to the provider's default, and log loudly
-                    // so the admin can fix the conflict.
-                    let providerPinnedOrAllowlisted = managedKeys.contains("cleanupProvider")
-                        || managedKeys.contains("cleanupAllowedProviders")
-                    if providerPinnedOrAllowlisted {
-                        let original = c.llmModel
-                        c.llmModel = ModelCatalog.defaultModel(forProvider: c.llmProvider)
-                        configLogStderr("[parleq] cleanupAllowedModels: contradictory policy — no allowed model compatible with managed provider '\(c.llmProvider)'. Keeping provider per directive and resetting model '\(original)' to default '\(c.llmModel)'. Fix the policy: either expand cleanupAllowedModels to include a '\(c.llmProvider)' model, or change cleanupProvider.")
-                    } else {
-                        // Provider is user-controlled. Snap to the
-                        // owning provider so the policy + user produce
-                        // a valid runtime config.
-                        let owningProvider = ["gemini", "vertex", "bedrock", "bedrock-bearer", "azure", "openai"]
-                            .first { ModelCatalog.isCanonical(provider: $0, model: firstAllowed) }
-                        if let owning = owningProvider {
-                            configLogStderr("[parleq] cleanupAllowedModels: no allowed model compatible with provider '\(c.llmProvider)'; snapping provider to '\(owning)' which owns '\(firstAllowed)'")
-                            c.llmProvider = owning
-                            c.llmModel = firstAllowed
-                        } else {
-                            let original = c.llmModel
-                            c.llmModel = ModelCatalog.defaultModel(forProvider: c.llmProvider)
-                            configLogStderr("[parleq] cleanupAllowedModels: empty allowlist for provider '\(c.llmProvider)' with no identifiable owning provider; reset model '\(original)' to '\(c.llmModel)'")
-                        }
-                    }
-                } else if !compatibleAllowed.contains(c.llmModel), let first = compatibleAllowed.first {
-                    configLogStderr("[parleq] cleanupAllowedModels: stored model '\(c.llmModel)' not in allowed list (filtered to provider '\(c.llmProvider)'); reset to '\(first)'")
-                    c.llmModel = first
-                }
-                managedKeys.insert("cleanupAllowedModels")
+                let belongsElsewhere = ["gemini", "vertex", "bedrock", "bedrock-bearer", "azure", "openai"]
+                    .filter { $0 != c.llmProvider }
+                    .contains { ModelCatalog.isCanonical(provider: $0, model: id) }
+                return !belongsElsewhere  // bare custom IDs allowed
             }
-
-            // CLEANUP TIER — pinned-provider model-mismatch sanity check.
-            // When MDM pins `cleanupProvider` without an accompanying
-            // `cleanupModel` pin (or allowlist), the stored model may belong
-            // to a *different* provider (e.g. user had gemini/gemini-2.5-flash;
-            // MDM pinned openai). That combination produces invalid wire
-            // requests at runtime. Only reset when the model is canonical for
-            // some OTHER provider — if it's not canonical for anyone, it may
-            // be a legitimate custom value (dated snapshot, third-party
-            // deployment) the admin is happy to keep.
-            if managedKeys.contains("cleanupProvider"),
-               !managedKeys.contains("cleanupModel"),
-               !managedKeys.contains("cleanupAllowedModels") {
-                let modelMatchesCurrentProvider = ModelCatalog.isCanonical(provider: c.llmProvider, model: c.llmModel)
-                if !modelMatchesCurrentProvider {
-                    let otherProviders = ["gemini", "vertex", "bedrock", "bedrock-bearer", "azure", "openai"]
-                        .filter { $0 != c.llmProvider }
-                    let modelBelongsElsewhere = otherProviders.contains {
-                        ModelCatalog.isCanonical(provider: $0, model: c.llmModel)
-                    }
-                    if modelBelongsElsewhere {
-                        let original = c.llmModel
-                        c.llmModel = ModelCatalog.defaultModel(forProvider: c.llmProvider)
-                        configLogStderr("[parleq] cleanupProvider pin: stored model '\(original)' belongs to a different provider; reset to '\(c.llmModel)' for pinned provider '\(c.llmProvider)'")
-                    }
-                }
-            }
-
-            // CONTEXT TIER — provider
-            let currentContextProvider = c.contextModel?.provider ?? c.llmProvider
-            let currentContextModel    = c.contextModel?.model    ?? c.llmModel
-            var contextProvider = currentContextProvider
-            var contextModelName = currentContextModel
-
-            if let pinnedProvider = ManagedConfig.managedString(forKey: "contextProvider") {
-                contextProvider = pinnedProvider
-                managedKeys.insert("contextProvider")
-            } else if let allowedProviders = ManagedConfig.managedStringArray(forKey: "contextAllowedProviders") {
-                if !allowedProviders.contains(contextProvider), let first = allowedProviders.first {
-                    configLogStderr("[parleq] contextAllowedProviders: stored provider '\(contextProvider)' not in allowed list; reset to '\(first)'")
-                    contextProvider = first
-                    contextModelName = ModelCatalog.defaultModel(forProvider: first)
-                }
-                managedKeys.insert("contextAllowedProviders")
-            }
-
-            // CONTEXT TIER — model
-            if let pinnedModel = ManagedConfig.managedString(forKey: "contextModel") {
-                contextModelName = pinnedModel
-                managedKeys.insert("contextModel")
-            } else if let allowedModels = ManagedConfig.managedStringArray(forKey: "contextAllowedModels") {
-                // Same cross-provider filter as the cleanup tier.
-                let compatibleAllowed = allowedModels.filter { id in
-                    if ModelCatalog.isCanonical(provider: contextProvider, model: id) {
-                        return true
-                    }
-                    let belongsElsewhere = ["gemini", "vertex", "bedrock", "bedrock-bearer", "azure", "openai"]
-                        .filter { $0 != contextProvider }
-                        .contains { ModelCatalog.isCanonical(provider: $0, model: id) }
-                    return !belongsElsewhere
-                }
-                if compatibleAllowed.isEmpty, let firstAllowed = allowedModels.first {
-                    // Same precedence rule as cleanup tier: when context
-                    // provider is itself managed, the provider directive
-                    // wins. Don't snap to a different provider that would
-                    // override the stricter policy.
-                    let providerPinnedOrAllowlisted = managedKeys.contains("contextProvider")
-                        || managedKeys.contains("contextAllowedProviders")
-                    if providerPinnedOrAllowlisted {
-                        let original = contextModelName
-                        contextModelName = ModelCatalog.defaultModel(forProvider: contextProvider)
-                        configLogStderr("[parleq] contextAllowedModels: contradictory policy — no allowed model compatible with managed provider '\(contextProvider)'. Keeping provider per directive and resetting model '\(original)' to default '\(contextModelName)'. Fix the policy: either expand contextAllowedModels to include a '\(contextProvider)' model, or change contextProvider.")
-                    } else {
-                        let owningProvider = ["gemini", "vertex", "bedrock", "bedrock-bearer", "azure", "openai"]
-                            .first { ModelCatalog.isCanonical(provider: $0, model: firstAllowed) }
-                        if let owning = owningProvider {
-                            configLogStderr("[parleq] contextAllowedModels: no allowed model compatible with provider '\(contextProvider)'; snapping provider to '\(owning)' which owns '\(firstAllowed)'")
-                            contextProvider = owning
-                            contextModelName = firstAllowed
-                        } else {
-                            let original = contextModelName
-                            contextModelName = ModelCatalog.defaultModel(forProvider: contextProvider)
-                            configLogStderr("[parleq] contextAllowedModels: empty allowlist for provider '\(contextProvider)' with no identifiable owning provider; reset model '\(original)' to '\(contextModelName)'")
-                        }
-                    }
-                } else if !compatibleAllowed.contains(contextModelName), let first = compatibleAllowed.first {
-                    configLogStderr("[parleq] contextAllowedModels: stored model '\(contextModelName)' not in allowed list (filtered to provider '\(contextProvider)'); reset to '\(first)'")
-                    contextModelName = first
-                }
-                managedKeys.insert("contextAllowedModels")
-            }
-
-            // CONTEXT TIER — pinned-provider model-mismatch sanity check
-            // (mirror of the cleanup-tier check above). Only when context
-            // provider was pinned without an accompanying model directive.
-            if managedKeys.contains("contextProvider"),
-               !managedKeys.contains("contextModel"),
-               !managedKeys.contains("contextAllowedModels") {
-                let modelMatchesCurrentProvider = ModelCatalog.isCanonical(provider: contextProvider, model: contextModelName)
-                if !modelMatchesCurrentProvider {
-                    let otherProviders = ["gemini", "vertex", "bedrock", "bedrock-bearer", "azure", "openai"]
-                        .filter { $0 != contextProvider }
-                    let modelBelongsElsewhere = otherProviders.contains {
-                        ModelCatalog.isCanonical(provider: $0, model: contextModelName)
-                    }
-                    if modelBelongsElsewhere {
-                        let original = contextModelName
-                        contextModelName = ModelCatalog.defaultModel(forProvider: contextProvider)
-                        configLogStderr("[parleq] contextProvider pin: stored model '\(original)' belongs to a different provider; reset to '\(contextModelName)' for pinned provider '\(contextProvider)'")
-                    }
-                }
-            }
-
-            // Rebuild contextModel from the (possibly MDM-snapped) tier values.
-            // Preserve nil (= "same as cleanup") only when no context-tier MDM
-            // key is active and the original config.contextModel was nil.
-            let contextTierManaged = managedKeys.contains("contextProvider")
-                || managedKeys.contains("contextAllowedProviders")
-                || managedKeys.contains("contextModel")
-                || managedKeys.contains("contextAllowedModels")
-            if contextTierManaged {
-                let cleanupId = ModelIdentifier(provider: c.llmProvider, model: c.llmModel)
-                let contextId = ModelIdentifier(provider: contextProvider, model: contextModelName)
-                c.contextModel = (contextId == cleanupId) ? nil : contextId
-            }
-
-            c.managedKeys = managedKeys
-
-            // Defense-in-depth: when customModelEntryEnabled is off, a
-            // non-canonical model name (whether MDM-pushed, manually
-            // edited into config.json, or left over from before the
-            // toggle flipped) must not be used at runtime. Reset to the
-            // provider's curated default and log the rejection so the
-            // user or admin can diagnose it via tail ~/.parleq/app.log.
-            if !c.customModelEntryEnabled {
-                // MDM-pinned or allowlisted model IDs are authorized by the
-                // admin and bypass the customModelEntryEnabled scrub — the
-                // admin explicitly set them, so we shouldn't second-guess
-                // even if the value isn't in our curated catalog (could be a
-                // dated snapshot, a deployment-specific model ID, etc.).
-                let cleanupModelManaged = managedKeys.contains("cleanupModel")
-                    || managedKeys.contains("cleanupAllowedModels")
-                if !cleanupModelManaged,
-                   !ModelCatalog.isCanonical(provider: c.llmProvider, model: c.llmModel) {
+            if compatibleAllowed.isEmpty, let firstAllowed = allowedModels.first {
+                // No allowed model is compatible with the current
+                // provider. Provider policy takes precedence over the
+                // model allowlist: if cleanupProvider is pinned (or
+                // restricted by an allowlist), we must NOT snap the
+                // provider — that would override a stricter policy with
+                // a looser one. The admin's combined policy is
+                // contradictory; respect the provider directive, reset
+                // the model to the provider's default, and log loudly
+                // so the admin can fix the conflict.
+                let providerPinnedOrAllowlisted = managedKeys.contains("cleanupProvider")
+                    || managedKeys.contains("cleanupAllowedProviders")
+                if providerPinnedOrAllowlisted {
                     let original = c.llmModel
                     c.llmModel = ModelCatalog.defaultModel(forProvider: c.llmProvider)
-                    configLogStderr("[parleq] customModelEntryEnabled=false: rejected non-canonical cleanup model '\(original)' (provider=\(c.llmProvider)); reset to '\(c.llmModel)'")
+                    configLogStderr("[parleq] cleanupAllowedModels: contradictory policy — no allowed model compatible with managed provider '\(c.llmProvider)'. Keeping provider per directive and resetting model '\(original)' to default '\(c.llmModel)'. Fix the policy: either expand cleanupAllowedModels to include a '\(c.llmProvider)' model, or change cleanupProvider.")
+                } else {
+                    // Provider is user-controlled. Snap to the
+                    // owning provider so the policy + user produce
+                    // a valid runtime config.
+                    let owningProvider = ["gemini", "vertex", "bedrock", "bedrock-bearer", "azure", "openai"]
+                        .first { ModelCatalog.isCanonical(provider: $0, model: firstAllowed) }
+                    if let owning = owningProvider {
+                        configLogStderr("[parleq] cleanupAllowedModels: no allowed model compatible with provider '\(c.llmProvider)'; snapping provider to '\(owning)' which owns '\(firstAllowed)'")
+                        c.llmProvider = owning
+                        c.llmModel = firstAllowed
+                    } else {
+                        let original = c.llmModel
+                        c.llmModel = ModelCatalog.defaultModel(forProvider: c.llmProvider)
+                        configLogStderr("[parleq] cleanupAllowedModels: empty allowlist for provider '\(c.llmProvider)' with no identifiable owning provider; reset model '\(original)' to '\(c.llmModel)'")
+                    }
                 }
-                let contextModelManaged = managedKeys.contains("contextModel")
-                    || managedKeys.contains("contextAllowedModels")
-                if let ctx = c.contextModel,
-                   !contextModelManaged,
-                   !ModelCatalog.isCanonical(provider: ctx.provider, model: ctx.model) {
-                    let original = ctx.model
-                    let replacement = ModelCatalog.defaultModel(forProvider: ctx.provider)
-                    c.contextModel = ModelIdentifier(provider: ctx.provider, model: replacement)
-                    configLogStderr("[parleq] customModelEntryEnabled=false: rejected non-canonical context model '\(original)' (provider=\(ctx.provider)); reset to '\(replacement)'")
+            } else if !compatibleAllowed.contains(c.llmModel), let first = compatibleAllowed.first {
+                configLogStderr("[parleq] cleanupAllowedModels: stored model '\(c.llmModel)' not in allowed list (filtered to provider '\(c.llmProvider)'); reset to '\(first)'")
+                c.llmModel = first
+            }
+            managedKeys.insert("cleanupAllowedModels")
+        }
+
+        // CLEANUP TIER — pinned-provider model-mismatch sanity check.
+        // When MDM pins `cleanupProvider` without an accompanying
+        // `cleanupModel` pin (or allowlist), the stored model may belong
+        // to a *different* provider (e.g. user had gemini/gemini-2.5-flash;
+        // MDM pinned openai). That combination produces invalid wire
+        // requests at runtime. Only reset when the model is canonical for
+        // some OTHER provider — if it's not canonical for anyone, it may
+        // be a legitimate custom value (dated snapshot, third-party
+        // deployment) the admin is happy to keep.
+        if managedKeys.contains("cleanupProvider"),
+           !managedKeys.contains("cleanupModel"),
+           !managedKeys.contains("cleanupAllowedModels") {
+            let modelMatchesCurrentProvider = ModelCatalog.isCanonical(provider: c.llmProvider, model: c.llmModel)
+            if !modelMatchesCurrentProvider {
+                let otherProviders = ["gemini", "vertex", "bedrock", "bedrock-bearer", "azure", "openai"]
+                    .filter { $0 != c.llmProvider }
+                let modelBelongsElsewhere = otherProviders.contains {
+                    ModelCatalog.isCanonical(provider: $0, model: c.llmModel)
+                }
+                if modelBelongsElsewhere {
+                    let original = c.llmModel
+                    c.llmModel = ModelCatalog.defaultModel(forProvider: c.llmProvider)
+                    configLogStderr("[parleq] cleanupProvider pin: stored model '\(original)' belongs to a different provider; reset to '\(c.llmModel)' for pinned provider '\(c.llmProvider)'")
                 }
             }
+        }
+
+        // CONTEXT TIER — provider
+        let currentContextProvider = c.contextModel?.provider ?? c.llmProvider
+        let currentContextModel    = c.contextModel?.model    ?? c.llmModel
+        var contextProvider = currentContextProvider
+        var contextModelName = currentContextModel
+
+        if let pinnedProvider = ManagedConfig.managedString(forKey: "contextProvider") {
+            contextProvider = pinnedProvider
+            managedKeys.insert("contextProvider")
+        } else if let allowedProviders = ManagedConfig.managedStringArray(forKey: "contextAllowedProviders") {
+            if !allowedProviders.contains(contextProvider), let first = allowedProviders.first {
+                configLogStderr("[parleq] contextAllowedProviders: stored provider '\(contextProvider)' not in allowed list; reset to '\(first)'")
+                contextProvider = first
+                contextModelName = ModelCatalog.defaultModel(forProvider: first)
+            }
+            managedKeys.insert("contextAllowedProviders")
+        }
+
+        // CONTEXT TIER — model
+        if let pinnedModel = ManagedConfig.managedString(forKey: "contextModel") {
+            contextModelName = pinnedModel
+            managedKeys.insert("contextModel")
+        } else if let allowedModels = ManagedConfig.managedStringArray(forKey: "contextAllowedModels") {
+            // Same cross-provider filter as the cleanup tier.
+            let compatibleAllowed = allowedModels.filter { id in
+                if ModelCatalog.isCanonical(provider: contextProvider, model: id) {
+                    return true
+                }
+                let belongsElsewhere = ["gemini", "vertex", "bedrock", "bedrock-bearer", "azure", "openai"]
+                    .filter { $0 != contextProvider }
+                    .contains { ModelCatalog.isCanonical(provider: $0, model: id) }
+                return !belongsElsewhere
+            }
+            if compatibleAllowed.isEmpty, let firstAllowed = allowedModels.first {
+                // Same precedence rule as cleanup tier: when context
+                // provider is itself managed, the provider directive
+                // wins. Don't snap to a different provider that would
+                // override the stricter policy.
+                let providerPinnedOrAllowlisted = managedKeys.contains("contextProvider")
+                    || managedKeys.contains("contextAllowedProviders")
+                if providerPinnedOrAllowlisted {
+                    let original = contextModelName
+                    contextModelName = ModelCatalog.defaultModel(forProvider: contextProvider)
+                    configLogStderr("[parleq] contextAllowedModels: contradictory policy — no allowed model compatible with managed provider '\(contextProvider)'. Keeping provider per directive and resetting model '\(original)' to default '\(contextModelName)'. Fix the policy: either expand contextAllowedModels to include a '\(contextProvider)' model, or change contextProvider.")
+                } else {
+                    let owningProvider = ["gemini", "vertex", "bedrock", "bedrock-bearer", "azure", "openai"]
+                        .first { ModelCatalog.isCanonical(provider: $0, model: firstAllowed) }
+                    if let owning = owningProvider {
+                        configLogStderr("[parleq] contextAllowedModels: no allowed model compatible with provider '\(contextProvider)'; snapping provider to '\(owning)' which owns '\(firstAllowed)'")
+                        contextProvider = owning
+                        contextModelName = firstAllowed
+                    } else {
+                        let original = contextModelName
+                        contextModelName = ModelCatalog.defaultModel(forProvider: contextProvider)
+                        configLogStderr("[parleq] contextAllowedModels: empty allowlist for provider '\(contextProvider)' with no identifiable owning provider; reset model '\(original)' to '\(contextModelName)'")
+                    }
+                }
+            } else if !compatibleAllowed.contains(contextModelName), let first = compatibleAllowed.first {
+                configLogStderr("[parleq] contextAllowedModels: stored model '\(contextModelName)' not in allowed list (filtered to provider '\(contextProvider)'); reset to '\(first)'")
+                contextModelName = first
+            }
+            managedKeys.insert("contextAllowedModels")
+        }
+
+        // CONTEXT TIER — pinned-provider model-mismatch sanity check
+        // (mirror of the cleanup-tier check above). Only when context
+        // provider was pinned without an accompanying model directive.
+        if managedKeys.contains("contextProvider"),
+           !managedKeys.contains("contextModel"),
+           !managedKeys.contains("contextAllowedModels") {
+            let modelMatchesCurrentProvider = ModelCatalog.isCanonical(provider: contextProvider, model: contextModelName)
+            if !modelMatchesCurrentProvider {
+                let otherProviders = ["gemini", "vertex", "bedrock", "bedrock-bearer", "azure", "openai"]
+                    .filter { $0 != contextProvider }
+                let modelBelongsElsewhere = otherProviders.contains {
+                    ModelCatalog.isCanonical(provider: $0, model: contextModelName)
+                }
+                if modelBelongsElsewhere {
+                    let original = contextModelName
+                    contextModelName = ModelCatalog.defaultModel(forProvider: contextProvider)
+                    configLogStderr("[parleq] contextProvider pin: stored model '\(original)' belongs to a different provider; reset to '\(contextModelName)' for pinned provider '\(contextProvider)'")
+                }
+            }
+        }
+
+        // Rebuild contextModel from the (possibly MDM-snapped) tier values.
+        // Preserve nil (= "same as cleanup") only when no context-tier MDM
+        // key is active and the original config.contextModel was nil.
+        let contextTierManaged = managedKeys.contains("contextProvider")
+            || managedKeys.contains("contextAllowedProviders")
+            || managedKeys.contains("contextModel")
+            || managedKeys.contains("contextAllowedModels")
+        if contextTierManaged {
+            let cleanupId = ModelIdentifier(provider: c.llmProvider, model: c.llmModel)
+            let contextId = ModelIdentifier(provider: contextProvider, model: contextModelName)
+            c.contextModel = (contextId == cleanupId) ? nil : contextId
+        }
+
+        c.managedKeys = managedKeys
+
+        // Defense-in-depth: when customModelEntryEnabled is off, a
+        // non-canonical model name (whether MDM-pushed, manually
+        // edited into config.json, or left over from before the
+        // toggle flipped) must not be used at runtime. Reset to the
+        // provider's curated default and log the rejection so the
+        // user or admin can diagnose it via tail ~/.parleq/app.log.
+        if !c.customModelEntryEnabled {
+            // MDM-pinned or allowlisted model IDs are authorized by the
+            // admin and bypass the customModelEntryEnabled scrub — the
+            // admin explicitly set them, so we shouldn't second-guess
+            // even if the value isn't in our curated catalog (could be a
+            // dated snapshot, a deployment-specific model ID, etc.).
+            let cleanupModelManaged = managedKeys.contains("cleanupModel")
+                || managedKeys.contains("cleanupAllowedModels")
+            if !cleanupModelManaged,
+               !ModelCatalog.isCanonical(provider: c.llmProvider, model: c.llmModel) {
+                let original = c.llmModel
+                c.llmModel = ModelCatalog.defaultModel(forProvider: c.llmProvider)
+                configLogStderr("[parleq] customModelEntryEnabled=false: rejected non-canonical cleanup model '\(original)' (provider=\(c.llmProvider)); reset to '\(c.llmModel)'")
+            }
+            let contextModelManaged = managedKeys.contains("contextModel")
+                || managedKeys.contains("contextAllowedModels")
+            if let ctx = c.contextModel,
+               !contextModelManaged,
+               !ModelCatalog.isCanonical(provider: ctx.provider, model: ctx.model) {
+                let original = ctx.model
+                let replacement = ModelCatalog.defaultModel(forProvider: ctx.provider)
+                c.contextModel = ModelIdentifier(provider: ctx.provider, model: replacement)
+                configLogStderr("[parleq] customModelEntryEnabled=false: rejected non-canonical context model '\(original)' (provider=\(ctx.provider)); reset to '\(replacement)'")
+            }
+        }
     }
 
     /// Write the config back to ~/.parleq/config.json. Used by the

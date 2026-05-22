@@ -1786,6 +1786,10 @@ struct SettingsView: View {
             let vertexRegionManaged = model.managedKeys.contains("vertexRegion")
             let vertexAnthropicRegionManaged = model.managedKeys.contains("vertexAnthropicRegion")
             let vertexAuthModeManaged = model.managedKeys.contains("vertexAuthMode")
+            // ManagedCaption sits directly under each field row (before
+            // the descriptive SettingsCaption) so the "Managed by your
+            // organization" line stays adjacent to the locked control —
+            // matches the Bedrock + Azure cards in the same file.
             HStack(alignment: .center, spacing: 6) {
                 TextField("GCP project ID", text: bind(\.vertexProject))
                     .textFieldStyle(.roundedBorder)
@@ -1799,16 +1803,16 @@ struct SettingsView: View {
                     .disabled(vertexRegionManaged)
                 ManagedIndicator(isManaged: vertexRegionManaged)
             }
-            SettingsCaption("Gemini calls use this region.")
             ManagedCaption(isManaged: vertexRegionManaged)
+            SettingsCaption("Gemini calls use this region.")
             HStack(alignment: .center, spacing: 6) {
                 TextField("Anthropic region (e.g. us-east5)", text: bind(\.vertexAnthropicRegion))
                     .textFieldStyle(.roundedBorder)
                     .disabled(vertexAnthropicRegionManaged)
                 ManagedIndicator(isManaged: vertexAnthropicRegionManaged)
             }
-            SettingsCaption("Claude calls on Vertex use this region. us-east5 and europe-west1 are common; us-central1 doesn't host the Anthropic publisher.")
             ManagedCaption(isManaged: vertexAnthropicRegionManaged)
+            SettingsCaption("Claude calls on Vertex use this region. us-east5 and europe-west1 are common; us-central1 doesn't host the Anthropic publisher.")
             HStack(alignment: .center) {
                 Text("Auth mode")
                     .frame(minWidth: 90, alignment: .leading)

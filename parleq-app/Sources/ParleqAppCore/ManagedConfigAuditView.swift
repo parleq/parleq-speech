@@ -243,13 +243,16 @@ private func resolveAuditRow(key: String, config: Config, defaults: Config) -> (
         return formatString(config.vertexAuthMode, managed: isManaged, defaultVal: defaults.vertexAuthMode)
     case "asrEndpoint":
         // For the bundled sentinel show a friendly "(bundled FluidAudio)"
-        // marker; for an HTTPS URL show scheme://host (path stripped so a
-        // tokenized URL doesn't leak via the clipboard snapshot).
+        // marker; for an HTTPS URL show scheme://host[:port] (path stripped
+        // so a tokenized URL doesn't leak via the clipboard snapshot — but
+        // port preserved so an admin auditing a non-default port can
+        // confirm it's pinned).
         if config.asrEndpoint == Config.bundledASREndpoint {
             return ("(bundled FluidAudio)", isManaged ? .managed : .default)
         }
         if let url = URL(string: config.asrEndpoint), let host = url.host, !host.isEmpty {
-            let safe = "\(url.scheme ?? "https")://\(host)"
+            let portSuffix = url.port.map { ":\($0)" } ?? ""
+            let safe = "\(url.scheme ?? "https")://\(host)\(portSuffix)"
             return (safe, isManaged ? .managed : .user)
         }
         return formatString(config.asrEndpoint, managed: isManaged, defaultVal: defaults.asrEndpoint)
