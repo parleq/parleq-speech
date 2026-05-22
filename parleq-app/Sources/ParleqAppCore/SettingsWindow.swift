@@ -1862,15 +1862,17 @@ struct SettingsView: View {
             if model.vertexAuthMode == "serviceAccount" && !apiKeysBlocked {
                 VertexServiceAccountRow(model: model)
                 SettingsCaption("Paste the JSON key file you downloaded from GCP IAM → Service Accounts → Keys → Add Key. The whole JSON is stored in the macOS Keychain, never in `~/.parleq/config.json`. Parleq mints short-lived OAuth tokens directly via the SA's RSA private key — no `gcloud` CLI required. Grant the SA the Vertex AI User role on this project.")
-            } else if apiKeysBlocked {
-                HStack(spacing: 6) {
-                    ManagedIndicator(isManaged: true)
-                    Text("Service account JSON entry disabled by your organization.")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                }
-                SettingsCaption("Auth uses your local Application Default Credentials. Run `gcloud auth application-default login` once to sign in; Parleq calls `gcloud auth application-default print-access-token` per session to mint short-lived OAuth tokens (cached in memory). The `gcloud` CLI must be on PATH.")
             } else {
+                // Phase 7 fix for #196: when apiKeysBlocked forces the
+                // fixed "gcloud (ADC)" label above, we previously also
+                // rendered a separate "Service account JSON entry
+                // disabled by your organization" HStack here. That read
+                // as contradictory next to the ADC label — the user
+                // would see "you're using ADC" plus "JSON is disabled"
+                // and wonder which one applied. The fixed label + lock
+                // icon already communicates "JSON not available";
+                // dropping the redundant HStack collapses the card to a
+                // single coherent state.
                 SettingsCaption("Auth uses your local Application Default Credentials. Run `gcloud auth application-default login` once to sign in; Parleq calls `gcloud auth application-default print-access-token` per session to mint short-lived OAuth tokens (cached in memory). The `gcloud` CLI must be on PATH.")
             }
             SettingsCaption("Restart to apply.")

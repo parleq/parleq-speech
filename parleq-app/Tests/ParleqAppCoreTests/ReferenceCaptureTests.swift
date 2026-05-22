@@ -209,6 +209,88 @@ final class ReferenceCaptureTests: XCTestCase {
         }
     }
 
+    /// #199 — image branch was the gap: a symlink named `screenshot.png`
+    /// pointing at a no-extension secret (id_rsa, credentials) used to
+    /// route into the image branch BEFORE the symlink target check ran.
+    /// The image branch dispatches on UTType derived from the symlink's
+    /// own filename and then reads `Data(contentsOf: url)`, which
+    /// silently follows the symlink and ships the target bytes as a
+    /// binary image attachment to the LLM.
+    func test_symlink_with_image_extension_pointing_to_secret_is_rejected() throws {
+        let tmpDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("parleq-symlink-image-test-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+
+        // Stand-in for a no-extension sensitive file.
+        let targetURL = tmpDir.appendingPathComponent("id_rsa_synth")
+        try "-----BEGIN OPENSSH PRIVATE KEY-----\nsynthetic\n".write(to: targetURL, atomically: true, encoding: .utf8)
+
+        let linkURL = tmpDir.appendingPathComponent("screenshot.png")
+        try FileManager.default.createSymbolicLink(at: linkURL, withDestinationURL: targetURL)
+
+        XCTAssertThrowsError(
+            try ScreenCaptureKitReferenceCapture.reference(forFileAt: linkURL),
+            "Symlink with .png extension pointing to a no-extension target must be rejected before the image branch can read the target's bytes"
+        ) { error in
+            let ns = error as NSError
+            XCTAssertEqual(ns.domain, "ParleqReferenceCapture")
+            XCTAssertEqual(ns.code, 1001)
+        }
+    }
+
+    /// #199 — symlink family-mismatch: `screenshot.png` pointing at a
+    /// real PDF used to slip into the image branch (UTType .png), but
+    /// the resolved target's PDF bytes can't decode as an image — and
+    /// even if they could, the user attached a "screenshot" thinking
+    /// it's an image, not a PDF. Reject family mismatches.
+    func test_symlink_image_extension_pointing_to_pdf_is_rejected() throws {
+        let tmpDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("parleq-symlink-cross-family-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+
+        // Synthetic PDF target. Real PDF magic bytes so macOS classifies as .pdf.
+        let targetURL = tmpDir.appendingPathComponent("secret.pdf")
+        let pdfBytes = Data([0x25, 0x50, 0x44, 0x46, 0x2D, 0x31, 0x2E, 0x34])  // "%PDF-1.4"
+        try pdfBytes.write(to: targetURL)
+
+        let linkURL = tmpDir.appendingPathComponent("screenshot.png")
+        try FileManager.default.createSymbolicLink(at: linkURL, withDestinationURL: targetURL)
+
+        XCTAssertThrowsError(
+            try ScreenCaptureKitReferenceCapture.reference(forFileAt: linkURL),
+            "Symlink with .png claiming image family but resolving to a PDF must be rejected (family mismatch)"
+        ) { error in
+            let ns = error as NSError
+            XCTAssertEqual(ns.domain, "ParleqReferenceCapture")
+            XCTAssertEqual(ns.code, 1001)
+        }
+    }
+
+    /// #199 — legitimate same-family symlink (text → text) is still
+    /// accepted. Regression guard so the stricter family-match doesn't
+    /// break benign symlinks the user actually wants to attach.
+    func test_symlink_same_family_text_to_text_is_accepted() throws {
+        let tmpDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("parleq-symlink-same-family-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+
+        // A real .md target.
+        let targetURL = tmpDir.appendingPathComponent("real-notes.md")
+        try "# Notes\n\nHello world.\n".write(to: targetURL, atomically: true, encoding: .utf8)
+
+        // Symlink with a different text-family extension pointing at it.
+        let linkURL = tmpDir.appendingPathComponent("notes.txt")
+        try FileManager.default.createSymbolicLink(at: linkURL, withDestinationURL: targetURL)
+
+        let ref = try ScreenCaptureKitReferenceCapture.reference(forFileAt: linkURL)
+        XCTAssertEqual(ref.captureMode, .text, "Same-family symlink should produce a text reference")
+        XCTAssertTrue(ref.textContent?.contains("Hello world") ?? false,
+                      "Target text content should be readable through the symlink")
+    }
+
     // MARK: - Clipboard: image
 
     func test_clipboard_image_produces_image_mode_reference() {

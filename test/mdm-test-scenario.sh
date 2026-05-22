@@ -402,6 +402,223 @@ case "$scenario" in
         fi
         ;;
 
+    # ════════════════════════════════════════════════════════════════════════
+    # Phase 7 — destination pins + Sparkle skip-version + Vertex card fix
+    # ════════════════════════════════════════════════════════════════════════
+
+    test25-asr-endpoint-bundled-pin)
+        # Pin asrEndpoint to the bundled-FluidAudio sentinel.
+        # Verify:
+        #   1. Settings → Advanced → Speech-recognition endpoint TextField is
+        #      disabled with the lock icon and "Managed by your organization"
+        #      caption underneath.
+        #   2. The "Reset to default" button is also disabled.
+        #   3. Compliance Audit dialog shows asrEndpoint as "(bundled FluidAudio)"
+        #      with the orange Managed badge.
+        write_scenario '    <key>asrEndpoint</key>
+    <string>http://127.0.0.1:8767/inference</string>'
+        restart_parleq
+        echo "--- check Settings → Advanced and the Compliance Audit dialog ---"
+        ;;
+
+    test26-asr-endpoint-https-pin)
+        # Pin asrEndpoint to an https:// URL with a non-default port.
+        # Verify:
+        #   1. Same UI gating as test25 (TextField disabled, lock icon).
+        #   2. Compliance Audit displays "https://asr.example.com:8443" — port
+        #      preserved, path stripped (RoboRev fix).
+        #   3. Startup log contains a confirmation line (since asrEndpoint is
+        #      non-default the app logs the custom endpoint).
+        write_scenario '    <key>asrEndpoint</key>
+    <string>https://asr.example.com:8443/inference</string>'
+        restart_parleq
+        echo "--- verify port shows in audit dialog and path is stripped ---"
+        if [ -f ~/.parleq/app.log ]; then
+            tail -30 ~/.parleq/app.log \
+                | grep -E "ASR:.*custom endpoint" \
+                || echo "(no custom-endpoint log line — check tail -50 ~/.parleq/app.log)"
+        fi
+        ;;
+
+    test27-asr-endpoint-rejects-http)
+        # Push asrEndpoint=http://attacker.example/inference. The plain-HTTP
+        # validation in ManagedConfig.validateASREndpoint must reject this.
+        # Verify:
+        #   1. Startup log contains a "[parleq] asrEndpoint: rejected managed value"
+        #      line.
+        #   2. Settings TextField is NOT disabled — the key is not added to
+        #      managedKeys after rejection.
+        #   3. Compliance Audit shows asrEndpoint with the User or Default
+        #      badge (not Managed).
+        write_scenario '    <key>asrEndpoint</key>
+    <string>http://attacker.example/inference</string>'
+        restart_parleq
+        echo "--- verifying http:// asrEndpoint is rejected ---"
+        if [ -f ~/.parleq/app.log ]; then
+            tail -30 ~/.parleq/app.log \
+                | grep -E "asrEndpoint: rejected" \
+                && echo "PASS: rejection log line present" \
+                || echo "FAIL: no rejection log line"
+        fi
+        ;;
+
+    test28-asr-endpoint-rejects-userinfo)
+        # Push asrEndpoint with embedded user:pass@host. Validator rejects.
+        write_scenario '    <key>asrEndpoint</key>
+    <string>https://user:pass@asr.example.com/inference</string>'
+        restart_parleq
+        if [ -f ~/.parleq/app.log ]; then
+            tail -30 ~/.parleq/app.log \
+                | grep -E "asrEndpoint: rejected" \
+                && echo "PASS: rejection log line present (userinfo)" \
+                || echo "FAIL: no rejection log line"
+        fi
+        ;;
+
+    test29-vertex-destination-pins)
+        # Pin all three Vertex destination fields. Settings → Vertex card
+        # should show three disabled TextFields each with a lock icon.
+        # Verify:
+        #   1. Project / Region / Anthropic-region TextFields are all
+        #      disabled with the lock icon.
+        #   2. ManagedCaption "Managed by your organization." sits directly
+        #      under each field (mirrors the Bedrock/Azure layout).
+        #   3. Compliance Audit shows three new rows: vertexProject,
+        #      vertexRegion, vertexAnthropicRegion — all Managed.
+        write_scenario '    <key>vertexProject</key>
+    <string>corp-vertex-prod</string>
+    <key>vertexRegion</key>
+    <string>us-central1</string>
+    <key>vertexAnthropicRegion</key>
+    <string>us-east5</string>'
+        restart_parleq
+        echo "--- check Settings → Vertex card and Compliance Audit ---"
+        ;;
+
+    test30-aws-region-and-profile-pins)
+        # Pin awsRegion + awsProfile.
+        # Verify:
+        #   1. Settings → Bedrock card: Region TextField disabled + lock icon.
+        #   2. Under SSO auth mode: AWS profile TextField disabled + lock icon.
+        #   3. Compliance Audit: awsRegion + awsProfile both Managed.
+        write_scenario '    <key>awsRegion</key>
+    <string>us-east-2</string>
+    <key>awsProfile</key>
+    <string>corp-bedrock</string>'
+        restart_parleq
+        echo "--- check Settings → Bedrock card and Compliance Audit ---"
+        ;;
+
+    test31-azure-destination-pins)
+        # Pin azureResource + azureDeployment.
+        # Verify:
+        #   1. Settings → Azure card: Resource + Deployment TextFields both
+        #      disabled with lock icons.
+        #   2. API version TextField is NOT disabled (not pinned).
+        #   3. Compliance Audit: both new rows Managed.
+        write_scenario '    <key>azureResource</key>
+    <string>corp-openai</string>
+    <key>azureDeployment</key>
+    <string>gpt-4o-mini</string>'
+        restart_parleq
+        echo "--- check Settings → Azure card and Compliance Audit ---"
+        ;;
+
+    test32-vertex-auth-mode-pin)
+        # Pin vertexAuthMode=adc. The Vertex auth-mode segmented picker
+        # should be replaced with a fixed "gcloud (ADC)" label + lock icon.
+        # Verify:
+        #   1. Auth-mode row shows the fixed disabled label, NOT the picker.
+        #   2. Service account JSON entry is hidden (we're in ADC mode).
+        #   3. ADC instructions still appear in the body.
+        #   4. Compliance Audit shows vertexAuthMode=adc / Managed.
+        write_scenario '    <key>vertexAuthMode</key>
+    <string>adc</string>'
+        restart_parleq
+        echo "--- check Settings → Vertex card auth-mode row ---"
+        ;;
+
+    test33-vertex-card-clarity-196)
+        # #196 fix verification: store vertexAuthMode=serviceAccount on disk,
+        # then push staticApiKeysAllowed=false. The Vertex card USED to show
+        # BOTH a fixed "gcloud (ADC)" label AND a "Service account JSON entry
+        # disabled by your organization" caption — read as contradictory.
+        # Now: only the fixed label + ADC instructions; no JSON-disabled caption.
+        # Prep: switch to Vertex/serviceAccount before running this scenario
+        #       via Settings → LLM → Vertex auth-mode picker. (Restart Parleq
+        #       afterwards if needed so the change persists.)
+        # Then this scenario writes the master switch:
+        write_scenario '    <key>staticApiKeysAllowed</key>
+    <false/>'
+        restart_parleq
+        echo "--- check Settings → Vertex card body should NOT show ---"
+        echo "    'Service account JSON entry disabled by your organization' ---"
+        echo "    Only the ADC instructions caption should appear."
+        ;;
+
+    test34-suskipped-clear)
+        # SUSkippedVersion bypass closure. Set SUSkippedVersion in the user
+        # domain, push autoUpdateEnabled=true, verify all three Sparkle 2.x
+        # skip keys are cleared on launch.
+        # Verify:
+        #   1. Before relaunch: all three keys present in user defaults.
+        #   2. After relaunch: all three keys cleared.
+        echo "--- setting SUSkippedVersion + variants in user defaults ---"
+        defaults write com.parleq.app SUSkippedVersion -string "99.99.99"
+        defaults write com.parleq.app SUSkippedMajorVersion -string "99"
+        defaults write com.parleq.app SUSkippedMajorSubreleaseVersion -string "99.99"
+        echo "Before relaunch:"
+        defaults read com.parleq.app SUSkippedVersion 2>/dev/null || echo "  SUSkippedVersion: (unset)"
+        defaults read com.parleq.app SUSkippedMajorVersion 2>/dev/null || echo "  SUSkippedMajorVersion: (unset)"
+        defaults read com.parleq.app SUSkippedMajorSubreleaseVersion 2>/dev/null || echo "  SUSkippedMajorSubreleaseVersion: (unset)"
+        write_scenario '    <key>autoUpdateEnabled</key>
+    <true/>'
+        restart_parleq
+        sleep 2
+        echo "After relaunch:"
+        defaults read com.parleq.app SUSkippedVersion 2>/dev/null \
+            && echo "  FAIL: SUSkippedVersion still present" \
+            || echo "  PASS: SUSkippedVersion cleared"
+        defaults read com.parleq.app SUSkippedMajorVersion 2>/dev/null \
+            && echo "  FAIL: SUSkippedMajorVersion still present" \
+            || echo "  PASS: SUSkippedMajorVersion cleared"
+        defaults read com.parleq.app SUSkippedMajorSubreleaseVersion 2>/dev/null \
+            && echo "  FAIL: SUSkippedMajorSubreleaseVersion still present" \
+            || echo "  PASS: SUSkippedMajorSubreleaseVersion cleared"
+        ;;
+
+    test35-setup-wizard-gemini-blocked)
+        # SetupWizard credential gating (#198). Push staticApiKeysAllowed=false,
+        # reset wizard so it relaunches on next start.
+        # Verify in the SetupWizard's "Configure provider" step:
+        #   1. Pick "Google Gemini" — the API key SecureField is HIDDEN.
+        #   2. A "Choose a federated-auth provider" note appears instead.
+        #   3. Pick "Vertex" + "Service account JSON" — the SA JSON TextEditor
+        #      is HIDDEN; switching to "gcloud (ADC)" shows ADC instructions.
+        #   4. Pick "Azure" + "API key" — the API key SecureField is HIDDEN;
+        #      switching to "Microsoft Entra ID" shows the Entra instructions.
+        echo "--- resetting wizard so it auto-launches ---"
+        # Edit user config to set wizard.completed=false. Use plutil for
+        # idempotence; create the file with defaults if missing.
+        if [ ! -f ~/.parleq/config.json ]; then
+            mkdir -p ~/.parleq
+            echo '{"wizard": {"completed": false}}' > ~/.parleq/config.json
+        else
+            # JQ-style edit via python (always present on macOS).
+            python3 -c "
+import json, os
+p = os.path.expanduser('~/.parleq/config.json')
+with open(p) as f: c = json.load(f)
+c.setdefault('wizard', {})['completed'] = False
+with open(p, 'w') as f: json.dump(c, f, indent=2)
+"
+        fi
+        write_scenario '    <key>staticApiKeysAllowed</key>
+    <false/>'
+        restart_parleq
+        echo "--- SetupWizard should launch; check each provider's credential step ---"
+        ;;
+
     "")
         echo "Available scenarios:"
         echo "  clear                          remove managed config + relaunch"
@@ -429,6 +646,19 @@ case "$scenario" in
         echo "  test22-runtime-rejection-gemini  Phase 5: Gemini blocked at runtime (no network call)"
         echo "  test23-runtime-rejection-azure-apikey  Phase 5: Azure apiKey blocked; azureAd remains"
         echo "  test24-vertex-adc-still-works  Phase 5: Vertex ADC unblocked under master switch off"
+        echo ""
+        echo "  --- Phase 7 (MDM hardening) ---"
+        echo "  test25-asr-endpoint-bundled-pin  asrEndpoint pinned to bundled-FluidAudio sentinel"
+        echo "  test26-asr-endpoint-https-pin  asrEndpoint pinned to https://asr.example.com:8443/inference"
+        echo "  test27-asr-endpoint-rejects-http  http://attacker.example/inference rejected by validator"
+        echo "  test28-asr-endpoint-rejects-userinfo  embedded user:pass@host rejected by validator"
+        echo "  test29-vertex-destination-pins  vertexProject + vertexRegion + vertexAnthropicRegion"
+        echo "  test30-aws-region-and-profile-pins  awsRegion + awsProfile"
+        echo "  test31-azure-destination-pins  azureResource + azureDeployment"
+        echo "  test32-vertex-auth-mode-pin  vertexAuthMode=adc (symmetric with azureAuthMode/bedrockAuthMode)"
+        echo "  test33-vertex-card-clarity-196  no redundant 'JSON disabled' caption when apiKeysBlocked"
+        echo "  test34-suskipped-clear  SUSkippedVersion+major+subrelease cleared on autoUpdateEnabled=true"
+        echo "  test35-setup-wizard-gemini-blocked  SetupWizard hides credential fields under staticApiKeysAllowed=false"
         exit 1
         ;;
 
