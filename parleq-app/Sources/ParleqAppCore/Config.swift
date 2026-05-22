@@ -749,6 +749,36 @@ public struct Config: Sendable {
             }
         }
 
+        // #196 option 2: auto-coerce vertexAuthMode to "adc" when the
+        // stored SA path would be blocked at runtime. Without this, the
+        // UI shows the fixed "gcloud (ADC)" label + ADC instructions
+        // but the runtime keeps reading config.vertexAuthMode = "serviceAccount"
+        // and hits BlockedProvider — dictation fails even though the
+        // card says ADC is the path. After this coercion:
+        //   - Runtime uses ADC (matches the UI message)
+        //   - "Auth disabled by org" badge no longer fires (effective
+        //     mode isn't blocked anymore — isProviderAuthPathBlocked
+        //     for vertex+adc is false)
+        //   - Card body's ADC instructions become actionable
+        //
+        // We add vertexAuthMode to managedKeys so save() preserves the
+        // user's on-disk "serviceAccount" choice via the standard
+        // preservation pattern. Removing the MDM profile restores SA
+        // selection on the next launch.
+        //
+        // Skip when vertexAuthMode is ALREADY explicitly managed — an
+        // admin deliberately pinning to "serviceAccount" alongside
+        // staticApiKeysAllowed=false is a contradictory admin config
+        // we honor by leaving SA in place. Runtime then fails and the
+        // admin fixes their policy.
+        if !managedKeys.contains("vertexAuthMode")
+           && ManagedConfig.managedBool(forKey: "staticApiKeysAllowed") == false
+           && c.vertexAuthMode == "serviceAccount" {
+            c.vertexAuthMode = "adc"
+            managedKeys.insert("vertexAuthMode")
+            configLogStderr("[parleq] vertexAuthMode: auto-coerced from 'serviceAccount' to 'adc' (staticApiKeysAllowed=false blocks the SA path). On-disk value preserved by save() — removing the MDM profile restores your stored choice.")
+        }
+
         // asrEndpoint (String) — pin the ASR HTTP destination.
         // The unmanaged code path accepts any http(s) URL so a user
         // can plug in their own local Sherpa / faster-whisper server

@@ -1617,6 +1617,34 @@ struct SettingsView: View {
 
     /// Header row shown at the top of each credential card.
     /// `activeBadge` is an optional "Used for Cleanup" / "Used for
+    /// Labeled text-field row used across the credential cards. Renders
+    /// a small caption-style label above the field so a populated /
+    /// disabled / MDM-managed value still tells the user WHAT it is
+    /// (without a label, a disabled "corp-openai" field is an
+    /// uninterpretable string). When `isManaged` is true the field
+    /// disables, the lock indicator appears alongside, and the "Managed
+    /// by your organization" caption appears beneath.
+    @ViewBuilder
+    private func labeledField(
+        label: String,
+        placeholder: String,
+        binding: Binding<String>,
+        isManaged: Bool
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(label)
+                .font(.system(size: 10))
+                .foregroundStyle(.tertiary)
+            HStack(alignment: .center, spacing: 6) {
+                TextField(placeholder, text: binding)
+                    .textFieldStyle(.roundedBorder)
+                    .disabled(isManaged)
+                ManagedIndicator(isManaged: isManaged)
+            }
+            ManagedCaption(isManaged: isManaged)
+        }
+    }
+
     /// Context" / "Used for Cleanup + Context" label rendered inline
     /// with the provider title when the provider is actively selected
     /// for at least one tier.
@@ -1786,32 +1814,19 @@ struct SettingsView: View {
             let vertexRegionManaged = model.managedKeys.contains("vertexRegion")
             let vertexAnthropicRegionManaged = model.managedKeys.contains("vertexAnthropicRegion")
             let vertexAuthModeManaged = model.managedKeys.contains("vertexAuthMode")
-            // ManagedCaption sits directly under each field row (before
-            // the descriptive SettingsCaption) so the "Managed by your
-            // organization" line stays adjacent to the locked control —
-            // matches the Bedrock + Azure cards in the same file.
-            HStack(alignment: .center, spacing: 6) {
-                TextField("GCP project ID", text: bind(\.vertexProject))
-                    .textFieldStyle(.roundedBorder)
-                    .disabled(vertexProjectManaged)
-                ManagedIndicator(isManaged: vertexProjectManaged)
-            }
-            ManagedCaption(isManaged: vertexProjectManaged)
-            HStack(alignment: .center, spacing: 6) {
-                TextField("Region (e.g. us-central1)", text: bind(\.vertexRegion))
-                    .textFieldStyle(.roundedBorder)
-                    .disabled(vertexRegionManaged)
-                ManagedIndicator(isManaged: vertexRegionManaged)
-            }
-            ManagedCaption(isManaged: vertexRegionManaged)
+            labeledField(label: "GCP project ID",
+                         placeholder: "e.g. my-gcp-project",
+                         binding: bind(\.vertexProject),
+                         isManaged: vertexProjectManaged)
+            labeledField(label: "Region",
+                         placeholder: "e.g. us-central1",
+                         binding: bind(\.vertexRegion),
+                         isManaged: vertexRegionManaged)
             SettingsCaption("Gemini calls use this region.")
-            HStack(alignment: .center, spacing: 6) {
-                TextField("Anthropic region (e.g. us-east5)", text: bind(\.vertexAnthropicRegion))
-                    .textFieldStyle(.roundedBorder)
-                    .disabled(vertexAnthropicRegionManaged)
-                ManagedIndicator(isManaged: vertexAnthropicRegionManaged)
-            }
-            ManagedCaption(isManaged: vertexAnthropicRegionManaged)
+            labeledField(label: "Anthropic region",
+                         placeholder: "e.g. us-east5",
+                         binding: bind(\.vertexAnthropicRegion),
+                         isManaged: vertexAnthropicRegionManaged)
             SettingsCaption("Claude calls on Vertex use this region. us-east5 and europe-west1 are common; us-central1 doesn't host the Anthropic publisher.")
             HStack(alignment: .center) {
                 Text("Auth mode")
@@ -1900,13 +1915,10 @@ struct SettingsView: View {
             )
             let awsRegionManaged = model.managedKeys.contains("awsRegion")
             let awsProfileManaged = model.managedKeys.contains("awsProfile")
-            HStack(alignment: .center, spacing: 6) {
-                TextField("Region", text: bind(\.awsRegion))
-                    .textFieldStyle(.roundedBorder)
-                    .disabled(awsRegionManaged)
-                ManagedIndicator(isManaged: awsRegionManaged)
-            }
-            ManagedCaption(isManaged: awsRegionManaged)
+            labeledField(label: "Region",
+                         placeholder: "e.g. us-east-2",
+                         binding: bind(\.awsRegion),
+                         isManaged: awsRegionManaged)
             HStack(alignment: .center) {
                 Text("Auth mode")
                     .frame(minWidth: 90, alignment: .leading)
@@ -1969,14 +1981,11 @@ struct SettingsView: View {
                 }
                 SettingsCaption("Long-lived AWS access keys stored in the macOS Keychain. Pasted keys never appear in `~/.parleq/config.json` or any plaintext file. Restart to apply.")
             default: // "sso"
-                HStack(alignment: .center, spacing: 6) {
-                    TextField("AWS profile (optional)", text: bind(\.awsProfile))
-                        .textFieldStyle(.roundedBorder)
-                        .disabled(awsProfileManaged)
-                    ManagedIndicator(isManaged: awsProfileManaged)
-                }
+                labeledField(label: "AWS profile (optional)",
+                             placeholder: "e.g. work — leave empty to use AWS_PROFILE or default",
+                             binding: bind(\.awsProfile),
+                             isManaged: awsProfileManaged)
                 SettingsCaption("Uses your local `aws sso login --profile <name>` session. Region defaults to us-east-2; Bedrock model availability varies by region. Restart to apply.")
-                ManagedCaption(isManaged: awsProfileManaged)
             }
         }
     }
@@ -2030,22 +2039,22 @@ struct SettingsView: View {
             )
             let azureResourceManaged = model.managedKeys.contains("azureResource")
             let azureDeploymentManaged = model.managedKeys.contains("azureDeployment")
-            HStack(alignment: .center, spacing: 6) {
-                TextField("Resource name or full hostname", text: bind(\.azureResource))
-                    .textFieldStyle(.roundedBorder)
-                    .disabled(azureResourceManaged)
-                ManagedIndicator(isManaged: azureResourceManaged)
-            }
-            ManagedCaption(isManaged: azureResourceManaged)
-            HStack(alignment: .center, spacing: 6) {
-                TextField("Deployment name", text: bind(\.azureDeployment))
-                    .textFieldStyle(.roundedBorder)
-                    .disabled(azureDeploymentManaged)
-                ManagedIndicator(isManaged: azureDeploymentManaged)
-            }
-            ManagedCaption(isManaged: azureDeploymentManaged)
-            TextField("API version", text: bind(\.azureApiVersion))
-                .textFieldStyle(.roundedBorder)
+            // Explicit field labels — once a value populates the TextField
+            // (especially when disabled + MDM-managed) the placeholder is
+            // hidden and the field becomes anonymous. The label sits above
+            // each field in the same caption style as tierProviderPicker.
+            labeledField(label: "Resource",
+                         placeholder: "e.g. corp-openai or full hostname",
+                         binding: bind(\.azureResource),
+                         isManaged: azureResourceManaged)
+            labeledField(label: "Deployment",
+                         placeholder: "e.g. gpt-4o-mini",
+                         binding: bind(\.azureDeployment),
+                         isManaged: azureDeploymentManaged)
+            labeledField(label: "API version",
+                         placeholder: "e.g. 2025-04-01-preview",
+                         binding: bind(\.azureApiVersion),
+                         isManaged: false)
             HStack(alignment: .center) {
                 Text("Auth mode")
                     .frame(minWidth: 110, alignment: .leading)

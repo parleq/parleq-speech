@@ -240,6 +240,16 @@ private func resolveAuditRow(key: String, config: Config, defaults: Config) -> (
                 return ("(unrecognized: \(raw))", .default)
             }
         }
+        // Distinguish admin-pinned from Parleq-auto-coerced. When
+        // vertexAuthMode is in managedKeys but the MDM plist does NOT
+        // carry the key, Parleq's #196 option-2 coercion is the
+        // source. Annotate the value so an admin auditing the
+        // snapshot understands the cause (otherwise they'd see
+        // "vertexAuthMode: adc / Managed" and wonder if their policy
+        // accidentally pinned it).
+        if isManaged && ManagedConfig.managedString(forKey: "vertexAuthMode") == nil {
+            return ("\(config.vertexAuthMode) (auto: staticApiKeysAllowed=false)", .managed)
+        }
         return formatString(config.vertexAuthMode, managed: isManaged, defaultVal: defaults.vertexAuthMode)
     case "asrEndpoint":
         // For the bundled sentinel show a friendly "(bundled FluidAudio)"
