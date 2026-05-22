@@ -4,7 +4,9 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
-(no changes yet)
+### Security
+
+- **Sparkle managed-feed-URL state hygiene.** `setFeedURL` persists the URL to user defaults, so a previously-set managed value would linger across launches even after the MDM profile was removed (defeating policy removal — an admin who briefly pushed a corp-mirror URL would have it stick on every fleet machine forever). Parleq now calls `clearFeedURLFromUserDefaults` on every launch where there isn't a successfully-validated managed `sparkleUpdateFeedURL`, so removing the MDM profile (or rejecting an invalid managed value) reliably restores Sparkle's Info.plist `SUFeedURL` default. Landed in main after the v0.12.0 tag, will ship with the next release.
 
 ## [0.12.0] - 2026-05-22
 
@@ -25,8 +27,6 @@ Two major features and a security hardening pass — the biggest release since v
 - **Auth-mode runtime enforcement.** When `staticApiKeysAllowed=false` is managed, every static-key auth path is blocked at runtime via a `BlockedProvider` sentinel that throws `.authPathBlocked` before any network call. Mixed-auth providers (Azure, Bedrock IAM, Vertex) retain their federated alternative; providers with no federated fallback (Gemini direct, OpenAI direct, Bedrock bearer) become entirely unavailable and the provider picker annotates them with "(disabled by your organization)". Already-stored Keychain credentials are NOT deleted — removing the MDM profile restores prior functionality on the next launch. When the stored Vertex auth mode is `serviceAccount` and the master switch blocks the SA path, Parleq auto-coerces `vertexAuthMode` to `adc` in memory so the runtime matches the UI's "use gcloud ADC" message; the on-disk value is preserved by `save()` so removing the MDM profile restores the user's stored choice.
 
 - **Sparkle `SUSkippedVersion` clearing.** When `autoUpdateEnabled=true` is pushed by MDM, Parleq clears all three Sparkle 2.x skip-version user defaults (`SUSkippedVersion`, `SUSkippedMajorVersion`, `SUSkippedMajorSubreleaseVersion`) on launch — same set Sparkle's own `[SPUSkippedUpdate clearSkippedUpdateForHost:]` clears together. Closes the "user writes `SUSkippedMajorVersion=99` to their own defaults and silently defeats forced auto-update across any major release" bypass.
-
-- **Sparkle managed-feed-URL state hygiene.** `setFeedURL` persists the URL to user defaults, so a previously-set managed value would linger across launches even after the MDM profile was removed (defeating policy removal — an admin who briefly pushed a corp-mirror URL would have it stick on every fleet machine forever). Parleq now calls `clearFeedURLFromUserDefaults` on every launch where there isn't a successfully-validated managed `sparkleUpdateFeedURL`, so removing the MDM profile (or rejecting an invalid managed value) reliably restores Sparkle's Info.plist `SUFeedURL` default.
 
 - **Reference Windows symlink-target re-check** hoisted above the image/PDF dispatch in `ReferenceCapture.reference(forFileAt:)` and tightened to require the symlink's claimed family and the resolved target's family to MATCH and both be a recognized family (image / pdf / text). Closes the `screenshot.png → ~/.ssh/id_rsa` attack where a symlink with a benign image extension routed sensitive bytes into the image branch — `URL.contentTypeKey` reads the symlink's filename, not the target's, so `Data(contentsOf: url)` would silently follow the symlink and ship target bytes to the LLM as a binary image attachment. Also catches the cross-family variant (`screenshot.png → secret.pdf`).
 
