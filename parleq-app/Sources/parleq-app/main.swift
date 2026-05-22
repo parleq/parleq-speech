@@ -397,6 +397,20 @@ struct ParleqApp {
             )
             if let managed = managedAutoUpdate {
                 updaterController.updater.automaticallyChecksForUpdates = managed
+                // Phase 7 hardening — when autoUpdateEnabled=true is
+                // pushed by MDM, also clear any user-domain
+                // `SUSkippedVersion` so a previously-skipped version
+                // can't keep the user pinned past the forced-update
+                // policy. Sparkle stores skip-version state in the
+                // user defaults; it's not part of our MDM schema, so
+                // a malicious user can write SUSkippedVersion=99.99.99
+                // to their own defaults and silently defeat the
+                // forced auto-update. Clearing on launch costs the
+                // user only a re-prompt for any update they
+                // legitimately want to skip.
+                if managed {
+                    UserDefaults.standard.removeObject(forKey: "SUSkippedVersion")
+                }
             }
             // MDM sparkleUpdateFeedURL enforcement: when an admin pushes a
             // managed feed URL, we redirect Sparkle's appcast to that URL

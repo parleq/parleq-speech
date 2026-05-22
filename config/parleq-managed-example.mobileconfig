@@ -183,6 +183,73 @@
                                 <string>sso</string>
                                 -->
 
+                                <!-- ═══ Destination pins (Phase 7) ═══════════════════════════════ -->
+
+                                <!-- vertexAuthMode — pin Vertex AI authentication mode.
+                                     Symmetric with azureAuthMode + bedrockAuthMode above.
+                                     Recognized values: "adc" (default — gcloud Application Default
+                                     Credentials), "serviceAccount" (static SA JSON in Keychain).
+                                     When pinned, the credential-entry controls for the other
+                                     mode are hidden.
+                                     Unrecognized values are rejected with a log warning.
+                                     Uncomment to force gcloud ADC for Vertex:
+                                <key>vertexAuthMode</key>
+                                <string>adc</string>
+                                -->
+
+                                <!-- asrEndpoint — pin the speech-recognition HTTP destination.
+                                     Closes the "I'll route raw audio to my own server" bypass:
+                                     even when MDM pins the LLM provider, the unmanaged
+                                     asr.endpoint config field can be edited so audio is POSTed
+                                     to an arbitrary host BEFORE cleanup. Pinning here forces
+                                     either bundled FluidAudio (in-process; the sentinel string
+                                     `http://127.0.0.1:8767/inference`) or an https:// URL —
+                                     plain http and embedded credentials / query strings are
+                                     rejected. Uncomment to force bundled-only ASR:
+                                <key>asrEndpoint</key>
+                                <string>http://127.0.0.1:8767/inference</string>
+                                -->
+                                <!--
+                                Or pin to a corporate Whisper server (https only):
+                                <key>asrEndpoint</key>
+                                <string>https://asr.example.com/inference</string>
+                                -->
+
+                                <!-- vertexProject / vertexRegion / vertexAnthropicRegion —
+                                     pin the GCP project and regions Vertex calls route through.
+                                     Closes "use the allowed provider but route to my personal
+                                     GCP project." All three are non-empty strings; empty values
+                                     are rejected and logged. Uncomment + edit as appropriate:
+                                <key>vertexProject</key>
+                                <string>corp-vertex-prod</string>
+                                <key>vertexRegion</key>
+                                <string>us-central1</string>
+                                <key>vertexAnthropicRegion</key>
+                                <string>us-east5</string>
+                                -->
+
+                                <!-- awsRegion / awsProfile — pin the AWS Bedrock destination.
+                                     awsRegion is the destination region (must be non-empty).
+                                     awsProfile is the local AWS CLI profile name; an empty
+                                     value means "use AWS_PROFILE env var or default profile".
+                                     Uncomment + edit as appropriate:
+                                <key>awsRegion</key>
+                                <string>us-east-2</string>
+                                <key>awsProfile</key>
+                                <string>corp-bedrock</string>
+                                -->
+
+                                <!-- azureResource / azureDeployment — pin the Azure OpenAI
+                                     endpoint Parleq calls. Both are non-empty strings; empty
+                                     values are rejected and logged. azureResource may be a
+                                     short resource name OR a full hostname (matching the
+                                     unmanaged TextField's behavior). Uncomment + edit:
+                                <key>azureResource</key>
+                                <string>corp-openai</string>
+                                <key>azureDeployment</key>
+                                <string>gpt-4o-mini</string>
+                                -->
+
                             </dict>
                         </dict>
                     </array>

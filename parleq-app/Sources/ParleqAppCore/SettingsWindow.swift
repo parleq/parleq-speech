@@ -1782,27 +1782,59 @@ struct SettingsView: View {
                 activeBadge: badge,
                 isAuthPathBlocked: apiKeysBlocked
             )
-            TextField("GCP project ID", text: bind(\.vertexProject))
-                .textFieldStyle(.roundedBorder)
-            TextField("Region (e.g. us-central1)", text: bind(\.vertexRegion))
-                .textFieldStyle(.roundedBorder)
+            let vertexProjectManaged = model.managedKeys.contains("vertexProject")
+            let vertexRegionManaged = model.managedKeys.contains("vertexRegion")
+            let vertexAnthropicRegionManaged = model.managedKeys.contains("vertexAnthropicRegion")
+            let vertexAuthModeManaged = model.managedKeys.contains("vertexAuthMode")
+            HStack(alignment: .center, spacing: 6) {
+                TextField("GCP project ID", text: bind(\.vertexProject))
+                    .textFieldStyle(.roundedBorder)
+                    .disabled(vertexProjectManaged)
+                ManagedIndicator(isManaged: vertexProjectManaged)
+            }
+            ManagedCaption(isManaged: vertexProjectManaged)
+            HStack(alignment: .center, spacing: 6) {
+                TextField("Region (e.g. us-central1)", text: bind(\.vertexRegion))
+                    .textFieldStyle(.roundedBorder)
+                    .disabled(vertexRegionManaged)
+                ManagedIndicator(isManaged: vertexRegionManaged)
+            }
             SettingsCaption("Gemini calls use this region.")
-            TextField("Anthropic region (e.g. us-east5)", text: bind(\.vertexAnthropicRegion))
-                .textFieldStyle(.roundedBorder)
+            ManagedCaption(isManaged: vertexRegionManaged)
+            HStack(alignment: .center, spacing: 6) {
+                TextField("Anthropic region (e.g. us-east5)", text: bind(\.vertexAnthropicRegion))
+                    .textFieldStyle(.roundedBorder)
+                    .disabled(vertexAnthropicRegionManaged)
+                ManagedIndicator(isManaged: vertexAnthropicRegionManaged)
+            }
             SettingsCaption("Claude calls on Vertex use this region. us-east5 and europe-west1 are common; us-central1 doesn't host the Anthropic publisher.")
+            ManagedCaption(isManaged: vertexAnthropicRegionManaged)
             HStack(alignment: .center) {
                 Text("Auth mode")
                     .frame(minWidth: 90, alignment: .leading)
-                if apiKeysBlocked {
-                    // Fixed disabled label — matches the Azure / Bedrock
-                    // pinned-mode pattern. Avoids the deceptive state where
-                    // a single-option segmented picker would visually
-                    // highlight ADC while the underlying `vertexAuthMode`
-                    // storage still held `serviceAccount`. By rendering a
-                    // label instead of a picker, the user's stored
-                    // preference (whatever it is) is preserved on disk and
-                    // restored when MDM is removed.
-                    Text("gcloud (ADC)")
+                // Three managed cases collapse onto the same fixed-label
+                // rendering path:
+                //   1. staticApiKeysAllowed=false (apiKeysBlocked) — auth
+                //      path block forces ADC; serviceAccount is the
+                //      blocked static-credential path.
+                //   2. vertexAuthMode is pinned by MDM — render the
+                //      pinned mode as a fixed label rather than a
+                //      segmented picker, so the underlying stored value
+                //      (which the save() path preserves on disk) isn't
+                //      visually conflated with the effective MDM choice.
+                // In either case we drop the segmented picker and the
+                // ManagedIndicator marks the row as managed.
+                if apiKeysBlocked || vertexAuthModeManaged {
+                    let pinnedLabel: String = {
+                        // When apiKeysBlocked forces ADC regardless of
+                        // stored value (case 1), always show ADC.
+                        // Otherwise show whichever mode is pinned.
+                        if apiKeysBlocked { return "gcloud (ADC)" }
+                        return model.vertexAuthMode == "serviceAccount"
+                            ? "Service account JSON"
+                            : "gcloud (ADC)"
+                    }()
+                    Text(pinnedLabel)
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 8)
@@ -1860,8 +1892,15 @@ struct SettingsView: View {
                 activeBadge: badge,
                 isAuthPathBlocked: apiKeysBlocked
             )
-            TextField("Region", text: bind(\.awsRegion))
-                .textFieldStyle(.roundedBorder)
+            let awsRegionManaged = model.managedKeys.contains("awsRegion")
+            let awsProfileManaged = model.managedKeys.contains("awsProfile")
+            HStack(alignment: .center, spacing: 6) {
+                TextField("Region", text: bind(\.awsRegion))
+                    .textFieldStyle(.roundedBorder)
+                    .disabled(awsRegionManaged)
+                ManagedIndicator(isManaged: awsRegionManaged)
+            }
+            ManagedCaption(isManaged: awsRegionManaged)
             HStack(alignment: .center) {
                 Text("Auth mode")
                     .frame(minWidth: 90, alignment: .leading)
@@ -1924,9 +1963,14 @@ struct SettingsView: View {
                 }
                 SettingsCaption("Long-lived AWS access keys stored in the macOS Keychain. Pasted keys never appear in `~/.parleq/config.json` or any plaintext file. Restart to apply.")
             default: // "sso"
-                TextField("AWS profile (optional)", text: bind(\.awsProfile))
-                    .textFieldStyle(.roundedBorder)
+                HStack(alignment: .center, spacing: 6) {
+                    TextField("AWS profile (optional)", text: bind(\.awsProfile))
+                        .textFieldStyle(.roundedBorder)
+                        .disabled(awsProfileManaged)
+                    ManagedIndicator(isManaged: awsProfileManaged)
+                }
                 SettingsCaption("Uses your local `aws sso login --profile <name>` session. Region defaults to us-east-2; Bedrock model availability varies by region. Restart to apply.")
+                ManagedCaption(isManaged: awsProfileManaged)
             }
         }
     }
@@ -1978,10 +2022,22 @@ struct SettingsView: View {
                 activeBadge: badge,
                 isAuthPathBlocked: apiKeysBlocked
             )
-            TextField("Resource name or full hostname", text: bind(\.azureResource))
-                .textFieldStyle(.roundedBorder)
-            TextField("Deployment name", text: bind(\.azureDeployment))
-                .textFieldStyle(.roundedBorder)
+            let azureResourceManaged = model.managedKeys.contains("azureResource")
+            let azureDeploymentManaged = model.managedKeys.contains("azureDeployment")
+            HStack(alignment: .center, spacing: 6) {
+                TextField("Resource name or full hostname", text: bind(\.azureResource))
+                    .textFieldStyle(.roundedBorder)
+                    .disabled(azureResourceManaged)
+                ManagedIndicator(isManaged: azureResourceManaged)
+            }
+            ManagedCaption(isManaged: azureResourceManaged)
+            HStack(alignment: .center, spacing: 6) {
+                TextField("Deployment name", text: bind(\.azureDeployment))
+                    .textFieldStyle(.roundedBorder)
+                    .disabled(azureDeploymentManaged)
+                ManagedIndicator(isManaged: azureDeploymentManaged)
+            }
+            ManagedCaption(isManaged: azureDeploymentManaged)
             TextField("API version", text: bind(\.azureApiVersion))
                 .textFieldStyle(.roundedBorder)
             HStack(alignment: .center) {
@@ -2167,19 +2223,25 @@ struct SettingsView: View {
 
     @ViewBuilder
     private var advancedSection: some View {
+        let asrEndpointManaged = model.managedKeys.contains("asrEndpoint")
         SettingsCard {
             VStack(alignment: .leading, spacing: 10) {
                 Text("Speech-recognition endpoint")
                     .font(.callout.weight(.medium))
-                TextField("Endpoint", text: bind(\.asrEndpoint))
-                    .textFieldStyle(.roundedBorder)
+                HStack(alignment: .center, spacing: 6) {
+                    TextField("Endpoint", text: bind(\.asrEndpoint))
+                        .textFieldStyle(.roundedBorder)
+                        .disabled(asrEndpointManaged)
+                    ManagedIndicator(isManaged: asrEndpointManaged)
+                }
                 SettingsCaption("Default uses in-process FluidAudio (Parakeet TDT v3 on the Apple Neural Engine) — no network, no local listening socket. To swap in your own speech backend, point at any OpenAI-compatible /inference server (e.g. Sherpa-ONNX or faster-whisper running locally). The bundled FluidAudio is not initialized when this is non-default, so the model's ~1.5 GB resident cost is not paid. Use the “Reset to default” button to return to the bundled endpoint sentinel \(Config.bundledASREndpoint). Restart to apply.")
+                ManagedCaption(isManaged: asrEndpointManaged)
                 HStack(spacing: 8) {
                     Button("Reset to default") {
                         model.asrEndpoint = Config.bundledASREndpoint
                         model.save()
                     }
-                    .disabled(model.asrEndpoint == Config.bundledASREndpoint)
+                    .disabled(model.asrEndpoint == Config.bundledASREndpoint || asrEndpointManaged)
                     Spacer()
                 }
             }

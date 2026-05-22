@@ -230,6 +230,51 @@ private func resolveAuditRow(key: String, config: Config, defaults: Config) -> (
         }
         return formatString(config.awsAuthMode, managed: isManaged, defaultVal: defaults.awsAuthMode)
 
+    // MARK: Phase 7 — destination pins
+    case "vertexAuthMode":
+        // String pin. Default is "adc". Surface unrecognized values
+        // the same way azureAuthMode + bedrockAuthMode do.
+        if !isManaged, let raw = ManagedConfig.managedString(forKey: "vertexAuthMode") {
+            let recognized = ["adc", "serviceAccount"]
+            if !recognized.contains(raw) {
+                return ("(unrecognized: \(raw))", .default)
+            }
+        }
+        return formatString(config.vertexAuthMode, managed: isManaged, defaultVal: defaults.vertexAuthMode)
+    case "asrEndpoint":
+        // For the bundled sentinel show a friendly "(bundled FluidAudio)"
+        // marker; for an HTTPS URL show scheme://host (path stripped so a
+        // tokenized URL doesn't leak via the clipboard snapshot).
+        if config.asrEndpoint == Config.bundledASREndpoint {
+            return ("(bundled FluidAudio)", isManaged ? .managed : .default)
+        }
+        if let url = URL(string: config.asrEndpoint), let host = url.host, !host.isEmpty {
+            let safe = "\(url.scheme ?? "https")://\(host)"
+            return (safe, isManaged ? .managed : .user)
+        }
+        return formatString(config.asrEndpoint, managed: isManaged, defaultVal: defaults.asrEndpoint)
+    case "vertexProject":
+        return formatString(config.vertexProject, managed: isManaged, defaultVal: defaults.vertexProject)
+    case "vertexRegion":
+        return formatString(config.vertexRegion, managed: isManaged, defaultVal: defaults.vertexRegion)
+    case "vertexAnthropicRegion":
+        return formatString(config.vertexAnthropicRegion, managed: isManaged, defaultVal: defaults.vertexAnthropicRegion)
+    case "awsRegion":
+        return formatString(config.awsRegion, managed: isManaged, defaultVal: defaults.awsRegion)
+    case "awsProfile":
+        // awsProfile is String? — display the unwrapped value with a
+        // "(default profile)" placeholder when nil/empty.
+        let display = (config.awsProfile?.isEmpty == false) ? config.awsProfile! : "(default profile)"
+        if isManaged { return (display, .managed) }
+        // User-set when stored profile differs from the default-value
+        // (defaults.awsProfile is nil), otherwise Default.
+        if config.awsProfile != defaults.awsProfile { return (display, .user) }
+        return (display, .default)
+    case "azureResource":
+        return formatString(config.azureResource, managed: isManaged, defaultVal: defaults.azureResource)
+    case "azureDeployment":
+        return formatString(config.azureDeployment, managed: isManaged, defaultVal: defaults.azureDeployment)
+
     default:
         return ("(unknown key)", .default)
     }

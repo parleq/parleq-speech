@@ -727,6 +727,121 @@ public struct Config: Sendable {
             }
         }
 
+        // MDM overlay — Phase 7: destination pins. Close the
+        // "MDM pins provider+model+auth-mode but the user retargets
+        // the data at a personal cloud account or attacker ASR
+        // server" exfiltration class. Pin-only semantics (no
+        // allowlist) — orgs typically have ONE Vertex project, ONE
+        // Azure resource, etc.; allowlist support can be added
+        // later if a deployment asks for it.
+        //
+        // vertexAuthMode (String) — symmetric with azureAuthMode + bedrockAuthMode.
+        // Recognized values: "adc" (default), "serviceAccount".
+        // Unrecognized values rejected (key NOT added to
+        // managedKeys) so a typo doesn't silently lock the user out.
+        if let rawVertexAuthMode = ManagedConfig.managedString(forKey: "vertexAuthMode") {
+            let recognized = ["adc", "serviceAccount"]
+            if recognized.contains(rawVertexAuthMode) {
+                c.vertexAuthMode = rawVertexAuthMode
+                managedKeys.insert("vertexAuthMode")
+            } else {
+                configLogStderr("[parleq] vertexAuthMode: rejected unrecognized managed value '\(rawVertexAuthMode)' — recognized values are \(recognized.joined(separator: ", ")); treating as unmanaged")
+            }
+        }
+
+        // asrEndpoint (String) — pin the ASR HTTP destination.
+        // The unmanaged code path accepts any http(s) URL so a user
+        // can plug in their own local Sherpa / faster-whisper server
+        // (raw audio stays on the user's box). When IT wants to
+        // enforce "audio MUST go to bundled FluidAudio or our
+        // corporate Whisper at https://asr.corp.example", they pin
+        // here. Validation requires https (the unmanaged http://
+        // local-dev affordance does not extend to MDM pushes —
+        // pushing audio off-box must travel over TLS) or the bundled
+        // sentinel verbatim.
+        if let rawASREndpoint = ManagedConfig.managedString(forKey: "asrEndpoint") {
+            if let validated = ManagedConfig.validateASREndpoint(rawASREndpoint) {
+                c.asrEndpoint = validated
+                managedKeys.insert("asrEndpoint")
+            } else {
+                configLogStderr("[parleq] asrEndpoint: rejected managed value — must be either the bundled-FluidAudio sentinel (\(Config.bundledASREndpoint)) or an https:// URL with a non-empty host, no embedded credentials, and no query parameters; using user/default value instead")
+            }
+        }
+
+        // Cloud-account destination pins. Each closes one variant of
+        // "use the allowed provider but route to my personal tenant
+        // / account / region." vertexProject + azureResource +
+        // azureDeployment are non-empty pin-required; awsProfile
+        // accepts an empty pin (meaning "use AWS_PROFILE env var or
+        // default profile"). Region identifiers (vertexRegion,
+        // vertexAnthropicRegion, awsRegion) accept any non-empty
+        // value — region naming is loosely structured and we don't
+        // want to lag behind new regions the cloud provider rolls
+        // out.
+        if let raw = ManagedConfig.managedString(forKey: "vertexProject") {
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                c.vertexProject = trimmed
+                managedKeys.insert("vertexProject")
+            } else {
+                configLogStderr("[parleq] vertexProject: rejected managed value — empty string is not a valid GCP project ID; treating as unmanaged")
+            }
+        }
+        if let raw = ManagedConfig.managedString(forKey: "vertexRegion") {
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                c.vertexRegion = trimmed
+                managedKeys.insert("vertexRegion")
+            } else {
+                configLogStderr("[parleq] vertexRegion: rejected managed value — empty string is not a valid region; treating as unmanaged")
+            }
+        }
+        if let raw = ManagedConfig.managedString(forKey: "vertexAnthropicRegion") {
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                c.vertexAnthropicRegion = trimmed
+                managedKeys.insert("vertexAnthropicRegion")
+            } else {
+                configLogStderr("[parleq] vertexAnthropicRegion: rejected managed value — empty string is not a valid region; treating as unmanaged")
+            }
+        }
+        if let raw = ManagedConfig.managedString(forKey: "awsRegion") {
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                c.awsRegion = trimmed
+                managedKeys.insert("awsRegion")
+            } else {
+                configLogStderr("[parleq] awsRegion: rejected managed value — empty string is not a valid region; treating as unmanaged")
+            }
+        }
+        if let raw = ManagedConfig.managedString(forKey: "awsProfile") {
+            // awsProfile may legitimately be empty (means "use
+            // AWS_PROFILE env var or default"). Accept any string;
+            // store nil for empty so the runtime code path consults
+            // the env-var fallback.
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            c.awsProfile = trimmed.isEmpty ? nil : trimmed
+            managedKeys.insert("awsProfile")
+        }
+        if let raw = ManagedConfig.managedString(forKey: "azureResource") {
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                c.azureResource = trimmed
+                managedKeys.insert("azureResource")
+            } else {
+                configLogStderr("[parleq] azureResource: rejected managed value — empty string is not a valid Azure OpenAI resource name; treating as unmanaged")
+            }
+        }
+        if let raw = ManagedConfig.managedString(forKey: "azureDeployment") {
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                c.azureDeployment = trimmed
+                managedKeys.insert("azureDeployment")
+            } else {
+                configLogStderr("[parleq] azureDeployment: rejected managed value — empty string is not a valid deployment name; treating as unmanaged")
+            }
+        }
+
             // MDM overlay — Phase 2: provider/model lockdown (8 string/array keys).
             //
             // Pin semantics (single String):
@@ -1086,6 +1201,46 @@ public struct Config: Sendable {
             featuresDict["custom_model_entry_enabled"] = existing
         }
 
+        // Phase 7 destination-pin preservation. When a destination
+        // pin is active, the user can't change the field in
+        // Settings, so writing the effective MDM value would clobber
+        // their pre-MDM fallback. We preserve the on-disk value
+        // (when present) so removing the MDM profile restores their
+        // earlier choice — exact same rationale as the cleanup-tier
+        // provider/model preservation above.
+        let existingASR = (existingDict["asr"] as? [String: Any]) ?? [:]
+        let existingAWS = (existingDict["aws"] as? [String: Any]) ?? [:]
+        let existingVertex = (existingDict["vertex"] as? [String: Any]) ?? [:]
+        let existingAzure = (existingDict["azure"] as? [String: Any]) ?? [:]
+
+        let asrEndpointToWrite: String = config.managedKeys.contains("asrEndpoint")
+            ? ((existingASR["endpoint"] as? String) ?? config.asrEndpoint)
+            : config.asrEndpoint
+        let awsRegionToWrite: String = config.managedKeys.contains("awsRegion")
+            ? ((existingAWS["region"] as? String) ?? config.awsRegion)
+            : config.awsRegion
+        let awsProfileToWrite: String = config.managedKeys.contains("awsProfile")
+            ? ((existingAWS["profile"] as? String) ?? (config.awsProfile ?? ""))
+            : (config.awsProfile ?? "")
+        let vertexProjectToWrite: String = config.managedKeys.contains("vertexProject")
+            ? ((existingVertex["project"] as? String) ?? config.vertexProject)
+            : config.vertexProject
+        let vertexRegionToWrite: String = config.managedKeys.contains("vertexRegion")
+            ? ((existingVertex["region"] as? String) ?? config.vertexRegion)
+            : config.vertexRegion
+        let vertexAnthropicRegionToWrite: String = config.managedKeys.contains("vertexAnthropicRegion")
+            ? ((existingVertex["anthropic_region"] as? String) ?? config.vertexAnthropicRegion)
+            : config.vertexAnthropicRegion
+        let vertexAuthModeToWrite: String = config.managedKeys.contains("vertexAuthMode")
+            ? ((existingVertex["auth_mode"] as? String) ?? config.vertexAuthMode)
+            : config.vertexAuthMode
+        let azureResourceToWrite: String = config.managedKeys.contains("azureResource")
+            ? ((existingAzure["resource"] as? String) ?? config.azureResource)
+            : config.azureResource
+        let azureDeploymentToWrite: String = config.managedKeys.contains("azureDeployment")
+            ? ((existingAzure["deployment"] as? String) ?? config.azureDeployment)
+            : config.azureDeployment
+
         let dict: [String: Any] = [
             "hotkey": [
                 "binding": config.hotkeyBinding,
@@ -1100,7 +1255,7 @@ public struct Config: Sendable {
             ],
             "asr": [
                 "mode": config.asrMode,
-                "endpoint": config.asrEndpoint,
+                "endpoint": asrEndpointToWrite,
             ],
             "llm": [
                 "mode": config.llmMode,
@@ -1108,30 +1263,30 @@ public struct Config: Sendable {
                 "model": llmModelToWrite,
             ],
             "aws": [
-                "region": config.awsRegion,
-                "profile": config.awsProfile ?? "",
+                "region": awsRegionToWrite,
+                "profile": awsProfileToWrite,
                 // Phase 5: when bedrockAuthMode is managed, preserve the
                 // existing on-disk auth_mode so removing the MDM profile
                 // restores the user's pre-MDM choice. Symmetric with the
                 // provider/model preservation logic above.
                 "auth_mode": config.managedKeys.contains("bedrockAuthMode")
-                    ? ((existingDict["aws"] as? [String: Any])?["auth_mode"] as? String ?? config.awsAuthMode)
+                    ? ((existingAWS["auth_mode"] as? String) ?? config.awsAuthMode)
                     : config.awsAuthMode,
             ],
             "vertex": [
-                "project": config.vertexProject,
-                "region": config.vertexRegion,
-                "auth_mode": config.vertexAuthMode,
-                "anthropic_region": config.vertexAnthropicRegion,
+                "project": vertexProjectToWrite,
+                "region": vertexRegionToWrite,
+                "auth_mode": vertexAuthModeToWrite,
+                "anthropic_region": vertexAnthropicRegionToWrite,
             ],
             "azure": [
-                "resource": config.azureResource,
-                "deployment": config.azureDeployment,
+                "resource": azureResourceToWrite,
+                "deployment": azureDeploymentToWrite,
                 "api_version": config.azureApiVersion,
                 // Phase 5: preserve on-disk azure.auth_mode when
                 // azureAuthMode is managed (same rationale as aws.auth_mode).
                 "auth_mode": config.managedKeys.contains("azureAuthMode")
-                    ? ((existingDict["azure"] as? [String: Any])?["auth_mode"] as? String ?? config.azureAuthMode)
+                    ? ((existingAzure["auth_mode"] as? String) ?? config.azureAuthMode)
                     : config.azureAuthMode,
             ],
             "wizard": [
