@@ -91,6 +91,16 @@ re-check that catches `screenshot.png → ~/.ssh/id_rsa`.
   silently defeats forced auto-update across any major release"
   bypass.
 
+- **Sparkle managed-feed-URL state hygiene.** Parleq now calls
+  `clearFeedURLFromUserDefaults` on every launch where the
+  managed `sparkleUpdateFeedURL` isn't successfully validated.
+  Without this, Sparkle's `setFeedURL` persisted any
+  previously-managed URL into user defaults — so an admin
+  removing an MDM profile would leave the corp-mirror URL stuck
+  on every fleet machine, defeating policy removal. Removing
+  the MDM profile (or rejecting an invalid managed value) now
+  reliably restores Sparkle's Info.plist `SUFeedURL` default.
+
 - **Reference Windows symlink-target re-check** hoisted above
   the image/PDF dispatch and tightened to require the symlink's
   claimed family and the resolved target's family to match.

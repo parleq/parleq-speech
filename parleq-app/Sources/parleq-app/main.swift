@@ -439,6 +439,28 @@ struct ParleqApp {
             // not a runtime alternation between multiple feeds — the
             // deprecation warning is not actionable here without adding a
             // persistent delegate class. The API remains functional.
+            //
+            // IMPORTANT: setFeedURL persists the URL to user defaults.
+            // We must explicitly clear the persisted value on every
+            // launch where there ISN'T a successfully-validated
+            // managed URL — otherwise:
+            //   1. An admin who briefly pushed a managed feed URL and
+            //      then removed the MDM profile would have the
+            //      managed URL stick on every fleet machine forever,
+            //      defeating policy removal.
+            //   2. A previously-rejected managed value would still
+            //      route updates to whatever was last persisted,
+            //      contradicting the "using Info.plist SUFeedURL
+            //      instead" log message.
+            //   3. A developer who ran the local test scenario for
+            //      sparkleUpdateFeedURL with a fixture value
+            //      (e.g. https://example.com/appcast.xml) would get
+            //      perpetual 404s on Check for Updates afterwards
+            //      until manually running `defaults delete
+            //      com.parleq.app SUFeedURL`.
+            // The clearFeedURLFromUserDefaults API is the documented
+            // way to drop the persisted URL and fall back to the
+            // Info.plist SUFeedURL.
             if let rawFeedURL = ManagedConfig.managedString(forKey: "sparkleUpdateFeedURL") {
                 let trimmed = rawFeedURL.trimmingCharacters(in: .whitespacesAndNewlines)
                 // Strict validation (centralized via ManagedConfig.validateFeedURL):
@@ -460,8 +482,11 @@ struct ParleqApp {
                     let safeOrigin = "\(feedURL.scheme ?? "https")://\(feedURL.host ?? "?")"
                     logStderr("[parleq] sparkleUpdateFeedURL: accepted managed feed at \(safeOrigin) — appcast will be fetched from this origin; EdDSA signature verification remains enforced by Info.plist SUPublicEDKey")
                 } else {
-                    logStderr("[parleq] sparkleUpdateFeedURL: rejected managed value — must be a valid https:// URL with a non-empty host, no embedded credentials, and no query parameters; using Info.plist SUFeedURL instead")
+                    updaterController.updater.clearFeedURLFromUserDefaults()
+                    logStderr("[parleq] sparkleUpdateFeedURL: rejected managed value — must be a valid https:// URL with a non-empty host, no embedded credentials, and no query parameters. Cleared any previously-persisted feed URL; Sparkle will use Info.plist SUFeedURL.")
                 }
+            } else {
+                updaterController.updater.clearFeedURLFromUserDefaults()
             }
             updaterController.startUpdater()
             updaterBox.value = updaterController
