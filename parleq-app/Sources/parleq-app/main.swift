@@ -67,6 +67,7 @@ struct ParleqApp {
         // which path was taken so a developer can tell.
         let (config, configSource) = Config.load()
         logStderr("[parleq] config: \(configSource)")
+        ManagedConfig.logStartupSummary(managedKeys: config.managedKeys)
 
         // Kick off a background refresh of the LiteLLM pricing
         // table. No-ops if the on-disk cache is fresh (<24h) or a
@@ -160,6 +161,26 @@ struct ParleqApp {
         // the context tier (logging "context-model enabled") when they
         // differ. The `label` parameter appears in log lines only.
         let makeProvider: (ModelIdentifier, String) -> (any LLMProvider)? = { id, label in
+            // Phase 5 — runtime auth-path gate. Check BEFORE any provider
+            // construction: if staticApiKeysAllowed=false is managed and the
+            // provider's currently-configured auth path is static-key-based,
+            // return a BlockedProvider sentinel instead of the real provider.
+            // BlockedProvider.generateStreaming immediately throws
+            // .authPathBlocked, which streamCleanupOrRefine routes through
+            // cleanupFailureHint so the overlay shows an actionable message.
+            let authModeForGate: String?
+            switch id.provider.lowercased() {
+            case "vertex":  authModeForGate = config.vertexAuthMode
+            case "azure":   authModeForGate = config.azureAuthMode
+            case "bedrock": authModeForGate = config.awsAuthMode
+            default:        authModeForGate = nil
+            }
+            if ManagedConfig.isProviderAuthPathBlocked(provider: id.provider, authMode: authModeForGate) {
+                let msg = "Your cleanup provider's auth path is disabled by your organization. Open Settings \u{2192} LLM and select a federated-auth provider (Azure with Entra ID, Bedrock with SSO, or Vertex with ADC)."
+                logStderr("[parleq] LLM \(label) BLOCKED by staticApiKeysAllowed=false (provider=\(id.provider) authMode=\(authModeForGate ?? "api-key")). Will surface error to user.")
+                return BlockedProvider(providerID: id.provider, model: id.model, message: msg)
+            }
+
             switch id.provider.lowercased() {
             case "bedrock":
                 if config.awsAuthMode.lowercased() == "bedrockapikey" || config.awsAuthMode == "bedrockApiKey" {
@@ -358,11 +379,70 @@ struct ParleqApp {
             // via the UpdaterBox @unchecked-Sendable shim so menu /
             // settings closures can capture it without a Swift 6
             // strict-concurrency complaint.
+            // MDM autoUpdateEnabled enforcement: when an admin pushes
+            // autoUpdateEnabled=false we must apply the policy BEFORE
+            // Sparkle starts its background-check loop, otherwise the
+            // first periodic-check tick could fire between init and
+            // the policy assignment. We init the controller with
+            // startingUpdater:false, set automaticallyChecksForUpdates
+            // from MDM (or leave Sparkle's default for unmanaged),
+            // then start the updater manually. Manual menu-bar
+            // "Check for Updates..." still works either way — that
+            // path is independent of the automatic-checks setting.
+            let managedAutoUpdate = ManagedConfig.managedBool(forKey: "autoUpdateEnabled")
             let updaterController = SPUStandardUpdaterController(
-                startingUpdater: true,
+                startingUpdater: false,
                 updaterDelegate: nil,
                 userDriverDelegate: nil
             )
+            if let managed = managedAutoUpdate {
+                updaterController.updater.automaticallyChecksForUpdates = managed
+            }
+            // MDM sparkleUpdateFeedURL enforcement: when an admin pushes a
+            // managed feed URL, we redirect Sparkle's appcast to that URL
+            // BEFORE startUpdater() so the very first background check uses
+            // the managed URL.
+            //
+            // CRITICAL SECURITY INVARIANT: SUPublicEDKey in Info.plist
+            // still authoritatively gates which Sparkle signatures are
+            // valid. The managed feed URL changes WHERE the appcast comes
+            // from, not WHO can sign it. An attacker who hosts a fake
+            // appcast at the managed URL cannot push an arbitrary binary
+            // without the maintainer's Ed25519 private key. The EdDSA
+            // signature check cannot be bypassed by an MDM profile.
+            //
+            // Note on setFeedURL: Sparkle's preferred pattern for dynamic
+            // feed URLs is SPUUpdaterDelegate.feedURLStringForUpdater(_:).
+            // setFeedURL is technically deprecated, but this is a one-time
+            // pre-start configuration call from a known-managed source,
+            // not a runtime alternation between multiple feeds — the
+            // deprecation warning is not actionable here without adding a
+            // persistent delegate class. The API remains functional.
+            if let rawFeedURL = ManagedConfig.managedString(forKey: "sparkleUpdateFeedURL") {
+                let trimmed = rawFeedURL.trimmingCharacters(in: .whitespacesAndNewlines)
+                // Strict validation (centralized via ManagedConfig.validateFeedURL):
+                //   - scheme is exactly "https" (case-insensitive)
+                //   - non-empty host
+                //   - no embedded userinfo (user:password@) — those would
+                //     ship credentials to the appcast server and leak via
+                //     logs / URL inspection. An admin pushing such a URL
+                //     is misconfiguring; reject and fall back.
+                //   - no query / fragment containing token-like params
+                //     (we just reject any url with a non-nil query for
+                //     simplicity — appcasts are static XML, no query needed).
+                if let feedURL = ManagedConfig.validateFeedURL(trimmed) {
+                    updaterController.updater.setFeedURL(feedURL)
+                    // Log only the scheme+host so any path/query/userinfo
+                    // doesn't leak via app.log. The user gets confirmation
+                    // that a managed feed is active without exposing the
+                    // full URL to anyone who tails the log.
+                    let safeOrigin = "\(feedURL.scheme ?? "https")://\(feedURL.host ?? "?")"
+                    logStderr("[parleq] sparkleUpdateFeedURL: accepted managed feed at \(safeOrigin) — appcast will be fetched from this origin; EdDSA signature verification remains enforced by Info.plist SUPublicEDKey")
+                } else {
+                    logStderr("[parleq] sparkleUpdateFeedURL: rejected managed value — must be a valid https:// URL with a non-empty host, no embedded credentials, and no query parameters; using Info.plist SUFeedURL instead")
+                }
+            }
+            updaterController.startUpdater()
             updaterBox.value = updaterController
             // Make the live updater visible to Settings → Updates so
             // its toggle reads the real `automaticallyChecksForUpdates`
@@ -374,6 +454,9 @@ struct ParleqApp {
             menuBar.onOpenWizard = { wizard.show() }
             menuBar.onCheckForUpdates = { [weak updaterController] in
                 updaterController?.checkForUpdates(nil)
+            }
+            menuBar.onViewManagedConfig = {
+                ManagedConfigAuditWindowController.shared.show()
             }
 
             // Microphone selector (#25). The menu submenu writes the

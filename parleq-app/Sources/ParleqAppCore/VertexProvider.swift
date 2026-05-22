@@ -543,6 +543,8 @@ public final class VertexProvider: LLMProvider, Sendable {
             return authRecoveryHint
         case .missingAPIKey, .badStatus, .malformedResponse, .requestFailed:
             return nil
+        case .authPathBlocked(let msg):
+            return msg
         }
     }
 
@@ -578,7 +580,7 @@ public final class VertexProvider: LLMProvider, Sendable {
             return true
         case .badStatus(let code, _):
             return code == 401
-        case .missingAPIKey, .malformedResponse, .requestFailed:
+        case .missingAPIKey, .malformedResponse, .requestFailed, .authPathBlocked:
             return false
         }
     }

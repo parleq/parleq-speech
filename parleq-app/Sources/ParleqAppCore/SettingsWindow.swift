@@ -130,6 +130,24 @@ final class SettingsModel: ObservableObject {
     /// or a specific configured model. Mirrors Config.contextModel.
     @Published var contextModel: ModelIdentifier?
 
+    // MARK: - Feature toggle mirrors (Phase 5)
+
+    /// Mirror of Config.referenceWindowsEnabled.
+    @Published var referenceWindowsEnabled: Bool
+    /// Mirror of Config.clipboardReferenceEnabled.
+    @Published var clipboardReferenceEnabled: Bool
+    /// Mirror of Config.imageReferenceEnabled.
+    @Published var imageReferenceEnabled: Bool
+    /// Mirror of Config.fileReferenceEnabled.
+    @Published var fileReferenceEnabled: Bool
+    /// Mirror of Config.customDictionaryEnabled.
+    @Published var customDictionaryEnabled: Bool
+    /// Mirror of Config.customModelEntryEnabled.
+    @Published var customModelEntryEnabled: Bool
+    /// Set of Config keys currently managed by MDM. Rows for managed
+    /// keys render as `.disabled(true)` with the ManagedIndicator badge.
+    @Published var managedKeys: Set<String>
+
     // MARK: - Tier fields (cleanup + context independent provider+model)
 
     /// Cleanup tier: the provider used for normal dictation cleanup.
@@ -236,6 +254,14 @@ final class SettingsModel: ObservableObject {
         self.cleanupModelName = config.llmModel
         self.contextProvider = config.contextModel?.provider ?? config.llmProvider
         self.contextModelName = config.contextModel?.model ?? config.llmModel
+        // Feature toggles (Phase 5).
+        self.referenceWindowsEnabled = config.referenceWindowsEnabled
+        self.clipboardReferenceEnabled = config.clipboardReferenceEnabled
+        self.imageReferenceEnabled = config.imageReferenceEnabled
+        self.fileReferenceEnabled = config.fileReferenceEnabled
+        self.customDictionaryEnabled = config.customDictionaryEnabled
+        self.customModelEntryEnabled = config.customModelEntryEnabled
+        self.managedKeys = config.managedKeys
         self.initialHotkeyBinding = config.hotkeyBinding
         self.initialLlmModel = config.llmModel
         self.initialContinueOtherAudio = config.continueOtherAudio
@@ -321,6 +347,14 @@ final class SettingsModel: ObservableObject {
         self.cleanupModelName = config.llmModel
         self.contextProvider = config.contextModel?.provider ?? config.llmProvider
         self.contextModelName = config.contextModel?.model ?? config.llmModel
+        // Feature toggles (Phase 5).
+        self.referenceWindowsEnabled = config.referenceWindowsEnabled
+        self.clipboardReferenceEnabled = config.clipboardReferenceEnabled
+        self.imageReferenceEnabled = config.imageReferenceEnabled
+        self.fileReferenceEnabled = config.fileReferenceEnabled
+        self.customDictionaryEnabled = config.customDictionaryEnabled
+        self.customModelEntryEnabled = config.customModelEntryEnabled
+        self.managedKeys = config.managedKeys
         refreshUsage()
     }
 
@@ -425,6 +459,17 @@ final class SettingsModel: ObservableObject {
         let resolvedContextModel: ModelIdentifier? = (contextId == cleanupId) ? nil : contextId
         c.contextModel = resolvedContextModel
         contextModel = resolvedContextModel
+        // Feature toggles (Phase 5). Managed keys are already excluded
+        // inside Config.save() via c.managedKeys, so we just set the
+        // user-facing values unconditionally here — Config.save skips
+        // the ones in managedKeys.
+        c.referenceWindowsEnabled = referenceWindowsEnabled
+        c.clipboardReferenceEnabled = clipboardReferenceEnabled
+        c.imageReferenceEnabled = imageReferenceEnabled
+        c.fileReferenceEnabled = fileReferenceEnabled
+        c.customDictionaryEnabled = customDictionaryEnabled
+        c.customModelEntryEnabled = customModelEntryEnabled
+        c.managedKeys = managedKeys
         do {
             try Config.save(c)
         } catch {
@@ -767,50 +812,47 @@ struct SettingsView: View {
 
     /// Helper to return the canonical model list for a given provider.
     /// Used by both the tier model pickers and the onChange snap logic.
+    /// Delegates to ModelCatalog (the single-source-of-truth for the
+    /// value lists) so Config.load()'s defense-in-depth validation and
+    /// this picker stay automatically consistent.
     func modelsAvailable(forProvider provider: String) -> [String] {
-        switch provider {
-        case "gemini":         return Self.geminiModelOptions.map(\.value)
-        case "vertex":         return Self.vertexModelOptions.map(\.value)
-        case "bedrock":        return Self.bedrockModelOptions.map(\.value)
-        case "bedrock-bearer": return Self.bedrockBearerModelOptions.map(\.value)
-        case "azure":          return Self.azureModelOptions.map(\.value)
-        case "openai":         return Self.openAIModelOptions.map(\.value)
-        default:               return []
-        }
+        ModelCatalog.models(forProvider: provider)
     }
 
     /// Sidebar sections in display order. Each maps to a single
     /// detail-pane view (`hotkeySection`, `audioSection`, …) and
     /// carries a label + SF Symbol for the sidebar List.
     private enum SettingsSection: String, Hashable, CaseIterable, Identifiable {
-        case hotkey, audio, behavior, paste, cleanup, dictionary, usage, permissions, updates, advanced
+        case hotkey, audio, behavior, paste, cleanup, dictionary, usage, permissions, privacyFeatures, updates, advanced
         var id: String { rawValue }
         var label: String {
             switch self {
-            case .hotkey:      return "Hotkey"
-            case .audio:       return "Audio"
-            case .behavior:    return "Behavior"
-            case .paste:       return "Paste"
-            case .cleanup:     return "Cleanup"
-            case .dictionary:  return "Dictionary"
-            case .usage:       return "Usage"
-            case .permissions: return "Permissions"
-            case .updates:     return "Updates"
-            case .advanced:    return "Advanced"
+            case .hotkey:          return "Hotkey"
+            case .audio:           return "Audio"
+            case .behavior:        return "Behavior"
+            case .paste:           return "Paste"
+            case .cleanup:         return "Cleanup"
+            case .dictionary:      return "Dictionary"
+            case .usage:           return "Usage"
+            case .permissions:     return "Permissions"
+            case .privacyFeatures: return "Privacy & Features"
+            case .updates:         return "Updates"
+            case .advanced:        return "Advanced"
             }
         }
         var icon: String {
             switch self {
-            case .hotkey:      return "keyboard"
-            case .audio:       return "speaker.wave.2"
-            case .behavior:    return "slider.horizontal.3"
-            case .paste:       return "doc.on.clipboard"
-            case .cleanup:     return "wand.and.sparkles"
-            case .dictionary:  return "character.book.closed"
-            case .usage:       return "chart.bar"
-            case .permissions: return "lock.shield"
-            case .updates:     return "arrow.down.circle"
-            case .advanced:    return "gearshape.2"
+            case .hotkey:          return "keyboard"
+            case .audio:           return "speaker.wave.2"
+            case .behavior:        return "slider.horizontal.3"
+            case .paste:           return "doc.on.clipboard"
+            case .cleanup:         return "wand.and.sparkles"
+            case .dictionary:      return "character.book.closed"
+            case .usage:           return "chart.bar"
+            case .permissions:     return "lock.shield"
+            case .privacyFeatures: return "person.badge.shield.checkmark"
+            case .updates:         return "arrow.down.circle"
+            case .advanced:        return "gearshape.2"
             }
         }
     }
@@ -964,16 +1006,17 @@ struct SettingsView: View {
                     .padding(.bottom, 4)
 
                 switch selection {
-                case .hotkey:      hotkeySection
-                case .audio:       audioSection
-                case .behavior:    behaviorSection
-                case .paste:       pasteSection
-                case .cleanup:     cleanupSection
-                case .dictionary:  dictionarySection
-                case .usage:       usageSection
-                case .permissions: permissionsSection
-                case .updates:     updatesSection
-                case .advanced:    advancedSection
+                case .hotkey:          hotkeySection
+                case .audio:           audioSection
+                case .behavior:        behaviorSection
+                case .paste:           pasteSection
+                case .cleanup:         cleanupSection
+                case .dictionary:      dictionarySection
+                case .usage:           usageSection
+                case .permissions:     permissionsSection
+                case .privacyFeatures: privacyFeaturesSection
+                case .updates:         updatesSection
+                case .advanced:        advancedSection
                 }
             }
             .padding(.horizontal, 28)
@@ -1163,7 +1206,13 @@ struct SettingsView: View {
 
     @ViewBuilder
     private var tierConfiguration: some View {
-        SettingsCard {
+        // Resolve MDM allowlist values once so the pickers can filter.
+        let cleanupAllowedProviders = ManagedConfig.managedStringArray(forKey: "cleanupAllowedProviders")
+        let cleanupAllowedModels    = ManagedConfig.managedStringArray(forKey: "cleanupAllowedModels")
+        let contextAllowedProviders = ManagedConfig.managedStringArray(forKey: "contextAllowedProviders")
+        let contextAllowedModels    = ManagedConfig.managedStringArray(forKey: "contextAllowedModels")
+
+        return SettingsCard {
             VStack(alignment: .leading, spacing: 18) {
                 // CLEANUP TIER
                 VStack(alignment: .leading, spacing: 6) {
@@ -1172,7 +1221,12 @@ struct SettingsView: View {
                     Text("Used for normal dictation cleanup.")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
-                    HStack(spacing: 12) {
+                    // .top alignment so the Provider and Model labels +
+                    // pickers stay vertically aligned regardless of which
+                    // column has a "Managed by your organization." caption
+                    // below it (captions inflate VStack height; without
+                    // .top the shorter column gets centered upward).
+                    HStack(alignment: .top, spacing: 12) {
                         tierProviderPicker(
                             selection: Binding(
                                 get: { model.cleanupProvider },
@@ -1186,7 +1240,11 @@ struct SettingsView: View {
                                     model.save()
                                 }
                             ),
-                            label: "Provider"
+                            label: "Provider",
+                            pinnedKey: "cleanupProvider",
+                            allowlistKey: "cleanupAllowedProviders",
+                            allowedValues: cleanupAllowedProviders,
+                            modelAllowlist: cleanupAllowedModels
                         )
                         tierModelPicker(
                             forProvider: model.cleanupProvider,
@@ -1198,7 +1256,10 @@ struct SettingsView: View {
                                     model.save()
                                 }
                             ),
-                            label: "Model"
+                            label: "Model",
+                            pinnedKey: "cleanupModel",
+                            allowlistKey: "cleanupAllowedModels",
+                            allowedModels: cleanupAllowedModels
                         )
                     }
                 }
@@ -1217,7 +1278,7 @@ struct SettingsView: View {
                     Text("Used when references are attached. Vision-capable models marked 👁.")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
-                    HStack(spacing: 12) {
+                    HStack(alignment: .top, spacing: 12) {
                         tierProviderPicker(
                             selection: Binding(
                                 get: { model.contextProvider },
@@ -1231,7 +1292,11 @@ struct SettingsView: View {
                                     model.save()
                                 }
                             ),
-                            label: "Provider"
+                            label: "Provider",
+                            pinnedKey: "contextProvider",
+                            allowlistKey: "contextAllowedProviders",
+                            allowedValues: contextAllowedProviders,
+                            modelAllowlist: contextAllowedModels
                         )
                         tierModelPicker(
                             forProvider: model.contextProvider,
@@ -1243,7 +1308,10 @@ struct SettingsView: View {
                                     model.save()
                                 }
                             ),
-                            label: "Model"
+                            label: "Model",
+                            pinnedKey: "contextModel",
+                            allowlistKey: "contextAllowedModels",
+                            allowedModels: contextAllowedModels
                         )
                     }
                 }
@@ -1251,28 +1319,139 @@ struct SettingsView: View {
         }
     }
 
+    /// Provider picker for a tier (cleanup or context).
+    ///
+    /// When `pinnedKey` is in `managedKeys` the picker is replaced by a
+    /// fixed label (single value, disabled — the IT admin pinned it). The
+    /// `ManagedIndicator` appears next to the picker in all managed cases.
+    ///
+    /// When `allowlistKey` is in `managedKeys` the picker is shown but only
+    /// the allowed subset of providers is offered; the lock icon signals the
+    /// restriction. If neither key is managed, all configured providers appear
+    /// and the indicator is hidden.
     private func tierProviderPicker(
         selection: Binding<String>,
-        label: String
+        label: String,
+        pinnedKey: String? = nil,
+        allowlistKey: String? = nil,
+        allowedValues: [String]? = nil,
+        modelAllowlist: [String]? = nil
     ) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
+        let isPinned    = pinnedKey.map    { model.managedKeys.contains($0) } ?? false
+        let isAllowlist = allowlistKey.map { model.managedKeys.contains($0) } ?? false
+        let isManaged   = isPinned || isAllowlist
+
+        return VStack(alignment: .leading, spacing: 3) {
             Text(label)
                 .font(.system(size: 10))
                 .foregroundStyle(.tertiary)
-            Picker(label, selection: selection) {
-                ForEach(SettingsModel.providerOptions) { option in
-                    HStack {
-                        Text(option.displayName)
-                        if !ProviderRegistry.isConfigured(option.id) {
-                            Text("(not configured)")
-                                .foregroundStyle(.tertiary)
+            HStack(spacing: 4) {
+                if isPinned {
+                    // Pinned — show as a disabled fixed-value control.
+                    let displayName = SettingsModel.providerOptions
+                        .first { $0.id == selection.wrappedValue }?.displayName
+                        ?? selection.wrappedValue
+                    Text(displayName)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            RoundedRectangle(cornerRadius: 5)
+                                .fill(Color.secondary.opacity(0.1))
+                        )
+                        .frame(maxWidth: 220, alignment: .leading)
+                } else {
+                    // Allowlist or unrestricted.
+                    let options: [SettingsModel.ProviderOption] = {
+                        // Start with the provider allowlist filter (or all
+                        // providers if no provider allowlist is active).
+                        var filtered: [SettingsModel.ProviderOption]
+                        if let allowed = allowedValues, isAllowlist {
+                            filtered = SettingsModel.providerOptions.filter { allowed.contains($0.id) }
+                        } else {
+                            filtered = SettingsModel.providerOptions
+                        }
+                        // Additional filter: when a MODEL allowlist is active,
+                        // hide providers that have no model compatible with the
+                        // allowlist. Prevents the confusing UX where a user
+                        // picks a provider, sees its full model list, picks one
+                        // that's not in the allowlist, then has it silently
+                        // reverted by Config.load on next launch. Providers
+                        // with at least one compatible model stay visible.
+                        if let allowedModels = modelAllowlist, !allowedModels.isEmpty {
+                            filtered = filtered.filter { providerOption in
+                                allowedModels.contains { modelID in
+                                    ModelCatalog.isCanonical(provider: providerOption.id, model: modelID)
+                                }
+                            }
+                        }
+                        return filtered
+                    }()
+                    Picker(label, selection: selection) {
+                        ForEach(options) { option in
+                            HStack {
+                                Text(option.displayName)
+                                // Phase 5: annotate providers whose entire
+                                // auth path is blocked by staticApiKeysAllowed=false.
+                                // Mixed-auth providers (Azure, Bedrock IAM, Vertex)
+                                // that still have a federated path are NOT annotated
+                                // here — their credential card shows the blocked state
+                                // for the static mode only. Only fully-blocked providers
+                                // (no federated fallback) get the "(disabled by org)"
+                                // tag in the picker so the user understands upfront
+                                // that selecting them will produce a cleanup error.
+                                if ManagedConfig.isProviderAuthPathBlocked(provider: option.id, authMode: authModeForProvider(option.id)) {
+                                    Text("(disabled by your organization)")
+                                        .foregroundStyle(.red.opacity(0.8))
+                                } else if !ProviderRegistry.isConfigured(option.id) {
+                                    Text("(not configured)")
+                                        .foregroundStyle(.tertiary)
+                                }
+                            }
+                            .tag(option.id)
                         }
                     }
-                    .tag(option.id)
+                    .labelsHidden()
+                    .frame(maxWidth: 220)
+                    // Only disable on pin. Allowlist semantics let the user
+                    // pick among the allowed values, so the picker stays
+                    // interactive even when MDM has restricted the options.
                 }
+                ManagedIndicator(isManaged: isManaged)
             }
-            .labelsHidden()
-            .frame(maxWidth: 220)
+            // Phase 5: when the currently-selected provider is blocked,
+            // show an actionable caption below the picker (in addition to
+            // the "(disabled by your organization)" tag in the picker row).
+            let selectedBlocked = ManagedConfig.isProviderAuthPathBlocked(
+                provider: selection.wrappedValue,
+                authMode: authModeForProvider(selection.wrappedValue)
+            )
+            if selectedBlocked {
+                HStack(spacing: 4) {
+                    ManagedIndicator(isManaged: true)
+                    Text("Disabled by your organization (requires static API key). Select a federated-auth provider to restore cleanup.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.red.opacity(0.8))
+                }
+            } else {
+                ManagedCaption(isManaged: isManaged)
+            }
+        }
+    }
+
+    /// Returns the currently-configured auth mode string for a given
+    /// provider, used by the picker to determine if the provider's
+    /// auth path is blocked by staticApiKeysAllowed=false (Phase 5).
+    /// Mixed-auth providers (Azure, Bedrock IAM, Vertex) return their
+    /// stored auth mode; API-key-only providers return nil (the gate
+    /// treats nil as the default static-key path and blocks it).
+    private func authModeForProvider(_ providerID: String) -> String? {
+        switch providerID {
+        case "azure":          return model.azureAuthMode
+        case "bedrock":        return model.awsAuthMode
+        case "vertex":         return model.vertexAuthMode
+        default:               return nil  // gemini, openai, bedrock-bearer: api-key only
         }
     }
 
@@ -1281,21 +1460,67 @@ struct SettingsView: View {
     /// model ID since real IDs never start with underscores.
     private static let customModelTag = "__custom__"
 
+    /// Model picker for a tier (cleanup or context).
+    ///
+    /// MDM semantics (same as provider picker):
+    ///   - `pinnedKey` in managedKeys → fixed label, no picker, lock icon.
+    ///   - `allowlistKey` in managedKeys → picker restricted to `allowedModels`,
+    ///     lock icon, user can still choose among the allowed subset.
+    ///   - Neither managed → curated list + "Custom…" (if enabled).
     private func tierModelPicker(
         forProvider provider: String,
         selection: Binding<String>,
-        label: String
+        label: String,
+        pinnedKey: String? = nil,
+        allowlistKey: String? = nil,
+        allowedModels: [String]? = nil
     ) -> some View {
-        let models: [(value: String, label: String)]
+        let allModels: [(value: String, label: String)]
         switch provider {
-        case "gemini":         models = Self.geminiModelOptions
-        case "vertex":         models = Self.vertexModelOptions
-        case "bedrock":        models = Self.bedrockModelOptions
-        case "bedrock-bearer": models = Self.bedrockBearerModelOptions
-        case "azure":          models = Self.azureModelOptions
-        case "openai":         models = Self.openAIModelOptions
-        default:               models = []
+        case "gemini":         allModels = Self.geminiModelOptions
+        case "vertex":         allModels = Self.vertexModelOptions
+        case "bedrock":        allModels = Self.bedrockModelOptions
+        case "bedrock-bearer": allModels = Self.bedrockBearerModelOptions
+        case "azure":          allModels = Self.azureModelOptions
+        case "openai":         allModels = Self.openAIModelOptions
+        default:               allModels = []
         }
+
+        let isPinned    = pinnedKey.map    { model.managedKeys.contains($0) } ?? false
+        let isAllowlist = allowlistKey.map { model.managedKeys.contains($0) } ?? false
+        let isManaged   = isPinned || isAllowlist
+
+        // Compute the effective model list for this picker invocation.
+        let models: [(value: String, label: String)] = {
+            guard let allowed = allowedModels, isAllowlist else {
+                return allModels
+            }
+            // Cross-provider allowlist safety: filter allowed IDs to those
+            // that ARE canonical for the current provider. An admin who
+            // pushes a cross-provider allowlist like
+            // ["gemini-2.5-flash", "gpt-4o"] without a provider lockdown
+            // gets per-provider filtering automatically — Gemini users
+            // only see gemini-2.5-flash; OpenAI users only see gpt-4o.
+            // Bare IDs not in any catalog are still passed through under
+            // the current provider's umbrella (treated as a custom value
+            // that the admin authorized).
+            let mapped = allowed.compactMap { id -> (value: String, label: String)? in
+                if let found = allModels.first(where: { $0.value == id }) {
+                    return found
+                }
+                // If the ID is canonical for some OTHER provider, exclude
+                // it from THIS provider's picker — it would produce an
+                // invalid wire combination at runtime.
+                let belongsToOtherProvider = ["gemini", "vertex", "bedrock", "bedrock-bearer", "azure", "openai"]
+                    .filter { $0 != provider }
+                    .contains { ModelCatalog.isCanonical(provider: $0, model: id) }
+                if belongsToOtherProvider {
+                    return nil
+                }
+                return (id, id) // bare ID not in any catalog — custom value
+            }
+            return mapped.isEmpty ? allModels : mapped
+        }()
 
         // Build a picker binding that maps the sentinel "Custom…" tag
         // to/from the actual model-name string.
@@ -1326,28 +1551,64 @@ struct SettingsView: View {
             Text(label)
                 .font(.system(size: 10))
                 .foregroundStyle(.tertiary)
-            Picker(label, selection: pickerBinding) {
-                ForEach(models, id: \.value) { opt in
-                    Text(opt.label).tag(opt.value)
-                }
-                if !models.isEmpty {
-                    Divider()
-                }
-                if models.isEmpty {
-                    Text("—").tag(selection.wrappedValue)
-                } else {
-                    Text("Custom…").tag(Self.customModelTag)
-                }
-            }
-            .labelsHidden()
-            .frame(maxWidth: 280)
-            .disabled(models.isEmpty)
 
-            if isCustom {
-                TextField("Model ID", text: selection)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(size: 11))
+            if isPinned {
+                // Pinned — show the model value as a fixed disabled display.
+                HStack(spacing: 4) {
+                    let displayLabel = allModels.first { $0.value == selection.wrappedValue }?.label
+                        ?? selection.wrappedValue
+                    Text(displayLabel)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            RoundedRectangle(cornerRadius: 5)
+                                .fill(Color.secondary.opacity(0.1))
+                        )
+                        .frame(maxWidth: 280, alignment: .leading)
+                    ManagedIndicator(isManaged: true)
+                }
+                ManagedCaption(isManaged: true)
+            } else {
+                HStack(spacing: 4) {
+                    Picker(label, selection: pickerBinding) {
+                        ForEach(models, id: \.value) { opt in
+                            Text(opt.label).tag(opt.value)
+                        }
+                        if !models.isEmpty {
+                            Divider()
+                        }
+                        if models.isEmpty {
+                            Text("—").tag(selection.wrappedValue)
+                        } else if model.customModelEntryEnabled && !isManaged {
+                            // "Custom…" entry hidden when customModelEntryEnabled
+                            // is false OR when the model list is MDM-managed.
+                            Text("Custom…").tag(Self.customModelTag)
+                        }
+                    }
+                    .labelsHidden()
                     .frame(maxWidth: 280)
+                    // Only disable on pin or empty list. Allowlist semantics
+                    // let the user pick among the allowed values, so the
+                    // picker stays interactive when MDM has restricted the
+                    // model set.
+                    .disabled(models.isEmpty)
+                    ManagedIndicator(isManaged: isManaged)
+                }
+                ManagedCaption(isManaged: isManaged)
+
+                // Show the text field only when Custom is selected AND the
+                // entry path is enabled. If the feature is disabled and a
+                // custom model is already saved, the picker will still show
+                // it as the current value (no forced sanitization) — the
+                // field just can't be interacted with.
+                if isCustom && model.customModelEntryEnabled && !isManaged {
+                    TextField("Model ID", text: selection)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 11))
+                        .frame(maxWidth: 280)
+                }
             }
         }
     }
@@ -1359,10 +1620,15 @@ struct SettingsView: View {
     /// Context" / "Used for Cleanup + Context" label rendered inline
     /// with the provider title when the provider is actively selected
     /// for at least one tier.
+    /// `isAuthPathBlocked` (Phase 5) — when true, shows an
+    /// "Auth disabled by org" badge alongside the configured status
+    /// so the user knows the provider won't work even if credentials
+    /// are stored.
     private func credentialCardHeader(
         title: String,
         isConfigured: Bool,
-        activeBadge: String? = nil
+        activeBadge: String? = nil,
+        isAuthPathBlocked: Bool = false
     ) -> some View {
         HStack {
             Text(title)
@@ -1376,6 +1642,19 @@ struct SettingsView: View {
                     .background(
                         RoundedRectangle(cornerRadius: 4)
                             .fill(Color.secondary.opacity(0.12))
+                    )
+            }
+            if isAuthPathBlocked {
+                // Phase 5: badge shown when staticApiKeysAllowed=false
+                // and the provider has no usable federated auth path.
+                Text("Auth disabled by org")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.red.opacity(0.9))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(Color.red.opacity(0.10))
                     )
             }
             Spacer()
@@ -1467,20 +1746,41 @@ struct SettingsView: View {
 
     @ViewBuilder
     private func geminiCredentialsCard(badge: String?) -> some View {
+        // Phase 4+5: staticApiKeysAllowed=false hides the API key entry
+        // affordance AND marks the card as auth-path-blocked (Phase 5).
+        // Gemini (direct API) is API-key only — no federated auth path.
+        let apiKeysBlocked = ManagedConfig.isProviderAuthPathBlocked(provider: "gemini", authMode: nil)
         SettingsCard {
-            credentialCardHeader(title: "Gemini (Google API)", isConfigured: model.geminiKeyIsSet, activeBadge: badge)
-            GeminiAPIKeyRow(model: model)
+            credentialCardHeader(title: "Gemini (Google API)", isConfigured: model.geminiKeyIsSet, activeBadge: badge, isAuthPathBlocked: apiKeysBlocked)
+            if apiKeysBlocked {
+                HStack(spacing: 6) {
+                    ManagedIndicator(isManaged: true)
+                    Text("API key entry disabled by your organization.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                GeminiAPIKeyRow(model: model)
+            }
             SettingsCaption("Auth uses the GEMINI_API_KEY environment variable, then the macOS Keychain (set via the button above). Restart to apply.")
         }
     }
 
     @ViewBuilder
     private func vertexCredentialsCard(badge: String?) -> some View {
+        // Phase 4+5: staticApiKeysAllowed=false hides the service-account JSON
+        // entry button. ADC (gcloud) auth is federated and stays available.
+        // Phase 5: isAuthPathBlocked is false for Vertex (ADC is a valid
+        // federated fallback) unless the user has selected serviceAccount mode
+        // AND staticApiKeysAllowed=false — in that case the card shows the
+        // "Auth disabled by org" badge so the user knows to switch to ADC.
+        let apiKeysBlocked = ManagedConfig.isProviderAuthPathBlocked(provider: "vertex", authMode: model.vertexAuthMode)
         SettingsCard {
             credentialCardHeader(
                 title: "Gemini (Vertex / Google Cloud)",
                 isConfigured: model.vertexServiceAccountJSONSet,
-                activeBadge: badge
+                activeBadge: badge,
+                isAuthPathBlocked: apiKeysBlocked
             )
             TextField("GCP project ID", text: bind(\.vertexProject))
                 .textFieldStyle(.roundedBorder)
@@ -1493,18 +1793,47 @@ struct SettingsView: View {
             HStack(alignment: .center) {
                 Text("Auth mode")
                     .frame(minWidth: 90, alignment: .leading)
-                Picker("", selection: bind(\.vertexAuthMode)) {
-                    Text("gcloud (ADC)").tag("adc")
-                    Text("Service account JSON").tag("serviceAccount")
+                if apiKeysBlocked {
+                    // Fixed disabled label — matches the Azure / Bedrock
+                    // pinned-mode pattern. Avoids the deceptive state where
+                    // a single-option segmented picker would visually
+                    // highlight ADC while the underlying `vertexAuthMode`
+                    // storage still held `serviceAccount`. By rendering a
+                    // label instead of a picker, the user's stored
+                    // preference (whatever it is) is preserved on disk and
+                    // restored when MDM is removed.
+                    Text("gcloud (ADC)")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            RoundedRectangle(cornerRadius: 5)
+                                .fill(Color.secondary.opacity(0.1))
+                        )
+                    ManagedIndicator(isManaged: true)
+                } else {
+                    Picker("", selection: bind(\.vertexAuthMode)) {
+                        Text("gcloud (ADC)").tag("adc")
+                        Text("Service account JSON").tag("serviceAccount")
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .frame(maxWidth: 320)
                 }
-                .labelsHidden()
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 320)
                 Spacer()
             }
-            if model.vertexAuthMode == "serviceAccount" {
+            if model.vertexAuthMode == "serviceAccount" && !apiKeysBlocked {
                 VertexServiceAccountRow(model: model)
                 SettingsCaption("Paste the JSON key file you downloaded from GCP IAM → Service Accounts → Keys → Add Key. The whole JSON is stored in the macOS Keychain, never in `~/.parleq/config.json`. Parleq mints short-lived OAuth tokens directly via the SA's RSA private key — no `gcloud` CLI required. Grant the SA the Vertex AI User role on this project.")
+            } else if apiKeysBlocked {
+                HStack(spacing: 6) {
+                    ManagedIndicator(isManaged: true)
+                    Text("Service account JSON entry disabled by your organization.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+                SettingsCaption("Auth uses your local Application Default Credentials. Run `gcloud auth application-default login` once to sign in; Parleq calls `gcloud auth application-default print-access-token` per session to mint short-lived OAuth tokens (cached in memory). The `gcloud` CLI must be on PATH.")
             } else {
                 SettingsCaption("Auth uses your local Application Default Credentials. Run `gcloud auth application-default login` once to sign in; Parleq calls `gcloud auth application-default print-access-token` per session to mint short-lived OAuth tokens (cached in memory). The `gcloud` CLI must be on PATH.")
             }
@@ -1514,32 +1843,85 @@ struct SettingsView: View {
 
     @ViewBuilder
     private func bedrockCredentialsCard(badge: String?) -> some View {
+        // Phase 4+5: bedrockAuthMode pins the auth mode picker (Bedrock IAM only).
+        // staticApiKeysAllowed=false hides the "bedrockApiKey" and "static"
+        // credential-entry controls (both involve user-supplied secrets).
+        // Phase 5: isAuthPathBlocked is true only when the current awsAuthMode
+        // is static or bedrockApiKey AND staticApiKeysAllowed=false. SSO stays
+        // available. The "Auth disabled by org" badge in the card header signals
+        // that the current mode is blocked; the auth-mode picker remains visible
+        // so the user can switch to SSO to escape the blocked state.
+        let bedrockModePinned = model.managedKeys.contains("bedrockAuthMode")
+        let apiKeysBlocked = ManagedConfig.isProviderAuthPathBlocked(provider: "bedrock", authMode: model.awsAuthMode)
         SettingsCard {
             credentialCardHeader(
                 title: "Bedrock (AWS IAM)",
                 isConfigured: model.awsStaticCredentialsSet || model.bedrockAPIKeySet,
-                activeBadge: badge
+                activeBadge: badge,
+                isAuthPathBlocked: apiKeysBlocked
             )
             TextField("Region", text: bind(\.awsRegion))
                 .textFieldStyle(.roundedBorder)
             HStack(alignment: .center) {
                 Text("Auth mode")
                     .frame(minWidth: 90, alignment: .leading)
-                Picker("", selection: bind(\.awsAuthMode)) {
-                    Text("Bedrock API key").tag("bedrockApiKey")
-                    Text("AWS CLI session").tag("sso")
-                    Text("Static credentials").tag("static")
+                if bedrockModePinned {
+                    // Pinned — show as a fixed disabled label (same pattern as
+                    // tier provider/model pickers). No interactive picker.
+                    let modeLabel: String = {
+                        switch model.awsAuthMode {
+                        case "bedrockApiKey": return "Bedrock API key"
+                        case "static":        return "Static credentials"
+                        default:              return "AWS CLI session (SSO)"
+                        }
+                    }()
+                    Text(modeLabel)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(RoundedRectangle(cornerRadius: 5).fill(Color.secondary.opacity(0.1)))
+                    ManagedIndicator(isManaged: true)
+                } else {
+                    Picker("", selection: bind(\.awsAuthMode)) {
+                        Text("Bedrock API key").tag("bedrockApiKey")
+                        Text("AWS CLI session").tag("sso")
+                        Text("Static credentials").tag("static")
+                    }
+                    .labelsHidden()
+                    .frame(maxWidth: 280)
                 }
-                .labelsHidden()
-                .frame(maxWidth: 280)
                 Spacer()
             }
+            if bedrockModePinned {
+                ManagedCaption(isManaged: true)
+            }
+            // Credential-entry controls shown only for the current auth mode,
+            // and only when api keys are not blocked by staticApiKeysAllowed.
             switch model.awsAuthMode {
             case "bedrockApiKey":
-                BedrockAPIKeyRow(model: model)
+                if apiKeysBlocked {
+                    HStack(spacing: 6) {
+                        ManagedIndicator(isManaged: true)
+                        Text("API key entry disabled by your organization.")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                    }
+                } else {
+                    BedrockAPIKeyRow(model: model)
+                }
                 SettingsCaption("Bedrock API keys are scoped to Bedrock specifically — no IAM policy understanding required. Generate one in the AWS Bedrock console → API keys → Create. Stored in the macOS Keychain. Restart to apply.")
             case "static":
-                AWSStaticCredentialsRow(model: model)
+                if apiKeysBlocked {
+                    HStack(spacing: 6) {
+                        ManagedIndicator(isManaged: true)
+                        Text("Static credential entry disabled by your organization.")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                    }
+                } else {
+                    AWSStaticCredentialsRow(model: model)
+                }
                 SettingsCaption("Long-lived AWS access keys stored in the macOS Keychain. Pasted keys never appear in `~/.parleq/config.json` or any plaintext file. Restart to apply.")
             default: // "sso"
                 TextField("AWS profile (optional)", text: bind(\.awsProfile))
@@ -1551,24 +1933,50 @@ struct SettingsView: View {
 
     @ViewBuilder
     private func bedrockBearerCredentialsCard(badge: String?) -> some View {
+        // Phase 4+5: staticApiKeysAllowed=false hides the Bearer key entry
+        // AND marks the card auth-path-blocked (Phase 5). Bedrock bearer uses
+        // only API-key auth — no federated path — so the card is always
+        // blocked when the master switch is off.
+        let apiKeysBlocked = ManagedConfig.isProviderAuthPathBlocked(provider: "bedrock-bearer", authMode: nil)
         SettingsCard {
             credentialCardHeader(
                 title: "Bedrock (bearer token)",
                 isConfigured: model.bedrockAPIKeySet,
-                activeBadge: badge
+                activeBadge: badge,
+                isAuthPathBlocked: apiKeysBlocked
             )
-            BedrockAPIKeyRow(model: model)
+            if apiKeysBlocked {
+                HStack(spacing: 6) {
+                    ManagedIndicator(isManaged: true)
+                    Text("API key entry disabled by your organization.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                BedrockAPIKeyRow(model: model)
+            }
             SettingsCaption("Bedrock API keys provide a simpler auth path — no IAM policy work required. Generate one in the AWS Bedrock console → API keys → Create. Stored in the macOS Keychain. Restart to apply.")
         }
     }
 
     @ViewBuilder
     private func azureCredentialsCard(badge: String?) -> some View {
+        // Phase 4+5: azureAuthMode pins the auth-mode picker.
+        // staticApiKeysAllowed=false hides the "Set API key" button
+        // (apiKey mode only). The azureAd controls (az login / Entra ID)
+        // remain visible regardless of staticApiKeysAllowed.
+        // Phase 5: isAuthPathBlocked when apiKey mode is selected AND the
+        // master switch is off. The "Auth disabled by org" badge in the
+        // header signals the current mode is blocked; the auth-mode picker
+        // stays visible so the user can switch to azureAd to escape.
+        let azureModePinned = model.managedKeys.contains("azureAuthMode")
+        let apiKeysBlocked = ManagedConfig.isProviderAuthPathBlocked(provider: "azure", authMode: model.azureAuthMode)
         SettingsCard {
             credentialCardHeader(
                 title: "Azure OpenAI",
                 isConfigured: model.azureAPIKeySet,
-                activeBadge: badge
+                activeBadge: badge,
+                isAuthPathBlocked: apiKeysBlocked
             )
             TextField("Resource name or full hostname", text: bind(\.azureResource))
                 .textFieldStyle(.roundedBorder)
@@ -1579,19 +1987,47 @@ struct SettingsView: View {
             HStack(alignment: .center) {
                 Text("Auth mode")
                     .frame(minWidth: 110, alignment: .leading)
-                Picker("", selection: bind(\.azureAuthMode)) {
-                    Text("API key").tag("apiKey")
-                    Text("Microsoft Entra ID").tag("azureAd")
+                if azureModePinned {
+                    // Pinned — show as a fixed disabled label.
+                    let modeLabel = model.azureAuthMode == "azureAd" ? "Microsoft Entra ID" : "API key"
+                    Text(modeLabel)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(RoundedRectangle(cornerRadius: 5).fill(Color.secondary.opacity(0.1)))
+                    ManagedIndicator(isManaged: true)
+                } else {
+                    Picker("", selection: bind(\.azureAuthMode)) {
+                        Text("API key").tag("apiKey")
+                        Text("Microsoft Entra ID").tag("azureAd")
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .frame(maxWidth: 320)
                 }
-                .labelsHidden()
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 320)
                 Spacer()
             }
+            if azureModePinned {
+                ManagedCaption(isManaged: true)
+            }
+            // Credential-entry controls:
+            //   azureAd mode → az login / Entra ID caption (no API key needed)
+            //   apiKey mode  → AzureAPIKeyRow, unless staticApiKeysAllowed=false
             if model.azureAuthMode == "azureAd" {
                 SettingsCaption("Auth uses your local `az login` session. Parleq calls `az account get-access-token --resource https://cognitiveservices.azure.com/` per session to mint short-lived OAuth bearers (cached for 50 min in memory). The Azure CLI must be on PATH. Restart to apply.")
             } else {
-                AzureAPIKeyRow(model: model)
+                // apiKey mode
+                if apiKeysBlocked {
+                    HStack(spacing: 6) {
+                        ManagedIndicator(isManaged: true)
+                        Text("API key entry disabled by your organization.")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                    }
+                } else {
+                    AzureAPIKeyRow(model: model)
+                }
                 SettingsCaption("Resource API key from the Keys and Endpoint page of your Azure OpenAI resource. Stored in the macOS Keychain. Restart to apply.")
             }
             SettingsCaption("Azure routes by deployment name, not model name — set the deployment to match what you created in the Azure portal. The Resource field accepts either a bare resource name (e.g. `my-openai`, builds the classic `*.openai.azure.com` URL) or a full hostname (e.g. `my-resource.cognitiveservices.azure.com` or `*.services.ai.azure.com` for newer Foundry resources). Bump the API version to a current preview (e.g. `2025-04-01-preview`) for gpt-5-series models.")
@@ -1600,13 +2036,28 @@ struct SettingsView: View {
 
     @ViewBuilder
     private func openAICredentialsCard(badge: String?) -> some View {
+        // Phase 4+5: staticApiKeysAllowed=false hides the API key entry
+        // AND marks the card auth-path-blocked (Phase 5). OpenAI direct is
+        // API-key only — no federated auth path — so always blocked when the
+        // master switch is off.
+        let apiKeysBlocked = ManagedConfig.isProviderAuthPathBlocked(provider: "openai", authMode: nil)
         SettingsCard {
             credentialCardHeader(
                 title: "OpenAI (direct API)",
                 isConfigured: model.openAIAPIKeySet,
-                activeBadge: badge
+                activeBadge: badge,
+                isAuthPathBlocked: apiKeysBlocked
             )
-            OpenAIAPIKeyRow(model: model)
+            if apiKeysBlocked {
+                HStack(spacing: 6) {
+                    ManagedIndicator(isManaged: true)
+                    Text("API key entry disabled by your organization.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                OpenAIAPIKeyRow(model: model)
+            }
             SettingsCaption("API key from platform.openai.com → API keys → Create new secret key. Stored in the macOS Keychain — never written to ~/.parleq/config.json or any plaintext file. Restart to apply.")
             SettingsCaption("Routes directly to api.openai.com without any Azure intermediary. For data-residency requirements that mandate Azure infrastructure, use Azure OpenAI instead — the model quality is equivalent.")
         }
@@ -1614,8 +2065,23 @@ struct SettingsView: View {
 
     @ViewBuilder
     private var dictionarySection: some View {
-        SettingsCard {
+        // When customDictionaryEnabled is off, the editor is visible
+        // but disabled — the user can see their entries will be
+        // restored when they re-enable the feature, but can't edit
+        // while the feature is off.
+        let isDictEnabled = model.customDictionaryEnabled
+        return SettingsCard {
             VStack(alignment: .leading, spacing: 12) {
+                if !isDictEnabled {
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.circle")
+                            .foregroundStyle(.secondary)
+                        Text("Custom dictionary is disabled. Enable it in Settings → Privacy & Features.")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.bottom, 4)
+                }
                 SettingsCaption("Names and terms the speech model commonly mishears. List alternate spellings the recognizer usually emits (comma-separated) so they all map to the same word. An optional context blurb helps the AI judge whether the topic actually matches the term. Set Biasing to LLM only when a term causes false positives at the speech-recognition layer.")
 
                 if model.dictionaryEntries.isEmpty {
@@ -1646,6 +2112,7 @@ struct SettingsView: View {
                 SettingsCaption("Applied on the next dictation — no restart needed.")
             }
         }
+        .disabled(!isDictEnabled)
     }
 
     @ViewBuilder
@@ -1686,6 +2153,11 @@ struct SettingsView: View {
     @ViewBuilder
     private var permissionsSection: some View {
         PermissionsSectionContent()
+    }
+
+    @ViewBuilder
+    private var privacyFeaturesSection: some View {
+        PrivacyFeaturesSectionContent(model: model)
     }
 
     @ViewBuilder

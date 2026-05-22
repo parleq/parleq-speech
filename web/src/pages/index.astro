@@ -39,6 +39,11 @@ const highlights = [
     body: 'Audio is never written to disk — it lives in memory only, for the few seconds a dictation takes. Logs record metrics (latency, token counts) but never the text itself. Provider API keys live in the macOS Keychain. Cloud sign-in modes (AWS SSO, gcloud, az login) delegate to your existing CLI session, so Parleq never stores long-lived AWS, GCP, or Azure session tokens directly.',
   },
   {
+    title: 'MDM-deployable for IT admins',
+    body: 'Deploy Parleq via your existing MDM (Jamf, Kandji, Mosyle, Intune) and push a managed configuration profile that pins the LLM provider, restricts the model list, disables optional features outside your security review scope, and prevents users from changing any of it. No Parleq admin portal, no licensing key system, no phone-home check.',
+    link: { href: '/docs/admin-guide/', label: 'Admin Guide →' },
+  },
+  {
     title: 'Recovery built in',
     body: 'The last 20 cleaned dictations are kept in memory and surfaced in the menu bar — click any entry to copy it back to the clipboard. Useful when a paste lands in the wrong app. Wiped on quit; never written to disk.',
   },
@@ -257,6 +262,16 @@ const highlights = [
           <p class="mt-3 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
             {h.body}
           </p>
+          {h.link && (
+            <p class="mt-3">
+              <a
+                href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + h.link.href}
+                class="text-[14px] font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline"
+              >
+                {h.link.label}
+              </a>
+            </p>
+          )}
         </div>
       ))}
     </div>

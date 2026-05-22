@@ -75,6 +75,10 @@ const speekUrl = 'https://github.com/jstruzik/Speek';
       </p>
 
       <p>
+        If you're an IT admin rather than the end user, that same posture extends to fleet deployment. Parleq supports macOS Managed Configuration — you can push a <code class="rounded bg-[color:var(--color-surface)] px-1 font-mono text-[13px]">.mobileconfig</code> profile via your existing MDM that pins the LLM provider, restricts the model list, disables optional features, and prevents users from changing any of it. No Parleq admin portal needed. The <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/admin-guide/'} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Admin Guide</a> has the full deployment walkthrough.
+      </p>
+
+      <p>
         The whole thing is <a href={repoUrl} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">on GitHub</a> under Apache-2.0. Audio never leaves your Mac. Logs carry length-only diagnostics, never transcript content. API keys live in the macOS Keychain.
       </p>
 

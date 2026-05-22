@@ -3,6 +3,7 @@ import Layout from '../layouts/Layout.astro';
 import Logo from '../components/Logo.astro';
 
 const repoUrl = 'https://github.com/parleq/parleq-speech';
+const baseUrl = `${import.meta.env.BASE_URL}`.replace(/\/$/, '');
 
 // Seeded FAQ questions, grouped by section. Each entry is { q, a }
 // where `a` may contain Astro JSX (links, code, etc.). Answers are
@@ -110,6 +111,19 @@ const sections = [
       {
         q: 'Can I use Parleq at work?',
         a: `Probably yes, but it depends on your company's policies. Parleq has no Parleq-side backend — calls flow through whichever cloud account you point it at, governed by that cloud's contract. If your organization has already approved AWS Bedrock, GCP Vertex, or Azure OpenAI for other work, Parleq fits inside that existing approval; there's no separate vendor to onboard. If your work hasn't approved any of those, the question shifts to whether you can sanction direct calls to Google AI Studio (consumer terms — usually not appropriate for sensitive work), which is the only configuration that doesn't lean on your org's existing cloud relationships.`,
+      },
+    ],
+  },
+  {
+    title: 'Enterprise deployment',
+    items: [
+      {
+        q: 'Can my IT department deploy Parleq fleet-wide and lock down which LLM provider it uses?',
+        a: `Yes. Parleq reads macOS Managed Configuration at startup, so your IT team can push a <code class="rounded bg-[color:var(--color-bg)] px-1 font-mono text-[13px]">.mobileconfig</code> profile via any MDM (Jamf, Kandji, Mosyle, Intune, and others) that pins the LLM provider, restricts the allowed model list, and disables optional features — all enforced at runtime so users cannot change them through Settings. If your organization has already approved AWS Bedrock, Google Vertex AI, or Azure OpenAI for other work, Parleq fits inside that existing approval without a separate vendor review or data-flow diagram. For the full deployment walkthrough, see the <a href="${baseUrl}/docs/admin-guide/" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Admin Guide</a>.`,
+      },
+      {
+        q: 'What can my organization configure or restrict via MDM?',
+        a: `The managed configuration schema has 20 supported keys. The main categories: <strong>Provider and model</strong> — pin the cleanup provider (e.g. <code class="rounded bg-[color:var(--color-bg)] px-1 font-mono text-[13px]">cleanupProvider: bedrock</code>), restrict the allowed model list, and disable the custom-model entry field so users cannot route around the list. <strong>Auth mode</strong> — force federated identity (AWS SSO, Entra ID, gcloud ADC) and disable all static API-key paths globally; previously-stored Keychain credentials are not deleted but are not used while the policy is active. <strong>Feature toggles</strong> — disable image reference capture, file reference, or other optional features your security review requires off. <strong>Updates</strong> — disable automatic update checks, or redirect the Sparkle feed URL to an internal mirror your security team vets before distribution. <strong>Logging mode</strong> — assert the <code class="rounded bg-[color:var(--color-bg)] px-1 font-mono text-[13px]">lengthOnly</code> policy for auditors. All keys are documented in the <a href="${baseUrl}/docs/managed-configuration/" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Managed Configuration reference</a>.`,
       },
     ],
   },

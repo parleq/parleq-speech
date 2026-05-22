@@ -358,7 +358,18 @@ public final class AppState {
     /// references immediately. Released by either the user pressing
     /// the hotkey again without Shift (→ start dictation), or Esc /
     /// Cancel (→ discard and return to idle).
+    ///
+    /// When referenceWindowsEnabled is false the staging path is
+    /// bypassed — Shift+hotkey falls through to a normal capture
+    /// instead of opening the reference picker. A one-liner is logged
+    /// so it's visible in the debug stream but not surfaced to the user.
     private func enterStaging() {
+        guard Config.load().config.referenceWindowsEnabled else {
+            log("referenceWindowsEnabled=false: staging skipped, entering capture directly")
+            quickMode = false
+            startFreshCapture()
+            return
+        }
         phase = .staging
         overlay.show(state: .staging, text: "")
         windowPickerWindow.show()
@@ -648,8 +659,14 @@ public final class AppState {
     /// without this, the .nonactivating panel chain means the dialog
     /// opens without focus, leaving clicks unresponsive until the
     /// user Cmd-Tabs away and back.
+    ///
+    /// Gated by fileReferenceEnabled — when false this is a no-op.
     @MainActor
     private func handleAddFileFromPicker() {
+        guard Config.load().config.fileReferenceEnabled else {
+            log("fileReferenceEnabled=false: file picker ignored")
+            return
+        }
         // Hide first so the file dialog isn't occluded by the picker.
         windowPickerWindow.hide()
         // Activate Parleq so NSOpenPanel becomes the key window.
@@ -688,8 +705,15 @@ public final class AppState {
 
     /// "Add from clipboard" button in the WindowPicker: attach the
     /// current pasteboard contents as a Reference and hide the picker.
+    /// Gated by clipboardReferenceEnabled — when false this is a no-op
+    /// (the button itself should already be hidden in the picker UI,
+    /// but defense-in-depth guards the handler as well).
     @MainActor
     private func handleAddClipboardFromPicker() {
+        guard Config.load().config.clipboardReferenceEnabled else {
+            log("clipboardReferenceEnabled=false: clipboard attach ignored")
+            return
+        }
         if let ref = ScreenCaptureKitReferenceCapture.referenceFromClipboard() {
             overlay.model.references.append(ref)
             windowPickerWindow.hide()
@@ -1012,7 +1036,14 @@ public final class AppState {
                 // cleanup pass (term + context — feeds the smart
                 // vocabulary hint). Edits in Settings apply on the
                 // next utterance without restart.
-                let dictionary = Config.load().config.customDictionary
+                // When customDictionaryEnabled is false, treat the
+                // dictionary as empty for the LLM prompt boundary (the
+                // stored entries are preserved on disk and will be used
+                // again when the toggle is re-enabled).
+                let loadedConfig = Config.load().config
+                let dictionary = loadedConfig.customDictionaryEnabled
+                    ? loadedConfig.customDictionary
+                    : []
                 // ASR-side vocabulary biasing covers entries marked
                 // `.asrAndLLM` only — `.llmOnly` entries skip the
                 // STT pass to avoid CTC false positives (issue #15).
@@ -1078,6 +1109,26 @@ public final class AppState {
                 // pickedModelOverride the user may have set via the
                 // in-overlay ModelPicker (Task 9).
                 let resolvedLLM = self?.llmForInvocation()
+                // When imageReferenceEnabled is false, downgrade any
+                // image-mode references to text mode for prompt-building.
+                // The reference chips in the overlay still show the
+                // original mode (they were captured before the toggle
+                // was checked here), but the LLM sees text-only content.
+                let rawRefs = self?.overlay.model.references ?? []
+                let effectiveRefs: [Reference]
+                if loadedConfig.imageReferenceEnabled {
+                    effectiveRefs = rawRefs
+                } else {
+                    effectiveRefs = rawRefs.map { ref in
+                        guard ref.captureMode == .image else { return ref }
+                        var degraded = ref
+                        degraded.captureMode = .text
+                        return degraded
+                    }
+                    if rawRefs.contains(where: { $0.captureMode == .image }) {
+                        self?.log("imageReferenceEnabled=false: image refs degraded to text for prompt-building")
+                    }
+                }
                 let outcome = await streamCleanupOrRefine(
                     llm: resolvedLLM,
                     overlay: overlay,
@@ -1087,7 +1138,7 @@ public final class AppState {
                     priorText: priorText,
                     targetBundleID: targetBundleID,
                     customDictionary: dictionary,
-                    references: self?.overlay.model.references ?? [],
+                    references: effectiveRefs,
                     pasteDestinationLabel: self?.overlay.model.pasteTarget.map { dest in
                         if let title = dest.windowTitle, !title.isEmpty {
                             return "\(dest.appName) — \(title)"
@@ -1350,8 +1401,26 @@ public final class AppState {
         let overlay = self.overlay
         let rawTranscript = lastRawTranscript
         let targetBundleID = pasteTarget?.bundleID
-        let dictionary = Config.load().config.customDictionary
+        let recleanConfig = Config.load().config
+        let dictionary = recleanConfig.customDictionaryEnabled
+            ? recleanConfig.customDictionary
+            : []
         let resolvedLLM = llmForInvocation()
+        // Apply the same image-reference degradation as the primary
+        // capture path: when imageReferenceEnabled is false, downgrade
+        // any image-mode references to text for prompt-building.
+        let rawRefs = overlay.model.references
+        let effectiveRefs: [Reference]
+        if recleanConfig.imageReferenceEnabled {
+            effectiveRefs = rawRefs
+        } else {
+            effectiveRefs = rawRefs.map { ref in
+                guard ref.captureMode == .image else { return ref }
+                var degraded = ref
+                degraded.captureMode = .text
+                return degraded
+            }
+        }
         inFlightTask = Task { @MainActor [weak self] in
             let outcome = await streamCleanupOrRefine(
                 llm: resolvedLLM,
@@ -1362,7 +1431,7 @@ public final class AppState {
                 priorText: "",
                 targetBundleID: targetBundleID,
                 customDictionary: dictionary,
-                references: self?.overlay.model.references ?? [],
+                references: effectiveRefs,
                 pasteDestinationLabel: self?.overlay.model.pasteTarget.map { dest in
                     if let title = dest.windowTitle, !title.isEmpty {
                         return "\(dest.appName) — \(title)"

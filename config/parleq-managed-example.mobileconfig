@@ -1,0 +1,194 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>PayloadDisplayName</key>
+    <string>Parleq Managed Configuration (Example)</string>
+    <key>PayloadDescription</key>
+    <string>Example enterprise policy for Parleq. Restricts LLM provider and model choices to Azure OpenAI, disables image-mode references and the custom model picker, and manages auto-update centrally. Customize before deploying to your fleet.</string>
+    <key>PayloadIdentifier</key>
+    <string>com.parleq.managed-config.example</string>
+    <key>PayloadType</key>
+    <string>Configuration</string>
+    <key>PayloadUUID</key>
+    <string>4F41D1F4-C5E2-4C9C-92B4-613BD26D6F85</string>
+    <key>PayloadVersion</key>
+    <integer>1</integer>
+    <key>PayloadOrganization</key>
+    <string>Example Corp</string>
+    <key>PayloadContent</key>
+    <array>
+        <dict>
+            <key>PayloadType</key>
+            <string>com.apple.ManagedClient.preferences</string>
+            <key>PayloadIdentifier</key>
+            <string>com.parleq.managed-config.example.payload</string>
+            <key>PayloadUUID</key>
+            <string>A39C2449-DFAF-4B94-AB91-B2EE6F7BC0CB</string>
+            <key>PayloadVersion</key>
+            <integer>1</integer>
+            <key>PayloadDisplayName</key>
+            <string>Parleq managed preferences</string>
+
+            <!-- Apple's standard nested structure for managed
+                 preferences. mdmclient reads PayloadContent → bundle
+                 ID → Forced → [mcx_preference_settings] and writes
+                 the resulting key/value pairs to
+                 /Library/Managed Preferences/com.parleq.app.plist
+                 so that CFPreferencesAppValueIsForced returns true
+                 for each key from the app side. -->
+            <key>PayloadContent</key>
+            <dict>
+                <key>com.parleq.app</key>
+                <dict>
+                    <key>Forced</key>
+                    <array>
+                        <dict>
+                            <key>mcx_preference_settings</key>
+                            <dict>
+
+                                <!-- ═══ Provider/model lockdown ═══════════════════════════════ -->
+
+                                <!-- Restrict cleanup tier to Azure or OpenAI.
+                                     Use cleanupProvider (String) to pin to a single provider,
+                                     OR cleanupAllowedProviders ([String]) to offer a subset.
+                                     When both are set, the pin wins.
+
+                                     Allowed provider IDs: gemini, vertex, bedrock,
+                                     bedrock-bearer, azure, openai -->
+                                <key>cleanupAllowedProviders</key>
+                                <array>
+                                    <string>azure</string>
+                                    <string>openai</string>
+                                </array>
+
+                                <!-- Restrict cleanup model to GPT-4o family.
+                                     Use cleanupModel (String) to pin to a single model,
+                                     OR cleanupAllowedModels ([String]) to offer a subset.
+                                     When both are set, the pin wins.
+
+                                     Best practice: when using allowlists for both
+                                     provider AND model, choose model IDs that are
+                                     valid for at least one allowed provider. Parleq
+                                     filters the picker per-provider at render time,
+                                     so listing cross-provider models works but the
+                                     user only sees models valid for their chosen
+                                     provider. -->
+                                <key>cleanupAllowedModels</key>
+                                <array>
+                                    <string>gpt-4o</string>
+                                    <string>gpt-4o-mini</string>
+                                </array>
+
+                                <!-- ═══ Feature toggles ════════════════════════════════════════ -->
+
+                                <!-- Keep reference windows enabled — users can attach windows,
+                                     clipboard, and files to their dictations. -->
+                                <key>referenceWindowsEnabled</key>
+                                <true/>
+
+                                <!-- Clipboard reference: allowed. -->
+                                <key>clipboardReferenceEnabled</key>
+                                <true/>
+
+                                <!-- Image-mode references: disabled.
+                                     All captured references use OCR (text mode) only.
+                                     No screenshots are ever sent to the LLM. -->
+                                <key>imageReferenceEnabled</key>
+                                <false/>
+
+                                <!-- File references: disabled.
+                                     Hides the "Add file…" picker and drag-drop affordance.
+                                     Window-capture and clipboard remain available. -->
+                                <key>fileReferenceEnabled</key>
+                                <false/>
+
+                                <!-- Custom dictionary: allowed. -->
+                                <key>customDictionaryEnabled</key>
+                                <true/>
+
+                                <!-- Custom model picker: disabled.
+                                     Users must pick from the curated model list; the
+                                     "Custom…" entry is hidden. Defense-in-depth: any
+                                     non-curated model already in config is reset to the
+                                     provider default at startup. -->
+                                <key>customModelEntryEnabled</key>
+                                <false/>
+
+                                <!-- Auto-update: managed centrally.
+                                     The "Automatically check for updates" toggle in Settings
+                                     is locked off. IT deploys Parleq updates via package
+                                     management (Jamf, Munki, etc.) on their own cadence. -->
+                                <key>autoUpdateEnabled</key>
+                                <false/>
+
+                                <!-- ═══ Operational policy ════════════════════════════════════ -->
+
+                                <!-- Sparkle update feed URL (optional).
+                                     Override the default https://parleq.app/appcast.xml to
+                                     point at an internal mirror your IT team hosts after
+                                     security review. Must be https://. The Ed25519 signature
+                                     check is not affected — SUPublicEDKey in the app's
+                                     Info.plist still verifies every downloaded update.
+                                     Uncomment and set to your internal mirror URL to enable:
+                                <key>sparkleUpdateFeedURL</key>
+                                <string>https://internal-mirror.example.com/parleq/appcast.xml</string>
+                                -->
+
+                                <!-- Logging mode: compliance-sensitive deployments can pin
+                                     this to "lengthOnly" to document that verbose logging
+                                     is not permitted even if a future build adds that mode.
+                                     Recognized values: "lengthOnly", "verbose".
+                                     "lengthOnly" is the default and current behavior for
+                                     all deployments regardless of this setting. -->
+                                <key>loggingMode</key>
+                                <string>lengthOnly</string>
+
+                                <!-- ═══ Auth-mode restrictions (Phase 4) ═══════════════════════ -->
+
+                                <!-- staticApiKeysAllowed — master switch for static-credential auth paths.
+                                     When false, hides every "Set ... API key", "Set ... Service
+                                     Account JSON", and "Set ... Bearer key" button across ALL
+                                     provider credentials cards, AND refuses to use already-stored
+                                     static credentials at runtime. Providers with no federated-auth
+                                     fallback (Gemini, OpenAI direct, Bedrock bearer) become
+                                     unavailable; Azure/Bedrock IAM/Vertex remain usable via their
+                                     federated modes (az login / AWS SSO / gcloud ADC). Stored
+                                     credentials are not deleted — removing the profile restores
+                                     prior functionality without re-entering keys.
+                                     Uncomment to enforce no-static-keys policy:
+                                <key>staticApiKeysAllowed</key>
+                                <false/>
+                                -->
+
+                                <!-- azureAuthMode — pin Azure OpenAI authentication mode.
+                                     Recognized values: "apiKey" (default), "azureAd" (Entra ID).
+                                     When pinned to "azureAd", the API key entry row is hidden and
+                                     the picker shows a fixed "Microsoft Entra ID" label.
+                                     Unrecognized values are rejected with a log warning.
+                                     Uncomment to force Entra ID for Azure:
+                                <key>azureAuthMode</key>
+                                <string>azureAd</string>
+                                -->
+
+                                <!-- bedrockAuthMode — pin Bedrock (AWS IAM) authentication mode.
+                                     Applies to the "bedrock" provider only (not "bedrock-bearer").
+                                     Recognized values: "sso" (default — AWS CLI session),
+                                     "static" (long-lived IAM access keys), "bedrockApiKey".
+                                     When pinned to "sso", credential-entry controls for the other
+                                     modes are hidden.
+                                     Unrecognized values are rejected with a log warning.
+                                     Uncomment to force AWS SSO for Bedrock:
+                                <key>bedrockAuthMode</key>
+                                <string>sso</string>
+                                -->
+
+                            </dict>
+                        </dict>
+                    </array>
+                </dict>
+            </dict>
+        </dict>
+    </array>
+</dict>
+</plist>

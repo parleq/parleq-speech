@@ -4,6 +4,21 @@ import Logo from '../../components/Logo.astro';
 
 const repoUrl = 'https://github.com/parleq/parleq-speech';
 
+const adminDocs = [
+  {
+    slug: 'admin-guide',
+    name: 'Admin Guide',
+    blurb: 'Start here if you\'re deploying Parleq to a fleet. Covers the deployment workflow (MDM profile → upload → verify), common patterns for Azure-only and Bedrock-only orgs, auth-mode lockdown, compliance-first lockdown, and signed-app posture.',
+    badge: 'Start here',
+  },
+  {
+    slug: 'managed-configuration',
+    name: 'Managed Configuration',
+    blurb: 'Complete schema reference for all 20 managed-configuration keys: provider pinning, model allowlists, auth-mode restrictions, feature toggles, update feed override, and logging mode. Includes a local-testing recipe for validating a profile without enrolling in an MDM.',
+    badge: 'Schema reference',
+  },
+];
+
 const providers = [
   {
     slug: 'gemini',
@@ -38,7 +53,7 @@ const providers = [
 ];
 ---
 
-<Layout title="Docs — Parleq" description="Provider setup guides for Parleq's pluggable LLM cleanup. Gemini, OpenAI, Bedrock, Vertex AI, and Azure OpenAI.">
+<Layout title="Docs — Parleq" description="Provider setup guides for Parleq's pluggable LLM cleanup (Gemini, OpenAI, Bedrock, Vertex AI, Azure OpenAI) and enterprise deployment guides for IT admins.">
   <header class="mx-auto flex max-w-5xl items-center justify-between px-6 pt-8">
     <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/'} class="inline-flex items-center">
       <Logo height="36" />
@@ -81,7 +96,29 @@ const providers = [
       ))}
     </div>
 
-    <section class="mt-16 rounded-xl border border-[color:var(--color-border-subtle)] bg-[color:var(--color-surface)] p-6">
+    <section class="mt-16">
+      <h2 class="font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">For IT admins</h2>
+      <p class="mt-4 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
+        Parleq supports macOS Managed Configuration — deploy via your existing MDM and push a profile that governs provider choice, model restrictions, auth modes, and feature toggles across your fleet.
+      </p>
+      <div class="mt-6 grid gap-4 sm:grid-cols-2">
+        {adminDocs.map((d) => (
+          <a
+            href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + `/docs/${d.slug}/`}
+            class="group rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6 transition-colors hover:border-[color:var(--color-text-muted)]"
+          >
+            <div class="flex items-baseline justify-between gap-3">
+              <h3 class="font-display text-xl font-semibold tracking-tight text-[color:var(--color-text)]">{d.name}</h3>
+              <span class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-text-subtle)]">{d.badge}</span>
+            </div>
+            <p class="mt-3 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">{d.blurb}</p>
+            <p class="mt-5 text-[13px] font-medium text-[color:var(--color-accent)] group-hover:underline">Read more →</p>
+          </a>
+        ))}
+      </div>
+    </section>
+
+    <section class="mt-8 rounded-xl border border-[color:var(--color-border-subtle)] bg-[color:var(--color-surface)] p-6">
       <h2 class="font-display text-lg font-semibold tracking-tight text-[color:var(--color-text)]">No cleanup at all?</h2>
       <p class="mt-3 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
         Open <strong class="text-[color:var(--color-text)]">Settings… → LLM → Provider</strong> and pick <strong class="text-[color:var(--color-text)]">None — paste raw ASR (skip cleanup)</strong>. Parleq will paste the raw transcript exactly as the on-device speech model emitted it, and no audio or text ever leaves your Mac. Useful when transcript content must never touch a third party — e.g., for compliance-strict environments or when you want to manually edit the ASR output yourself.

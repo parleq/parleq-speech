@@ -81,6 +81,11 @@ public final class MenuBar: NSObject {
     /// the download progress, the relaunch.
     public var onCheckForUpdates: (() -> Void)?
 
+    /// Closure invoked when the user picks "View Managed Configuration…".
+    /// Opens the Compliance Audit dialog. Wired in ParleqApp.main to
+    /// `ManagedConfigAuditWindowController.shared.show()`.
+    public var onViewManagedConfig: (() -> Void)?
+
     /// Invoked when the user picks an entry from the Microphone
     /// submenu (#25). Empty string = "System Default"; otherwise a
     /// Core Audio device UID. ParleqApp wires this to update both
@@ -179,6 +184,13 @@ public final class MenuBar: NSObject {
         )
         checkForUpdatesItem.target = self
 
+        let viewManagedConfigItem = NSMenuItem(
+            title: "View Managed Configuration…",
+            action: #selector(viewManagedConfig),
+            keyEquivalent: ""
+        )
+        viewManagedConfigItem.target = self
+
         let aboutItem = NSMenuItem(
             title: "About Parleq",
             action: #selector(showAbout),
@@ -211,6 +223,7 @@ public final class MenuBar: NSObject {
         menu.addItem(.separator())
         menu.addItem(resetASRItem)
         menu.addItem(checkForUpdatesItem)
+        menu.addItem(viewManagedConfigItem)
         menu.addItem(recentMenuItem)
         menu.addItem(aboutItem)
         menu.addItem(licensesItem)
@@ -231,6 +244,10 @@ public final class MenuBar: NSObject {
 
     @objc private func checkForUpdates() {
         onCheckForUpdates?()
+    }
+
+    @objc private func viewManagedConfig() {
+        onViewManagedConfig?()
     }
 
     @objc private func resetASR() {
