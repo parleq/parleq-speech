@@ -36,7 +36,7 @@ const stages = [
     summary:
       'The raw transcript streams to a configurable AI provider that lightly cleans the text — capitalization, punctuation, filler-word removal, common transcription errors, and spoken numbers turned into digits when context is technical. Cleaned words stream into the overlay as they arrive.',
     detail: [
-      ['Pluggable providers across four paths', 'Five options: Google Gemini direct API (default — free tier, ~500–700 ms TTFT), Google Vertex AI (same Gemini models on GCP for IAM + audit logs + data residency), AWS Bedrock (Anthropic Claude or OpenAI GPT-OSS), Azure OpenAI (GPT-4o + gpt-5 family on Microsoft\'s contract), or skip cleanup entirely and paste raw ASR. The choice is made in Settings or via the first-run setup wizard.'],
+      ['Pluggable providers', 'Six options: Google Gemini direct API (default — free tier, ~500–700 ms TTFT), OpenAI direct API (GPT-4o / GPT-4.1 family), Google Vertex AI (Gemini + Claude on GCP with IAM + audit logs), AWS Bedrock (Claude or GPT-OSS via your AWS account), Azure OpenAI (GPT-4o / GPT-4.1 + reasoning models on Microsoft\'s contract), or skip cleanup entirely and paste raw ASR. The choice is made in Settings or via the first-run setup wizard.'],
       ['Auth flexibility per provider', 'Each cloud supports both pasted API keys (stored in the macOS Keychain) and your existing CLI session — gcloud Application Default Credentials for Vertex (or service-account JSON), AWS SSO / static IAM keys / scoped Bedrock API keys for Bedrock, az login or resource keys for Azure. Parleq never stores long-lived cloud session tokens directly; the AWS/GCP/Azure CLIs handle refresh through their own caches.'],
       ['Skippable', 'Pick "None — paste raw ASR (skip cleanup)" from the Settings provider list. Parleq will paste the raw transcript exactly as the on-device speech model emitted it. Useful when transcript content must never leave the device.'],
       ['Custom dictionary hint', 'Your dictionary feeds a smart-vocabulary addendum to the cleanup prompt — terms with optional context blurbs and aliases. The LLM judges topic alignment and prefers your canonical spellings without force-correcting genuine homophones.'],
@@ -168,6 +168,49 @@ const stages = [
     </ol>
   </section>
 
+  <!-- Reference Windows. Explain the feature before the refinement
+       loop because references feed into cleanup + refinement turns. -->
+  <section class="border-t border-[color:var(--color-border-subtle)]">
+    <div class="mx-auto max-w-3xl px-6 py-20">
+      <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">
+        Reference Windows
+      </p>
+      <h2 class="mt-4 font-display text-3xl font-medium tracking-tight sm:text-4xl">
+        Give the LLM something to look at.
+      </h2>
+      <p class="mt-6 text-lg leading-relaxed text-[color:var(--color-text-muted)]">
+        Before dictating, you can attach context — a window's contents, a file, or the current clipboard — and the cleanup LLM will use it when processing your speech. Useful when you're dictating something that references on-screen material: a ticket, an email, a code diff, a document.
+      </p>
+
+      <dl class="mt-8 space-y-6 border-l border-[color:var(--color-border)] pl-5">
+        <div>
+          <dt class="text-sm font-semibold text-[color:var(--color-text)]">Window capture</dt>
+          <dd class="mt-1 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
+            Click the <strong>"Pick a window…"</strong> button in the overlay (or use the keyboard shortcut) and click any on-screen window. Parleq captures it via ScreenCaptureKit — either as OCR'd text or, when you've picked a vision-capable model, as an actual PNG sent to the LLM as image tokens. Screen Recording permission is requested lazily on first use, not at startup.
+          </dd>
+        </div>
+        <div>
+          <dt class="text-sm font-semibold text-[color:var(--color-text)]">File and clipboard</dt>
+          <dd class="mt-1 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
+            Drag a file onto the overlay, use the file picker button, or attach the current clipboard as a text reference. PDFs, images, and plain-text files are all supported.
+          </dd>
+        </div>
+        <div>
+          <dt class="text-sm font-semibold text-[color:var(--color-text)]">Per-tier model configuration</dt>
+          <dd class="mt-1 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
+            Settings exposes a Cleanup tier and a Context tier, each with its own provider + model dropdown. You can mix providers — for example, Gemini Flash-Lite for fast everyday cleanup and Claude Sonnet on Bedrock for reference-aware turns that benefit from deeper reasoning.
+          </dd>
+        </div>
+        <div>
+          <dt class="text-sm font-semibold text-[color:var(--color-text)]">Memory only</dt>
+          <dd class="mt-1 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
+            Captured PNG data lives in process memory and is released when the dictation session ends (accept or cancel). Reference content is sent only to your configured LLM endpoint — no Parleq-controlled relay, no caching, no disk write.
+          </dd>
+        </div>
+      </dl>
+    </div>
+  </section>
+
   <!-- Refinement loop. Stages 3 and 4 don't have to run once: while
        the overlay is open, each subsequent hotkey press re-runs
        stage 3 with a different system prompt that treats your speech
@@ -277,7 +320,7 @@ const stages = [
             <li><code class="rounded bg-[color:var(--color-border-subtle)] px-1.5 py-0.5 font-mono text-[13px] text-[color:var(--color-text)]">~/.parleq/config.json</code> — settings + custom dictionary, user-authored.</li>
             <li><code class="rounded bg-[color:var(--color-border-subtle)] px-1.5 py-0.5 font-mono text-[13px] text-[color:var(--color-text)]">~/.parleq/usage.jsonl</code> — one line per LLM call: timestamp, model, token counts, latency. <strong class="font-semibold text-[color:var(--color-text)]">Metadata only.</strong></li>
             <li><code class="rounded bg-[color:var(--color-border-subtle)] px-1.5 py-0.5 font-mono text-[13px] text-[color:var(--color-text)]">~/.parleq/app.log</code> — diagnostic log. ASR/LLM metrics are length-only ("post-utterance 87 ms, 142 chars / 28 words"); never the transcript itself.</li>
-            <li>Provider secrets in the macOS <strong class="font-semibold text-[color:var(--color-text)]">Keychain</strong> — Gemini API key, Bedrock API key, AWS static credentials, Vertex service-account JSON, Azure resource API key. Whichever you've configured.</li>
+            <li>Provider secrets in the macOS <strong class="font-semibold text-[color:var(--color-text)]">Keychain</strong> — Gemini API key, OpenAI API key, Bedrock API key, AWS static credentials, Vertex service-account JSON, Azure resource API key. Whichever you've configured.</li>
           </ul>
         </div>
         <div>
@@ -286,6 +329,7 @@ const stages = [
             <li><strong class="font-semibold text-[color:var(--color-text)]">Audio bytes.</strong> WAV / PCM stays in process memory only. The Parakeet model is called directly as a Swift function call — there's no IPC, no listening sockets, no <code class="rounded bg-[color:var(--color-border-subtle)] px-1.5 py-0.5 font-mono text-[13px] text-[color:var(--color-text)]">/tmp/parleq-*.wav</code>.</li>
             <li><strong class="font-semibold text-[color:var(--color-text)]">Transcripts.</strong> Raw ASR output stays in memory.</li>
             <li><strong class="font-semibold text-[color:var(--color-text)]">Cleaned text.</strong> Held in the overlay during cleanup, then in a 20-entry in-memory ring for the menu's Recent Dictations submenu, then gone on app quit. Never serialized.</li>
+            <li><strong class="font-semibold text-[color:var(--color-text)]">Reference captures.</strong> PNG screenshots and OCR'd text from Reference Windows stay in process memory for the duration of a single dictation session. Released on accept or cancel — never written to disk and never cached between sessions.</li>
             <li><strong class="font-semibold text-[color:var(--color-text)]">Cloud session tokens (AWS / GCP / Azure).</strong> CLI-session auth modes delegate token refresh to the official AWS / gcloud / az CLI caches at <code class="rounded bg-[color:var(--color-border-subtle)] px-1.5 py-0.5 font-mono text-[13px] text-[color:var(--color-text)]">~/.aws/sso/cache/</code>, <code class="rounded bg-[color:var(--color-border-subtle)] px-1.5 py-0.5 font-mono text-[13px] text-[color:var(--color-text)]">~/.config/gcloud/</code>, and <code class="rounded bg-[color:var(--color-border-subtle)] px-1.5 py-0.5 font-mono text-[13px] text-[color:var(--color-text)]">~/.azure/</code>. Parleq stores no long-lived session tokens directly.</li>
           </ul>
         </div>

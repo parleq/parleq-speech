@@ -30,7 +30,7 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
       Google Vertex AI
     </h1>
     <p class="mt-6 text-[17px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      Vertex AI is Google's enterprise-flavored access to its Gemini models. The models themselves are identical to what the direct Google AI API serves — same Gemini 2.5 Flash, same response quality — but the calls run through your organization's Google Cloud (GCP) project instead of through a personal AI Studio account. That brings with it the IAM controls, audit logs, regional deployment guarantees, and contract terms most companies require to actually use an AI service for work. If your team already uses GCP, Vertex is usually the right answer.
+      Vertex AI is Google's enterprise-flavored access to Gemini models — and, via publisher-model routing, to Anthropic's Claude as well. The Gemini models are identical to what the direct Google AI API serves — same Gemini 2.5 Flash, same response quality — but the calls run through your organization's Google Cloud (GCP) project instead of through a personal AI Studio account. That brings IAM controls, audit logs, regional deployment guarantees, and contract terms most companies require to actually use an AI service for work. If your team already uses GCP, Vertex is usually the right answer.
     </p>
 
     <div class="mt-8 rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6">
@@ -143,7 +143,14 @@ gcloud auth application-default set-quota-project my-team-prod-1234`}</code></pr
         <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">gemini-2.5-flash</code> is the default and is the right choice for almost every dictation use case — same model as the direct Gemini API, just running on your GCP project. Cleanup is a low-stakes, low-token task; Flash matches Pro for it at a fraction of the latency.
       </p>
       <p>
-        To pick a different model, open <strong class="text-[color:var(--color-text)]">Settings… → LLM</strong>. The <strong class="text-[color:var(--color-text)]">Model</strong> dropdown carries the recommended Gemini variants — <strong class="text-[color:var(--color-text)]">Flash</strong> (default), <strong class="text-[color:var(--color-text)]">Flash-Lite</strong> (faster + cheaper), and <strong class="text-[color:var(--color-text)]">Pro</strong> (long, technical transcripts). Pick <strong class="text-[color:var(--color-text)]">Custom (enter below)</strong> to type any other Vertex-supported model identifier, e.g. a regional preview model or a publisher model your project has access to. Make sure the chosen model is offered in the configured region.
+        To pick a different model, open <strong class="text-[color:var(--color-text)]">Settings… → LLM</strong>. The <strong class="text-[color:var(--color-text)]">Model</strong> dropdown carries:
+      </p>
+      <ul class="mt-3 space-y-2 list-disc list-inside marker:text-[color:var(--color-text-subtle)] text-[15px] text-[color:var(--color-text-muted)]">
+        <li>Gemini variants: <strong class="text-[color:var(--color-text)]">Flash-Lite</strong> (fastest + cheapest), <strong class="text-[color:var(--color-text)]">Flash</strong> (default, balanced), <strong class="text-[color:var(--color-text)]">Pro</strong> (long, technical transcripts)</li>
+        <li>Anthropic models on Vertex: <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[13px]">claude-haiku-4-5@20251001</code> and <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[13px]">claude-sonnet-4-5@20250929</code> — routed through Vertex's publisher-model API to the Anthropic-specific region (<code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[13px]">us-east5</code> or <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[13px]">europe-west1</code>). Configure <strong class="text-[color:var(--color-text)]">Anthropic region</strong> separately in Settings when using these.</li>
+      </ul>
+      <p class="mt-4">
+        Pick <strong class="text-[color:var(--color-text)]">Custom (enter below)</strong> to type any other Vertex-supported model identifier. Make sure the chosen model is offered in the configured region.
       </p>
       <p class="text-[14px] text-[color:var(--color-text-subtle)]">
         Power-user note: every Settings field maps to a key in <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">~/.parleq/config.json</code> and can also be edited there directly. Settings is the recommended path for most users.
