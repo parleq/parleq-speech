@@ -269,6 +269,8 @@ public final class LLMClient: LLMProvider, Sendable {
             return "Gemini rejected the API key. Open Settings → LLM → Set Gemini API Key… to update it."
         case .missingCredentials, .badStatus, .malformedResponse, .requestFailed:
             return nil
+        case .authPathBlocked(let msg):
+            return msg
         }
     }
 }

@@ -427,6 +427,8 @@ public final class AzureOpenAIProvider: LLMProvider, Sendable {
             }
         case .badStatus, .malformedResponse, .requestFailed:
             return nil
+        case .authPathBlocked(let msg):
+            return msg
         }
     }
 
@@ -445,7 +447,7 @@ public final class AzureOpenAIProvider: LLMProvider, Sendable {
             return true
         case .badStatus(let code, _):
             return code == 401
-        case .missingAPIKey, .malformedResponse, .requestFailed:
+        case .missingAPIKey, .malformedResponse, .requestFailed, .authPathBlocked:
             return false
         }
     }

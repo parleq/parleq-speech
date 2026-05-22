@@ -870,8 +870,16 @@ private struct OverlayContent: View {
         // Drag-and-drop: accept file URLs, images, and text onto the
         // overlay surface. Drops are forwarded through the same factory
         // helpers as the + menu items (Task 11). Gated to .staging /
-        // .awaitingAccept — other states reject silently.
-        .onDrop(of: [.fileURL, .image, .text], isTargeted: $isDragOver) { providers in
+        // .awaitingAccept — other states reject silently. Also gated
+        // by fileReferenceEnabled (and referenceWindowsEnabled as the
+        // parent): when file drop is disabled, the drop handler is
+        // not installed and the system shows the "not allowed" cursor.
+        .onDrop(
+            of: featureState.referenceWindowsEnabled && featureState.fileReferenceEnabled
+                ? [UTType.fileURL, UTType.image, UTType.text]
+                : [],
+            isTargeted: $isDragOver
+        ) { providers in
             return handleDrop(providers: providers)
         }
         // Brand-orange border tint while a drag is hovering. The
@@ -955,49 +963,58 @@ private struct OverlayContent: View {
     /// menu bar on long transcripts.
     @ViewBuilder
     private var headerStrip: some View {
+        let features = featureState
         HStack(spacing: 8) {
-            // Reference chips — scrollable horizontally when many
-            // attached. The paste-target indicator used to live here
-            // too, but moved to the footer (next to Accept) so it's
-            // only displayed when there's something to actually paste.
-            //
-            // When no references are attached, the chip area would
-            // otherwise be empty — leaving a blank header bar with
-            // just a "+" floating at the right edge, which reads as
-            // unfinished UI. Show a tertiary-color affordance hint
-            // instead so the area has visible purpose.
-            if model.references.isEmpty {
-                HStack(spacing: 5) {
-                    Image(systemName: "rectangle.on.rectangle.angled")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.tertiary)
-                    Text("Add a reference window for context")
-                        // SF Rounded for consistency with the
-                        // listening-state hint — same family of
-                        // secondary descriptive text.
-                        .font(.system(size: 11, design: .rounded))
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                }
-                .accessibilityHidden(true)
-                Spacer()
-            } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
-                        ForEach(model.references) { ref in
-                            ReferenceChip(
-                                reference: ref,
-                                onRemove: {
-                                    model.references.removeAll { $0.id == ref.id }
-                                },
-                                onToggleMode: isToggleEnabled(for: ref) ? {
-                                    if let i = model.references.firstIndex(where: { $0.id == ref.id }) {
-                                        var updated = model.references[i]
-                                        updated.captureMode = (updated.captureMode == .text) ? .image : .text
-                                        model.references[i] = updated
-                                    }
-                                } : nil
-                            )
+            // Reference chips — only shown when referenceWindowsEnabled.
+            // When disabled, the whole chip strip and + menu are hidden
+            // so the header just shows the model badge.
+            if features.referenceWindowsEnabled {
+                // Reference chips — scrollable horizontally when many
+                // attached. The paste-target indicator used to live here
+                // too, but moved to the footer (next to Accept) so it's
+                // only displayed when there's something to actually paste.
+                //
+                // When no references are attached, the chip area would
+                // otherwise be empty — leaving a blank header bar with
+                // just a "+" floating at the right edge, which reads as
+                // unfinished UI. Show a tertiary-color affordance hint
+                // instead so the area has visible purpose.
+                if model.references.isEmpty {
+                    HStack(spacing: 5) {
+                        Image(systemName: "rectangle.on.rectangle.angled")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.tertiary)
+                        Text("Add a reference window for context")
+                            // SF Rounded for consistency with the
+                            // listening-state hint — same family of
+                            // secondary descriptive text.
+                            .font(.system(size: 11, design: .rounded))
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                    }
+                    .accessibilityHidden(true)
+                    Spacer()
+                } else {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            ForEach(model.references) { ref in
+                                ReferenceChip(
+                                    reference: ref,
+                                    onRemove: {
+                                        model.references.removeAll { $0.id == ref.id }
+                                    },
+                                    // imageReferenceEnabled gates the T/👁 toggle:
+                                    // when false, pass nil so the chip renders the
+                                    // indicator dimmed with no click affordance.
+                                    onToggleMode: (features.imageReferenceEnabled && isToggleEnabled(for: ref)) ? {
+                                        if let i = model.references.firstIndex(where: { $0.id == ref.id }) {
+                                            var updated = model.references[i]
+                                            updated.captureMode = (updated.captureMode == .text) ? .image : .text
+                                            model.references[i] = updated
+                                        }
+                                    } : nil
+                                )
+                            }
                         }
                     }
                 }
@@ -1012,23 +1029,51 @@ private struct OverlayContent: View {
             // computed-getters would re-read it 3× per render).
             modelBadgeRegion(headerBadgeState)
 
-            // + Menu — three ways to add a reference:
-            //   • Pick a window…     → existing WindowPickerWindow
-            //   • Add file…          → NSOpenPanel
-            //   • Add from clipboard → NSPasteboard
-            Menu {
-                Button("Pick a window…", action: onShowWindowPicker)
-                Button("Add file…", action: pickFileAction)
-                Button("Add from clipboard", action: addFromClipboardAction)
-            } label: {
-                Image(systemName: "plus.circle")
-                    .font(.system(size: 14))
-                    .foregroundStyle(.secondary)
+            // + Menu — shown only when referenceWindowsEnabled. Items
+            // within the menu are further gated by sub-toggles:
+            //   • "Add file…" hidden when fileReferenceEnabled is false
+            //   • "Add from clipboard" hidden when clipboardReferenceEnabled is false
+            // "Pick a window…" is always shown when the parent is on.
+            if features.referenceWindowsEnabled {
+                Menu {
+                    Button("Pick a window…", action: onShowWindowPicker)
+                    if features.fileReferenceEnabled {
+                        Button("Add file…", action: pickFileAction)
+                    }
+                    if features.clipboardReferenceEnabled {
+                        Button("Add from clipboard", action: addFromClipboardAction)
+                    }
+                } label: {
+                    Image(systemName: "plus.circle")
+                        .font(.system(size: 14))
+                        .foregroundStyle(.secondary)
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .accessibilityLabel("Add reference")
             }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .accessibilityLabel("Add reference")
         }
+    }
+
+    /// Feature-toggle snapshot read once per body evaluation.
+    /// Gates which overlay affordances are visible. Kept in a struct
+    /// so we pay the Config.load() disk-read cost exactly once per body
+    /// evaluation instead of once per sub-property access.
+    private struct FeatureState {
+        let referenceWindowsEnabled: Bool
+        let clipboardReferenceEnabled: Bool
+        let imageReferenceEnabled: Bool
+        let fileReferenceEnabled: Bool
+    }
+
+    private var featureState: FeatureState {
+        let cfg = Config.load().config
+        return FeatureState(
+            referenceWindowsEnabled: cfg.referenceWindowsEnabled,
+            clipboardReferenceEnabled: cfg.clipboardReferenceEnabled,
+            imageReferenceEnabled: cfg.imageReferenceEnabled,
+            fileReferenceEnabled: cfg.fileReferenceEnabled
+        )
     }
 
     /// Bundle of badge-related state computed once per body

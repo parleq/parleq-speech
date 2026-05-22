@@ -252,6 +252,8 @@ public final class BedrockBearerProvider: LLMProvider, Sendable {
             return "Bedrock rejected the API key in region `\(region)`. Open Settings → LLM → Set Bedrock API Key… (or confirm the key has access to model `\(model)` in this region)."
         case .badStatus, .malformedResponse, .requestFailed:
             return nil
+        case .authPathBlocked(let msg):
+            return msg
         }
     }
 }

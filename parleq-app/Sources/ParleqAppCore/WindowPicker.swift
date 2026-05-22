@@ -313,6 +313,23 @@ struct WindowPickerView: View {
     let onAddClipboard: () -> Void
     let onPickByClicking: () -> Void
 
+    /// Feature-toggle snapshot read once per body evaluation.
+    /// Gates which action buttons are visible. Kept in a struct so
+    /// we pay the Config.load() disk-read cost exactly once per body
+    /// evaluation instead of once per sub-property access.
+    private struct FeatureState {
+        let fileReferenceEnabled: Bool
+        let clipboardReferenceEnabled: Bool
+    }
+
+    private var featureState: FeatureState {
+        let cfg = Config.load().config
+        return FeatureState(
+            fileReferenceEnabled: cfg.fileReferenceEnabled,
+            clipboardReferenceEnabled: cfg.clipboardReferenceEnabled
+        )
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             // Action button row — placed above the window grid header so
@@ -351,23 +368,33 @@ struct WindowPickerView: View {
 
     @ViewBuilder
     private var actionButtonRow: some View {
+        // Read toggles once per render so every sub-access is free.
+        let features = featureState
         HStack(spacing: 8) {
-            Button(action: onAddFile) {
-                Label("Add file…", systemImage: "doc.badge.plus")
-                    .font(.system(size: 11))
+            if features.fileReferenceEnabled {
+                Button(action: onAddFile) {
+                    Label("Add file…", systemImage: "doc.badge.plus")
+                        .font(.system(size: 11))
+                }
+                .controlSize(.small)
+                .help("Attach a file as a reference")
             }
-            .controlSize(.small)
-            .help("Attach a file as a reference")
 
-            Button(action: onAddClipboard) {
-                Label("Add from clipboard", systemImage: "doc.on.clipboard")
-                    .font(.system(size: 11))
+            if features.clipboardReferenceEnabled {
+                Button(action: onAddClipboard) {
+                    Label("Add from clipboard", systemImage: "doc.on.clipboard")
+                        .font(.system(size: 11))
+                }
+                .controlSize(.small)
+                .help("Attach the current clipboard contents as a reference")
             }
-            .controlSize(.small)
-            .help("Attach the current clipboard contents as a reference")
 
             Spacer()
 
+            // "Pick by clicking" is always shown — it is the picker's
+            // primary purpose. referenceWindowsEnabled=false already
+            // prevents the picker from opening at all, so if we're
+            // here, window-capture is permitted.
             Button(action: onPickByClicking) {
                 Label("Pick by clicking on screen", systemImage: "cursorarrow.rays")
                     .font(.system(size: 11))

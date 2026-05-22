@@ -84,6 +84,9 @@ public enum LLMError: Error, CustomStringConvertible {
     case badStatus(Int, String)
     case malformedResponse(String)
     case requestFailed(Error)
+    /// Phase 5 — thrown by BlockedProvider when staticApiKeysAllowed=false
+    /// prevents using the provider's static-key auth path at runtime.
+    case authPathBlocked(String)
 
     public var description: String {
         switch self {
@@ -97,6 +100,8 @@ public enum LLMError: Error, CustomStringConvertible {
             return "LLM response malformed: \(detail)"
         case .requestFailed(let underlying):
             return "LLM request failed: \(underlying)"
+        case .authPathBlocked(let detail):
+            return "Auth path blocked by organization policy: \(detail)"
         }
     }
 }
@@ -191,6 +196,57 @@ extension LLMError {
             // The underlying error is a URLSession/network error —
             // safe to log (no response body embedded here).
             return "LLMError.requestFailed(\(String(describing: underlying)))"
+        case .authPathBlocked(let detail):
+            // Policy-enforcement error — detail string is IT-authored
+            // policy language, safe to log in full.
+            return "LLMError.authPathBlocked(\(detail))"
         }
+    }
+}
+
+// MARK: - BlockedProvider (Phase 5)
+
+/// A sentinel `LLMProvider` returned by `makeProvider` when
+/// `staticApiKeysAllowed=false` blocks the provider's auth path.
+///
+/// Unlike returning `nil` (which AppState interprets as "no LLM
+/// configured — skip cleanup silently"), `BlockedProvider` is non-nil
+/// so `streamCleanupOrRefine` attempts a cleanup call, immediately
+/// receives `.authPathBlocked`, and routes the error through the
+/// standard `cleanupFailureHint` path to surface a clear,
+/// actionable message in the overlay.
+///
+/// The message stored at init time is the same one that was logged
+/// by `makeProvider` at launch. Both callers (cleanup and context tier)
+/// receive the same provider and the same message.
+public struct BlockedProvider: LLMProvider, Sendable {
+    public let model: String
+    public let providerName: String
+    private let blockedMessage: String
+
+    public init(providerID: String, model: String, message: String) {
+        self.model = model
+        self.providerName = providerID
+        self.blockedMessage = message
+    }
+
+    public var supportsVision: Bool { false }
+
+    /// Immediately throws `.authPathBlocked` — no network call is made.
+    public func generateStreaming(
+        systemPrompt: String,
+        messages: [LLMMessage],
+        onEvent: @Sendable (LLMStreamEvent) -> Void
+    ) async throws {
+        throw LLMError.authPathBlocked(blockedMessage)
+    }
+
+    /// Returns the stored message as the user-facing recovery hint so
+    /// the overlay shows actionable guidance (not a raw error string).
+    public func cleanupFailureHint(for error: LLMError) -> String? {
+        if case .authPathBlocked(let msg) = error {
+            return msg
+        }
+        return nil
     }
 }

@@ -264,6 +264,8 @@ public final class OpenAIProvider: LLMProvider, Sendable {
             return "OpenAI rejected the API key. Open Settings → Cleanup → Set OpenAI API Key… and verify the key is current."
         case .badStatus, .malformedResponse, .requestFailed:
             return nil
+        case .authPathBlocked(let msg):
+            return msg
         }
     }
 }
