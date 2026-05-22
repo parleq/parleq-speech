@@ -665,18 +665,39 @@ private struct ConfigureProviderStep: View {
     }
 
     private var geminiPanel: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Get a free API key from Google AI Studio.")
-                .font(.callout)
-            Link("Open Google AI Studio →",
-                 destination: URL(string: "https://aistudio.google.com/apikey")!)
-                .font(.callout)
-            SecureField("AIza…", text: $model.pendingGeminiKey)
-                .textFieldStyle(.roundedBorder)
-                .frame(maxWidth: 400)
-            Text("Stored in the macOS Keychain. You can also leave this blank and paste the key later in Settings — Parleq picks it up on the next dictation without a restart.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+        // Phase 7 — when staticApiKeysAllowed=false, Gemini's API-key
+        // auth path is blocked at runtime by makeProvider's
+        // BlockedProvider sentinel. Hide the credential field in the
+        // wizard so the user isn't confused into pasting a key that
+        // won't be usable. The provider-picker step ideally would
+        // route them away from Gemini entirely, but for now this
+        // matches the Settings UI's gate.
+        let geminiBlocked = ManagedConfig.isProviderAuthPathBlocked(provider: "gemini", authMode: nil)
+        return VStack(alignment: .leading, spacing: 10) {
+            if geminiBlocked {
+                HStack(spacing: 6) {
+                    ManagedIndicator(isManaged: true)
+                    Text("API key entry disabled by your organization.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                Text("Gemini direct (Google AI Studio API) requires a static API key, which your organization has disabled. Choose a federated-auth provider (Vertex with ADC, Azure with Entra ID, or Bedrock with SSO) in the previous step.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text("Get a free API key from Google AI Studio.")
+                    .font(.callout)
+                Link("Open Google AI Studio →",
+                     destination: URL(string: "https://aistudio.google.com/apikey")!)
+                    .font(.callout)
+                SecureField("AIza…", text: $model.pendingGeminiKey)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(maxWidth: 400)
+                Text("Stored in the macOS Keychain. You can also leave this blank and paste the key later in Settings — Parleq picks it up on the next dictation without a restart.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -749,12 +770,29 @@ private struct ConfigureProviderStep: View {
             }
 
             if model.pendingVertexAuthMode == "serviceAccount" {
-                Text("Service account JSON:")
-                    .font(.callout)
-                TextEditor(text: $model.pendingVertexServiceAccountJSON)
-                    .font(.system(.caption, design: .monospaced))
-                    .frame(height: 120)
-                    .border(Color.secondary.opacity(0.3))
+                // Phase 7 — when staticApiKeysAllowed=false, service-account
+                // JSON entry is blocked at runtime. Hide the paste affordance
+                // so a user doesn't waste effort pasting a key that won't work.
+                let saBlocked = ManagedConfig.isProviderAuthPathBlocked(provider: "vertex", authMode: "serviceAccount")
+                if saBlocked {
+                    HStack(spacing: 6) {
+                        ManagedIndicator(isManaged: true)
+                        Text("Service account JSON entry disabled by your organization.")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
+                    Text("Vertex with service-account JSON is a static-credential auth path, which your organization has disabled. Switch this picker to “gcloud (ADC)” to use Application Default Credentials instead.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    Text("Service account JSON:")
+                        .font(.callout)
+                    TextEditor(text: $model.pendingVertexServiceAccountJSON)
+                        .font(.system(.caption, design: .monospaced))
+                        .frame(height: 120)
+                        .border(Color.secondary.opacity(0.3))
+                }
             }
         }
     }
@@ -801,16 +839,33 @@ private struct ConfigureProviderStep: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             if model.pendingAzureAuthMode == "apiKey" {
-                HStack {
-                    Text("API Key:")
-                        .frame(width: 90, alignment: .trailing)
-                    SecureField("32-character hex string", text: $model.pendingAzureKey)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(maxWidth: 360)
+                // Phase 7 — when staticApiKeysAllowed=false, Azure apiKey
+                // auth is blocked at runtime. Hide the API-key field so the
+                // user isn't confused into pasting a key that won't work.
+                let azureApiKeyBlocked = ManagedConfig.isProviderAuthPathBlocked(provider: "azure", authMode: "apiKey")
+                if azureApiKeyBlocked {
+                    HStack(spacing: 6) {
+                        ManagedIndicator(isManaged: true)
+                        Text("API key entry disabled by your organization.")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
+                    Text("Azure with API-key auth is a static-credential path, which your organization has disabled. Switch this picker to “Microsoft Entra ID” to authenticate via your local `az login` session instead.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    HStack {
+                        Text("API Key:")
+                            .frame(width: 90, alignment: .trailing)
+                        SecureField("32-character hex string", text: $model.pendingAzureKey)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(maxWidth: 360)
+                    }
+                    Text("Stored in the macOS Keychain.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-                Text("Stored in the macOS Keychain.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
         }
     }

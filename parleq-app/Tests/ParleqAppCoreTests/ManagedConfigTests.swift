@@ -498,13 +498,86 @@ final class ManagedConfigTests: XCTestCase {
 
     // MARK: - 13. ManagedConfig.allKeys — single source of truth
 
-    func test_allKeys_count_is_twenty() {
+    func test_allKeys_count_is_twentynine() {
         // Phase 1 (7 Bool) + Phase 2 (8 String/[String]) + Phase 3 (2 operational)
-        // + Phase 4 (3 auth-mode restriction) = 20.
+        // + Phase 4 (3 auth-mode restriction) + Phase 7 (8 destination pins
+        // + vertexAuthMode) = 29.
         // Bumping this count requires a coordinated change in
         // ManagedConfig.allKeys + the audit-row resolution + the docs page.
-        XCTAssertEqual(ManagedConfig.allKeys.count, 20,
-                       "ManagedConfig.allKeys must contain exactly 20 managed-eligible keys (Phase 1 + 2 + 3 + 4)")
+        XCTAssertEqual(ManagedConfig.allKeys.count, 29,
+                       "ManagedConfig.allKeys must contain exactly 29 managed-eligible keys (Phase 1 + 2 + 3 + 4 + 7)")
+    }
+
+    func test_allKeys_contains_all_phase7_destination_pin_keys() {
+        let phase7Keys = [
+            "vertexAuthMode",
+            "asrEndpoint",
+            "vertexProject",
+            "vertexRegion",
+            "vertexAnthropicRegion",
+            "awsRegion",
+            "awsProfile",
+            "azureResource",
+            "azureDeployment",
+        ]
+        for key in phase7Keys {
+            XCTAssertTrue(ManagedConfig.allKeys.contains(key),
+                          "allKeys should contain Phase 7 key '\(key)'")
+        }
+    }
+
+    // MARK: - Phase 7 — validateASREndpoint
+
+    func test_validateASREndpoint_accepts_bundled_sentinel() {
+        XCTAssertEqual(
+            ManagedConfig.validateASREndpoint("http://127.0.0.1:8767/inference"),
+            "http://127.0.0.1:8767/inference",
+            "The bundled-FluidAudio sentinel string must validate verbatim"
+        )
+    }
+
+    func test_validateASREndpoint_accepts_https_with_host() {
+        XCTAssertEqual(
+            ManagedConfig.validateASREndpoint("https://asr.example.com/inference"),
+            "https://asr.example.com/inference"
+        )
+    }
+
+    func test_validateASREndpoint_trims_whitespace() {
+        XCTAssertEqual(
+            ManagedConfig.validateASREndpoint("  https://asr.example.com/inference  "),
+            "https://asr.example.com/inference"
+        )
+    }
+
+    func test_validateASREndpoint_rejects_http_when_not_bundled_sentinel() {
+        // Plain HTTP to anywhere other than the bundled sentinel is rejected —
+        // MDM-pushed audio routing must travel over TLS.
+        XCTAssertNil(ManagedConfig.validateASREndpoint("http://attacker.example/inference"))
+        XCTAssertNil(ManagedConfig.validateASREndpoint("http://127.0.0.1:9999/inference"))
+    }
+
+    func test_validateASREndpoint_rejects_empty() {
+        XCTAssertNil(ManagedConfig.validateASREndpoint(""))
+        XCTAssertNil(ManagedConfig.validateASREndpoint("   "))
+    }
+
+    func test_validateASREndpoint_rejects_userinfo() {
+        // Embedded credentials would leak via logs / clipboard snapshots.
+        XCTAssertNil(ManagedConfig.validateASREndpoint("https://user:pass@asr.example.com/inference"))
+    }
+
+    func test_validateASREndpoint_rejects_query_string() {
+        // Query strings suggest tokenized URLs we don't want logged.
+        XCTAssertNil(ManagedConfig.validateASREndpoint("https://asr.example.com/inference?token=secret"))
+    }
+
+    func test_validateASREndpoint_rejects_no_host() {
+        XCTAssertNil(ManagedConfig.validateASREndpoint("https:///inference"))
+    }
+
+    func test_validateASREndpoint_rejects_file_scheme() {
+        XCTAssertNil(ManagedConfig.validateASREndpoint("file:///tmp/inference"))
     }
 
     func test_allKeys_contains_all_phase1_bool_keys() {

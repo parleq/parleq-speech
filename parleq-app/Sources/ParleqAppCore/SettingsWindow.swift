@@ -1617,6 +1617,34 @@ struct SettingsView: View {
 
     /// Header row shown at the top of each credential card.
     /// `activeBadge` is an optional "Used for Cleanup" / "Used for
+    /// Labeled text-field row used across the credential cards. Renders
+    /// a small caption-style label above the field so a populated /
+    /// disabled / MDM-managed value still tells the user WHAT it is
+    /// (without a label, a disabled "corp-openai" field is an
+    /// uninterpretable string). When `isManaged` is true the field
+    /// disables, the lock indicator appears alongside, and the "Managed
+    /// by your organization" caption appears beneath.
+    @ViewBuilder
+    private func labeledField(
+        label: String,
+        placeholder: String,
+        binding: Binding<String>,
+        isManaged: Bool
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(label)
+                .font(.system(size: 10))
+                .foregroundStyle(.tertiary)
+            HStack(alignment: .center, spacing: 6) {
+                TextField(placeholder, text: binding)
+                    .textFieldStyle(.roundedBorder)
+                    .disabled(isManaged)
+                ManagedIndicator(isManaged: isManaged)
+            }
+            ManagedCaption(isManaged: isManaged)
+        }
+    }
+
     /// Context" / "Used for Cleanup + Context" label rendered inline
     /// with the provider title when the provider is actively selected
     /// for at least one tier.
@@ -1782,27 +1810,50 @@ struct SettingsView: View {
                 activeBadge: badge,
                 isAuthPathBlocked: apiKeysBlocked
             )
-            TextField("GCP project ID", text: bind(\.vertexProject))
-                .textFieldStyle(.roundedBorder)
-            TextField("Region (e.g. us-central1)", text: bind(\.vertexRegion))
-                .textFieldStyle(.roundedBorder)
+            let vertexProjectManaged = model.managedKeys.contains("vertexProject")
+            let vertexRegionManaged = model.managedKeys.contains("vertexRegion")
+            let vertexAnthropicRegionManaged = model.managedKeys.contains("vertexAnthropicRegion")
+            let vertexAuthModeManaged = model.managedKeys.contains("vertexAuthMode")
+            labeledField(label: "GCP project ID",
+                         placeholder: "e.g. my-gcp-project",
+                         binding: bind(\.vertexProject),
+                         isManaged: vertexProjectManaged)
+            labeledField(label: "Region",
+                         placeholder: "e.g. us-central1",
+                         binding: bind(\.vertexRegion),
+                         isManaged: vertexRegionManaged)
             SettingsCaption("Gemini calls use this region.")
-            TextField("Anthropic region (e.g. us-east5)", text: bind(\.vertexAnthropicRegion))
-                .textFieldStyle(.roundedBorder)
+            labeledField(label: "Anthropic region",
+                         placeholder: "e.g. us-east5",
+                         binding: bind(\.vertexAnthropicRegion),
+                         isManaged: vertexAnthropicRegionManaged)
             SettingsCaption("Claude calls on Vertex use this region. us-east5 and europe-west1 are common; us-central1 doesn't host the Anthropic publisher.")
             HStack(alignment: .center) {
                 Text("Auth mode")
                     .frame(minWidth: 90, alignment: .leading)
-                if apiKeysBlocked {
-                    // Fixed disabled label — matches the Azure / Bedrock
-                    // pinned-mode pattern. Avoids the deceptive state where
-                    // a single-option segmented picker would visually
-                    // highlight ADC while the underlying `vertexAuthMode`
-                    // storage still held `serviceAccount`. By rendering a
-                    // label instead of a picker, the user's stored
-                    // preference (whatever it is) is preserved on disk and
-                    // restored when MDM is removed.
-                    Text("gcloud (ADC)")
+                // Three managed cases collapse onto the same fixed-label
+                // rendering path:
+                //   1. staticApiKeysAllowed=false (apiKeysBlocked) — auth
+                //      path block forces ADC; serviceAccount is the
+                //      blocked static-credential path.
+                //   2. vertexAuthMode is pinned by MDM — render the
+                //      pinned mode as a fixed label rather than a
+                //      segmented picker, so the underlying stored value
+                //      (which the save() path preserves on disk) isn't
+                //      visually conflated with the effective MDM choice.
+                // In either case we drop the segmented picker and the
+                // ManagedIndicator marks the row as managed.
+                if apiKeysBlocked || vertexAuthModeManaged {
+                    let pinnedLabel: String = {
+                        // When apiKeysBlocked forces ADC regardless of
+                        // stored value (case 1), always show ADC.
+                        // Otherwise show whichever mode is pinned.
+                        if apiKeysBlocked { return "gcloud (ADC)" }
+                        return model.vertexAuthMode == "serviceAccount"
+                            ? "Service account JSON"
+                            : "gcloud (ADC)"
+                    }()
+                    Text(pinnedLabel)
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 8)
@@ -1826,15 +1877,17 @@ struct SettingsView: View {
             if model.vertexAuthMode == "serviceAccount" && !apiKeysBlocked {
                 VertexServiceAccountRow(model: model)
                 SettingsCaption("Paste the JSON key file you downloaded from GCP IAM → Service Accounts → Keys → Add Key. The whole JSON is stored in the macOS Keychain, never in `~/.parleq/config.json`. Parleq mints short-lived OAuth tokens directly via the SA's RSA private key — no `gcloud` CLI required. Grant the SA the Vertex AI User role on this project.")
-            } else if apiKeysBlocked {
-                HStack(spacing: 6) {
-                    ManagedIndicator(isManaged: true)
-                    Text("Service account JSON entry disabled by your organization.")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                }
-                SettingsCaption("Auth uses your local Application Default Credentials. Run `gcloud auth application-default login` once to sign in; Parleq calls `gcloud auth application-default print-access-token` per session to mint short-lived OAuth tokens (cached in memory). The `gcloud` CLI must be on PATH.")
             } else {
+                // Phase 7 fix for #196: when apiKeysBlocked forces the
+                // fixed "gcloud (ADC)" label above, we previously also
+                // rendered a separate "Service account JSON entry
+                // disabled by your organization" HStack here. That read
+                // as contradictory next to the ADC label — the user
+                // would see "you're using ADC" plus "JSON is disabled"
+                // and wonder which one applied. The fixed label + lock
+                // icon already communicates "JSON not available";
+                // dropping the redundant HStack collapses the card to a
+                // single coherent state.
                 SettingsCaption("Auth uses your local Application Default Credentials. Run `gcloud auth application-default login` once to sign in; Parleq calls `gcloud auth application-default print-access-token` per session to mint short-lived OAuth tokens (cached in memory). The `gcloud` CLI must be on PATH.")
             }
             SettingsCaption("Restart to apply.")
@@ -1860,8 +1913,12 @@ struct SettingsView: View {
                 activeBadge: badge,
                 isAuthPathBlocked: apiKeysBlocked
             )
-            TextField("Region", text: bind(\.awsRegion))
-                .textFieldStyle(.roundedBorder)
+            let awsRegionManaged = model.managedKeys.contains("awsRegion")
+            let awsProfileManaged = model.managedKeys.contains("awsProfile")
+            labeledField(label: "Region",
+                         placeholder: "e.g. us-east-2",
+                         binding: bind(\.awsRegion),
+                         isManaged: awsRegionManaged)
             HStack(alignment: .center) {
                 Text("Auth mode")
                     .frame(minWidth: 90, alignment: .leading)
@@ -1924,8 +1981,10 @@ struct SettingsView: View {
                 }
                 SettingsCaption("Long-lived AWS access keys stored in the macOS Keychain. Pasted keys never appear in `~/.parleq/config.json` or any plaintext file. Restart to apply.")
             default: // "sso"
-                TextField("AWS profile (optional)", text: bind(\.awsProfile))
-                    .textFieldStyle(.roundedBorder)
+                labeledField(label: "AWS profile (optional)",
+                             placeholder: "e.g. work — leave empty to use AWS_PROFILE or default",
+                             binding: bind(\.awsProfile),
+                             isManaged: awsProfileManaged)
                 SettingsCaption("Uses your local `aws sso login --profile <name>` session. Region defaults to us-east-2; Bedrock model availability varies by region. Restart to apply.")
             }
         }
@@ -1978,12 +2037,24 @@ struct SettingsView: View {
                 activeBadge: badge,
                 isAuthPathBlocked: apiKeysBlocked
             )
-            TextField("Resource name or full hostname", text: bind(\.azureResource))
-                .textFieldStyle(.roundedBorder)
-            TextField("Deployment name", text: bind(\.azureDeployment))
-                .textFieldStyle(.roundedBorder)
-            TextField("API version", text: bind(\.azureApiVersion))
-                .textFieldStyle(.roundedBorder)
+            let azureResourceManaged = model.managedKeys.contains("azureResource")
+            let azureDeploymentManaged = model.managedKeys.contains("azureDeployment")
+            // Explicit field labels — once a value populates the TextField
+            // (especially when disabled + MDM-managed) the placeholder is
+            // hidden and the field becomes anonymous. The label sits above
+            // each field in the same caption style as tierProviderPicker.
+            labeledField(label: "Resource",
+                         placeholder: "e.g. corp-openai or full hostname",
+                         binding: bind(\.azureResource),
+                         isManaged: azureResourceManaged)
+            labeledField(label: "Deployment",
+                         placeholder: "e.g. gpt-4o-mini",
+                         binding: bind(\.azureDeployment),
+                         isManaged: azureDeploymentManaged)
+            labeledField(label: "API version",
+                         placeholder: "e.g. 2025-04-01-preview",
+                         binding: bind(\.azureApiVersion),
+                         isManaged: false)
             HStack(alignment: .center) {
                 Text("Auth mode")
                     .frame(minWidth: 110, alignment: .leading)
@@ -2167,19 +2238,25 @@ struct SettingsView: View {
 
     @ViewBuilder
     private var advancedSection: some View {
+        let asrEndpointManaged = model.managedKeys.contains("asrEndpoint")
         SettingsCard {
             VStack(alignment: .leading, spacing: 10) {
                 Text("Speech-recognition endpoint")
                     .font(.callout.weight(.medium))
-                TextField("Endpoint", text: bind(\.asrEndpoint))
-                    .textFieldStyle(.roundedBorder)
+                HStack(alignment: .center, spacing: 6) {
+                    TextField("Endpoint", text: bind(\.asrEndpoint))
+                        .textFieldStyle(.roundedBorder)
+                        .disabled(asrEndpointManaged)
+                    ManagedIndicator(isManaged: asrEndpointManaged)
+                }
                 SettingsCaption("Default uses in-process FluidAudio (Parakeet TDT v3 on the Apple Neural Engine) — no network, no local listening socket. To swap in your own speech backend, point at any OpenAI-compatible /inference server (e.g. Sherpa-ONNX or faster-whisper running locally). The bundled FluidAudio is not initialized when this is non-default, so the model's ~1.5 GB resident cost is not paid. Use the “Reset to default” button to return to the bundled endpoint sentinel \(Config.bundledASREndpoint). Restart to apply.")
+                ManagedCaption(isManaged: asrEndpointManaged)
                 HStack(spacing: 8) {
                     Button("Reset to default") {
                         model.asrEndpoint = Config.bundledASREndpoint
                         model.save()
                     }
-                    .disabled(model.asrEndpoint == Config.bundledASREndpoint)
+                    .disabled(model.asrEndpoint == Config.bundledASREndpoint || asrEndpointManaged)
                     Spacer()
                 }
             }

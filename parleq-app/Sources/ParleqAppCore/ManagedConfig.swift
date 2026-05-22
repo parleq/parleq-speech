@@ -31,7 +31,10 @@ public enum ManagedConfig {
 
     /// Every managed-eligible key across Phase 1 (7 Bool keys),
     /// Phase 2 (8 string/array keys), Phase 3 (2 operational
-    /// policy keys), and Phase 4 (3 auth-mode restriction keys).
+    /// policy keys), Phase 4 (3 auth-mode restriction keys), and
+    /// Phase 7 (1 auth-mode pin + 8 destination pins, closing the
+    /// "use a different endpoint" exfiltration gaps within an
+    /// otherwise-allowed provider).
     /// This is the single source of truth consumed by the Compliance
     /// Audit dialog, `allKeys`, and test coverage checks.
     /// autoUpdateEnabled is the Sparkle-side Bool.
@@ -60,6 +63,22 @@ public enum ManagedConfig {
         "staticApiKeysAllowed",
         "azureAuthMode",
         "bedrockAuthMode",
+        // Phase 7 — destination pins. These close the "MDM pins
+        // provider+model+auth-mode but the user re-targets the data
+        // at a personal cloud account or attacker-controlled ASR
+        // server" exfiltration class. Pin-only (no allowlist) —
+        // orgs typically have ONE Vertex project, ONE Azure
+        // resource, etc.; allowlist semantics can be added later
+        // if a deployment asks for them.
+        "vertexAuthMode",
+        "asrEndpoint",
+        "vertexProject",
+        "vertexRegion",
+        "vertexAnthropicRegion",
+        "awsRegion",
+        "awsProfile",
+        "azureResource",
+        "azureDeployment",
     ]
 
     /// Emit a one-line startup summary of which managed keys were
@@ -209,6 +228,43 @@ public enum ManagedConfig {
             return nil
         }
         return url
+    }
+
+    /// Strict validator for the managed `asrEndpoint` value. Centralized so
+    /// `Config.applyManagedOverlay` and the UI gate agree on what "valid" means.
+    ///
+    /// Allowed forms:
+    ///   - `Config.bundledASREndpoint` verbatim (in-process FluidAudio).
+    ///   - An https:// URL with a non-empty host, no embedded userinfo, no
+    ///     query parameters, and no fragment. Plain http:// is REJECTED —
+    ///     the unmanaged codepath accepts it for local-dev setups
+    ///     (sherpa-onnx on 127.0.0.1), but if an admin is pushing the
+    ///     endpoint via MDM the intent is corporate routing, which must
+    ///     travel over TLS. Fragments are rejected for the same reason as
+    ///     queries: a tokenized URL ending in `#token=...` would still be
+    ///     visible in the disabled TextField and the clipboard snapshot.
+    ///
+    /// Returns the trimmed value on success (so callers can store the
+    /// validated form), or nil if any check fails.
+    public static func validateASREndpoint(_ raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        // Bundled sentinel — exact match required so a misspelling falls
+        // into URL validation rather than silently being treated as bundled.
+        if trimmed == Config.bundledASREndpoint {
+            return trimmed
+        }
+        guard let url = URL(string: trimmed),
+              let scheme = url.scheme?.lowercased(), scheme == "https",
+              let host = url.host, !host.isEmpty,
+              (url.user == nil || url.user?.isEmpty == true),
+              (url.password == nil || url.password?.isEmpty == true),
+              url.query == nil,
+              url.fragment == nil
+        else {
+            return nil
+        }
+        return trimmed
     }
 
     /// Returns false when `staticApiKeysAllowed` is not managed or is true.
