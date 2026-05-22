@@ -1,70 +1,143 @@
-Parleq 0.11.1
+Parleq 0.12.0
 
-Open-source attribution polish. v0.11.0 shipped on top of a
-THIRD_PARTY_LICENSES.md that was last regenerated at v0.9.0 and
-had drifted — most notably, Sparkle (added in v0.10.0 for
-auto-updates) was missing from both THIRD_PARTY_LICENSES.md and
-NOTICE. This release closes the gap. No code changes to dictation,
-ASR, cleanup, or any user-visible workflow.
+Two major features and a security hardening pass — the biggest
+release since v0.7. **Reference Windows** lets you attach
+screenshots, files, and clipboard content to a dictation so the
+LLM sees what you're talking about, not just hears what you said.
+**Managed Configuration** makes Parleq deployable as a governed
+fleet app via macOS MDM (Jamf, Kandji, Mosyle, Intune, etc.) —
+twenty-nine managed keys for pinning the LLM provider, model,
+auth mode, destination endpoints, and feature toggles. **MDM
+Hardening** closes the bypasses surfaced during a post-shipping
+security hackathon: destination pins (no exfiltration via personal
+cloud accounts), Sparkle skip-version clearing (forced auto-update
+is genuinely forced), and a Reference Windows symlink-target
+re-check that catches `screenshot.png → ~/.ssh/id_rsa`.
 
 ### Added
 
-- **"Open Source Licenses…" item in the menu-bar dropdown.**
-  Placed right after "About Parleq". Opens the canonical
-  THIRD_PARTY_LICENSES.md on GitHub in your default browser —
-  Markdown renders natively, and every upstream source repo is
-  one click away. An offline copy is also bundled inside
-  Parleq.app/Contents/Resources/.
+- **Reference Windows.** Press Shift while holding the dictation
+  hotkey to bring up a window picker; pick one or more open
+  windows, then dictate normally. The LLM sees the window's
+  on-screen content (text mode) or a vision capture (image
+  mode) alongside your dictation, so prompts like "summarize
+  what's on this page" or "rewrite this email more concisely"
+  just work. Three additional attach paths: clipboard (text or
+  image), drag-drop a file (text / source / PDF / image), or
+  the "+ Add file…" picker in the overlay. Image-mode
+  references require a vision-capable model — the in-overlay
+  picker auto-flags conflicts and offers a one-click "downgrade
+  to text" fallback. Per-reference mode toggle (T / 👁) on each
+  chip so you can mix text and image refs in one prompt. All
+  reference paths can be individually disabled in Settings →
+  Privacy & Features.
 
-- **LICENSE, NOTICE, and THIRD_PARTY_LICENSES.md ship inside the
-  .app bundle now.** `make-app.sh` copies the three files into
-  Parleq.app/Contents/Resources/ at build time. Discharges
-  Apache-2.0 §4 (notice propagation on binary redistribution) and
-  the MIT/BSD attribution clauses for Sparkle and its vendored
-  components, without relying on downstream redistributors to
-  also ship a separate notice file alongside the .dmg.
+- **Managed Configuration (MDM).** Deploy Parleq via your MDM
+  and govern it like any other managed app. Twenty-nine managed
+  keys: pin or restrict the LLM provider + model (8 keys), pin
+  auth modes (Azure Entra ID, Bedrock SSO, Vertex ADC — 4 keys
+  spanning Phases 4 + 7), pin destination endpoints (GCP project,
+  AWS region/profile, Azure resource/deployment, ASR HTTP
+  endpoint — 8 keys), disable optional features per-policy (6
+  toggles), and override the Sparkle appcast to a corporate
+  mirror (signature verification still authoritative via
+  SUPublicEDKey). A new **Compliance Audit dialog** (Menu Bar →
+  "View Managed Configuration…") shows every managed-eligible
+  key with its effective value and source (Managed / User /
+  Default) — Copy-snapshot button so IT can verify policy state
+  without screen-sharing. Sample `.mobileconfig` ships at
+  `config/parleq-managed-example.mobileconfig`. Full schema and
+  deployment patterns: https://parleq.app/docs/managed-configuration/
+  and https://parleq.app/docs/admin-guide/.
+
+- **Settings → Privacy & Features pane.** Six user-facing
+  toggles independent of any MDM deployment: Reference Windows
+  master switch, Clipboard reference, Image reference, File
+  reference, Custom dictionary, Custom model entry. Each
+  toggle's effective policy state is also exposed in the
+  Compliance Audit dialog.
+
+### Security
+
+- **MDM destination-pin enforcement.** Eight new managed keys
+  close the "use the allowed provider but route the data at my
+  personal tenant" exfiltration class — vertexProject,
+  vertexRegion, vertexAnthropicRegion, awsRegion, awsProfile,
+  azureResource, azureDeployment, asrEndpoint. ASR endpoint
+  validation requires https:// with a non-empty host, no
+  embedded userinfo, no query parameters, no fragment. Plain
+  http:// is rejected when pushed via MDM — the unmanaged
+  local-dev affordance for 127.0.0.1 Sherpa / faster-whisper
+  setups doesn't extend to MDM pushes.
+
+- **Auth-mode runtime enforcement.** When
+  `staticApiKeysAllowed=false` is managed, every static-key
+  auth path is blocked at runtime via a sentinel provider that
+  throws `.authPathBlocked` before any network call. Already-
+  stored Keychain credentials are NOT deleted — removing the
+  MDM profile restores prior functionality on the next launch.
+  When the stored Vertex auth mode is `serviceAccount` and the
+  master switch blocks the SA path, Parleq auto-coerces
+  vertexAuthMode to `adc` in memory so the runtime matches the
+  UI's "use gcloud ADC" message; the on-disk value is preserved
+  by save() so removing the MDM profile restores the user's
+  stored choice.
+
+- **Sparkle `SUSkippedVersion` clearing.** When
+  `autoUpdateEnabled=true` is pushed by MDM, Parleq clears all
+  three Sparkle 2.x skip-version user defaults (SUSkippedVersion,
+  SUSkippedMajorVersion, SUSkippedMajorSubreleaseVersion) on
+  launch. Closes the "user writes SUSkippedMajorVersion=99 and
+  silently defeats forced auto-update across any major release"
+  bypass.
+
+- **Reference Windows symlink-target re-check** hoisted above
+  the image/PDF dispatch and tightened to require the symlink's
+  claimed family and the resolved target's family to match.
+  Closes the `screenshot.png → ~/.ssh/id_rsa` attack where a
+  symlink with a benign image extension routed sensitive bytes
+  into the image branch and shipped them to the LLM as a binary
+  attachment.
+
+- **SetupWizard credential gates.** First-run wizard hides
+  Gemini / Vertex-SA / Azure-apiKey credential entry fields
+  when `staticApiKeysAllowed=false` is managed, routing the
+  user to the federated alternative instead of soliciting keys
+  that won't be usable at runtime.
 
 ### Changed
 
-- **THIRD_PARTY_LICENSES.md and NOTICE refreshed.** Sparkle 2.9.1
-  (MIT) is now credited as a direct dependency, along with its
-  two vendored components — ed25519-sparkle (zlib-style) and
-  bsdiff (2-clause BSD) — that ship inside Sparkle.framework.
-  The obsolete Hummingbird section was removed (it was retired
-  in v0.9.0). FluidAudio version refreshed 0.14.3 → 0.14.5
-  (within the pinned range). At-a-glance counts updated;
-  audit-trail footer dated to v0.11.0. External-services list
-  extended to include Vertex AI, Azure OpenAI, and the Sparkle
-  appcast as runtime egress destinations alongside the
-  previously-listed Gemini, Bedrock, Hugging Face, and GitHub.
-
-- **About page on parleq.app gets a body link** to
-  THIRD_PARTY_LICENSES.md in addition to the existing footer
-  link, naming the heavyweight deps by category for quick
-  orientation.
+- **Settings credential cards now use explicit field labels.**
+  Each TextField in the Azure / Bedrock / Vertex credential
+  cards has a small caption-style label above it ("Resource",
+  "Deployment", "Region", "Project", etc.) so populated /
+  disabled / MDM-managed values stay interpretable instead of
+  becoming anonymous strings. Surfaced during MDM-hardening
+  testing when a `corp-openai`-filled disabled field gave no
+  indication of what the field was.
 
 ## Install
 
-If you're already running Parleq 0.11.0, Sparkle's update prompt
-is the easiest path — it handles download, signature
-verification, and the relaunch for you. (This is the first
-release whose installed .app physically carries the bundled
-LICENSE / NOTICE / THIRD_PARTY_LICENSES.md files inside
-Contents/Resources/, so updating from 0.11.0 is what gets you
-the bundled attribution.)
+If you're already running Parleq 0.11.x, Sparkle's update
+prompt is the easiest path — it handles download, signature
+verification, and the relaunch for you.
 
 For a fresh install:
 
 1. Download the .dmg attached to this release.
-2. (Optional) Verify the SHA-256: `shasum -a 256 -c Parleq-0.11.1-<sha>.dmg.sha256`
+2. (Optional) Verify the SHA-256: `shasum -a 256 -c Parleq-0.12.0-<sha>.dmg.sha256`
 3. Open the DMG and drag Parleq.app onto the Applications folder.
 4. Eject the DMG, then launch Parleq from Applications.
 5. On first launch, grant Microphone + Accessibility permissions
-   and answer the auto-update prompt.
+   and answer the auto-update prompt. For Reference Windows
+   image-mode captures (the 👁 icon on a reference chip), also
+   grant Screen Recording permission when first prompted.
 
 First launch downloads the speech model (~150 MB) — give it
 30–60 seconds before pressing the hotkey. The menu-bar icon
 switches from a download glyph to the bar mark when ready.
 
 See README.md for hotkey, LLM provider setup (Gemini / Bedrock /
-Vertex AI / Azure OpenAI), and custom-dictionary configuration.
+Vertex AI / Azure OpenAI), Reference Windows usage, and
+custom-dictionary configuration. IT teams deploying Parleq to a
+fleet: see https://parleq.app/docs/admin-guide/.
