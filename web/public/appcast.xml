@@ -40,6 +40,19 @@
         <language>en</language>
         <!-- PARLEQ_APPCAST_INSERT -->
         <item>
+            <title>Version 0.12.0</title>
+            <pubDate>Fri, 22 May 2026 14:14:22 +0000</pubDate>
+            <sparkle:version>47</sparkle:version>
+            <sparkle:shortVersionString>0.12.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:releaseNotesLink>https://github.com/parleq/parleq-speech/releases/tag/v0.12.0</sparkle:releaseNotesLink>
+            <enclosure
+                url="https://github.com/parleq/parleq-speech/releases/download/v0.12.0/Parleq-0.12.0-1cbf87c.dmg"
+                sparkle:edSignature="y5F8vZwJMtiBv9hsYrYFcxxexDC/0o1i6xFYqtMgJfTLXeSG3ti0SoPf3teYjdGygrzyM4KV9Amb45FoPg+CCQ=="
+                length="12209577"
+                type="application/octet-stream" />
+        </item>
+        <item>
             <title>Version 0.11.1</title>
             <pubDate>Sat, 16 May 2026 01:36:49 +0000</pubDate>
             <sparkle:version>41</sparkle:version>
