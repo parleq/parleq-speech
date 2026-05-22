@@ -12,6 +12,12 @@ const providers = [
     difficulty: 'Easiest',
   },
   {
+    slug: 'openai',
+    name: 'OpenAI',
+    blurb: 'Direct OpenAI API key (api.openai.com). GPT-4o and GPT-4.1 families for cleanup; o1 / o3 / o4-mini reasoning models for context-aware reference turns. Simple API key auth.',
+    difficulty: 'Easiest',
+  },
+  {
     slug: 'bedrock',
     name: 'AWS Bedrock',
     blurb: 'Anthropic Claude or OpenAI GPT-OSS via your AWS account. Three auth modes: AWS SSO (recommended for org accounts), static IAM access keys, or scoped Bedrock API keys.',
@@ -20,19 +26,19 @@ const providers = [
   {
     slug: 'vertex',
     name: 'Google Vertex AI',
-    blurb: 'Same Gemini models on GCP, with IAM, audit logs, and data residency. Two auth modes: gcloud Application Default Credentials, or service-account JSON.',
+    blurb: 'Gemini models — plus Claude Haiku and Sonnet — on GCP, with IAM, audit logs, and data residency. Two auth modes: gcloud Application Default Credentials, or service-account JSON.',
     difficulty: 'Medium',
   },
   {
     slug: 'azure',
     name: 'Azure OpenAI',
-    blurb: 'GPT-4o family on Microsoft\'s contract. Two auth modes: resource API key, or Microsoft Entra ID via az login.',
+    blurb: 'GPT-4o and GPT-4.1 families on Microsoft\'s contract, plus o1 / o3 / o4-mini reasoning models. Two auth modes: resource API key, or Microsoft Entra ID via az login.',
     difficulty: 'Medium',
   },
 ];
 ---
 
-<Layout title="Docs — Parleq" description="Provider setup guides for Parleq's pluggable LLM cleanup. Gemini, Bedrock, Vertex AI, and Azure OpenAI.">
+<Layout title="Docs — Parleq" description="Provider setup guides for Parleq's pluggable LLM cleanup. Gemini, OpenAI, Bedrock, Vertex AI, and Azure OpenAI.">
   <header class="mx-auto flex max-w-5xl items-center justify-between px-6 pt-8">
     <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/'} class="inline-flex items-center">
       <Logo height="36" />

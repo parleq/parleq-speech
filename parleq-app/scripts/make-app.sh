@@ -41,7 +41,12 @@ echo "==> swift build -c $CONFIG"
 swift build -c "$CONFIG"
 
 BIN_PATH="$(swift build -c "$CONFIG" --show-bin-path)"
-BINARY="$BIN_PATH/ParleqApp"
+# Phase 2 (Reference Windows): the SwiftPM executable was renamed
+# from "ParleqApp" to "parleq-app" when the package was split into
+# ParleqAppCore (library) + parleq-app (thin executable). We still
+# copy/rename to "ParleqApp" inside the .app bundle because
+# Info.plist's CFBundleExecutable hasn't changed.
+BINARY="$BIN_PATH/parleq-app"
 if [[ ! -x "$BINARY" ]]; then
     echo "ERROR: built binary not found at $BINARY" >&2
     exit 1
