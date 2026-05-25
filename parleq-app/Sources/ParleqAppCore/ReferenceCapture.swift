@@ -30,6 +30,13 @@ enum CaptureError: Error, LocalizedError, CustomStringConvertible {
     case windowNotFound
     case captureFailed(String)
     case ocrFailed(String)
+    /// SCK returned -3811 both on the initial attempt AND on the
+    /// post-activate retry. The target app is on a full-screen macOS
+    /// Space that we can't bring forward programmatically (macOS
+    /// filters synthesized Cmd+Tab + the public NSRunningApplication
+    /// API doesn't switch full-screen Spaces). Carries the app name
+    /// so the UI can name what the user needs to switch to.
+    case fullScreenSpaceUncapturable(appName: String)
 
     var description: String {
         switch self {
@@ -41,6 +48,8 @@ enum CaptureError: Error, LocalizedError, CustomStringConvertible {
             return "Capture failed: \(detail)"
         case .ocrFailed(let detail):
             return "OCR failed: \(detail)"
+        case .fullScreenSpaceUncapturable(let appName):
+            return "\(appName) is in a full-screen Space. Switch to that Space first, then try attaching it again."
         }
     }
 
@@ -125,6 +134,16 @@ final class ScreenCaptureKitReferenceCapture: ReferenceCapturer, @unchecked Send
         } catch {
             if Self.isPermissionError(error) {
                 throw CaptureError.permissionDenied
+            }
+            // Don't re-wrap an already-typed CaptureError — the inner
+            // captureWithRetry throws .fullScreenSpaceUncapturable
+            // (and may throw other CaptureError cases in the future)
+            // specifically so the UI can surface a clean, actionable
+            // message. Wrapping it in .captureFailed turns the nice
+            // "Switch to that Space first" copy back into a generic
+            // "Capture failed: <error>" blob.
+            if let captureError = error as? CaptureError {
+                throw captureError
             }
             throw CaptureError.captureFailed(String(describing: error))
         }
@@ -316,6 +335,18 @@ final class ScreenCaptureKitReferenceCapture: ReferenceCapturer, @unchecked Send
                 // stranded on the activated source app after an error
                 // is worse than the error itself.
                 await restorePriorFrontmost()
+                // A second -3811 after the activate-and-retry means the
+                // target is on a full-screen Space that macOS won't
+                // switch to from a non-foreground app — see task #212
+                // for the activation paths we've already tried. Surface
+                // a CaptureError with the app name so the UI can show
+                // an actionable message ("Switch to that Space first")
+                // instead of the raw SCStreamErrorDomain blob.
+                if retryError.domain == SCStreamErrorDomain && retryError.code == -3811 {
+                    let appName = scWindow.owningApplication?.applicationName
+                        ?? bundleID
+                    throw CaptureError.fullScreenSpaceUncapturable(appName: appName)
+                }
                 throw retryError
             }
         }

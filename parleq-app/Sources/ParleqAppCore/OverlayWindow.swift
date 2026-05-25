@@ -625,6 +625,62 @@ public final class OverlayModel: ObservableObject {
     /// other.
     @Published var errorMessage: String?
 
+    /// Mirror of AppState's compose-state machine (Reference Windows
+    /// v2 latched-compose flow). Drives the OverlayHintStrip's per-state
+    /// copy. When .idle, the overlay behaves exactly like v1; when
+    /// .recording / .pickerOpen / .latched / .latchedRecording, the
+    /// latched UX renders.
+    ///
+    /// Note: composeState does NOT explicitly gate the auto-accept
+    /// timer today — the latched flow happens to never reach
+    /// .awaitingAccept because the .hotkeyUp(spaceWasPressedDuringHold:
+    /// false) transition resets composeState to .idle BEFORE
+    /// finalizeCapture runs. So the timer's existing
+    /// "fire-only-in-awaitingAccept" gate is sufficient. If a future
+    /// path ever reaches .awaitingAccept without resetting
+    /// composeState (e.g. a different submit route), an explicit
+    /// `guard composeState == .idle` in startAutoAcceptTimer would
+    /// be the right place to add the safety net.
+    @Published var composeState: ComposeState = .idle
+
+    /// True from the moment Space is pressed during a dictation hold
+    /// until that hold ends (either by release-into-picker, or by
+    /// the subsequent state reset). Drives the OverlayHintStrip's
+    /// "armed" hint so the user gets visual confirmation that Space
+    /// landed BEFORE they release the hotkey — without this they
+    /// have no signal until the picker actually opens on release.
+    /// Independent of the ComposeState machine (purely UI feedback —
+    /// behavior continues to be driven by `composeState`) so that
+    /// adding it doesn't double the state count.
+    @Published var spaceArmedDuringHold: Bool = false
+
+    /// AppState wires this to its trackCaptureTask helper so that
+    /// async reference-capture work started from the overlay (e.g.
+    /// the Add file menu's NSOpenPanel completion) participates in
+    /// the same pending-task bookkeeping the submit path waits on.
+    /// Without this, an overlay-initiated file pick that resolves
+    /// after the user hits Send / Enter would land its append on a
+    /// reset state — leaking the reference into the next dictation
+    /// session and omitting it from the just-finalized entry.
+    /// Not @Published because it's wiring, not view state.
+    public var onTrackCaptureTask: ((Task<Void, Never>) -> Void)?
+
+    /// Display name of the user's dictation hotkey (e.g. "⌥-Right").
+    /// Read by OverlayHintStrip so its teaching copy uses the user's
+    /// actual binding rather than a hardcoded label. Set by AppState
+    /// from HotkeyBinding.displayName at construction. Empty string
+    /// falls back to the literal text "the hotkey" in the strip copy.
+    @Published public var hotkeyDisplayName: String = ""
+
+    /// Mirror of Config.referenceWindowsEnabled. When false (Privacy
+    /// & Features toggle off, or MDM-pinned-off), the OverlayHintStrip
+    /// suppresses the "Press Space to attach a window" teaching copy
+    /// in .recording state — Space wouldn't open the picker in that
+    /// case (gated upstream in AppState.hotkeyUp). Updated whenever
+    /// AppState reads the config so the strip reactively respects
+    /// the latest setting.
+    @Published var referenceWindowsEnabled: Bool = true
+
     /// Per-invocation model override set by the in-overlay ModelPicker
     /// (Task 9). nil → fall through to Config.modelForInvocation's
     /// override > context > cleanup chain. Reset to nil after each
@@ -837,10 +893,48 @@ private struct OverlayContent: View {
                     onDowngrade: { model.userDowngradedConflict = true }
                 )
             } else {
-                footer
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
+                // Active-state footer row: paste-target on the left
+                // (same "PASTING TO" treatment as the .awaitingAccept
+                // footer next to Accept — see PastingToLabel) +
+                // contextual hint on the right. The chip surfaces
+                // earlier than streamed text, so latched-compose
+                // flows that inadvertently shift focus (e.g. clicking
+                // an Add-from-clipboard button that activates a
+                // different app) make the change visible immediately
+                // instead of waiting for the LLM output to appear.
+                //
+                // Suppress the legacy "Release ⌥ when done" hint
+                // whenever we're in a latched-compose state — the
+                // OverlayHintStrip below renders the correct
+                // contextual hint instead. Without this guard the
+                // hint ("Release ⌥ when done") would show ALONGSIDE
+                // the latched hint ("Hold ⌥-Right or release to send
+                // …"), which contradicts itself (the user has
+                // already released, "release" isn't the next
+                // action).
+                HStack(spacing: 8) {
+                    if showsActiveFooterPasteTarget,
+                       let target = model.pasteTarget {
+                        PastingToLabel(target: target)
+                    }
+                    Spacer(minLength: 8)
+                    if model.composeState == .idle || model.composeState == .recording {
+                        footer
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                    }
+                }
             }
+
+            // Reference Windows v2 latched-compose hint strip. Renders
+            // empty (EmptyView) when composeState is .idle so users
+            // who never enter the latched flow see no UI change.
+            OverlayHintStrip(
+                state: model.composeState,
+                hotkeyDisplayName: model.hotkeyDisplayName,
+                referenceWindowsEnabled: model.referenceWindowsEnabled,
+                spaceArmedDuringHold: model.spaceArmedDuringHold
+            )
         }
         .padding(16)
         // Background surface: Liquid Glass on macOS 26+, translucent
@@ -1066,6 +1160,23 @@ private struct OverlayContent: View {
         let fileReferenceEnabled: Bool
     }
 
+    /// True for overlay states where the user is mid-composition and
+    /// would benefit from seeing the live paste target ABOVE the
+    /// streamed text. Excludes .awaitingAccept because that state
+    /// already renders the chip inline next to Accept in
+    /// OverlayButtons (visually paired with the action that uses it).
+    /// Excludes .initializing / .staging because there's nothing to
+    /// paste yet and the staging hint already covers the "get ready"
+    /// semantics.
+    private var showsActiveFooterPasteTarget: Bool {
+        switch model.state {
+        case .capturing, .cleaning, .refining:
+            return true
+        case .initializing, .staging, .awaitingAccept:
+            return false
+        }
+    }
+
     private var featureState: FeatureState {
         let cfg = Config.load().config
         return FeatureState(
@@ -1163,30 +1274,39 @@ private struct OverlayContent: View {
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = false
         panel.canChooseFiles = true
-        panel.begin { response in
-            guard response == .OK else { return }
-            let urls = panel.urls
-            // Hop off the main thread: Data(contentsOf:), PDFDocument,
-            // and String(contentsOf:) in reference(forFileAt:) are all
-            // synchronous disk reads that hitch the UI for large files
-            // or multi-file picks.
-            Task.detached(priority: .userInitiated) {
-                for url in urls {
-                    do {
-                        let ref = try ScreenCaptureKitReferenceCapture.reference(forFileAt: url)
-                        await MainActor.run {
-                            self.model.references.append(ref)
-                        }
-                    } catch {
-                        let name = url.lastPathComponent
-                        let msg = error.localizedDescription
-                        await MainActor.run {
-                            self.model.errorMessage = "Couldn't read \(name): \(msg)"
-                        }
-                    }
+        // OverlayContent is a SwiftUI View (struct) — capture model by
+        // value rather than self by weak (weak is class-only). The
+        // model is a class reference, so it's the natural strong-but-
+        // reference-counted capture for the async closures.
+        let model = self.model
+        let tracker = model.onTrackCaptureTask
+        // Register the tracking task BEFORE the panel opens, so a
+        // cancel/submit during the panel-open interval can cancel
+        // it. Bridging panel.begin into a continuation lets the
+        // Task body await the user's selection while remaining
+        // cancellable. Without this the entire panel-open interval
+        // is invisible to cancelPendingCaptures and a late
+        // selection can append into a reset session.
+        let task = Task { @MainActor in
+            let urls: [URL] = await withCheckedContinuation { cont in
+                panel.begin { response in
+                    cont.resume(returning: response == .OK ? panel.urls : [])
+                }
+            }
+            guard !Task.isCancelled, !urls.isEmpty else { return }
+            for url in urls {
+                guard !Task.isCancelled else { return }
+                do {
+                    let ref = try ScreenCaptureKitReferenceCapture.reference(forFileAt: url)
+                    guard !Task.isCancelled else { return }
+                    model.references.append(ref)
+                } catch {
+                    guard !Task.isCancelled else { return }
+                    model.errorMessage = "Couldn't read \(url.lastPathComponent): \(error.localizedDescription)"
                 }
             }
         }
+        tracker?(task)
     }
 
     /// Read NSPasteboard and add the contents as a Reference.
@@ -1220,47 +1340,67 @@ private struct OverlayContent: View {
             return false
         }
         var accepted = false
+        let model = self.model
+        let tracker = model.onTrackCaptureTask
         for provider in providers {
             if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
                 accepted = true
-                _ = provider.loadObject(ofClass: URL.self) { url, _ in
-                    guard let url else { return }
+                // Register the tracking task BEFORE the NSItemProvider
+                // callback fires. Otherwise the window between drop-
+                // acceptance and the callback is invisible to
+                // cancelPendingCaptures — a cancel that lands in that
+                // window would have no task to cancel, and the late
+                // callback would append to a reset session.
+                //
+                // Main-actor Task (not Task.detached) so the closure
+                // can freely capture `provider` (NSItemProvider isn't
+                // Sendable from Swift 6's POV when it's accessible to
+                // main-actor code). The synchronous file decode is
+                // pushed onto an inner Task.detached so we don't
+                // block the main actor on PDF/image reads.
+                let task = Task { @MainActor in
+                    let url: URL? = await withCheckedContinuation { cont in
+                        _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                            cont.resume(returning: url)
+                        }
+                    }
                     // Guard against non-file URLs (smb://, ftp://, http://
                     // etc.) that a malicious or misbehaving drag source
                     // could inject. Without this check, the URL would
                     // flow into Data(contentsOf:) / String(contentsOf:)
                     // inside reference(forFileAt:), triggering an
-                    // outbound network request from the app — leaking
-                    // the fact that this user attempted to "open" the
-                    // remote URL to whoever controls it. File drops
-                    // are the only sensible payload here.
-                    // File-type validation (image / PDF / safe text) lives
-                    // inside reference(forFileAt:) — unsupported types
-                    // throw and surface as errorMessage below.
-                    guard url.isFileURL else { return }
-                    // NSItemProvider's completion is already async but
-                    // reference(forFileAt:) does synchronous disk I/O —
-                    // hop to a detached task so the read doesn't block
-                    // whatever queue NSItemProvider chose.
-                    Task.detached(priority: .userInitiated) {
-                        do {
-                            let ref = try ScreenCaptureKitReferenceCapture.reference(forFileAt: url)
-                            await MainActor.run {
-                                self.model.references.append(ref)
-                            }
-                        } catch {
-                            let name = url.lastPathComponent
-                            let msg = error.localizedDescription
-                            await MainActor.run {
-                                self.model.errorMessage = "Couldn't read \(name): \(msg)"
-                            }
-                        }
+                    // outbound network request — leaking the fact
+                    // that this user attempted to "open" the remote
+                    // URL to whoever controls it. File-type validation
+                    // lives inside reference(forFileAt:).
+                    guard !Task.isCancelled, let url, url.isFileURL else { return }
+                    do {
+                        // Synchronous decode on the main actor. The
+                        // Add-file picker path does this on a
+                        // detached task to keep the UI snappy for
+                        // multi-file selections, but drag-drop is
+                        // a single-shot user-initiated action and a
+                        // brief hitch is acceptable. Doing the work
+                        // on the main actor also avoids a Sendable
+                        // boundary on Reference (it holds NSImage).
+                        let ref = try ScreenCaptureKitReferenceCapture.reference(forFileAt: url)
+                        guard !Task.isCancelled else { return }
+                        model.references.append(ref)
+                    } catch {
+                        guard !Task.isCancelled else { return }
+                        model.errorMessage = "Couldn't read \(url.lastPathComponent): \(error.localizedDescription)"
                     }
                 }
+                tracker?(task)
             } else if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
                 accepted = true
-                provider.loadDataRepresentation(forTypeIdentifier: UTType.image.identifier) { data, _ in
-                    guard let data else { return }
+                let task = Task { @MainActor in
+                    let data: Data? = await withCheckedContinuation { cont in
+                        provider.loadDataRepresentation(forTypeIdentifier: UTType.image.identifier) { data, _ in
+                            cont.resume(returning: data)
+                        }
+                    }
+                    guard !Task.isCancelled, let data else { return }
                     let ref = Reference(
                         id: UUID(),
                         source: .clipboard(label: "Dropped image"),
@@ -1272,14 +1412,18 @@ private struct OverlayContent: View {
                         textContent: nil,
                         imageData: data
                     )
-                    Task { @MainActor in
-                        self.model.references.append(ref)
-                    }
+                    model.references.append(ref)
                 }
+                tracker?(task)
             } else if provider.hasItemConformingToTypeIdentifier(UTType.text.identifier) {
                 accepted = true
-                _ = provider.loadObject(ofClass: NSString.self) { str, _ in
-                    guard let str = str as? String else { return }
+                let task = Task { @MainActor in
+                    let str: String? = await withCheckedContinuation { cont in
+                        _ = provider.loadObject(ofClass: NSString.self) { obj, _ in
+                            cont.resume(returning: obj as? String)
+                        }
+                    }
+                    guard !Task.isCancelled, let str else { return }
                     let ref = Reference(
                         id: UUID(),
                         source: .clipboard(label: "Dropped text"),
@@ -1291,10 +1435,9 @@ private struct OverlayContent: View {
                         textContent: str,
                         imageData: nil
                     )
-                    Task { @MainActor in
-                        self.model.references.append(ref)
-                    }
+                    model.references.append(ref)
                 }
+                tracker?(task)
             }
         }
         return accepted

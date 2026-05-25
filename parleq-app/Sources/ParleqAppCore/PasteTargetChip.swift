@@ -1,10 +1,7 @@
-// PasteTargetChip — SwiftUI view rendering the currently-tracked
-// paste destination at the top of the overlay. Reads from the
-// overlay model and renders the destination app's icon + name +
-// (optional) window title.
-//
-// When no target is known (e.g., the only frontmost app is Parleq
-// itself), renders a "Paste target: none" placeholder.
+// PasteDestination + PastingToLabel — the UI-side description of the
+// paste target and the reusable view that renders it as the canonical
+// "PASTING TO <App>" eyebrow + icon + name treatment seen in the
+// .awaitingAccept footer.
 //
 // `PasteDestination` is the UI-side description of the paste target.
 // `Paster.PasteTarget` (in Paster.swift) is a separate Sendable struct
@@ -36,70 +33,71 @@ struct PasteDestination: Equatable {
     }
 }
 
-struct PasteTargetChip: View {
-    let target: PasteDestination?
+/// Canonical paste-target indicator: small-caps "PASTING TO" eyebrow,
+/// the destination app's icon, and its name (plus window title when
+/// available). Originally lived inline as a private helper inside
+/// OverlayButtons (.awaitingAccept footer); extracted so the same
+/// visual treatment can render in the .capturing / .cleaning /
+/// .refining footers — the user benefits from seeing the live paste
+/// target BEFORE Accept so latched-compose flows that inadvertently
+/// shift focus (e.g. clicking an Add-from-clipboard button that
+/// activates a different app) make the change visible immediately
+/// instead of waiting for the streamed text to appear.
+struct PastingToLabel: View {
+    let target: PasteDestination
 
     var body: some View {
         HStack(spacing: 6) {
-            Image(systemName: "arrow.right.to.line")
-                .font(.system(size: 11))
+            // Small-caps + tracked-out treatment for the "PASTING
+            // TO" label. Reads as a typographic eyebrow rather than
+            // running prose, which lets the app name (rendered at
+            // normal weight + primary color) take visual priority.
+            Text("PASTING TO")
+                .font(.system(size: 9, weight: .medium))
+                .tracking(0.8)
                 .foregroundStyle(.secondary)
-
-            if let target = target {
-                if let icon = target.appIcon {
-                    Image(nsImage: icon)
-                        .resizable()
-                        .interpolation(.high)
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 14, height: 14)
-                }
-                Text(displayText(for: target))
-                    .font(.system(size: 11, weight: .medium))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .frame(maxWidth: 280)
-            } else {
-                Text("No paste target")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.tertiary)
+            if let icon = target.appIcon {
+                Image(nsImage: icon)
+                    .resizable()
+                    .interpolation(.high)
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 14, height: 14)
             }
+            Text(displayText)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                // .leading alignment: without it the frame centers
+                // its content inside the 220pt box, leaving a gap
+                // between the app icon and short names like
+                // "iTerm2". Anchoring leading keeps the text snug
+                // against the icon regardless of length; truncation
+                // still kicks in for long window titles.
+                .frame(maxWidth: 220, alignment: .leading)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 3)
-        .background(
-            RoundedRectangle(cornerRadius: 5)
-                .fill(Color.secondary.opacity(0.10))
-        )
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(accessibilityText(for: target))
+        .accessibilityLabel("Will paste into \(displayText)")
     }
 
-    private func displayText(for target: PasteDestination) -> String {
+    private var displayText: String {
         if let title = target.windowTitle, !title.isEmpty {
             return "\(target.appName) — \(title)"
         }
         return target.appName
     }
-
-    private func accessibilityText(for target: PasteDestination?) -> String {
-        guard let target = target else { return "No paste target" }
-        return "Pastes to \(displayText(for: target))"
-    }
 }
 
 #if DEBUG
 #Preview {
-    VStack(spacing: 8) {
-        PasteTargetChip(target: PasteDestination(
-            bundleID: "com.tinyspeck.slackmacgap",
-            appName: "Slack",
-            windowTitle: "#design-feedback",
-            appIcon: NSWorkspace.shared
-                .urlForApplication(withBundleIdentifier: "com.tinyspeck.slackmacgap")
-                .flatMap { NSWorkspace.shared.icon(forFile: $0.path) }
-        ))
-        PasteTargetChip(target: nil)
-    }
+    PastingToLabel(target: PasteDestination(
+        bundleID: "com.tinyspeck.slackmacgap",
+        appName: "Slack",
+        windowTitle: "#design-feedback",
+        appIcon: NSWorkspace.shared
+            .urlForApplication(withBundleIdentifier: "com.tinyspeck.slackmacgap")
+            .flatMap { NSWorkspace.shared.icon(forFile: $0.path) }
+    ))
     .padding()
 }
 #endif

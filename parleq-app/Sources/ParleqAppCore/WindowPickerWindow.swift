@@ -20,7 +20,7 @@ import AppKit
 import SwiftUI
 
 @MainActor
-final class WindowPickerWindow {
+final class WindowPickerWindow: NSObject {
     /// Fired when the user picks a window from the grid. Caller is
     /// responsible for hiding the window (via `hide()`) and routing
     /// the entry into the capture pipeline.
@@ -28,6 +28,16 @@ final class WindowPickerWindow {
     var onAddFile: (() -> Void)?
     var onAddClipboard: (() -> Void)?
     var onPickByClicking: (() -> Void)?
+    /// Fires whenever the panel closes via a native path (title-bar
+    /// close button, Esc, Cmd-W) that isn't one of the explicit
+    /// callback actions above. Lets the latched-compose state
+    /// machine in AppState transition .pickerOpen → .latched even
+    /// when the user dismisses the picker without selecting
+    /// anything. Crucially does NOT fire when our own `hide()`
+    /// runs — that uses `orderOut` which doesn't trigger
+    /// windowWillClose, so the explicit callback paths handle
+    /// their own transitions without double-firing here.
+    var onDismiss: (() -> Void)?
 
     private let window: NSPanel
     private let hostingController: NSHostingController<WindowPickerView>
@@ -36,7 +46,7 @@ final class WindowPickerWindow {
     private static let defaultSize = NSSize(width: 900, height: 650)
     private static let minSize = NSSize(width: 520, height: 380)
 
-    init() {
+    override init() {
         let initialFrame = NSRect(
             x: 0, y: 0,
             width: Self.defaultSize.width,
@@ -77,7 +87,9 @@ final class WindowPickerWindow {
         )
         self.hostingController = hc
         self.window = panel
+        super.init()
         panel.contentViewController = hc
+        panel.delegate = self
     }
 
     /// Wire all four callbacks. Called once after init by AppState.
@@ -128,4 +140,19 @@ final class WindowPickerWindow {
     }
 
     var isVisible: Bool { window.isVisible }
+}
+
+// MARK: - NSWindowDelegate
+//
+// Fires onDismiss for native close paths (title-bar close button,
+// Esc, Cmd-W). Our own hide() uses orderOut and does NOT fire
+// windowWillClose, so the explicit picker-action callbacks
+// (onPick, onAddFile, etc.) keep handling their own state
+// transitions through AppState.dismissPicker() without
+// double-firing here.
+
+extension WindowPickerWindow: NSWindowDelegate {
+    func windowWillClose(_ notification: Notification) {
+        onDismiss?()
+    }
 }

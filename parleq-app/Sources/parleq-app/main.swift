@@ -351,6 +351,14 @@ struct ParleqApp {
             binding = .defaultBinding
             logStderr("[parleq] hotkey config \"\(config.hotkeyBinding)\" not recognized — using default \(binding.displayName)")
         }
+        // Reference Windows v2 latched-compose: the overlay's hint
+        // strip teaches the gesture using the user's actual hotkey
+        // label ("Press ⌥-Right to dictate or release to send …").
+        // Set on the overlay's model so SwiftUI re-renders the strip
+        // reactively whenever composeState changes.
+        MainActor.assumeIsolated {
+            overlay.model.hotkeyDisplayName = binding.displayName
+        }
 
         // Menu-bar status item: an LSUIElement app has no Dock icon
         // and no top-of-screen menu, so this is the user's only
@@ -637,7 +645,7 @@ struct ParleqApp {
                     )
                 }
             },
-            onKeyUp: {
+            onKeyUp: { upEvent in
                 Task { @MainActor in
                     // In quick mode the visible paste is the end-cue;
                     // skip the Pop so it doesn't collide with the
@@ -647,7 +655,18 @@ struct ParleqApp {
                     // eventually clears it.
                     let suppress = stateBox.value?.quickMode ?? false
                     soundBox.value?.endOrCancel(suppressEnd: suppress)
-                    stateBox.value?.hotkeyUp()
+                    stateBox.value?.hotkeyUp(
+                        spaceWasPressedDuringHold: upEvent.spaceWasPressedDuringHold
+                    )
+                }
+            },
+            onSpacePressed: {
+                // Edge-triggered the first time Space lands during a
+                // hotkey hold. Hop to MainActor so AppState can mutate
+                // its overlay model — the listener's callback runs on
+                // the CGEvent tap thread.
+                Task { @MainActor in
+                    stateBox.value?.spacePressedDuringHold()
                 }
             }
         )

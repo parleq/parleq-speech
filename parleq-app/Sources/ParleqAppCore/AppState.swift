@@ -57,6 +57,16 @@ public final class AppState {
         didSet {
             logPhase(from: oldValue, to: phase)
             if oldValue != phase { onPhaseChanged?(phase) }
+            // Latched-compose: when the dictation cycle resets to
+            // .idle (cancel OR successful submit-and-paste), also
+            // reset composeState so the next gesture starts a fresh
+            // session. We deliberately do NOT reset on transitions to
+            // .awaitingAccept — the user may still iterate via
+            // refinement, and the latched session should be
+            // considered done only when the cycle FULLY closes.
+            if phase == .idle, composeState != .idle {
+                composeState = nextComposeState(composeState, event: .submitted)
+            }
         }
     }
     /// Called on every phase transition. Used by the menu-bar status
@@ -189,6 +199,47 @@ public final class AppState {
     /// first, the tap counts as accept and we paste.
     private var pendingRefineTimer: Timer?
     private static let refineHoldThreshold: TimeInterval = 0.18
+    /// In-flight reference capture tasks spawned from any of the
+    /// async reference-attachment paths (window pick, file pick,
+    /// pick-by-clicking). Tracked so a fast hotkey-release-without-space
+    /// submit (the tap-to-send gesture after picking a window) can
+    /// await pending captures before finalizing — otherwise the
+    /// ASR/LLM pipeline could read overlay.model.references before
+    /// the async capture call appends the picked reference, and the
+    /// composition would submit without it.
+    ///
+    /// Keyed by UUID rather than a plain array so completed tasks can
+    /// self-remove via the trackCaptureTask completion handler — that
+    /// way a second submit gesture can't see an empty list while
+    /// the first submit is still awaiting (which would let the second
+    /// finalize early and produce a submission with the wrong audio
+    /// or no references). Tasks stay in the dictionary until they
+    /// fully complete, regardless of whether anyone is awaiting them.
+    private var pendingCaptureTasks: [UUID: Task<Void, Never>] = [:]
+
+    /// State of the Reference Windows v2 latched-compose gesture
+    /// flow. Layered ON TOP of `phase` — phase tracks the dictation
+    /// lifecycle (capturing, cleaning, awaiting accept); composeState
+    /// tracks whether the user is in the latched-compose flow and
+    /// where within it. When composeState is .idle, AppState behaves
+    /// identically to v1 (release submits). When the user presses
+    /// Space during a hold, composeState advances through
+    /// .pickerOpen / .latched / .latchedRecording and the
+    /// release-submits behavior is replaced with release-stays-latched
+    /// until a release-without-Space fires the submit pipeline.
+    ///
+    /// See `LatchedComposeState.swift` for the transition table.
+    /// didSet mirrors the value into overlay.model.composeState so
+    /// the SwiftUI overlay (OverlayHintStrip) can re-render its
+    /// per-state hint copy reactively without each callsite having
+    /// to remember to push the value across.
+    private var composeState: ComposeState = .idle {
+        didSet {
+            if oldValue != composeState {
+                overlay.model.composeState = composeState
+            }
+        }
+    }
     /// True between showing the "Initializing…" overlay (a hotkey
     /// press while !isSystemReady) and either Esc-dismiss or the
     /// supervisor reporting ready. Without tracking this, cancel()
@@ -236,19 +287,41 @@ public final class AppState {
         overlay.onCancel = { [weak self] in self?.cancel() }
         overlay.onCopy = { [weak self] in self?.copy() }
         overlay.onShowWindowPicker = { [weak self] in
-            self?.windowPickerWindow.show()
+            guard let self else { return }
+            // Pause audio if we're mid-capture so user interaction
+            // with the picker doesn't get recorded into the
+            // composition. presentPicker() handles the state-machine
+            // transition.
+            if self.phase == .capturing { self.recorder.pause() }
+            self.presentPicker()
         }
         overlay.onSwitchToVisionModelAndRecleanup = { [weak self] id in
             self?.switchModelAndRecleanup(id)
+        }
+        // Wire the overlay's async file-pick into AppState's pending-
+        // capture bookkeeping. Submit (hotkeyUp) and accept() both
+        // wait on / cancel pendingCaptureTasks; without this, an
+        // overlay-initiated Add file that resolves after submit can
+        // leak its append into the next session.
+        overlay.model.onTrackCaptureTask = { [weak self] task in
+            self?.trackCaptureTask(task)
         }
 
         windowPickerWindow.setCallbacks(
             onPick: { [weak self] entry in
                 guard let self else { return }
-                self.windowPickerWindow.hide()
-                Task { @MainActor in
+                self.dismissPicker()
+                // Track the capture task so a fast submit (release
+                // hotkey without space immediately after picking)
+                // can await it before finalizing. Without this, the
+                // race window between picker-dismiss and async
+                // capture-append could submit the composition with
+                // a missing reference. See trackCaptureTask /
+                // awaitPendingCaptures below.
+                let task = Task { @MainActor in
                     await self.capture(entry)
                 }
+                self.trackCaptureTask(task)
             },
             onAddFile: { [weak self] in
                 Task { @MainActor in self?.handleAddFileFromPicker() }
@@ -260,6 +333,24 @@ public final class AppState {
                 Task { @MainActor in self?.handlePickByClickingFromPicker() }
             }
         )
+        // Native close paths (title-bar close button, Esc, Cmd-W)
+        // route through onDismiss. Our own dismissPicker() uses
+        // orderOut and does NOT fire windowWillClose, so this
+        // callback fires only when the user takes one of those
+        // native paths without selecting anything.
+        // windowWillClose fires on MainActor (WindowPickerWindow +
+        // AppState are both @MainActor); execute the state
+        // transition synchronously rather than deferring through a
+        // Task so a rapid sequence (native picker close immediately
+        // followed by a hotkey press) doesn't observe a stale
+        // composeState in the interim.
+        windowPickerWindow.onDismiss = { [weak self] in
+            guard let self else { return }
+            self.composeState = nextComposeState(
+                self.composeState,
+                event: .pickerDismissed
+            )
+        }
 
         pasteTargetSubscription = pasteTargetTracker.$current
             .receive(on: DispatchQueue.main)
@@ -312,6 +403,35 @@ public final class AppState {
         // — the next overlay.show (.capturing, .refining, etc.) will
         // replace its content cleanly.
         initializingOverlayShowing = false
+
+        // Latched-compose resume branch. When composeState is
+        // .latched, the recorder is paused (engine still running) and
+        // the overlay is locked open with prior audio segments + refs
+        // accumulated. A fresh hotkey-down here resumes audio capture
+        // into a new appended segment rather than starting fresh.
+        // Skips the entire phase-switch below because we're not
+        // entering a NEW dictation — we're continuing the current one.
+        if composeState == .latched {
+            composeState = nextComposeState(composeState, event: .hotkeyDown)
+            phase = .capturing
+            recorder.resume()
+            log("hotkeyDown in latched compose → latchedRecording; audio resumed")
+            return
+        }
+        // User pressed the hotkey while the picker is still open.
+        // The state machine defines .pickerOpen + .hotkeyDown →
+        // .latchedRecording — dismiss the picker, resume audio,
+        // continue dictation. Lets an impatient user skip past the
+        // picker without manually closing it first.
+        if composeState == .pickerOpen {
+            dismissPicker()
+            composeState = nextComposeState(composeState, event: .hotkeyDown)
+            phase = .capturing
+            recorder.resume()
+            log("hotkeyDown while picker open → dismissed picker + latchedRecording; audio resumed")
+            return
+        }
+
         switch phase {
         case .idle:
             if isShiftHeld {
@@ -333,7 +453,7 @@ public final class AppState {
             // threshold and locked the user into pick mode. Hold-and-
             // click capture remains available from .idle via the
             // existing + button menu and Shift+hotkey staging.)
-            windowPickerWindow.hide()
+            dismissPicker()
             startFreshCapture()
         case .awaitingAccept:
             // Phase 1 contract: tap = accept, hold = refine. We
@@ -372,13 +492,23 @@ public final class AppState {
         }
         phase = .staging
         overlay.show(state: .staging, text: "")
-        windowPickerWindow.show()
+        presentPicker()
     }
 
     /// Hotkey was released (key-up). Whichever capture phase we're
     /// in, this finalizes the audio and runs the ASR-then-LLM
     /// pipeline.
-    public func hotkeyUp() {
+    ///
+    /// `spaceWasPressedDuringHold` reports whether the user pressed
+    /// Space at any point during the hold that's now ending.
+    /// HotkeyListener tracks this flag per-hold. The latched-compose
+    /// state machine routes on this flag:
+    ///   - false → existing v1 release-submits flow (finalizeCapture)
+    ///   - true → pause audio + open picker, latch the overlay.
+    ///     Audio segments accumulate across multiple holds in this
+    ///     session and submit together at the eventual release-without-
+    ///     space.
+    public func hotkeyUp(spaceWasPressedDuringHold: Bool = false) {
         // Tap-on-awaitingAccept: refine timer still armed means the
         // user released before the 0.18 s hold threshold — they meant
         // "accept", not "refine."
@@ -389,9 +519,127 @@ public final class AppState {
             }
             return
         }
+
+        // Latched-compose branch: Space was pressed during the hold
+        // → don't submit. Pause audio so subsequent picker interaction
+        // doesn't get captured, open the picker, latch the overlay.
+        // The accumulated audio sits in the recorder until either a
+        // later hotkeyUp(space:false) submits OR Esc cancels.
+        // Refinement flow (.refining phase) deliberately bypasses
+        // latched-compose — refinement is its own existing iteration
+        // model; we don't pivot it into latched mode.
+        //
+        // Gate on referenceWindowsEnabled (Privacy & Features /
+        // MDM master switch) so users / IT admins who disabled
+        // reference capture can't accidentally bypass that switch
+        // via the new Space gesture. When disabled, fall through
+        // to the normal submit path.
+        if spaceWasPressedDuringHold {
+            let rwEnabled = Config.load().config.referenceWindowsEnabled
+            // Keep the overlay's model in sync so OverlayHintStrip
+            // suppresses its teaching copy when the feature is off
+            // (otherwise the hint would promise "Press Space to
+            // attach a window" while the same flag prevents Space
+            // from doing anything).
+            overlay.model.referenceWindowsEnabled = rwEnabled
+            if phase == .capturing, rwEnabled {
+                recorder.pause()
+                // Quick mode bypasses the review overlay and paste-
+                // directly path. Latched compose requires the picker
+                // + review overlay, so the two modes are mutually
+                // exclusive. If the user started a double-tap-hold
+                // (quickMode=true) and then pressed Space, drop
+                // quick mode so submit takes the normal review path
+                // — otherwise the eventual submit would skip
+                // resetPerDictationOverlayState and leak references
+                // into the next dictation.
+                quickMode = false
+                // Cancel any pending overlay-show timer. The 200ms
+                // delay between hotkey-down and overlay.show() exists
+                // to suppress the overlay flash on a quick stray tap;
+                // if Space lands before that timer fires we don't want
+                // the timer to later show the overlay as key on top of
+                // (or stealing focus from) the freshly-opened picker.
+                cancelPendingOverlayShow()
+                // …but if the timer hadn't fired yet (sub-200ms hold
+                // before Space), the overlay was never shown — which
+                // would leave the latched composition completely
+                // invisible after the picker dismisses (no chips, no
+                // hint strip, no cancel affordance). Force it visible
+                // here so the latched flow always has UI to anchor
+                // to. overlay.show() is idempotent on visibility, so
+                // this is a no-op when the timer already fired.
+                overlay.show(state: .capturing, text: "")
+                // presentPicker handles both the windowPickerWindow.show()
+                // call and the .pickerOpen state-machine transition,
+                // so the open path stays consistent across all
+                // entry points (here, overlay + button, .staging).
+                presentPicker()
+                log("hotkeyUp(space=true): latched compose → pickerOpen; audio paused")
+                return
+            }
+            // Narrowed log: only fire when the feature flag IS the
+            // deciding factor (phase == .capturing means we'd have
+            // taken the latch path; refinement phase falls through
+            // for unrelated reasons documented above).
+            if phase == .capturing, !rwEnabled {
+                log("hotkeyUp(space=true) but referenceWindowsEnabled=false; falling through to normal submit")
+            }
+        }
+
         switch phase {
         case .capturing:
-            finalizeCapture(asRefine: false)
+            // Don't finalize if the picker is open — the user is
+            // mid-attach, not mid-submit. Could happen if the user
+            // opened the picker via the overlay + button (which
+            // pauses audio but leaves phase=.capturing) and then
+            // released the hotkey. composeState being .pickerOpen
+            // means "we're interacting with the picker"; let the
+            // picker close naturally and re-enter via the next
+            // hotkey gesture.
+            if composeState == .pickerOpen {
+                log("hotkeyUp while .pickerOpen — picker is active, not submitting")
+                return
+            }
+            // Update compose state BEFORE finalizing so the submit
+            // pipeline sees the correct .idle / submission flow.
+            composeState = nextComposeState(
+                composeState,
+                event: .hotkeyUp(spaceWasPressedDuringHold: false)
+            )
+            // Audio handoff happens HERE — synchronously, before any
+            // async waiting. Pausing the recorder freezes the audio
+            // at the moment of release; without this, the recorder
+            // would keep capturing during the awaitPendingCaptures()
+            // window below and any ambient noise / user interaction
+            // sounds would land in the final WAV. recorder.stop()
+            // inside finalizeCapture will then return the audio
+            // captured up through the pause moment.
+            if !pendingCaptureTasks.isEmpty {
+                recorder.pause()
+                // Cancel any prior in-flight task before launching the
+                // wait-and-finalize task. Without this, a rapid double-
+                // release could create two wait-and-finalize tasks
+                // that both resume after the awaits complete and both
+                // call finalizeCapture — the second tries to stop an
+                // already-stopped recorder and resets state mid-pipeline.
+                inFlightTask?.cancel()
+                // Track the wait-and-finalize task in inFlightTask so
+                // cancel() can interrupt it. Without this, a cancel
+                // while we're awaiting pending captures would proceed
+                // to finalizeCapture against reset state — corrupting
+                // the next session. The isCancelled check after the
+                // await guards the same race for the case where the
+                // task wakes up just as cancel completes.
+                inFlightTask = Task { @MainActor [weak self] in
+                    await self?.awaitPendingCaptures()
+                    guard let self else { return }
+                    guard !Task.isCancelled else { return }
+                    self.finalizeCapture(asRefine: false)
+                }
+            } else {
+                finalizeCapture(asRefine: false)
+            }
         case .refining:
             finalizeCapture(asRefine: true)
         default:
@@ -607,6 +855,52 @@ public final class AppState {
         return false
     }
 
+    /// Centralized picker-close path. Every site that closes the
+    /// window picker MUST route through here so the latched-compose
+    /// state machine consistently transitions on dismissal. Without
+    /// this, the four picker actions (pick / add-file / add-clipboard
+    /// / pick-by-clicking) each call `windowPickerWindow.hide()` and
+    /// the state machine only saw three of them (or one), leaving
+    /// composeState stuck in `.pickerOpen` after the others.
+    ///
+    /// nextComposeState's same-state fallthrough makes this a no-op
+    /// when we're not in the latched flow (composeState is .idle),
+    /// so non-latched callers don't need a separate code path.
+    private func dismissPicker() {
+        windowPickerWindow.hide()
+        composeState = nextComposeState(composeState, event: .pickerDismissed)
+    }
+
+    /// Centralized picker-open path. Mirror of dismissPicker for the
+    /// open direction. Every site that opens the window picker for
+    /// the latched-compose flow MUST route through here so the
+    /// state machine consistently transitions to .pickerOpen — the
+    /// hotkeyDown handlers (.latched branch + .pickerOpen branch)
+    /// rely on composeState being .pickerOpen to know the picker is
+    /// visible. Without this, the overlay's + button could open the
+    /// picker without transitioning, leaving the next hotkey press
+    /// to take the .latched resume branch with the picker still
+    /// visible.
+    ///
+    /// Does NOT pause the recorder — that's the caller's
+    /// responsibility (e.g. hotkeyUp's space-pressed branch pauses
+    /// before calling here; the overlay + button click pauses
+    /// inside its caller chain). Separating concerns keeps this
+    /// helper trivial.
+    private func presentPicker() {
+        windowPickerWindow.show()
+        // Synthesize a "picker opened" transition. Use the existing
+        // events to walk through .recording / .latchedRecording →
+        // .pickerOpen by simulating .hotkeyUp(space:true) — that's
+        // the state-machine path for "we paused audio and opened a
+        // picker." When called from .idle (the staging path) this
+        // is a no-op via the default fallthrough.
+        composeState = nextComposeState(
+            composeState,
+            event: .hotkeyUp(spaceWasPressedDuringHold: true)
+        )
+    }
+
     private func uninstallPickEventTap() {
         if let tap = pickEventTap { CGEvent.tapEnable(tap: tap, enable: false) }
         if let src = pickRunLoopSource {
@@ -619,13 +913,17 @@ public final class AppState {
     @MainActor
     private func handlePickClick() {
         guard let target = windowHighlight.currentTarget else { return }
-        Task { [weak self] in
+        // Tracked the same way as the picker's onPick path so a fast
+        // tap-to-send after pick-by-clicking can't outrace the
+        // async SCK capture.
+        let task = Task { [weak self] in
             guard let self else { return }
             do {
                 let reference = try await self.captureService.captureWindow(
                     windowID: target.windowID,
                     displayTitle: target.appName
                 )
+                guard !Task.isCancelled else { return }
                 await MainActor.run {
                     self.overlay.model.references.append(reference)
                     // Single-pick exit: when pick-mode was entered via the
@@ -637,15 +935,29 @@ public final class AppState {
                     }
                 }
             } catch CaptureError.permissionDenied {
+                guard !Task.isCancelled else { return }
                 await MainActor.run {
                     self.overlay.model.permissionPrompt = "Screen Recording permission needed. Grant in System Settings, then try again."
                 }
+            } catch let captureError as CaptureError {
+                guard !Task.isCancelled else { return }
+                // CaptureError already produces a user-facing description
+                // (LocalizedError conformance), so surface it as-is
+                // rather than wrapping in "Couldn't capture window:"
+                // which is redundant for messages like the
+                // full-screen-Space case ("Simulator is in a full-
+                // screen Space. Switch…").
+                await MainActor.run {
+                    self.overlay.model.errorMessage = captureError.localizedDescription
+                }
             } catch {
+                guard !Task.isCancelled else { return }
                 await MainActor.run {
                     self.overlay.model.errorMessage = "Couldn't capture window: \(error.localizedDescription)"
                 }
             }
         }
+        trackCaptureTask(task)
     }
 
     // MARK: - WindowPicker action handlers
@@ -668,7 +980,7 @@ public final class AppState {
             return
         }
         // Hide first so the file dialog isn't occluded by the picker.
-        windowPickerWindow.hide()
+        dismissPicker()
         // Activate Parleq so NSOpenPanel becomes the key window.
         NSApplication.shared.activate(ignoringOtherApps: true)
 
@@ -676,31 +988,50 @@ public final class AppState {
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = false
         panel.canChooseFiles = true
-        panel.begin { [weak self] response in
-            guard let self, response == .OK else { return }
-            let urls = panel.urls
-            Task.detached(priority: .userInitiated) {
-                for url in urls {
-                    // NSOpenPanel only returns file:// URLs, but guard
-                    // defensively. File-type validation (image / PDF /
-                    // safe text formats) lives inside reference(forFileAt:)
-                    // — unsupported types throw and surface as errorMessage.
-                    guard url.isFileURL else { continue }
-                    do {
-                        let ref = try ScreenCaptureKitReferenceCapture.reference(forFileAt: url)
-                        await MainActor.run {
-                            self.overlay.model.references.append(ref)
-                        }
-                    } catch {
-                        await MainActor.run {
-                            self.overlay.model.errorMessage =
-                                "Couldn't read \(url.lastPathComponent): \(error.localizedDescription)"
-                        }
-                    }
+        // Register the tracking task BEFORE the panel opens. Earlier
+        // versions registered only INSIDE panel.begin's completion
+        // handler, leaving the entire panel-open interval invisible
+        // to cancelPendingCaptures() — a cancel/submit during that
+        // window had nothing to cancel, and a late panel completion
+        // would create a new task that appended into a reset
+        // session. Bridging panel.begin into a Task via continuation
+        // closes that window: the outer Task is tracked from the
+        // moment the panel opens, and Task.isCancelled propagates
+        // to the eventual completion handler — selecting a file
+        // after the parent session was cancelled is a no-op.
+        let task = Task { @MainActor in
+            let urls: [URL] = await withCheckedContinuation { cont in
+                panel.begin { response in
+                    cont.resume(returning: response == .OK ? panel.urls : [])
                 }
-                // Picker already hidden above — no hide() needed here.
+            }
+            guard !Task.isCancelled, !urls.isEmpty else { return }
+            for url in urls {
+                // NSOpenPanel only returns file:// URLs, but guard
+                // defensively. File-type validation (image / PDF /
+                // safe text formats) lives inside reference(forFileAt:)
+                // — unsupported types throw and surface as errorMessage.
+                guard url.isFileURL else { continue }
+                guard !Task.isCancelled else { return }
+                do {
+                    // Synchronous decode on the main actor. The
+                    // earlier detached-task pattern was added to keep
+                    // the UI responsive on multi-file picks, but it
+                    // forced Reference across a Sendable boundary
+                    // (which NSImage doesn't satisfy). Inline is
+                    // acceptable here — multi-file picks of large
+                    // PDFs are rare for the dictation use case.
+                    let ref = try ScreenCaptureKitReferenceCapture.reference(forFileAt: url)
+                    guard !Task.isCancelled else { return }
+                    self.overlay.model.references.append(ref)
+                } catch {
+                    guard !Task.isCancelled else { return }
+                    self.overlay.model.errorMessage =
+                        "Couldn't read \(url.lastPathComponent): \(error.localizedDescription)"
+                }
             }
         }
+        trackCaptureTask(task)
     }
 
     /// "Add from clipboard" button in the WindowPicker: attach the
@@ -716,7 +1047,7 @@ public final class AppState {
         }
         if let ref = ScreenCaptureKitReferenceCapture.referenceFromClipboard() {
             overlay.model.references.append(ref)
-            windowPickerWindow.hide()
+            dismissPicker()
         } else {
             overlay.model.errorMessage = "Nothing to attach from clipboard."
         }
@@ -729,7 +1060,7 @@ public final class AppState {
     /// exits cleanly.
     @MainActor
     private func handlePickByClickingFromPicker() {
-        windowPickerWindow.hide()
+        dismissPicker()
         isPickByClickingSinglePick = true
         beginHoldPickMode()
     }
@@ -787,6 +1118,14 @@ public final class AppState {
             ))
         }
         if overlay.model.isPickingWindow { endHoldPickMode() }
+        // Cancel any in-flight reference captures before resetting
+        // overlay state. Without this, a capture task that's still
+        // resolving (e.g. user picked a reference from the review
+        // overlay and pressed Enter before the SCK frame returned)
+        // could append to overlay.model.references AFTER the reset
+        // below — leaking that reference into the next dictation
+        // session and omitting it from the just-accepted entry.
+        cancelPendingCaptures()
         overlay.hide()
         resetPerDictationOverlayState()
         Task { @MainActor in
@@ -820,7 +1159,7 @@ public final class AppState {
             // Nothing async to tear down — just close the picker and
             // fall through to the standard overlay-hide / refs-clear
             // path below.
-            windowPickerWindow.hide()
+            dismissPicker()
         case .capturing, .refining:
             // Stop the recorder so the audio engine releases its
             // input tap; the returned WAV bytes are discarded
@@ -840,6 +1179,14 @@ public final class AppState {
         cancelPendingOverlayShow()
         cancelPendingRefine()
         cancelStagingPickTimer()
+        cancelPendingCaptures()
+        // Dismiss the window picker if it's open. Latched-compose
+        // flows can leave the picker showing across .pickerOpen /
+        // .latched / .latchedRecording; the .staging branch above
+        // handled the upfront-picker case but cancellation mid-
+        // latched-compose would otherwise leave the picker as an
+        // orphaned floating panel.
+        if windowPickerWindow.isVisible { dismissPicker() }
         if overlay.model.isPickingWindow { endHoldPickMode() }
         resetPerDictationOverlayState()
         Task { @MainActor in
@@ -849,12 +1196,53 @@ public final class AppState {
 
     // MARK: - Phase transitions
 
+    /// Called from HotkeyListener.onSpacePressed the first time Space
+    /// is pressed within a single hotkey hold. Surfaces visual
+    /// feedback in the overlay (the hint strip swaps to an "armed"
+    /// variant) so the user sees that Space landed BEFORE they
+    /// release the hotkey. Gated on the same referenceWindowsEnabled
+    /// flag that gates the actual Space-to-picker behavior — promising
+    /// "picker on release" while the flag is off would be misleading.
+    /// Idempotent: the listener already edge-triggers, but the guard
+    /// here doubles as defense against future caller changes.
+    @MainActor
+    public func spacePressedDuringHold() {
+        // Only meaningful during .capturing — Space outside a hold
+        // isn't consumed by the listener (case (a) gates on
+        // keyDown), so this code path shouldn't fire then, but guard
+        // anyway so a future listener change can't surprise us.
+        guard phase == .capturing else { return }
+        guard overlay.model.referenceWindowsEnabled else { return }
+        overlay.model.spaceArmedDuringHold = true
+        log("space pressed during hold — overlay armed")
+    }
+
     private func startFreshCapture() {
         pasteTarget = Paster.captureFrontmost()
         currentText = ""
         lastRawTranscript = ""
         lastCleanupFailed = false
         guard openRecorder() else { return }
+        // Advance the latched-compose state machine so a subsequent
+        // hotkeyUp(spaceWasPressedDuringHold: true) can transition
+        // .recording → .pickerOpen. Without this the .hotkeyUp event
+        // hits the default fallthrough on .idle and the picker
+        // never opens. Quick mode also fires hotkeyDown for symmetry,
+        // even though quick-mode users never press Space (they
+        // double-tap-hold and release immediately) — keeping the
+        // event consistent avoids future bugs if quick mode ever
+        // grows space-attach support.
+        composeState = nextComposeState(composeState, event: .hotkeyDown)
+        // Sync the overlay model's referenceWindowsEnabled flag so the
+        // hint strip's .recording-state teaching copy ("Press Space to
+        // attach a window") suppresses when the feature is off. The
+        // .recording hint shows BEFORE hotkeyUp, so we need the model
+        // updated at hotkeyDown time, not later.
+        overlay.model.referenceWindowsEnabled = Config.load().config.referenceWindowsEnabled
+        // Clear the per-hold Space-armed flag at every fresh down so
+        // a stale "armed" state from a previous hold can't leak
+        // visually into this one.
+        overlay.model.spaceArmedDuringHold = false
         phase = .capturing
         if quickMode {
             log("quick-mode capture (no overlay)")
@@ -1278,6 +1666,16 @@ public final class AppState {
         overlay.model.references = []
         overlay.model.pickedModelOverride = nil
         overlay.model.userDowngradedConflict = false
+        // Clear banners (errorMessage from a failed capture,
+        // permissionPrompt from a denied TCC check) so they don't
+        // persist across dictation sessions. The pick-by-click path
+        // already clears them at the top of each capture for the
+        // grant-and-retry case (see line ~1825), but that doesn't
+        // help when the user starts a wholly new dictation later —
+        // the banner from a previous session would still be visible.
+        // Clearing on every exit to .idle handles both paths.
+        overlay.model.errorMessage = nil
+        overlay.model.permissionPrompt = nil
     }
 
     // MARK: - Timer
@@ -1296,6 +1694,78 @@ public final class AppState {
     private func cancelAutoAcceptTimer() {
         autoAcceptTimer?.invalidate()
         autoAcceptTimer = nil
+    }
+
+    // MARK: - Pending capture tracking
+
+    /// Register a Task running an async reference-attachment so the
+    /// submit path can await it before finalizing. The task is kept
+    /// in the dictionary until it actually completes (via a
+    /// completion-tracker child Task that removes its own entry).
+    /// Returns the UUID key so callers can match completion if they
+    /// need to — currently nobody does.
+    @discardableResult
+    private func trackCaptureTask(_ task: Task<Void, Never>) -> UUID {
+        let id = UUID()
+        pendingCaptureTasks[id] = task
+        // Spawn a completion-tracker that auto-removes the entry
+        // when the underlying task finishes. Without this the
+        // dictionary would grow unbounded as references accumulate
+        // across multiple dictation sessions.
+        Task { @MainActor [weak self] in
+            await task.value
+            self?.pendingCaptureTasks.removeValue(forKey: id)
+        }
+        return id
+    }
+
+    /// Await all currently-tracked capture tasks. Called from the
+    /// submit path BEFORE finalizeCapture so any references picked
+    /// just before the release gesture are guaranteed to be in
+    /// overlay.model.references when the ASR/LLM pipeline reads
+    /// them.
+    ///
+    /// Snapshots the values rather than removing them — tasks stay
+    /// in pendingCaptureTasks until they complete on their own (via
+    /// the trackCaptureTask completion handler). That way a second
+    /// submit gesture firing concurrently can't see an empty list
+    /// while the first submit is still awaiting.
+    ///
+    /// Returns immediately when no captures are pending — the
+    /// common case for non-latched dictation.
+    private func awaitPendingCaptures() async {
+        guard !pendingCaptureTasks.isEmpty else { return }
+        let pending = Array(pendingCaptureTasks.values)
+        for task in pending {
+            await task.value
+        }
+    }
+
+    /// Cancel any in-flight capture tasks. Called from the cancel()
+    /// path so a mid-capture abort doesn't leave SCK / Vision work
+    /// running uselessly in the background. Each cancelled task's
+    /// completion handler will remove its own dictionary entry.
+    private func cancelPendingCaptures() {
+        for (_, task) in pendingCaptureTasks {
+            task.cancel()
+        }
+        // Drop entries eagerly. The per-task completion handlers in
+        // trackCaptureTask will also try to remove their entries when
+        // their underlying tasks finish, but the dictionary's
+        // removeValue(forKey:) is a no-op on a missing key, so the
+        // double-remove is harmless.
+        //
+        // Eager removal matters because tasks doing synchronous work
+        // (file decode, SCK capture) may not honor Task.cancel()
+        // promptly — they keep running until the next isCancelled
+        // check or until the work completes naturally. Leaving them
+        // in pendingCaptureTasks means a fresh dictation session
+        // started right after the cancel could call
+        // awaitPendingCaptures() and block on those stale workers,
+        // delaying or hanging the new submit. Eviction here scopes
+        // the dictionary strictly to the CURRENT session's pending
+        // work.
+        pendingCaptureTasks.removeAll()
     }
 
     // MARK: - Helpers
@@ -1402,10 +1872,22 @@ public final class AppState {
                 windowID: entry.windowID,
                 displayTitle: entry.title
             )
+            // If our task was cancelled (e.g. user pressed Esc
+            // during the SCK capture), bail without mutating model
+            // state — otherwise the reference would leak into the
+            // NEXT dictation session after resetPerDictationOverlayState.
+            guard !Task.isCancelled else { return }
             overlay.model.references.append(reference)
         } catch CaptureError.permissionDenied {
+            guard !Task.isCancelled else { return }
             overlay.model.permissionPrompt = "Screen Recording permission denied. Grant in System Settings, then try again."
+        } catch let captureError as CaptureError {
+            guard !Task.isCancelled else { return }
+            // See the matching handler in the pick-by-click path above —
+            // CaptureError already carries a user-facing description.
+            overlay.model.errorMessage = captureError.localizedDescription
         } catch {
+            guard !Task.isCancelled else { return }
             overlay.model.errorMessage = "Couldn't capture window: \(error.localizedDescription)"
         }
     }
@@ -1673,13 +2155,29 @@ private func streamCleanupOrRefine(
             // as a non-failure (no decorations) because some LLMs
             // legitimately return empty for unusable input, and we
             // don't want to flag that as an auth / provider error.
-            if useOverlay {
+            //
+            // Skip the re-show when the outer task was cancelled —
+            // cancel() has queued closeAndReset to hide the overlay
+            // and re-showing here races against it, leaving the
+            // overlay stuck in a fake "processing" state that only
+            // the user pressing the hotkey can dismiss.
+            if useOverlay, !Task.isCancelled {
                 overlay.show(state: .cleaning, text: fallback)
             }
             return CleanupOutcome(text: fallback, failureMessage: nil)
         }
         return CleanupOutcome(text: final, failureMessage: nil)
     } catch {
+        // Short-circuit on cancellation. The outer Task sees
+        // Task.isCancelled === true and skips applyResult, but
+        // before that check fires the catch block here would
+        // otherwise re-show the overlay with the fallback text and
+        // race against cancel()'s closeAndReset → hide(). Returning
+        // an empty outcome here keeps the overlay hidden and lets
+        // the outer guard handle the rest.
+        if error is CancellationError || Task.isCancelled {
+            return CleanupOutcome(text: fallback, failureMessage: nil)
+        }
         // Log the error SHAPE but strip any HTTP response body the
         // provider's LLMError cases would otherwise carry into
         // ~/.parleq/app.log. `LLMError.logSafeDescription` covers all
