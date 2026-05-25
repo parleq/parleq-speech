@@ -251,10 +251,31 @@ final class ScreenCaptureKitReferenceCapture: ReferenceCapturer, @unchecked Send
             // Nudge the app forward so WindowServer composes its
             // window again, then retry. Stay on the main actor for
             // NSRunningApplication.activate.
+            //
+            // Save the current frontmost BEFORE activating the source
+            // app so we can restore focus once the capture is done.
+            // For regular multi-window Spaces, activate() on the
+            // prior frontmost cleanly switches focus back. For
+            // full-screen Spaces (each full-screen app on its own
+            // dedicated Space), macOS's WindowServer treats them
+            // specially — plain activate() does not switch the
+            // visible Space back. See task #212 for what was tried
+            // (CGEvent Cmd+Tab synthesis posted at HID level, dated
+            // 2026-05-23 — does not work; macOS filters synthesized
+            // Cmd+Tab to prevent apps from spoofing the App Switcher
+            // and bypassing the full-screen-Space guardrail). The
+            // restore here covers the common case; the full-screen
+            // case is documented as a known limitation that needs
+            // either private CGS APIs (yabai-style, fragile) or a
+            // UX-level workaround (refuse-with-error / explanatory
+            // chip).
             Self.logStderr(
                 "[parleq] reference-capture got -3811 for \(bundleID); activating + retrying"
             )
             let pid = scWindow.owningApplication?.processID ?? 0
+            let priorFrontmost = await MainActor.run { () -> NSRunningApplication? in
+                NSWorkspace.shared.frontmostApplication
+            }
             await MainActor.run {
                 if pid != 0, let app = NSRunningApplication(processIdentifier: pid) {
                     app.activate(options: [])
@@ -265,11 +286,25 @@ final class ScreenCaptureKitReferenceCapture: ReferenceCapturer, @unchecked Send
             // the basic flow is proven.
             try? await Task.sleep(nanoseconds: 200_000_000)
 
+            // Restore focus on every exit path from the retry. If the
+            // prior-frontmost app has quit since we snapshotted, the
+            // activate() call is a best-effort no-op rather than an
+            // error. Same priorFrontmost is reused in both success
+            // and failure branches below.
+            func restorePriorFrontmost() async {
+                guard let prior = priorFrontmost else { return }
+                await MainActor.run {
+                    prior.activate(options: [])
+                }
+            }
+
             do {
-                return try await SCScreenshotManager.captureImage(
+                let image = try await SCScreenshotManager.captureImage(
                     contentFilter: filter,
                     configuration: config
                 )
+                await restorePriorFrontmost()
+                return image
             } catch let retryError as NSError {
                 Self.logStderr(
                     "[parleq] reference-capture SCK capture failed AFTER activation retry: \(retryError) " +
@@ -277,6 +312,10 @@ final class ScreenCaptureKitReferenceCapture: ReferenceCapturer, @unchecked Send
                     "scale=\(scaleFactor) capture=\(Int(captureSize.width))×\(Int(captureSize.height)) " +
                     "bundle=\(bundleID))"
                 )
+                // Restore focus even on failure — leaving the user
+                // stranded on the activated source app after an error
+                // is worse than the error itself.
+                await restorePriorFrontmost()
                 throw retryError
             }
         }

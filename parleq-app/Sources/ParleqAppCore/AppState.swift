@@ -1002,6 +1002,45 @@ public final class AppState {
             return
         }
 
+        // Silence-hallucination guard: Parakeet TDT sometimes returns
+        // a phantom short word ("yeah", "okay", "thank you") when given
+        // audio that passes the duration guard but contains no real
+        // speech (held hotkey with mic open in a quiet room, breath,
+        // BT-routing thumps). The empty-transcript guard further down
+        // doesn't catch this because the transcript is non-empty —
+        // just hallucinated. We pre-check with an RMS-over-20ms-frames
+        // analyzer; under 50ms of voiced audio means the user almost
+        // certainly didn't speak, so we short-circuit before invoking
+        // ASR. The threshold matches a quiet "yes" (~150ms voiced) with
+        // a healthy margin.
+        //
+        // Gate on isAnalyzable so a malformed WAV buffer (defensive
+        // path that shouldn't be reachable today) falls through to
+        // ASR rather than getting suppressed by SilenceDetector's
+        // zero-default voicedDuration fallback.
+        let silence = SilenceDetector.analyze(wavData: capture.wavData)
+        if silence.isAnalyzable && silence.voicedDurationSeconds < 0.05 {
+            log("captured audio voiced=\(String(format: "%.3f", silence.voicedDurationSeconds))s peak=\(String(format: "%.4f", silence.peakRMS)); skipping pipeline (silence)")
+            cancelPendingOverlayShow()
+            session?.cancel()
+            // Mirror the empty-transcript branch below: on a silent
+            // REFINE attempt, keep the prior text on screen so the
+            // user can still accept the unmodified version (a silent
+            // refine isn't a "cancel everything" gesture — the user
+            // may have meant to confirm the existing text and didn't
+            // realize they needed to actively speak). On a silent
+            // INITIAL dictation there is no prior text, so the
+            // full-reset is the right end state.
+            if asRefine, !currentText.isEmpty {
+                applyResult(currentText)
+            } else {
+                resetPerDictationOverlayState()
+                phase = .idle
+                overlay.hide()
+            }
+            return
+        }
+
         phase = .cleaning
         if quickMode {
             // In quick mode we don't show the overlay — the user
