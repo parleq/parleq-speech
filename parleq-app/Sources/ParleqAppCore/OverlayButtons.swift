@@ -156,10 +156,10 @@ struct OverlayButtons: View {
         }
     }
 
-    // pasteTargetLabel extracted to PastingToLabel (PasteTargetChip.swift)
-    // so the same visual treatment ("PASTING TO" eyebrow + icon + name)
-    // can render in the footer during active dictation states without
-    // duplicating the view code.
+    // pasteTargetLabel extracted to the top-level PastingToLabel view
+    // so the same visual treatment ("PASTING TO" eyebrow + icon +
+    // name) can render in the footer during active dictation states
+    // without duplicating the view code.
 
     /// Mini "key cap" chip for keyboard-shortcut glyphs (⏎, ⎋).
     /// Replaces the previous inline-glyph treatment with a

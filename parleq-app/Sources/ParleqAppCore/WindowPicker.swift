@@ -60,6 +60,25 @@ final class WindowPickerModel: ObservableObject {
     @Published var error: String?
     @Published var needsPermission = false
 
+    /// Index of the currently-keyboard-selected entry. Drives the
+    /// highlight ring on WindowThumbnailCard and is the target of
+    /// the Enter key. nil when no entry is selected (e.g. immediately
+    /// after the picker opens with no keyboard interaction yet, or
+    /// when the entries list is empty / still loading). Index-based
+    /// (rather than windowID-based) so the panel's arrow-key handler
+    /// can do simple `index + 1` / `index + columnCount` arithmetic
+    /// without rebuilding a position map after every refresh.
+    @Published var selectedIndex: Int?
+
+    /// Column count of the currently-rendered LazyVGrid, set by the
+    /// view via a preference key. The grid is `.adaptive`, so the
+    /// count varies with panel width; the panel's keyDown handler
+    /// reads this to translate Up/Down arrows into the correct
+    /// row-jump distance. Defaults to 1 so a never-rendered panel
+    /// (test harness, very narrow window) still produces sensible
+    /// navigation behavior — every arrow becomes a linear step.
+    @Published var columnCount: Int = 1
+
     /// Bundle IDs whose windows we never want to surface as reference
     /// candidates. System UI surfaces / background helper windows that
     /// occasionally have titles but aren't user content.
@@ -91,6 +110,11 @@ final class WindowPickerModel: ObservableObject {
             needsPermission = true
             entries = []
             thumbnails = [:]
+            // Clear here too — entries is being emptied, so any
+            // stored selection points at nothing. The panel's
+            // keyDown normalization returns early on empty
+            // entries and wouldn't clamp this on its own.
+            selectedIndex = nil
             isLoading = false
             return
         }
@@ -109,6 +133,16 @@ final class WindowPickerModel: ObservableObject {
                 guard myGeneration == self.thumbnailGeneration else { return }
                 self.entries = fresh
                 self.thumbnails = [:]
+                // Drop any stale keyboard selection when the entry
+                // list changes — the previously-selected index might
+                // now point to a removed entry, and the panel's
+                // keyDown handler does its own clamping but the
+                // model is the authoritative store so clearing here
+                // makes the empty-selection state immediate for any
+                // observer (including the SwiftUI grid's isSelected
+                // binding, which would otherwise highlight the wrong
+                // card on a list shuffle).
+                self.selectedIndex = nil
                 self.isLoading = false
                 await self.captureThumbnails(for: sources, generation: myGeneration)
             } catch {
@@ -120,6 +154,7 @@ final class WindowPickerModel: ObservableObject {
                     self.needsPermission = true
                     self.entries = []
                     self.thumbnails = [:]
+                    self.selectedIndex = nil
                 } else {
                     self.error = "Couldn't list windows: \(error.localizedDescription)"
                 }
@@ -448,28 +483,85 @@ struct WindowPickerView: View {
         .padding(14)
     }
 
+    /// Min/max bounds + spacing for the adaptive grid. Hoisted to
+    /// constants so the keyboard-nav column-count calculation uses
+    /// the exact same numbers as the grid layout — otherwise drift
+    /// would silently break Up/Down arrow distances.
+    private static let gridItemMin: CGFloat = 280
+    private static let gridItemMax: CGFloat = 420
+    private static let gridSpacing: CGFloat = 14
+
     private var entryGrid: some View {
         ScrollView {
             // `.adaptive` chooses the column count based on available
-            // width — 2 cols in a narrow window, 3–4 in a wider one.
-            // Lower bound 240 keeps thumbnails readable; the upper
-            // bound lets the system stretch a card a bit before
-            // adding a column.
+            // width — 2 cols in a narrow window, more in a wider one.
+            // Minimum bumped from 240→280 in PR C: with the larger
+            // default picker size (screen-relative, ~70% of visible
+            // frame), the old floor made wide pickers add columns
+            // rather than giving each thumbnail more visual weight.
+            // The maximum bump (360→420) gives a single card more
+            // room before SwiftUI inserts another column.
             LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: 240, maximum: 360), spacing: 14)],
-                spacing: 14
+                columns: [GridItem(.adaptive(minimum: Self.gridItemMin,
+                                             maximum: Self.gridItemMax),
+                                   spacing: Self.gridSpacing)],
+                spacing: Self.gridSpacing
             ) {
-                ForEach(model.entries) { entry in
+                ForEach(Array(model.entries.enumerated()), id: \.element.id) { index, entry in
                     WindowThumbnailCard(
                         entry: entry,
                         thumbnail: model.thumbnails[entry.windowID],
+                        isSelected: model.selectedIndex == index,
                         onPick: { onPick(entry) }
                     )
                 }
             }
             .padding(16)
+            // Measure the GRID width (not per-card y) and compute
+            // columnCount from the same SwiftUI formula used by
+            // `.adaptive` GridItem: N = floor((width + spacing) /
+            // (minimum + spacing)). This avoids the per-card y-row
+            // detection that was unreliable when SwiftUI's adaptive
+            // grid wrapped in ways the user didn't visually expect
+            // (e.g. wide screen with N+M entries packing as one row
+            // visually but laid out as two rows internally with
+            // identical minYs differing by <2pt).
+            .background(
+                GeometryReader { gridGeo in
+                    Color.clear.preference(
+                        key: GridWidthPreferenceKey.self,
+                        value: gridGeo.size.width
+                    )
+                }
+            )
+            .onPreferenceChange(GridWidthPreferenceKey.self) { width in
+                // 32pt accounts for the .padding(16) on each side
+                // applied above. spacing cancels in the formula
+                // numerator + denominator (one fewer spacing than
+                // columns), giving the floor expression below.
+                let usable = max(0, width - 32)
+                let computed = Int(floor((usable + Self.gridSpacing) /
+                                         (Self.gridItemMin + Self.gridSpacing)))
+                let clamped = max(1, min(computed, model.entries.count))
+                if model.columnCount != clamped {
+                    model.columnCount = clamped
+                }
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// Live grid-content width, reported by a GeometryReader attached to
+/// the LazyVGrid. Used to compute the column count deterministically
+/// from the same formula SwiftUI's `.adaptive` GridItem uses, rather
+/// than measuring per-card y positions (which can be ambiguous when
+/// rows have identical minYs within sub-pixel jitter).
+private struct GridWidthPreferenceKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        let next = nextValue()
+        if next > value { value = next }
     }
 }
 
@@ -478,6 +570,12 @@ struct WindowPickerView: View {
 private struct WindowThumbnailCard: View {
     let entry: WindowPickerModel.Entry
     let thumbnail: NSImage?
+    /// True when this card is the keyboard-selected entry. Drives a
+    /// stronger accent ring so the user can see what Enter will pick
+    /// without having to hover. Independent of hovering — hover and
+    /// keyboard-select can both be true simultaneously, and the
+    /// keyboard selection wins visually.
+    let isSelected: Bool
     let onPick: () -> Void
 
     @State private var hovering = false
@@ -492,7 +590,22 @@ private struct WindowThumbnailCard: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Add \(entry.appName) — \(entry.title) as reference")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
         .onHover { hovering = $0 }
+    }
+
+    /// Border color + width — keyboard-selected wins over hover,
+    /// hover over default. Centralized so the two callers (background
+    /// stroke + thumbnail outline) stay visually consistent.
+    private var borderColor: Color {
+        if isSelected { return Color.accentColor }
+        if hovering { return Color.accentColor.opacity(0.7) }
+        return Color.secondary.opacity(0.25)
+    }
+    private var borderWidth: CGFloat {
+        if isSelected { return 2.5 }
+        if hovering { return 2 }
+        return 1
     }
 
     private var thumbnailArea: some View {
@@ -506,8 +619,7 @@ private struct WindowThumbnailCard: View {
                 .fill(Color.secondary.opacity(0.08))
                 .overlay(
                     RoundedRectangle(cornerRadius: 6)
-                        .stroke(hovering ? Color.accentColor.opacity(0.7) : Color.secondary.opacity(0.25),
-                                lineWidth: hovering ? 2 : 1)
+                        .stroke(borderColor, lineWidth: borderWidth)
                 )
 
             if let thumbnail = thumbnail {

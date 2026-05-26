@@ -927,9 +927,13 @@ public final class AppState {
                 await MainActor.run {
                     self.overlay.model.references.append(reference)
                     // Single-pick exit: when pick-mode was entered via the
-                    // WindowPicker button, exit after one successful capture.
-                    // The legacy hotkey-hold sticky path is not currently
-                    // wired, so this is the only active exit semantic today.
+                    // WindowPicker's "Pick by clicking" button, exit
+                    // immediately after a successful capture. The
+                    // alternative entry paths (staging-pick timer +
+                    // awaitingAccept-refine-timer fall-through into
+                    // beginHoldPickMode) keep pick mode sticky for
+                    // multi-pick, so this flag toggles the exit
+                    // semantic per entry path.
                     if self.isPickByClickingSinglePick {
                         self.endHoldPickMode()
                     }
