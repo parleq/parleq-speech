@@ -184,9 +184,15 @@ const stages = [
 
       <dl class="mt-8 space-y-6 border-l border-[color:var(--color-border)] pl-5">
         <div>
-          <dt class="text-sm font-semibold text-[color:var(--color-text)]">Window capture</dt>
+          <dt class="text-sm font-semibold text-[color:var(--color-text)]">Space-during-dictation gesture</dt>
           <dd class="mt-1 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
-            Click the <strong>"Pick a window…"</strong> button in the overlay (or use the keyboard shortcut) and click any on-screen window. Parleq captures it via ScreenCaptureKit — either as OCR'd text or, when you've picked a vision-capable model, as an actual PNG sent to the LLM as image tokens. Screen Recording permission is requested lazily on first use, not at startup.
+            The fastest way to attach a window: while holding your dictation hotkey, tap <strong>Space</strong>. Audio pauses, the window picker opens, you pick a window (arrow keys + Enter, or click), and the overlay enters a <em>latched</em> state. Hold the hotkey again to keep dictating with the reference attached, or just tap-and-release to send. Tap Space mid-dictation again to attach a second, third, … reference into the same composition. Esc cancels the entire composition.
+          </dd>
+        </div>
+        <div>
+          <dt class="text-sm font-semibold text-[color:var(--color-text)]">Window picker (mouse + keyboard)</dt>
+          <dd class="mt-1 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
+            Click the <strong>"+"</strong> button on the overlay to open the picker directly without the Space gesture. The picker is a sizable, screen-relative panel showing every capturable window — fully keyboard-navigable (arrow keys to move selection, Enter to pick, Cmd-W or Esc to dismiss). Picker captures a window via ScreenCaptureKit — either as OCR'd text or, when you've picked a vision-capable model, as an actual PNG sent to the LLM as image tokens. Screen Recording permission is requested lazily on first use, not at startup.
           </dd>
         </div>
         <div>

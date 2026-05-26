@@ -127,9 +127,23 @@ public final class HotkeyListener {
     /// enough to forgive a fumbled tap.
     private static let doubleTapWindow: TimeInterval = 0.3
 
+    /// Virtual keycode for the Space bar on US/QWERTY. macOS
+    /// dispatches Space by keyCode regardless of layout, same as
+    /// the modifier keys.
+    private static let spaceKeyCode: Int64 = 0x31
+
     private let binding: HotkeyBinding
     private let onKeyDown: (HotkeyDownEvent) -> Void
-    private let onKeyUp: () -> Void
+    private let onKeyUp: (HotkeyUpEvent) -> Void
+    /// Fires the FIRST time Space is pressed during a single hotkey
+    /// hold. Subsequent presses within the same hold (e.g. auto-
+    /// repeats, or the user releasing and re-pressing Space) do not
+    /// re-fire. Used by AppState to surface visual feedback the
+    /// instant Space is recognized — without this, the user gets no
+    /// signal that Space landed until they release the hotkey and
+    /// the picker opens, which feels unresponsive on the dominant
+    /// "Space-then-immediately-release" path.
+    private let onSpacePressed: (() -> Void)?
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     // Press-state tracking: CGEventTap delivers a flagsChanged event
@@ -141,15 +155,38 @@ public final class HotkeyListener {
     /// "double-tap-and-hold" gesture: a key-DOWN within
     /// doubleTapWindow seconds of a prior key-UP.
     private var lastKeyUpAt: TimeInterval = 0
+    /// Per-hold flag set to true when Space is pressed while the
+    /// dictation hotkey is held. Reset on each fresh key-DOWN.
+    /// Reference Windows v2's latched-compose state machine
+    /// consumes this flag at key-UP to decide whether to submit
+    /// (false — release without space, the normal case) or to
+    /// enter the latched state and open the picker (true).
+    private var spacePressedThisHold = false
+    /// Cross-cutting flag tracking a Space keyDown we consumed.
+    /// Set when the keyDown is swallowed; checked when the
+    /// matching keyUp arrives so we also consume it. Without this,
+    /// the focused app would see a dangling Space keyUp with no
+    /// matching keyDown — which can fire keyUp-only shortcuts or
+    /// confuse key-state trackers in web pages and native apps.
+    /// Lifetime spans whichever happens first: matching Space
+    /// keyUp arrives, OR Space gets re-pressed while still
+    /// expected to release (which is just a key-repeat we
+    /// already-decided to swallow). Independent of the dictation
+    /// hotkey's hold state — Space might be released after the
+    /// dictation hotkey has already been released, and we still
+    /// need to swallow that lingering keyUp.
+    private var pendingSpaceKeyUpToSwallow = false
 
     public init(
         binding: HotkeyBinding = .defaultBinding,
         onKeyDown: @escaping (HotkeyDownEvent) -> Void,
-        onKeyUp: @escaping () -> Void
+        onKeyUp: @escaping (HotkeyUpEvent) -> Void,
+        onSpacePressed: (() -> Void)? = nil
     ) {
         self.binding = binding
         self.onKeyDown = onKeyDown
         self.onKeyUp = onKeyUp
+        self.onSpacePressed = onSpacePressed
     }
 
     public func start() throws {
@@ -157,12 +194,27 @@ public final class HotkeyListener {
             throw HotkeyError.accessibilityNotGranted
         }
 
+        // .flagsChanged for the modifier-key press/release;
+        // .keyDown so we can also see plain Space presses (which
+        // don't change the modifier bitmap and thus don't fire
+        // flagsChanged); .keyUp so we can swallow the matching
+        // Space release after we've consumed its down. Without
+        // .keyUp the focused app would see a dangling keyUp.
+        // The callback dispatches by event type.
         let mask = (1 << CGEventType.flagsChanged.rawValue)
+                 | (1 << CGEventType.keyDown.rawValue)
+                 | (1 << CGEventType.keyUp.rawValue)
         let userInfo = Unmanaged.passUnretained(self).toOpaque()
+        // .defaultTap (not .listenOnly) so we can RETURN NIL to
+        // consume a Space event when it's pressed during a hold —
+        // the user is signaling Parleq via Space, not typing a
+        // space character into the focused app. Flag/modifier
+        // events are still passed through to other apps; only
+        // Space-during-our-hold gets consumed.
         guard let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
             place: .headInsertEventTap,
-            options: .listenOnly,
+            options: .defaultTap,
             eventsOfInterest: CGEventMask(mask),
             callback: HotkeyListener.eventTapCallback,
             userInfo: userInfo
@@ -197,22 +249,138 @@ public final class HotkeyListener {
             let isDoubleTap = (now - lastKeyUpAt) < HotkeyListener.doubleTapWindow
             // maskShift covers both left and right Shift.
             let isShiftHeld = event.flags.contains(.maskShift)
+            // Reset the per-hold space flag at every fresh down,
+            // so a Space pressed during a *previous* hold doesn't
+            // leak into this one.
+            spacePressedThisHold = false
             onKeyDown(HotkeyDownEvent(isDoubleTapHold: isDoubleTap, isShiftHeld: isShiftHeld))
         } else {
             lastKeyUpAt = Date().timeIntervalSinceReferenceDate
-            onKeyUp()
+            let upEvent = HotkeyUpEvent(spaceWasPressedDuringHold: spacePressedThisHold)
+            // Defensive reset on emit — anything that happens after
+            // this point belongs to a new hold cycle.
+            spacePressedThisHold = false
+            onKeyUp(upEvent)
         }
+    }
+
+    /// Returns true if the event was consumed (caller should not
+    /// pass it through). Fires for:
+    ///   (a) Space pressed WHILE the dictation hotkey is held —
+    ///       starts the consume cycle, sets both spacePressedThisHold
+    ///       and the cross-cutting pendingSpaceKeyUpToSwallow flag.
+    ///   (b) Subsequent Space keyDowns (typically auto-repeat) while
+    ///       pendingSpaceKeyUpToSwallow is still set. macOS
+    ///       auto-repeats keyDown events when a key is held; these
+    ///       belong to the same physical press we already consumed,
+    ///       and would otherwise leak through if the dictation
+    ///       hotkey is released before Space is.
+    /// Other keyDowns pass through unchanged.
+    private func handleKeyDown(event: CGEvent) -> Bool {
+        let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
+        guard keyCode == HotkeyListener.spaceKeyCode else { return false }
+        // Case (a): the dictation hotkey is held. Start consume cycle.
+        if keyDown {
+            // Fire onSpacePressed only on the FIRST press of this
+            // hold — subsequent calls into case (a) would imply the
+            // user released Space and re-pressed it (rare; we'd want
+            // to surface that too if we tracked it), but in practice
+            // case (b) handles auto-repeats and a re-press would
+            // arrive as case (a) AFTER a Space keyUp. Guarding on
+            // the prior spacePressedThisHold value keeps the
+            // callback edge-triggered.
+            let firstPressThisHold = !spacePressedThisHold
+            spacePressedThisHold = true
+            pendingSpaceKeyUpToSwallow = true
+            if firstPressThisHold {
+                onSpacePressed?()
+            }
+            return true
+        }
+        // Case (b): auto-repeat of an already-consumed Space press.
+        // Keep the pending-keyUp flag set; consume the repeat so the
+        // focused app doesn't see a partial sequence.
+        if pendingSpaceKeyUpToSwallow {
+            return true
+        }
+        return false
+    }
+
+    /// Returns true if the keyUp was consumed (caller should not
+    /// pass it through). Fires only for the Space release that
+    /// matches a previously-swallowed Space keyDown. All other
+    /// keyUps pass through unchanged. Decoupled from `keyDown`
+    /// (the dictation-hotkey hold state) because Space might be
+    /// released AFTER the dictation hotkey has been released
+    /// (user lets go of option-right first, then Space) — we
+    /// still need to swallow the lingering keyUp.
+    private func handleKeyUp(event: CGEvent) -> Bool {
+        let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
+        guard keyCode == HotkeyListener.spaceKeyCode, pendingSpaceKeyUpToSwallow else {
+            return false
+        }
+        pendingSpaceKeyUpToSwallow = false
+        return true
     }
 
     private static let eventTapCallback: CGEventTapCallBack = {
         proxy, type, event, userInfo in
         guard let userInfo = userInfo else { return Unmanaged.passUnretained(event) }
         let listener = Unmanaged<HotkeyListener>.fromOpaque(userInfo).takeUnretainedValue()
-        if type == .flagsChanged {
+        switch type {
+        case .flagsChanged:
             listener.handle(event: event)
+            return Unmanaged.passUnretained(event)
+        case .keyDown:
+            if listener.handleKeyDown(event: event) {
+                // Consume: return nil so the focused app doesn't
+                // see the Space keystroke.
+                return nil
+            }
+            return Unmanaged.passUnretained(event)
+        case .keyUp:
+            if listener.handleKeyUp(event: event) {
+                // Consume the matching Space keyUp so the focused
+                // app doesn't see a dangling release with no
+                // matching press.
+                return nil
+            }
+            return Unmanaged.passUnretained(event)
+        case .tapDisabledByTimeout:
+            // macOS disables .defaultTap callbacks that take too
+            // long. Re-enable so hotkey detection survives extreme
+            // system load (unlikely to ever happen given how fast
+            // this callback is, but the standard CGEventTap
+            // pattern). Without this the tap stays dead and no
+            // amount of hotkey pressing would register again until
+            // the user restarts Parleq.
+            if let tap = listener.eventTap {
+                CGEvent.tapEnable(tap: tap, enable: true)
+            }
+            return Unmanaged.passUnretained(event)
+        case .tapDisabledByUserInput:
+            // Similar to timeout — user-input disable also wants
+            // an explicit re-enable. Rare in practice but covered
+            // for symmetry.
+            if let tap = listener.eventTap {
+                CGEvent.tapEnable(tap: tap, enable: true)
+            }
+            return Unmanaged.passUnretained(event)
+        default:
+            return Unmanaged.passUnretained(event)
         }
-        return Unmanaged.passUnretained(event)
     }
+}
+
+/// Context for a key-up event. The press-and-hold gesture released;
+/// what additional state was observed during the hold?
+public struct HotkeyUpEvent {
+    /// True if the Space key was pressed at any point during the
+    /// hold that's now ending. Reference Windows v2's latched-
+    /// compose state machine uses this to decide whether the
+    /// release submits (false) or transitions into the latched
+    /// state to open the picker (true).
+    public let spaceWasPressedDuringHold: Bool
 }
 
 // ensureAccessibility prompts the user (with the system dialog) the
