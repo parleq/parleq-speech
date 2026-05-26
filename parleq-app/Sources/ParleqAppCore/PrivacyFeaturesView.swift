@@ -69,6 +69,28 @@ struct PrivacyFeaturesSectionContent: View {
                 .disabled(model.managedKeys.contains("customModelEntryEnabled"))
             }
 
+            // Managed Configuration audit (#213). Moved here from the
+            // menu bar's "View Managed Configuration…" item in 0.13.0
+            // as part of the menu-bar declutter — Privacy & Features
+            // is the natural home since it's already the surface where
+            // a user / IT admin sees what's locked down on the
+            // toggles above. The Compliance Audit dialog itself is
+            // unchanged; the WindowController is shared across all
+            // entry points.
+            SettingsCard {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Managed Configuration audit")
+                        .font(.callout.weight(.medium))
+                    SettingsCaption("Open the Compliance Audit dialog to see every managed-eligible Parleq key with its effective value and source (Managed / User / Default). Useful for IT verifying a deployed profile, or for users debugging which settings their organization has pinned.")
+                    HStack(spacing: 8) {
+                        Button("View managed configuration…") {
+                            ManagedConfigAuditWindowController.shared.show()
+                        }
+                        Spacer()
+                    }
+                }
+            }
+
             // Docs link.
             HStack(spacing: 4) {
                 Link(

@@ -509,9 +509,10 @@ struct ParleqApp {
             menuBar.onCheckForUpdates = { [weak updaterController] in
                 updaterController?.checkForUpdates(nil)
             }
-            menuBar.onViewManagedConfig = {
-                ManagedConfigAuditWindowController.shared.show()
-            }
+            // In 0.13.0 the "View Managed Configuration…" menu item
+            // was removed (#213) — the Compliance Audit dialog is now
+            // launched from Settings → Privacy & Features. Same
+            // shared window controller, just a different entry point.
 
             // Microphone selector (#25). The menu submenu writes the
             // chosen UID back via this callback; we update the
@@ -706,7 +707,11 @@ struct ParleqApp {
                 menuBox.value?.setASRReady(local.isReady)
                 menuBox.value?.setASRLoadFailed(local.loadFailed)
                 stateBox.value?.notifyDownloadProgress(local.downloadProgress)
-                menuBox.value?.onResetASR = { [weak local] in
+                // In 0.13.0 the "Reset ASR" menu item moved to
+                // Settings → Advanced (#214). Wire the same
+                // closure into SettingsModel via the controller's
+                // public setter so the button has work to call.
+                settingsBox.value?.setOnResetASR { [weak local] in
                     local?.reset()
                 }
                 local.start()

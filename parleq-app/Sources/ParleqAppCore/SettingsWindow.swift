@@ -148,6 +148,17 @@ final class SettingsModel: ObservableObject {
     /// keys render as `.disabled(true)` with the ManagedIndicator badge.
     @Published var managedKeys: Set<String>
 
+    /// Callback wired by `parleq-app/main.swift` to the bundled
+    /// LocalASRClient's `reset()` method. Settings → Advanced
+    /// exposes this as a "Reset speech model" button; the same
+    /// closure was previously bound to the menu bar's "Reset ASR"
+    /// item, removed in 0.13.0 as part of the menu-bar declutter.
+    /// Nil-checked at call site so a non-bundled-ASR launch (custom
+    /// asr.endpoint) leaves the button as a no-op rather than
+    /// crashing — main.swift only sets this when LocalASRClient is
+    /// actually in play.
+    var onResetASR: (() -> Void)?
+
     // MARK: - Tier fields (cleanup + context independent provider+model)
 
     /// Cleanup tier: the provider used for normal dictation cleanup.
@@ -2239,25 +2250,58 @@ struct SettingsView: View {
     @ViewBuilder
     private var advancedSection: some View {
         let asrEndpointManaged = model.managedKeys.contains("asrEndpoint")
-        SettingsCard {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Speech-recognition endpoint")
-                    .font(.callout.weight(.medium))
-                HStack(alignment: .center, spacing: 6) {
-                    TextField("Endpoint", text: bind(\.asrEndpoint))
-                        .textFieldStyle(.roundedBorder)
-                        .disabled(asrEndpointManaged)
-                    ManagedIndicator(isManaged: asrEndpointManaged)
-                }
-                SettingsCaption("Default uses in-process FluidAudio (Parakeet TDT v3 on the Apple Neural Engine) — no network, no local listening socket. To swap in your own speech backend, point at any OpenAI-compatible /inference server (e.g. Sherpa-ONNX or faster-whisper running locally). The bundled FluidAudio is not initialized when this is non-default, so the model's ~1.5 GB resident cost is not paid. Use the “Reset to default” button to return to the bundled endpoint sentinel \(Config.bundledASREndpoint). Restart to apply.")
-                ManagedCaption(isManaged: asrEndpointManaged)
-                HStack(spacing: 8) {
-                    Button("Reset to default") {
-                        model.asrEndpoint = Config.bundledASREndpoint
-                        model.save()
+        VStack(alignment: .leading, spacing: 14) {
+            // Speech-recognition endpoint (existing card).
+            SettingsCard {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Speech-recognition endpoint")
+                        .font(.callout.weight(.medium))
+                    HStack(alignment: .center, spacing: 6) {
+                        TextField("Endpoint", text: bind(\.asrEndpoint))
+                            .textFieldStyle(.roundedBorder)
+                            .disabled(asrEndpointManaged)
+                        ManagedIndicator(isManaged: asrEndpointManaged)
                     }
-                    .disabled(model.asrEndpoint == Config.bundledASREndpoint || asrEndpointManaged)
-                    Spacer()
+                    SettingsCaption("Default uses in-process FluidAudio (Parakeet TDT v3 on the Apple Neural Engine) — no network, no local listening socket. To swap in your own speech backend, point at any OpenAI-compatible /inference server (e.g. Sherpa-ONNX or faster-whisper running locally). The bundled FluidAudio is not initialized when this is non-default, so the model's ~1.5 GB resident cost is not paid. Use the “Reset to default” button to return to the bundled endpoint sentinel \(Config.bundledASREndpoint). Restart to apply.")
+                    ManagedCaption(isManaged: asrEndpointManaged)
+                    HStack(spacing: 8) {
+                        Button("Reset to default") {
+                            model.asrEndpoint = Config.bundledASREndpoint
+                            model.save()
+                        }
+                        .disabled(model.asrEndpoint == Config.bundledASREndpoint || asrEndpointManaged)
+                        Spacer()
+                    }
+                }
+            }
+
+            // Reset speech model card (#214). Moved here from the
+            // menu bar's "Reset ASR" item in 0.13.0 as part of the
+            // menu-bar declutter. The action force-reloads the
+            // bundled FluidAudio model — useful when ASR is failing
+            // or returning empty, but rarely needed in practice.
+            //
+            // Visibility is gated solely on whether main.swift wired
+            // a reset closure. That wiring only fires when the
+            // bundled ASR is running, so checking the closure is
+            // equivalent to "the runtime is using bundled ASR" —
+            // and is more reliable than inspecting model.asrEndpoint,
+            // which is the editable *configuration* value (changes
+            // require restart, so it can disagree with what's
+            // actually loaded).
+            if model.onResetASR != nil {
+                SettingsCard {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Speech model")
+                            .font(.callout.weight(.medium))
+                        SettingsCaption("Reload the bundled FluidAudio (Parakeet) speech model. Use this if dictation is hanging, returning empty transcripts, or you see a load-failure banner — the reset re-initializes the model on the Apple Neural Engine without restarting Parleq. Rarely needed; the model normally loads once at launch and stays warm.")
+                        HStack(spacing: 8) {
+                            Button("Reset speech model") {
+                                model.onResetASR?()
+                            }
+                            Spacer()
+                        }
+                    }
                 }
             }
         }
@@ -2552,6 +2596,15 @@ public final class SettingsWindowController {
     public init() {}
     private var window: NSWindow?
     private let model = SettingsModel()
+
+    /// Wire the Reset ASR closure from `parleq-app/main.swift`. The
+    /// Settings → Advanced "Reset speech model" button (#214,
+    /// 0.13.0) calls through to this on click. Safe to call before
+    /// the window is shown — the closure is stored on the model
+    /// and read on demand. Call once at app launch.
+    public func setOnResetASR(_ handler: @escaping () -> Void) {
+        model.onResetASR = handler
+    }
 
     /// Show the settings window, creating it on first call. Subsequent
     /// calls bring the existing window to front rather than spawning

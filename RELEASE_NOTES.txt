@@ -1,141 +1,131 @@
-Parleq 0.12.0
+Parleq 0.13.0
 
-Two major features and a security hardening pass — the biggest
-release since v0.7. **Reference Windows** lets you attach
-screenshots, files, and clipboard content to a dictation so the
-LLM sees what you're talking about, not just hears what you said.
-**Managed Configuration** makes Parleq deployable as a governed
-fleet app via macOS MDM (Jamf, Kandji, Mosyle, Intune, etc.) —
-twenty-nine managed keys for pinning the LLM provider, model,
-auth mode, destination endpoints, and feature toggles. **MDM
-Hardening** closes the bypasses surfaced during a post-shipping
-security hackathon: destination pins (no exfiltration via personal
-cloud accounts), Sparkle skip-version clearing (forced auto-update
-is genuinely forced), and a Reference Windows symlink-target
-re-check that catches `screenshot.png → ~/.ssh/id_rsa`.
+Reference Windows v2 — the headline change since 0.12.0. Attaching
+a window mid-dictation went from "stop, click 'Pick a window…',
+start over" to a fluid one-handed gesture: hold the hotkey, tap
+**Space**, the picker opens with audio paused, pick a window, hold
+the hotkey again to keep dictating or tap-release to send. The
+picker itself is substantially larger now, remembers your size +
+position across launches, and is fully keyboard-navigable (arrow
+keys + Enter). Also includes ASR + focus polish from the
+foundation pass that landed alongside the gesture work.
 
 ### Added
 
-- **Reference Windows.** Press Shift while holding the dictation
-  hotkey to bring up a window picker; pick one or more open
-  windows, then dictate normally. The LLM sees the window's
-  on-screen content (text mode) or a vision capture (image
-  mode) alongside your dictation, so prompts like "summarize
-  what's on this page" or "rewrite this email more concisely"
-  just work. Three additional attach paths: clipboard (text or
-  image), drag-drop a file (text / source / PDF / image), or
-  the "+ Add file…" picker in the overlay. Image-mode
-  references require a vision-capable model — the in-overlay
-  picker auto-flags conflicts and offers a one-click "downgrade
-  to text" fallback. Per-reference mode toggle (T / 👁) on each
-  chip so you can mix text and image refs in one prompt. All
-  reference paths can be individually disabled in Settings →
-  Privacy & Features.
+- **Reference Windows v2 — latched-compose gesture.** A new way to
+  attach references mid-dictation without abandoning the
+  composition. Hold your dictation hotkey, speak, and tap **Space**
+  while still holding — audio pauses, the window picker opens, you
+  pick a reference, and the overlay enters a "latched" state. Hold
+  the hotkey again to keep dictating (the composition continues
+  across the attachment), or tap-and-release to send. Repeat with
+  Space mid-dictation to attach a second, third, … reference into
+  the same composition. **Esc** cancels the whole composition;
+  **tap-and-release without further speech** sends immediately.
+  The overlay's hint strip teaches the gesture on first encounter
+  ("Press Space to attach a window"), confirms when Space lands
+  ("Picker opens on release · Esc to cancel"), and switches to
+  "Tap ⌥-Right to send · Hold for more · Esc cancel" once you're
+  latched with a reference attached. The feature is gated by the
+  existing Settings → Privacy & Features → Reference Windows
+  toggle — disabled users keep the v1 click-the-button flow with
+  no gesture changes.
 
-- **Managed Configuration (MDM).** Deploy Parleq via your MDM
-  and govern it like any other managed app. Twenty-nine managed
-  keys: pin or restrict the LLM provider + model (8 keys), pin
-  auth modes (Azure Entra ID, Bedrock SSO, Vertex ADC — 4 keys
-  spanning Phases 4 + 7), pin destination endpoints (GCP project,
-  AWS region/profile, Azure resource/deployment, ASR HTTP
-  endpoint — 8 keys), disable optional features per-policy (6
-  toggles), and override the Sparkle appcast to a corporate
-  mirror (signature verification still authoritative via
-  SUPublicEDKey). A new **Compliance Audit dialog** (Menu Bar →
-  "View Managed Configuration…") shows every managed-eligible
-  key with its effective value and source (Managed / User /
-  Default) — Copy-snapshot button so IT can verify policy state
-  without screen-sharing. Sample `.mobileconfig` ships at
-  `config/parleq-managed-example.mobileconfig`. Full schema and
-  deployment patterns: https://parleq.app/docs/managed-configuration/
-  and https://parleq.app/docs/admin-guide/.
+- **Larger, screen-relative window picker.** The picker defaults
+  to ~70% of your active screen's usable area (clamped to 1400x950),
+  centered on the screen you're working on rather than always the
+  primary display. Size and position persist across launches via
+  NSPanel frame autosave so power users who size it once don't
+  have to re-fiddle. Thumbnail cards are larger (adaptive bounds
+  280→420pt vs the prior 240→360pt) so wider pickers give each
+  card real visual weight instead of just adding columns. Falls
+  back to a centered default on first launch or when the saved
+  frame lands on a disconnected external display.
 
-- **Settings → Privacy & Features pane.** Six user-facing
-  toggles independent of any MDM deployment: Reference Windows
-  master switch, Clipboard reference, Image reference, File
-  reference, Custom dictionary, Custom model entry. Each
-  toggle's effective policy state is also exposed in the
-  Compliance Audit dialog.
-
-### Security
-
-- **MDM destination-pin enforcement.** Eight new managed keys
-  close the "use the allowed provider but route the data at my
-  personal tenant" exfiltration class — vertexProject,
-  vertexRegion, vertexAnthropicRegion, awsRegion, awsProfile,
-  azureResource, azureDeployment, asrEndpoint. ASR endpoint
-  validation requires https:// with a non-empty host, no
-  embedded userinfo, no query parameters, no fragment. Plain
-  http:// is rejected when pushed via MDM — the unmanaged
-  local-dev affordance for 127.0.0.1 Sherpa / faster-whisper
-  setups doesn't extend to MDM pushes.
-
-- **Auth-mode runtime enforcement.** When
-  `staticApiKeysAllowed=false` is managed, every static-key
-  auth path is blocked at runtime via a sentinel provider that
-  throws `.authPathBlocked` before any network call. Already-
-  stored Keychain credentials are NOT deleted — removing the
-  MDM profile restores prior functionality on the next launch.
-  When the stored Vertex auth mode is `serviceAccount` and the
-  master switch blocks the SA path, Parleq auto-coerces
-  vertexAuthMode to `adc` in memory so the runtime matches the
-  UI's "use gcloud ADC" message; the on-disk value is preserved
-  by save() so removing the MDM profile restores the user's
-  stored choice.
-
-- **Sparkle `SUSkippedVersion` clearing.** When
-  `autoUpdateEnabled=true` is pushed by MDM, Parleq clears all
-  three Sparkle 2.x skip-version user defaults (SUSkippedVersion,
-  SUSkippedMajorVersion, SUSkippedMajorSubreleaseVersion) on
-  launch. Closes the "user writes SUSkippedMajorVersion=99 and
-  silently defeats forced auto-update across any major release"
-  bypass.
-
-- **Sparkle managed-feed-URL state hygiene.** Parleq now calls
-  `clearFeedURLFromUserDefaults` on every launch where the
-  managed `sparkleUpdateFeedURL` isn't successfully validated.
-  Without this, Sparkle's `setFeedURL` persisted any
-  previously-managed URL into user defaults — so an admin
-  removing an MDM profile would leave the corp-mirror URL stuck
-  on every fleet machine, defeating policy removal. Removing
-  the MDM profile (or rejecting an invalid managed value) now
-  reliably restores Sparkle's Info.plist `SUFeedURL` default.
-
-- **Reference Windows symlink-target re-check** hoisted above
-  the image/PDF dispatch and tightened to require the symlink's
-  claimed family and the resolved target's family to match.
-  Closes the `screenshot.png → ~/.ssh/id_rsa` attack where a
-  symlink with a benign image extension routed sensitive bytes
-  into the image branch and shipped them to the LLM as a binary
-  attachment.
-
-- **SetupWizard credential gates.** First-run wizard hides
-  Gemini / Vertex-SA / Azure-apiKey credential entry fields
-  when `staticApiKeysAllowed=false` is managed, routing the
-  user to the federated alternative instead of soliciting keys
-  that won't be usable at runtime.
+- **Keyboard navigation in the picker.** Arrow keys move selection
+  through the grid — Left/Right by one card, Up/Down by the
+  current column count (computed deterministically from grid
+  width, stays correct as you resize). Selected card shows a
+  stronger accent ring than the hover state. **Enter** picks the
+  selected window; **Enter with no selection** picks the first
+  entry as a one-handed shortcut. **Cmd-W** also closes the
+  picker now. Selection clears on every refresh / show /
+  permission transition so a stale highlight never points at a
+  removed card.
 
 ### Changed
 
-- **Settings credential cards now use explicit field labels.**
-  Each TextField in the Azure / Bedrock / Vertex credential
-  cards has a small caption-style label above it ("Resource",
-  "Deployment", "Region", "Project", etc.) so populated /
-  disabled / MDM-managed values stay interpretable instead of
-  becoming anonymous strings. Surfaced during MDM-hardening
-  testing when a `corp-openai`-filled disabled field gave no
-  indication of what the field was.
+- **ASR silence detection.** Recordings with no detectable voice
+  activity (whispered, mic muted, room-tone-only) no longer get
+  sent to ASR — closes a class of hallucinated short transcripts
+  ("yeah", "okay", "thank you") that the upstream STT would emit
+  on near-silent input. Threshold tuned to 0.002 RMS-over-20ms-
+  frames after testing against quiet-but-real speech and various
+  microphone idle profiles.
+
+- **Reference Windows focus restore.** Capturing a window no
+  longer leaves keyboard focus on the source app — Parleq
+  snapshots the frontmost app at capture time and restores it
+  after SCK finishes, so your "Pasting to" target stays
+  consistent across attachments. Full-screen Space windows still
+  can't be captured without switching Spaces manually — those
+  now surface a clear error message ("X is in a full-screen
+  Space. Switch to that Space first, then try attaching it
+  again.") instead of the raw SCStreamErrorDomain blob.
+
+- **Overlay polish.** The "PASTING TO <app>" chip is now visible
+  during active dictation states (capturing, cleaning,
+  refining), not only on the awaitingAccept overlay — so flows
+  that inadvertently shift focus mid-composition surface the
+  retarget immediately instead of waiting for streamed text to
+  appear. Same visual treatment in both placements, so the chip
+  doesn't jump or restyle when the overlay transitions.
+
+- **Menu-bar declutter.** "View Managed Configuration…" moved to
+  Settings → Privacy & Features (#213); "Reset ASR" moved to
+  Settings → Advanced (#214). Same dialogs and actions, just
+  relocated to Settings as a step toward a tighter top-level
+  menu.
+
+### Fixed
+
+- **Esc during LLM cleanup no longer leaves the overlay stuck.**
+  The streaming cleanup path's empty-result and catch branches
+  would re-show the overlay after cancel()'s closeAndReset hid
+  it, racing the user-cancel signal and leaving the overlay in
+  a fake "processing" state that only a fresh hotkey press could
+  dismiss. Both paths now skip the re-show when Task.isCancelled
+  is set or the caught error is a CancellationError.
+
+- **Error banners no longer persist across dictation sessions.**
+  A failed reference capture used to leave its banner visible on
+  every subsequent overlay show until the user manually clicked
+  the X. The per-dictation reset now clears errorMessage +
+  permissionPrompt on every exit to idle, so a successful next
+  dictation implicitly dismisses any stale banner.
+
+### Security
+
+- **Sparkle managed-feed-URL state hygiene.** Parleq now calls
+  clearFeedURLFromUserDefaults on every launch where the managed
+  sparkleUpdateFeedURL isn't successfully validated. Without
+  this, Sparkle's setFeedURL persisted any previously-managed URL
+  into user defaults — so an admin removing an MDM profile would
+  leave the corp-mirror URL stuck on every fleet machine,
+  defeating policy removal. Removing the MDM profile (or
+  rejecting an invalid managed value) now reliably restores
+  Sparkle's Info.plist SUFeedURL default.
 
 ## Install
 
-If you're already running Parleq 0.11.x, Sparkle's update
-prompt is the easiest path — it handles download, signature
-verification, and the relaunch for you.
+If you're already running Parleq 0.12.x, Sparkle's update prompt
+is the easiest path — it handles download, signature verification,
+and the relaunch for you.
 
 For a fresh install:
 
 1. Download the .dmg attached to this release.
-2. (Optional) Verify the SHA-256: `shasum -a 256 -c Parleq-0.12.0-<sha>.dmg.sha256`
+2. (Optional) Verify the SHA-256: `shasum -a 256 -c Parleq-0.13.0-<sha>.dmg.sha256`
 3. Open the DMG and drag Parleq.app onto the Applications folder.
 4. Eject the DMG, then launch Parleq from Applications.
 5. On first launch, grant Microphone + Accessibility permissions

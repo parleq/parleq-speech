@@ -577,9 +577,10 @@ public final class OverlayModel: ObservableObject {
     /// Latest model-load snapshot to render in the `.initializing`
     /// state. `nil` means "no progress info yet" (the brief window
     /// between hotkey press and FluidAudio's first progress
-    /// callback, or after a Reset ASR before the new load starts);
-    /// the view falls back to the indeterminate spinner in that
-    /// case. Cleared whenever the overlay leaves `.initializing`.
+    /// callback, or right after a Reset speech model invocation
+    /// before the new load starts); the view falls back to the
+    /// indeterminate spinner in that case. Cleared whenever the
+    /// overlay leaves `.initializing`.
     @Published var downloadProgress: ASRDownloadProgress?
 
     /// Active microphone name to surface in the active-capture

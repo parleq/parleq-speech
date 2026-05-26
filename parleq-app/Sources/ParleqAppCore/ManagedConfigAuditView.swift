@@ -1,7 +1,11 @@
 // ManagedConfigAuditView — Compliance Audit dialog.
 //
-// Opened via Menu Bar → "View Managed Configuration…". Shows every
-// managed-eligible key with its current effective value and source:
+// Opened from Settings → Privacy & Features → "View managed
+// configuration…" (PrivacyFeaturesView.swift, 0.13.0+). The
+// dialog used to live as a top-level menu bar item; moved into
+// Settings in 0.13.0 (#213) as part of a menu-bar declutter pass.
+// Shows every managed-eligible key with its current effective
+// value and source:
 //   - "Managed"  (orange badge) — value came from /Library/Managed Preferences
 //   - "User"     (gray badge)   — value was set by the user in Settings / config.json
 //   - "Default"  (light gray)   — value is the built-in default (never changed)
@@ -12,9 +16,10 @@
 // The list of eligible keys is `ManagedConfig.allKeys` — the single source
 // of truth shared with Config.load() and ManagedConfigTests.
 //
-// Presentation: a plain NSPanel (non-activating) opened via
-// ManagedConfigAuditWindowController. The controller is held by MenuBar
-// (or by ParleqApp.main, analogous to how SettingsWindowController works).
+// Presentation: a plain NSPanel (non-activating) opened via the
+// shared `ManagedConfigAuditWindowController` (singleton, see
+// bottom of this file). PrivacyFeaturesView calls
+// `.shared.show()` directly; no callback plumbing needed.
 
 import AppKit
 import SwiftUI
