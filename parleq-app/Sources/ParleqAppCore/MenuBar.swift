@@ -62,14 +62,14 @@ public final class MenuBar: NSObject {
     /// wires this to a SettingsWindowController.show() call so the
     /// menu bar doesn't need to know about the window class directly.
     public var onOpenSettings: (() -> Void)?
-    /// Closure invoked when the user picks "Reset ASR". Wired to
-    /// `LocalASR.reset()` in ParleqApp.main — unloads and reloads
-    /// the FluidAudio Parakeet TDT v3 model in-process. Useful when
-    /// long sessions get the speech engine into a degraded state
-    /// (the FluidAudio Nemotron-era issue tracked as #5 in the
-    /// retired sidecar; the in-process consolidation kept the same
-    /// recovery affordance).
-    public var onResetASR: (() -> Void)?
+    // onResetASR removed in 0.13.0 — the "Reset ASR" menu item moved
+    // to Settings → Advanced (#214). main.swift wires the bundled
+    // LocalASRClient's reset() directly to SettingsModel.onResetASR
+    // instead. The bundled-model load-failure recovery path
+    // (cleanupFailureMenuItem) still references the user-facing
+    // affordance via its tooltip; that tooltip was updated to point
+    // users at Settings → Advanced rather than a no-longer-existent
+    // menu item.
     /// Closure invoked when the user picks "Run Setup…". Opens the
     /// SetupWizardController; works regardless of whether the
     /// wizard already ran on first launch (#21 step 6).
@@ -81,10 +81,10 @@ public final class MenuBar: NSObject {
     /// the download progress, the relaunch.
     public var onCheckForUpdates: (() -> Void)?
 
-    /// Closure invoked when the user picks "View Managed Configuration…".
-    /// Opens the Compliance Audit dialog. Wired in ParleqApp.main to
-    /// `ManagedConfigAuditWindowController.shared.show()`.
-    public var onViewManagedConfig: (() -> Void)?
+    // onViewManagedConfig removed in 0.13.0 — the "View Managed
+    // Configuration…" menu item moved to Settings → Privacy &
+    // Features (#213). PrivacyFeaturesView calls
+    // `ManagedConfigAuditWindowController.shared.show()` directly.
 
     /// Invoked when the user picks an entry from the Microphone
     /// submenu (#25). Empty string = "System Default"; otherwise a
@@ -161,13 +161,6 @@ public final class MenuBar: NSObject {
         )
         runSetupItem.target = self
 
-        let resetASRItem = NSMenuItem(
-            title: "Reset ASR",
-            action: #selector(resetASR),
-            keyEquivalent: ""
-        )
-        resetASRItem.target = self
-
         // Cleanup-failure indicator. Hidden by default; every
         // `applyResult` in AppState toggles it via
         // `setCleanupFailure(_:)` with a provider-specific recovery
@@ -183,13 +176,6 @@ public final class MenuBar: NSObject {
             keyEquivalent: ""
         )
         checkForUpdatesItem.target = self
-
-        let viewManagedConfigItem = NSMenuItem(
-            title: "View Managed Configuration…",
-            action: #selector(viewManagedConfig),
-            keyEquivalent: ""
-        )
-        viewManagedConfigItem.target = self
 
         let aboutItem = NSMenuItem(
             title: "About Parleq",
@@ -221,9 +207,7 @@ public final class MenuBar: NSObject {
         menu.addItem(settingsItem)
         menu.addItem(runSetupItem)
         menu.addItem(.separator())
-        menu.addItem(resetASRItem)
         menu.addItem(checkForUpdatesItem)
-        menu.addItem(viewManagedConfigItem)
         menu.addItem(recentMenuItem)
         menu.addItem(aboutItem)
         menu.addItem(licensesItem)
@@ -246,13 +230,9 @@ public final class MenuBar: NSObject {
         onCheckForUpdates?()
     }
 
-    @objc private func viewManagedConfig() {
-        onViewManagedConfig?()
-    }
-
-    @objc private func resetASR() {
-        onResetASR?()
-    }
+    // viewManagedConfig + resetASR handlers removed in 0.13.0 — see
+    // the matching field comments above for migration details (#213,
+    // #214).
 
     @objc private func dismissCleanupFailure() {
         // Clearing the badge from the menu doesn't retry the cleanup —
@@ -305,9 +285,10 @@ public final class MenuBar: NSObject {
 
     /// `LocalASR` calls this when its model load fails after the
     /// internal one-shot retry. The menu bar then surfaces an at-
-    /// a-glance signal that the user should pick "Reset ASR" once
-    /// they've fixed the underlying problem (typically network).
-    /// Cleared again on the next `setASRReady(true)`.
+    /// a-glance signal that the user should open Settings → Advanced
+    /// → Reset speech model once they've fixed the underlying problem
+    /// (typically network). Cleared again on the next
+    /// `setASRReady(true)`.
     public func setASRLoadFailed(_ failed: Bool) {
         asrLoadFailed = failed
         refresh()
@@ -354,8 +335,9 @@ public final class MenuBar: NSObject {
             statusMenuItem.title = "Status: Speech model failed to load"
             statusItem.button?.toolTip =
                 "Parleq couldn't load the speech model (network, disk, " +
-                "or sandbox issue). Pick “Reset ASR” to retry once " +
-                "the underlying issue is resolved."
+                "or sandbox issue). Open Settings → Advanced and click " +
+                "“Reset speech model” to retry once the underlying issue " +
+                "is resolved."
             return
         }
         if !asrReady {

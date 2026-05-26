@@ -111,7 +111,7 @@ struct OverlayButtons: View {
     private var normalButtonRow: some View {
         HStack(spacing: 8) {
             if let target = pasteTarget {
-                pasteTargetLabel(target)
+                PastingToLabel(target: target)
             }
             Spacer(minLength: 12)
 
@@ -156,45 +156,10 @@ struct OverlayButtons: View {
         }
     }
 
-    /// Non-interactive paste-target indicator displayed on the LEFT
-    /// of the footer. The explicit "Pasting to:" prefix replaces an
-    /// earlier arrow glyph that wasn't self-explanatory — now the
-    /// row reads as a sentence and tells the user exactly where
-    /// Accept will send the text.
-    @ViewBuilder
-    private func pasteTargetLabel(_ target: PasteDestination) -> some View {
-        HStack(spacing: 6) {
-            // Small-caps + tracked-out treatment for the "PASTING
-            // TO" label. Reads as a typographic eyebrow rather than
-            // running prose, which lets the app name (rendered at
-            // normal weight + primary color) take visual priority.
-            Text("PASTING TO")
-                .font(.system(size: 9, weight: .medium))
-                .tracking(0.8)
-                .foregroundStyle(.secondary)
-            if let icon = target.appIcon {
-                Image(nsImage: icon)
-                    .resizable()
-                    .interpolation(.high)
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: 14, height: 14)
-            }
-            Text(displayText(for: target))
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                // .leading alignment: without it the frame centers
-                // its content inside the 220pt box, leaving a gap
-                // between the app icon and short names like
-                // "iTerm2". Anchoring leading keeps the text snug
-                // against the icon regardless of length; truncation
-                // still kicks in for long window titles.
-                .frame(maxWidth: 220, alignment: .leading)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Will paste into \(displayText(for: target))")
-    }
+    // pasteTargetLabel extracted to the top-level PastingToLabel view
+    // so the same visual treatment ("PASTING TO" eyebrow + icon +
+    // name) can render in the footer during active dictation states
+    // without duplicating the view code.
 
     /// Mini "key cap" chip for keyboard-shortcut glyphs (⏎, ⎋).
     /// Replaces the previous inline-glyph treatment with a
@@ -222,13 +187,6 @@ struct OverlayButtons: View {
                     .strokeBorder(stroke, lineWidth: 0.5)
             )
             .accessibilityHidden(true)
-    }
-
-    private func displayText(for target: PasteDestination) -> String {
-        if let title = target.windowTitle, !title.isEmpty {
-            return "\(target.appName) — \(title)"
-        }
-        return target.appName
     }
 
     private func handleCopy() {

@@ -351,6 +351,14 @@ struct ParleqApp {
             binding = .defaultBinding
             logStderr("[parleq] hotkey config \"\(config.hotkeyBinding)\" not recognized — using default \(binding.displayName)")
         }
+        // Reference Windows v2 latched-compose: the overlay's hint
+        // strip teaches the gesture using the user's actual hotkey
+        // label ("Press ⌥-Right to dictate or release to send …").
+        // Set on the overlay's model so SwiftUI re-renders the strip
+        // reactively whenever composeState changes.
+        MainActor.assumeIsolated {
+            overlay.model.hotkeyDisplayName = binding.displayName
+        }
 
         // Menu-bar status item: an LSUIElement app has no Dock icon
         // and no top-of-screen menu, so this is the user's only
@@ -501,9 +509,10 @@ struct ParleqApp {
             menuBar.onCheckForUpdates = { [weak updaterController] in
                 updaterController?.checkForUpdates(nil)
             }
-            menuBar.onViewManagedConfig = {
-                ManagedConfigAuditWindowController.shared.show()
-            }
+            // In 0.13.0 the "View Managed Configuration…" menu item
+            // was removed (#213) — the Compliance Audit dialog is now
+            // launched from Settings → Privacy & Features. Same
+            // shared window controller, just a different entry point.
 
             // Microphone selector (#25). The menu submenu writes the
             // chosen UID back via this callback; we update the
@@ -637,7 +646,7 @@ struct ParleqApp {
                     )
                 }
             },
-            onKeyUp: {
+            onKeyUp: { upEvent in
                 Task { @MainActor in
                     // In quick mode the visible paste is the end-cue;
                     // skip the Pop so it doesn't collide with the
@@ -647,7 +656,18 @@ struct ParleqApp {
                     // eventually clears it.
                     let suppress = stateBox.value?.quickMode ?? false
                     soundBox.value?.endOrCancel(suppressEnd: suppress)
-                    stateBox.value?.hotkeyUp()
+                    stateBox.value?.hotkeyUp(
+                        spaceWasPressedDuringHold: upEvent.spaceWasPressedDuringHold
+                    )
+                }
+            },
+            onSpacePressed: {
+                // Edge-triggered the first time Space lands during a
+                // hotkey hold. Hop to MainActor so AppState can mutate
+                // its overlay model — the listener's callback runs on
+                // the CGEvent tap thread.
+                Task { @MainActor in
+                    stateBox.value?.spacePressedDuringHold()
                 }
             }
         )
@@ -687,7 +707,11 @@ struct ParleqApp {
                 menuBox.value?.setASRReady(local.isReady)
                 menuBox.value?.setASRLoadFailed(local.loadFailed)
                 stateBox.value?.notifyDownloadProgress(local.downloadProgress)
-                menuBox.value?.onResetASR = { [weak local] in
+                // In 0.13.0 the "Reset ASR" menu item moved to
+                // Settings → Advanced (#214). Wire the same
+                // closure into SettingsModel via the controller's
+                // public setter so the button has work to call.
+                settingsBox.value?.setOnResetASR { [weak local] in
                     local?.reset()
                 }
                 local.start()

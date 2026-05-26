@@ -66,9 +66,9 @@ defaults read com.parleq.app autoUpdateEnabled
 
 Parleq also logs a startup summary of detected managed keys to stderr
 (visible via `log stream --predicate 'process == "Parleq"'` or via
-`Console.app`). Use the **Menu Bar → View Managed Configuration…** dialog
-to see all managed keys, their effective values, and their sources
-(Managed / User / Default) — no Terminal required.
+`Console.app`). Use **Parleq Settings → Privacy & Features → View managed
+configuration…** to see all managed keys, their effective values, and their
+sources (Managed / User / Default) — no Terminal required.
 
 ## Customizing UUIDs
 

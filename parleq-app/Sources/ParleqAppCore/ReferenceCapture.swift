@@ -30,6 +30,13 @@ enum CaptureError: Error, LocalizedError, CustomStringConvertible {
     case windowNotFound
     case captureFailed(String)
     case ocrFailed(String)
+    /// SCK returned -3811 both on the initial attempt AND on the
+    /// post-activate retry. The target app is on a full-screen macOS
+    /// Space that we can't bring forward programmatically (macOS
+    /// filters synthesized Cmd+Tab + the public NSRunningApplication
+    /// API doesn't switch full-screen Spaces). Carries the app name
+    /// so the UI can name what the user needs to switch to.
+    case fullScreenSpaceUncapturable(appName: String)
 
     var description: String {
         switch self {
@@ -41,6 +48,8 @@ enum CaptureError: Error, LocalizedError, CustomStringConvertible {
             return "Capture failed: \(detail)"
         case .ocrFailed(let detail):
             return "OCR failed: \(detail)"
+        case .fullScreenSpaceUncapturable(let appName):
+            return "\(appName) is in a full-screen Space. Switch to that Space first, then try attaching it again."
         }
     }
 
@@ -125,6 +134,16 @@ final class ScreenCaptureKitReferenceCapture: ReferenceCapturer, @unchecked Send
         } catch {
             if Self.isPermissionError(error) {
                 throw CaptureError.permissionDenied
+            }
+            // Don't re-wrap an already-typed CaptureError — the inner
+            // captureWithRetry throws .fullScreenSpaceUncapturable
+            // (and may throw other CaptureError cases in the future)
+            // specifically so the UI can surface a clean, actionable
+            // message. Wrapping it in .captureFailed turns the nice
+            // "Switch to that Space first" copy back into a generic
+            // "Capture failed: <error>" blob.
+            if let captureError = error as? CaptureError {
+                throw captureError
             }
             throw CaptureError.captureFailed(String(describing: error))
         }
@@ -251,10 +270,31 @@ final class ScreenCaptureKitReferenceCapture: ReferenceCapturer, @unchecked Send
             // Nudge the app forward so WindowServer composes its
             // window again, then retry. Stay on the main actor for
             // NSRunningApplication.activate.
+            //
+            // Save the current frontmost BEFORE activating the source
+            // app so we can restore focus once the capture is done.
+            // For regular multi-window Spaces, activate() on the
+            // prior frontmost cleanly switches focus back. For
+            // full-screen Spaces (each full-screen app on its own
+            // dedicated Space), macOS's WindowServer treats them
+            // specially — plain activate() does not switch the
+            // visible Space back. See task #212 for what was tried
+            // (CGEvent Cmd+Tab synthesis posted at HID level, dated
+            // 2026-05-23 — does not work; macOS filters synthesized
+            // Cmd+Tab to prevent apps from spoofing the App Switcher
+            // and bypassing the full-screen-Space guardrail). The
+            // restore here covers the common case; the full-screen
+            // case is documented as a known limitation that needs
+            // either private CGS APIs (yabai-style, fragile) or a
+            // UX-level workaround (refuse-with-error / explanatory
+            // chip).
             Self.logStderr(
                 "[parleq] reference-capture got -3811 for \(bundleID); activating + retrying"
             )
             let pid = scWindow.owningApplication?.processID ?? 0
+            let priorFrontmost = await MainActor.run { () -> NSRunningApplication? in
+                NSWorkspace.shared.frontmostApplication
+            }
             await MainActor.run {
                 if pid != 0, let app = NSRunningApplication(processIdentifier: pid) {
                     app.activate(options: [])
@@ -265,11 +305,25 @@ final class ScreenCaptureKitReferenceCapture: ReferenceCapturer, @unchecked Send
             // the basic flow is proven.
             try? await Task.sleep(nanoseconds: 200_000_000)
 
+            // Restore focus on every exit path from the retry. If the
+            // prior-frontmost app has quit since we snapshotted, the
+            // activate() call is a best-effort no-op rather than an
+            // error. Same priorFrontmost is reused in both success
+            // and failure branches below.
+            func restorePriorFrontmost() async {
+                guard let prior = priorFrontmost else { return }
+                await MainActor.run {
+                    prior.activate(options: [])
+                }
+            }
+
             do {
-                return try await SCScreenshotManager.captureImage(
+                let image = try await SCScreenshotManager.captureImage(
                     contentFilter: filter,
                     configuration: config
                 )
+                await restorePriorFrontmost()
+                return image
             } catch let retryError as NSError {
                 Self.logStderr(
                     "[parleq] reference-capture SCK capture failed AFTER activation retry: \(retryError) " +
@@ -277,6 +331,22 @@ final class ScreenCaptureKitReferenceCapture: ReferenceCapturer, @unchecked Send
                     "scale=\(scaleFactor) capture=\(Int(captureSize.width))×\(Int(captureSize.height)) " +
                     "bundle=\(bundleID))"
                 )
+                // Restore focus even on failure — leaving the user
+                // stranded on the activated source app after an error
+                // is worse than the error itself.
+                await restorePriorFrontmost()
+                // A second -3811 after the activate-and-retry means the
+                // target is on a full-screen Space that macOS won't
+                // switch to from a non-foreground app — see task #212
+                // for the activation paths we've already tried. Surface
+                // a CaptureError with the app name so the UI can show
+                // an actionable message ("Switch to that Space first")
+                // instead of the raw SCStreamErrorDomain blob.
+                if retryError.domain == SCStreamErrorDomain && retryError.code == -3811 {
+                    let appName = scWindow.owningApplication?.applicationName
+                        ?? bundleID
+                    throw CaptureError.fullScreenSpaceUncapturable(appName: appName)
+                }
                 throw retryError
             }
         }

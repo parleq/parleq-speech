@@ -24,6 +24,7 @@ import AVFoundation
 import AudioToolbox
 import CoreAudio
 import Foundation
+import os
 
 public enum AudioRecorderError: Error, CustomStringConvertible {
     case converterCreateFailed
@@ -50,6 +51,36 @@ public final class AudioRecorder {
     private let outputFormat: AVAudioFormat
     private var accumulated: [Int16] = []
     private var isRunning = false
+    /// Gates whether the tap-callback path appends new samples into
+    /// `accumulated`. Toggled by `pause()` / `resume()` so the engine
+    /// can stay warm across a latched-compose interruption (e.g.
+    /// while the user is interacting with the reference-window
+    /// picker) without paying the cold-start cost of stopping +
+    /// restarting AVAudioEngine. Always true between a fresh `start()`
+    /// and the next `pause()`; toggled false on pause, true again on
+    /// resume. Reset to true on every `start()` so a stop+restart
+    /// cycle never leaves the recorder accidentally paused.
+    ///
+    /// Synchronization: the tap callback runs off the main thread
+    /// (AVAudioEngine's render thread) and reads this gate per
+    /// buffer; pause/resume are typically called from MainActor.
+    /// Wrapped in OSAllocatedUnfairLock so the cross-thread access
+    /// has explicit synchronization — Swift 6 strict concurrency
+    /// treats a plain unprotected Bool here as undefined behavior
+    /// (and Thread Sanitizer flags it).
+    ///
+    /// The lock is uncontended in the common case: tap reads ~12×
+    /// per second (every 85ms buffer), pause/resume writes fire on
+    /// user gesture boundaries (seconds apart). OSAllocatedUnfairLock
+    /// is ~10ns uncontended on Apple silicon.
+    ///
+    /// A brief race-window still exists: pause() may run on
+    /// MainActor while a tap-callback invocation is mid-process()
+    /// with the flag still read as true. That one buffer (~85ms)
+    /// gets appended after pause(). Tolerable — losing or keeping
+    /// ~85ms of audio at a gesture boundary is below what a user
+    /// can perceive.
+    private let isCapturingGate = OSAllocatedUnfairLock<Bool>(initialState: false)
     /// When set, every captured-and-resampled int16 PCM chunk is
     /// also pushed to this callback in addition to being buffered
     /// for the WAV write at stop(). Used by the streaming ASR path
@@ -166,6 +197,10 @@ public final class AudioRecorder {
     public func start() throws {
         guard !isRunning else { return }
         accumulated.removeAll(keepingCapacity: true)
+        // Reset the capture gate so a previous pause() doesn't carry
+        // over into the new session and silently drop the user's
+        // first samples.
+        isCapturingGate.withLock { $0 = true }
 
         let input = engine.inputNode
         // Re-apply the device override on every capture in case the
@@ -197,6 +232,42 @@ public final class AudioRecorder {
         isRunning = true
     }
 
+    /// Suspend new-sample capture without tearing down the audio
+    /// engine. Used by Reference Windows v2's latched-compose flow:
+    /// when the user presses Space mid-dictation to attach a
+    /// reference, we want any subsequent audio (typing, mouse
+    /// clicks at the picker, "uhh let me find Safari") to NOT land
+    /// in the captured WAV — but we also want resuming dictation to
+    /// be instant when the user holds the hotkey again.
+    ///
+    /// Implementation: the AVAudioEngine stays running and the tap
+    /// stays installed. We only flip the `isCapturing` gate so the
+    /// per-buffer tap callback drops new samples on the floor. The
+    /// already-captured samples in `accumulated` are preserved
+    /// across the pause/resume cycle so the next stop() returns
+    /// them concatenated with anything captured after resume.
+    ///
+    /// Idempotent: a no-op when called while not running or while
+    /// already paused.
+    public func pause() {
+        guard isRunning else { return }
+        isCapturingGate.withLock { $0 = false }
+    }
+
+    /// Re-enable sample capture after a `pause()`. Audio captured
+    /// after resume() is appended to whatever was in `accumulated`
+    /// before the pause — the resulting WAV has the two segments
+    /// back-to-back with no silence marker between them. ASR sees
+    /// a single contiguous stream; Parakeet handles the boundary
+    /// fine without an explicit cue.
+    ///
+    /// Idempotent: a no-op when called while not running or while
+    /// already capturing.
+    public func resume() {
+        guard isRunning else { return }
+        isCapturingGate.withLock { $0 = true }
+    }
+
     /// Stop capture and return the accumulated samples wrapped in a
     /// 16-bit mono WAV `Data`, plus the audio duration. The buffer
     /// stays in memory — Parleq never writes input audio to disk
@@ -210,6 +281,10 @@ public final class AudioRecorder {
         engine.stop()
         engine.inputNode.removeTap(onBus: 0)
         isRunning = false
+        // Defensive reset — keeps the next start() from inheriting a
+        // stale paused state if some future caller re-uses the
+        // recorder without going through start()'s explicit reset.
+        isCapturingGate.withLock { $0 = false }
 
         let sampleCount = accumulated.count
         let duration = TimeInterval(sampleCount) / AudioRecorder.targetSampleRate
@@ -268,6 +343,15 @@ public final class AudioRecorder {
 
     private func process(buffer inputBuffer: AVAudioPCMBuffer) {
         guard let converter = converter else { return }
+        // Latched-compose pause gate. Tap is still installed and the
+        // AVAudioEngine is still running (so resume() is instant),
+        // but we drop buffers on the floor between pause() and the
+        // next resume() so they don't land in `accumulated` and
+        // produce phantom speech across a picker interaction.
+        // OSAllocatedUnfairLock-protected since the gate is written
+        // from MainActor pause/resume calls and read from the
+        // AVAudioEngine tap thread.
+        guard isCapturingGate.withLock({ $0 }) else { return }
 
         // Estimate output frame count for capacity; converter handles
         // the actual count and may produce slightly fewer frames per

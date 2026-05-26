@@ -4,9 +4,37 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-05-26
+
+Reference Windows v2 — the headline change since 0.12.0. Attaching a window mid-dictation went from "stop, click 'Pick a window…', start over" to a fluid one-handed gesture: hold the hotkey, tap **Space**, the picker opens with audio paused, pick a window, hold the hotkey again to keep dictating or tap-release to send. The picker itself is substantially larger now, remembers your size + position across launches, and is fully keyboard-navigable (arrow keys + Enter). Also includes ASR + focus polish from the foundation pass that landed alongside the gesture work.
+
+### Added
+
+- **Reference Windows v2 — latched-compose gesture.** A new way to attach references mid-dictation without abandoning the composition. Hold your dictation hotkey, speak, and tap **Space** while still holding — audio pauses, the window picker opens, you pick a reference, and the overlay enters a "latched" state. Hold the hotkey again to keep dictating (the composition continues across the attachment), or tap-and-release to send. Repeat with Space mid-dictation to attach a second, third, … reference into the same composition. **Esc cancels** the whole composition; **tap-and-release without further speech** sends immediately. The overlay's hint strip teaches the gesture on first encounter ("Press Space to attach a window"), confirms when Space lands ("Picker opens on release · Esc to cancel"), and switches to "Tap ⌥-Right to send · Hold for more · Esc cancel" once you're latched with a reference attached. The whole feature is gated by the existing **Settings → Privacy & Features → Reference Windows** toggle — disabled users keep the v1 click-the-button flow with no gesture changes.
+
+- **Larger, screen-relative window picker.** The picker now defaults to ~70% of your active screen's usable area (clamped to a reasonable 1400×950 ceiling), centered on the screen you're working on rather than always the primary display. Picker size and position are persisted across launches via NSPanel frame autosave, so power users who size it once don't have to re-fiddle every session. Thumbnail card bounds bumped (280→420pt vs the prior 240→360pt) so wider pickers give each card real visual weight instead of just adding columns. Falls back to a centered default on first launch or when the saved frame ends up on a disconnected external display.
+
+- **Keyboard navigation in the picker.** Arrow keys move selection through the grid — Left/Right by one card, Up/Down by the current column count (computed deterministically from grid width using the same formula SwiftUI's `.adaptive` GridItem uses internally, so it stays correct as you resize). The selected card shows a stronger accent ring than the hover state. **Enter** picks the selected window; **Enter with no selection** picks the first entry as a one-handed "give me the first thing offered" shortcut. **Cmd-W** also closes the picker now (previously dead since Parleq is LSUIElement and has no File menu to route the shortcut through). Selection clears on every refresh / show / permission transition so a stale highlight never points at a removed card.
+
+### Changed
+
+- **ASR silence detection.** Recordings with no detectable voice activity (whispered, microphone muted, room-tone-only) no longer get sent to ASR — closes a class of hallucinated short transcripts ("yeah", "okay", "thank you") that the upstream STT would emit on near-silent input. Threshold tuned to 0.002 RMS-over-20ms-frames after testing against both quiet-but-real speech and various microphone idle profiles. ([#210](https://github.com/parleq/parleq-speech/issues/210))
+
+- **Reference Windows focus restore.** Capturing a window no longer leaves keyboard focus on the source app — Parleq snapshots the frontmost app at capture time and restores it after SCK finishes, so your "Pasting to" target stays consistent across attachments. Full-screen Space windows still can't be captured without you switching Spaces manually (a documented limitation tracked in [#212](https://github.com/parleq/parleq-speech/issues/212)) — those now surface a clear error message ("Simulator is in a full-screen Space. Switch to that Space first, then try attaching it again.") instead of the raw SCK -3811 blob. ([#211](https://github.com/parleq/parleq-speech/issues/211))
+
+- **Overlay polish.** The "PASTING TO &lt;app&gt;" chip is now visible during active dictation states (capturing, cleaning, refining), not only on the awaitingAccept overlay. Surfaced during latched-compose testing when clicking picker buttons inadvertently shifted focus and the previously-text-gated chip didn't update fast enough to warn the user before the eventual paste. Same visual treatment in both placements (extracted to a shared `PastingToLabel` view) so the chip doesn't jump or restyle when the overlay transitions to awaitingAccept.
+
+- **Menu-bar declutter (in progress).** Two items moved out of the menu bar into Settings as a step toward a tighter top-level menu: **View Managed Configuration…** is now a "View managed configuration…" button at the bottom of **Settings → Privacy & Features** (#213), and **Reset ASR** is now a "Reset speech model" button in **Settings → Advanced** (#214). The Compliance Audit dialog and the underlying reset call are unchanged — same window controller and same `LocalASRClient.reset()` action — just relocated. Subsequent releases will continue shrinking the menu bar; long-term direction is a proper "Parleq app" with Settings as one of several sections.
+
+### Fixed
+
+- **Esc during LLM cleanup no longer leaves the overlay stuck.** The streaming cleanup path's empty-result and catch branches would re-show the overlay after `cancel()`'s `closeAndReset` hid it, racing the user-cancel signal and leaving the overlay in a fake "processing" state that only a fresh hotkey press could dismiss. Both paths now skip the re-show when `Task.isCancelled` is set or the caught error is a `CancellationError`. Pre-existing intermittent bug, surfaced during PR B testing.
+
+- **Error banners no longer persist across dictation sessions.** A failed reference capture (full-screen Space, etc.) used to leave its banner visible on every subsequent overlay show until the user manually clicked the X. `resetPerDictationOverlayState()` now clears `errorMessage` + `permissionPrompt` on every exit to `.idle`, so a successful next dictation implicitly dismisses any stale banner.
+
 ### Security
 
-- **Sparkle managed-feed-URL state hygiene.** `setFeedURL` persists the URL to user defaults, so a previously-set managed value would linger across launches even after the MDM profile was removed (defeating policy removal — an admin who briefly pushed a corp-mirror URL would have it stick on every fleet machine forever). Parleq now calls `clearFeedURLFromUserDefaults` on every launch where there isn't a successfully-validated managed `sparkleUpdateFeedURL`, so removing the MDM profile (or rejecting an invalid managed value) reliably restores Sparkle's Info.plist `SUFeedURL` default. Landed in main after the v0.12.0 tag, will ship with the next release.
+- **Sparkle managed-feed-URL state hygiene.** `setFeedURL` persists the URL to user defaults, so a previously-set managed value would linger across launches even after the MDM profile was removed (defeating policy removal — an admin who briefly pushed a corp-mirror URL would have it stick on every fleet machine forever). Parleq now calls `clearFeedURLFromUserDefaults` on every launch where there isn't a successfully-validated managed `sparkleUpdateFeedURL`, so removing the MDM profile (or rejecting an invalid managed value) reliably restores Sparkle's Info.plist `SUFeedURL` default.
 
 ## [0.12.0] - 2026-05-22
 
@@ -204,7 +232,11 @@ Press a global hotkey, speak, see post-processed text in a floating overlay, acc
 - **Apple Silicon** (M1 / M2 / M3 / M4) running **macOS 14 (Sonoma) or later**.
 - **Apache-2.0 licensed**. Source at [github.com/parleq/parleq-speech](https://github.com/parleq/parleq-speech).
 
-[Unreleased]: https://github.com/parleq/parleq-speech/compare/v0.10.1...HEAD
+[Unreleased]: https://github.com/parleq/parleq-speech/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/parleq/parleq-speech/releases/tag/v0.13.0
+[0.12.0]: https://github.com/parleq/parleq-speech/releases/tag/v0.12.0
+[0.11.1]: https://github.com/parleq/parleq-speech/releases/tag/v0.11.1
+[0.11.0]: https://github.com/parleq/parleq-speech/releases/tag/v0.11.0
 [0.10.1]: https://github.com/parleq/parleq-speech/releases/tag/v0.10.1
 [0.10.0]: https://github.com/parleq/parleq-speech/releases/tag/v0.10.0
 [0.9.1]: https://github.com/parleq/parleq-speech/releases/tag/v0.9.1

@@ -93,7 +93,7 @@ const sections = [
       },
       {
         q: 'Can I attach a window or file as context for a dictation?',
-        a: `Yes — that's the **Reference Windows** feature. Before dictating, click the **"Pick a window…"** button in the overlay and click any on-screen window to capture it, or use the file picker or clipboard attach to add document content. The captured text (or image, if you're using a vision-capable model) is included in the cleanup prompt so the LLM can use it as context when processing your speech. Captures stay in memory only — released on accept or cancel, never written to disk.`,
+        a: `Yes — that's the **Reference Windows** feature. The fastest path is the **Space gesture**: while holding your dictation hotkey, tap Space — audio pauses, the window picker opens, you pick a window (arrow keys + Enter, or click), and the overlay enters a "latched" state. Hold the hotkey again to keep dictating with the reference attached, or just tap-and-release to send. Tap Space mid-dictation again to attach a second, third, … reference into the same composition. If you'd rather use the mouse, click the **"+"** button on the overlay to open the picker directly. Other attach paths: file picker, clipboard, drag-drop. The captured text (or image, if you're using a vision-capable model) is included in the cleanup prompt so the LLM can use it as context when processing your speech. Captures stay in memory only — released on accept or cancel, never written to disk.`,
       },
       {
         q: 'Can I customize the cleanup style (more formal, more terse, etc.)?',

@@ -16,8 +16,9 @@
 //
 // Trade-off: model RAM (~1.5 GB resident after first inference) lives
 // in the main process for the app's lifetime. `reset()` unloads and
-// reloads when the user invokes the menu's "Reset ASR" item — same
-// recovery UX the old "Restart Sidecar" item provided.
+// reloads when the user invokes the Settings → Advanced → "Reset
+// speech model" button (moved from the menu bar in 0.13.0, #214) —
+// same recovery UX the old "Restart Sidecar" item provided.
 //
 // Lifecycle:
 //   1. `start()` kicks off model download + load in a background
@@ -84,8 +85,9 @@ public final class LocalASR {
     /// reason (network down at first run, disk full, sandbox denial,
     /// upstream Hugging Face 5xx, etc.) and a single auto-retry also
     /// failed. The menu bar surfaces this via tooltip so the user
-    /// knows to click "Reset ASR" to retry — without this signal the
-    /// menu bar would sit at "Initializing speech model…" forever.
+    /// knows to open Settings → Advanced → "Reset speech model" to
+    /// retry — without this signal the menu bar would sit at
+    /// "Initializing speech model…" forever.
     public private(set) var loadFailed = false {
         didSet {
             if oldValue != loadFailed { onLoadFailedChanged?(loadFailed) }
@@ -172,14 +174,15 @@ public final class LocalASR {
                 // for the load-failure case specifically: transient
                 // network blips at first run usually clear within a
                 // few seconds, and the user shouldn't have to dig
-                // into the menu to discover Reset ASR for those.
+                // into Settings to discover the recovery button for
+                // those.
                 try? await Task.sleep(nanoseconds: 10_000_000_000)
                 if Task.isCancelled { return }
                 do {
                     try await asr.loadModels(progress: progressSink)
                 } catch {
                     if Task.isCancelled { return }
-                    logStderr("[parleq] LocalASR: model load retry failed: \(error). Use the menu's “Reset ASR” item to try again once the underlying issue is resolved.")
+                    logStderr("[parleq] LocalASR: model load retry failed: \(error). Open Settings → Advanced and click “Reset speech model” to try again once the underlying issue is resolved.")
                     await MainActor.run {
                         guard let self, self.loadGeneration == myGeneration else { return }
                         self.loadFailed = true
