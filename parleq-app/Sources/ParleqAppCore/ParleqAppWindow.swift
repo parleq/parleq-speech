@@ -269,6 +269,18 @@ public final class ParleqAppWindowController: NSObject {
     @objc public func presentAbout() {
         show(section: .about)
     }
+
+    /// `@objc` shim for the App main-menu's "Show Parleq…" entry —
+    /// gives AppKit a no-arg selector to dispatch when the user hits
+    /// Cmd-, while Parleq's window is frontmost. Without this entry,
+    /// AppKit walks `NSApp.mainMenu` for a Cmd-, key-equivalent and
+    /// finds nothing — even though the status-item dropdown also
+    /// declares the same shortcut (status-item menus don't
+    /// participate in global key-equivalent dispatch, so that
+    /// declaration alone is insufficient).
+    @objc public func presentShell() {
+        show()
+    }
 }
 
 /// Reference-typed wrapper around the selected-section state so the

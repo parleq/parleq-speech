@@ -121,7 +121,14 @@ struct ParleqApp {
                   parsed.host != nil {
             useBundledASR = false
             asrEndpointURL = parsed
-            logStderr("[parleq] ASR: using custom endpoint \(parsed.absoluteString) (bundled FluidAudio will not be initialized)")
+            // Sanitize the endpoint to scheme://host[:port] before
+            // logging — a managed asrEndpoint with a tokenized path
+            // (e.g. .../inference?token=...) would otherwise leak
+            // into ~/.parleq/app.log. Matches the sanitizer applied
+            // by `ManagedConfig.logStartupSummary` for the managed
+            // startup-summary line (#208).
+            let safeHost = "\(scheme)://\(parsed.host ?? "?")" + (parsed.port.map { ":\($0)" } ?? "")
+            logStderr("[parleq] ASR: using custom endpoint \(safeHost) (bundled FluidAudio will not be initialized)")
         } else {
             // Covers both "URL(string:) returned nil" and "parses but
             // isn't a usable HTTP/HTTPS endpoint with a host" — both
@@ -131,7 +138,22 @@ struct ParleqApp {
             // syntactically-broken one.
             useBundledASR = true
             asrEndpointURL = ASRClient.defaultEndpoint
-            logStderr("[parleq] ASR: config has an unusable asr.endpoint (\(config.asrEndpoint)); falling back to bundled in-process FluidAudio")
+            // Fallback path — the value didn't parse as a usable
+            // http(s) URL with a host. Don't echo the raw config
+            // value in case it contains a token (a tokenized URL
+            // with a stray ? or # could still survive URL(string:)
+            // but fail the scheme/host check). Log scheme/host only
+            // when we have them; elide otherwise.
+            let safeFallback: String = {
+                if let parsed = URL(string: config.asrEndpoint),
+                   let scheme = parsed.scheme {
+                    let host = parsed.host ?? "?"
+                    let port = parsed.port.map { ":\($0)" } ?? ""
+                    return "\(scheme)://\(host)\(port)"
+                }
+                return "<unparseable>"
+            }()
+            logStderr("[parleq] ASR: config has an unusable asr.endpoint (\(safeFallback)); falling back to bundled in-process FluidAudio")
         }
         // In-process FluidAudio engine. Constructed only when the
         // user is on the bundled path so a custom `asr.endpoint`

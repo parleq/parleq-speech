@@ -72,6 +72,24 @@ public func installApplicationMainMenu() {
     appMenu.addItem(aboutItem)
     appMenu.addItem(.separator())
 
+    // Show Parleq… — opens the app shell window. Cmd-, key-equivalent
+    // gives the standard "Open Settings" muscle memory a working
+    // landing surface when the Parleq window is frontmost (AppKit
+    // dispatches Cmd-, by walking NSApp.mainMenu). The status-item
+    // dropdown also declares the same shortcut for its dropdown
+    // entry, but status-item menus don't participate in global
+    // key-equivalent dispatch — without this main-menu item the
+    // Cmd-, shortcut is dead when the user is interacting with the
+    // Parleq window itself.
+    let showShellItem = NSMenuItem(
+        title: "Show \(appName)…",
+        action: #selector(ParleqAppWindowController.presentShell),
+        keyEquivalent: ","
+    )
+    showShellItem.target = ParleqAppWindowController.shared
+    appMenu.addItem(showShellItem)
+    appMenu.addItem(.separator())
+
     let hideItem = NSMenuItem(
         title: "Hide \(appName)",
         action: #selector(NSApplication.hide(_:)),
