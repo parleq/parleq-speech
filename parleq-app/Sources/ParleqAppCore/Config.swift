@@ -309,6 +309,27 @@ public struct Config: Sendable {
     /// in managed deployments.
     public var customModelEntryEnabled: Bool
 
+    // 0.14.0 PR 6 (#221) — transcript-history retention.
+    //
+    // Both default to nil (unlimited; the in-memory invariant
+    // bounds the storage to the running process, so unlimited is
+    // a sane default). MDM admins set one or both via the
+    // managed keys transcriptHistoryMaxEntries +
+    // transcriptHistoryRetentionHours; whichever triggers first
+    // drops entries from TranscriptHistory. 0 means "disable
+    // history entirely" — a zero-retention deployment lever for
+    // highly-regulated fleets.
+
+    /// Maximum count of in-memory dictation history entries.
+    /// nil = unlimited. 0 = disable history entirely. Values
+    /// must be non-negative; MDM Int parsing rejects negatives.
+    public var transcriptHistoryMaxEntries: Int?
+
+    /// Maximum age (in hours) of in-memory dictation history
+    /// entries. Entries older than this drop on a periodic
+    /// sweep. nil = unlimited. 0 = disable history entirely.
+    public var transcriptHistoryRetentionHours: Int?
+
     /// Keys whose effective values were sourced from MDM
     /// (/Library/Managed Preferences) rather than from the user's
     /// config file. Populated by Config.load(); never persisted to disk.
@@ -365,6 +386,8 @@ public struct Config: Sendable {
         fileReferenceEnabled: true,
         customDictionaryEnabled: true,
         customModelEntryEnabled: true,
+        transcriptHistoryMaxEntries: nil,
+        transcriptHistoryRetentionHours: nil,
         managedKeys: []
     )
 
@@ -574,6 +597,15 @@ public struct Config: Sendable {
                 if let v = features["custom_model_entry_enabled"] as? Bool {
                     c.customModelEntryEnabled = v
                 }
+                // 0.14.0 PR 6 (#221): transcript-history retention.
+                // Negative values rejected on read; nil parses to
+                // nil (unlimited). 0 is meaningful ("disable entirely").
+                if let v = features["transcript_history_max_entries"] as? Int, v >= 0 {
+                    c.transcriptHistoryMaxEntries = v
+                }
+                if let v = features["transcript_history_retention_hours"] as? Int, v >= 0 {
+                    c.transcriptHistoryRetentionHours = v
+                }
             }
             // MDM overlay: check the seven managed-eligible Bool keys.
             // If MDM has forced a value, it overrides the user-stored
@@ -624,6 +656,21 @@ public struct Config: Sendable {
         if let v = ManagedConfig.managedBool(forKey: "customModelEntryEnabled") {
             c.customModelEntryEnabled = v
             managedKeys.insert("customModelEntryEnabled")
+        }
+        // 0.14.0 PR 6 (#221) — transcript-history retention.
+        // managedInt rejects negative values; 0 is meaningful and
+        // means "disable history entirely". A non-Int (e.g. a
+        // fat-fingered String that doesn't parse) leaves the
+        // config field at its user-set value AND doesn't mark
+        // the key as managed — same fail-open posture as other
+        // managed keys with invalid payloads.
+        if let v = ManagedConfig.managedInt(forKey: "transcriptHistoryMaxEntries") {
+            c.transcriptHistoryMaxEntries = v
+            managedKeys.insert("transcriptHistoryMaxEntries")
+        }
+        if let v = ManagedConfig.managedInt(forKey: "transcriptHistoryRetentionHours") {
+            c.transcriptHistoryRetentionHours = v
+            managedKeys.insert("transcriptHistoryRetentionHours")
         }
         // autoUpdateEnabled is Sparkle-side only; we still record managedKeys
         // so UpdatesView can show the lock indicator.
@@ -1229,6 +1276,29 @@ public struct Config: Sendable {
             featuresDict["custom_model_entry_enabled"] = config.customModelEntryEnabled
         } else if let existing = existingFeatures["custom_model_entry_enabled"] {
             featuresDict["custom_model_entry_enabled"] = existing
+        }
+        // 0.14.0 PR 6 (#221) — transcript-history retention. Same
+        // pattern: write the user-set value when unmanaged, preserve
+        // the on-disk existing value when MDM is overriding (so
+        // removing the MDM profile restores the user's pre-MDM
+        // setting). nil = unlimited, written as no key in JSON.
+        if !config.managedKeys.contains("transcriptHistoryMaxEntries") {
+            if let v = config.transcriptHistoryMaxEntries {
+                featuresDict["transcript_history_max_entries"] = v
+            } else {
+                featuresDict.removeValue(forKey: "transcript_history_max_entries")
+            }
+        } else if let existing = existingFeatures["transcript_history_max_entries"] {
+            featuresDict["transcript_history_max_entries"] = existing
+        }
+        if !config.managedKeys.contains("transcriptHistoryRetentionHours") {
+            if let v = config.transcriptHistoryRetentionHours {
+                featuresDict["transcript_history_retention_hours"] = v
+            } else {
+                featuresDict.removeValue(forKey: "transcript_history_retention_hours")
+            }
+        } else if let existing = existingFeatures["transcript_history_retention_hours"] {
+            featuresDict["transcript_history_retention_hours"] = existing
         }
 
         // Phase 7 destination-pin preservation. When a destination

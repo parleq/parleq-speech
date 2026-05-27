@@ -34,12 +34,12 @@ public final class MenuBar: NSObject {
     /// dictation automatically clears the badge even when the user
     /// never dismissed an earlier one manually.
     private let cleanupFailureMenuItem: NSMenuItem
-    /// Submenu listing recent dictations. Items are rebuilt
-    /// on every menu open via `NSMenuDelegate.menuNeedsUpdate(_:)`
-    /// so the user always sees the current state of
-    /// `TranscriptHistory.shared.entries` (newest first).
-    private let recentSubmenu = NSMenu()
-    private let recentMenuItem: NSMenuItem
+    // Recent Dictations submenu removed in 0.14.0 PR 3 (#218).
+    // The canonical surface for browsing history is now the Recent
+    // Dictations section in the Parleq app window (open via
+    // "Show Parleq…" or Cmd-,). The submenu was a short, snippet-
+    // truncated list; the in-app section shows full text + per-
+    // entry Copy / Paste-here / delete actions.
 
     /// Microphone submenu (#25). Rebuilt on every menu open via
     /// `menuNeedsUpdate(_:)` so newly-plugged devices appear without
@@ -51,13 +51,10 @@ public final class MenuBar: NSObject {
     /// renders so the user notices their selection isn't taking.
     private let microphoneSubmenu = NSMenu()
     private let microphoneMenuItem: NSMenuItem
-    /// `RelativeDateTimeFormatter` formats timestamps like "2 min
-    /// ago". One instance reused for all rebuild passes.
-    private let relativeFormatter: RelativeDateTimeFormatter = {
-        let f = RelativeDateTimeFormatter()
-        f.unitsStyle = .abbreviated
-        return f
-    }()
+    // relativeFormatter removed in 0.14.0 PR 3 (#218) — only the
+    // Recent Dictations submenu rebuilt with relative timestamps,
+    // and that submenu is gone. RecentDictationsView in the new
+    // app shell owns its own RelativeDateTimeFormatter instance.
     /// Closure invoked when the user picks "Settings…". ParleqApp.main
     /// wires this to a SettingsWindowController.show() call so the
     /// menu bar doesn't need to know about the window class directly.
@@ -115,19 +112,12 @@ public final class MenuBar: NSObject {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusMenuItem = NSMenuItem(title: "Status: Idle", action: nil, keyEquivalent: "")
         cleanupFailureMenuItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-        recentMenuItem = NSMenuItem(
-            title: "Recent Dictations",
-            action: nil,
-            keyEquivalent: ""
-        )
         microphoneMenuItem = NSMenuItem(
             title: "Microphone",
             action: nil,
             keyEquivalent: ""
         )
         super.init()
-        recentSubmenu.delegate = self
-        recentMenuItem.submenu = recentSubmenu
         microphoneSubmenu.delegate = self
         microphoneMenuItem.submenu = microphoneSubmenu
 
@@ -141,7 +131,15 @@ public final class MenuBar: NSObject {
         hotkeyItem.isEnabled = false
 
         let settingsItem = NSMenuItem(
-            title: "Settings…",
+            // Renamed in 0.14.0 from "Settings…" — the menu bar entry
+            // now opens the new Parleq app window (which has Settings
+            // as one of four sidebar sections). Same underlying
+            // selector + callback wiring; the user-facing label change
+            // matches the broader "app shell, not a settings dialog"
+            // story. Cmd-, keyEquivalent preserved because users have
+            // muscle memory for it; it now opens the app to whichever
+            // section was last visible (default Recent).
+            title: "Show Parleq…",
             // Deliberately not `openSettings`: that selector name is
             // the canonical macOS Ventura+ "Open Settings" responder
             // action, which AppKit auto-decorates with a gearshape
@@ -177,19 +175,18 @@ public final class MenuBar: NSObject {
         )
         checkForUpdatesItem.target = self
 
+        // About — opens the app shell's About section (richer than
+        // the legacy NSStandardAboutPanel: brand mark + version +
+        // links to website / source / licenses + copyright). Lives
+        // adjacent to Quit per macOS menu convention. Open Source
+        // Licenses was removed as a separate menu item; the in-app
+        // About page surfaces the same link more prominently.
         let aboutItem = NSMenuItem(
             title: "About Parleq",
             action: #selector(showAbout),
             keyEquivalent: ""
         )
         aboutItem.target = self
-
-        let licensesItem = NSMenuItem(
-            title: "Open Source Licenses…",
-            action: #selector(openLicenses),
-            keyEquivalent: ""
-        )
-        licensesItem.target = self
 
         let quitItem = NSMenuItem(
             title: "Quit Parleq",
@@ -198,20 +195,29 @@ public final class MenuBar: NSObject {
         )
         quitItem.target = self
 
+        // 0.14.0 final form. Three groups separated by dividers:
+        //   1. Live state — phase, cleanup-failure badge (when set),
+        //      hotkey binding. All disabled / informational.
+        //   2. Primary actions — Show Parleq (the app shell entry
+        //      point) and the microphone quick-pick.
+        //   3. Admin actions — Check for Updates, Run Setup.
+        //   4. About + Quit — terminal pair.
+        // The old "Open Source Licenses…" item moved to the in-app
+        // About page; "About Parleq" was repointed from the system
+        // about panel to the same in-app About section so a single
+        // surface owns all About content.
         let menu = NSMenu()
         menu.addItem(statusMenuItem)
         menu.addItem(cleanupFailureMenuItem)
         menu.addItem(hotkeyItem)
         menu.addItem(.separator())
-        menu.addItem(microphoneMenuItem)
         menu.addItem(settingsItem)
-        menu.addItem(runSetupItem)
+        menu.addItem(microphoneMenuItem)
         menu.addItem(.separator())
         menu.addItem(checkForUpdatesItem)
-        menu.addItem(recentMenuItem)
-        menu.addItem(aboutItem)
-        menu.addItem(licensesItem)
+        menu.addItem(runSetupItem)
         menu.addItem(.separator())
+        menu.addItem(aboutItem)
         menu.addItem(quitItem)
         statusItem.menu = menu
 
@@ -242,26 +248,21 @@ public final class MenuBar: NSObject {
     }
 
     @objc private func showAbout() {
-        // NSApp's standard About panel reads from Info.plist so we
-        // get a native window with version + copyright with no
-        // custom UI work. Suitable for a personal-use app; can grow
-        // into a richer About later if useful.
-        NSApp.orderFrontStandardAboutPanel(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        // Opens the app shell's About section — the canonical surface
+        // for app metadata since 0.14.0. Replaces the prior call to
+        // NSApp.orderFrontStandardAboutPanel, which showed a much
+        // sparser system about window. show(section:) handles the
+        // NSApp.activate / makeKeyAndOrderFront sequence itself, so
+        // there's no separate activate call here.
+        ParleqAppWindowController.shared.show(section: .about)
     }
 
-    /// Open the canonical THIRD_PARTY_LICENSES.md on GitHub. The
-    /// notarized .app also carries a copy at
-    /// `Parleq.app/Contents/Resources/THIRD_PARTY_LICENSES.md` (the
-    /// bundle satisfies Apache-2.0 §4 and MIT/BSD attribution on its
-    /// own — see THIRD_PARTY_LICENSES.md), but the GitHub copy
-    /// renders Markdown natively in any browser and is what users
-    /// actually want to click into. Falls back gracefully if the
-    /// URL can't be opened (e.g., no default browser).
-    @objc private func openLicenses() {
-        let url = URL(string: "https://github.com/parleq/parleq-speech/blob/main/THIRD_PARTY_LICENSES.md")!
-        NSWorkspace.shared.open(url)
-    }
+    // openLicenses removed in 0.14.0 — the dedicated "Open Source
+    // Licenses…" menu item is gone; the in-app About section's
+    // "Open source licenses" link button is the canonical entry
+    // point. The URL itself is unchanged
+    // (github.com/parleq/parleq-speech/blob/main/THIRD_PARTY_LICENSES.md);
+    // the SwiftUI Link in ParleqAppView.aboutSection now drives it.
 
     /// AppState calls this on every phase transition. We update the
     /// icon (filled when an utterance is in flight) and the status
@@ -495,96 +496,16 @@ public final class MenuBar: NSObject {
 // MARK: - Recent Dictations submenu
 
 extension MenuBar: NSMenuDelegate {
-    /// Rebuild the Recent Dictations submenu before AppKit shows
-    /// it. Newest entry on top; each item carries the entry as
-    /// its representedObject so the click handler can pull the
-    /// full text without indexing back into the history. A
-    /// "Clear" item appears at the bottom when the buffer is
-    /// non-empty; an "(empty)" placeholder appears otherwise so
-    /// the submenu still hints what it would contain.
+    /// Rebuild the Microphone submenu before AppKit shows it.
+    /// The Recent Dictations submenu was deleted in 0.14.0 PR 3
+    /// (#218); its rebuild logic moved into RecentDictationsView's
+    /// card list which uses TranscriptHistory's @Published entries
+    /// for live re-render rather than this poll-on-open pattern.
     public func menuNeedsUpdate(_ menu: NSMenu) {
         if menu === microphoneSubmenu {
             rebuildMicrophoneSubmenu(menu)
             return
         }
-        guard menu === recentSubmenu else { return }
-        menu.removeAllItems()
-        let entries = TranscriptHistory.shared.entries
-        if entries.isEmpty {
-            let placeholder = NSMenuItem(
-                title: "(no dictations yet)",
-                action: nil,
-                keyEquivalent: ""
-            )
-            placeholder.isEnabled = false
-            menu.addItem(placeholder)
-            return
-        }
-        let now = Date()
-        for entry in entries {
-            let when = relativeFormatter.localizedString(
-                for: entry.timestamp, relativeTo: now
-            )
-            // Trailing markers (in order of appearance):
-            //   · N refs   — reference-aware dictation (Phase 1+)
-            //   · raw      — LLM cleanup failed; raw ASR fallback (#27)
-            // Tooltip spells them out for users who don't yet
-            // recognise the markers.
-            var suffix = "  ·  \(when)"
-            if entry.referenceCount > 0 {
-                suffix += "  ·  \(entry.referenceCount) ref\(entry.referenceCount == 1 ? "" : "s")"
-            }
-            if !entry.wasCleanupSuccessful {
-                suffix += "  ·  raw"
-            }
-            let title = "\(entry.preview)\(suffix)"
-            let item = NSMenuItem(
-                title: title,
-                action: #selector(copyRecentEntry(_:)),
-                keyEquivalent: ""
-            )
-            item.target = self
-            item.representedObject = entry.text
-            // Tooltip shows the full text + target app, since long
-            // dictations get truncated in the title.
-            var tooltip = entry.text
-            if let app = entry.targetAppName {
-                tooltip += "\n\n(originally pasted into \(app))"
-            }
-            if !entry.wasCleanupSuccessful {
-                tooltip += "\n\n(raw transcript — LLM cleanup failed " +
-                    "for this dictation)"
-            }
-            if entry.referenceCount > 0 && !entry.referenceLabels.isEmpty {
-                tooltip += "\n\nReferences: " + entry.referenceLabels.joined(separator: ", ")
-            }
-            item.toolTip = tooltip
-            menu.addItem(item)
-        }
-        menu.addItem(.separator())
-        let clearItem = NSMenuItem(
-            title: "Clear Recent",
-            action: #selector(clearRecent),
-            keyEquivalent: ""
-        )
-        clearItem.target = self
-        menu.addItem(clearItem)
-    }
-
-    /// Click handler for a recent-dictation menu item. Copies
-    /// the full text to the system pasteboard; user can then
-    /// ⌘V wherever they want. Doesn't auto-paste (we have no
-    /// captured target at this point — the user navigated via
-    /// the menu, focus is wherever they want it next).
-    @objc private func copyRecentEntry(_ sender: NSMenuItem) {
-        guard let text = sender.representedObject as? String else { return }
-        let pb = NSPasteboard.general
-        pb.clearContents()
-        pb.setString(text, forType: .string)
-    }
-
-    @objc private func clearRecent() {
-        TranscriptHistory.shared.clear()
     }
 
     /// Build the Microphone submenu fresh on every open. Includes

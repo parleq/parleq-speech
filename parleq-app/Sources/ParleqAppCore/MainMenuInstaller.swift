@@ -54,13 +54,22 @@ public func installApplicationMainMenu() {
     let appMenuItem = NSMenuItem()
     let appMenu = NSMenu(title: appName)
 
-    appMenu.addItem(
-        NSMenuItem(
-            title: "About \(appName)",
-            action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)),
-            keyEquivalent: ""
-        )
+    // About — route through the app shell's About section instead of
+    // the system about panel. The status-item dropdown's "About
+    // Parleq" item routes the same way (see MenuBar.swift's
+    // showAbout), so both ways of hitting About land on a single
+    // canonical surface. Target is the long-lived
+    // ParleqAppWindowController singleton; without an explicit
+    // target the action would walk the responder chain and fall
+    // through to nothing (no first responder responds to
+    // presentAbout).
+    let aboutItem = NSMenuItem(
+        title: "About \(appName)",
+        action: #selector(ParleqAppWindowController.presentAbout),
+        keyEquivalent: ""
     )
+    aboutItem.target = ParleqAppWindowController.shared
+    appMenu.addItem(aboutItem)
     appMenu.addItem(.separator())
 
     let hideItem = NSMenuItem(

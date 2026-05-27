@@ -89,6 +89,22 @@ private func resolveAuditRow(key: String, config: Config, defaults: Config) -> (
         return formatBool(config.customDictionaryEnabled, managed: isManaged, defaultVal: defaults.customDictionaryEnabled)
     case "customModelEntryEnabled":
         return formatBool(config.customModelEntryEnabled, managed: isManaged, defaultVal: defaults.customModelEntryEnabled)
+    // Phase 8 — transcript-history retention (0.14.0 PR 6 / #221).
+    // Optional Int values; nil renders as "Unlimited", 0 as
+    // "Disabled (no history)" so the audit dialog is honest about
+    // what the deployed policy actually means at the user UI.
+    case "transcriptHistoryMaxEntries":
+        return formatOptionalRetentionInt(
+            config.transcriptHistoryMaxEntries,
+            managed: isManaged,
+            defaultVal: defaults.transcriptHistoryMaxEntries
+        )
+    case "transcriptHistoryRetentionHours":
+        return formatOptionalRetentionInt(
+            config.transcriptHistoryRetentionHours,
+            managed: isManaged,
+            defaultVal: defaults.transcriptHistoryRetentionHours
+        )
     case "autoUpdateEnabled":
         // autoUpdateEnabled is Sparkle-side only — read managed value directly since
         // it isn't mirrored into Config fields.
@@ -303,6 +319,23 @@ private func formatBool(_ value: Bool, managed: Bool, defaultVal: Bool) -> (Stri
     if managed { return (str, .managed) }
     if value != defaultVal { return (str, .user) }
     return (str, .default)
+}
+
+/// Format an optional retention-Int (transcriptHistoryMaxEntries /
+/// transcriptHistoryRetentionHours, 0.14.0 PR 6 / #221) for the
+/// Compliance Audit dialog. nil → "Unlimited"; 0 → "Disabled (no
+/// history)"; positive → the number. Source classification matches
+/// the standard formatBool/formatString helpers.
+private func formatOptionalRetentionInt(_ value: Int?, managed: Bool, defaultVal: Int?) -> (String, AuditSource) {
+    let display: String
+    switch value {
+    case nil: display = "Unlimited"
+    case 0: display = "Disabled (no history)"
+    case let .some(n): display = "\(n)"
+    }
+    if managed { return (display, .managed) }
+    if value != defaultVal { return (display, .user) }
+    return (display, .default)
 }
 
 private func formatString(_ value: String, managed: Bool, defaultVal: String?) -> (String, AuditSource) {

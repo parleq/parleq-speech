@@ -68,6 +68,53 @@ enum Paster {
         )
     }
 
+    /// Activate an app by bundle ID via an AppleScript `tell
+    /// application id "..." to activate` AppleEvent. This is the
+    /// activation path that crosses full-screen-Space boundaries
+    /// (issue #212). NSRunningApplication.activate() is blocked by
+    /// macOS from yanking the user out of a full-screen Space — Apple
+    /// reserves that capability for the Dock, notifications, and the
+    /// App Switcher path. The AppleScript `activate` AppleEvent goes
+    /// through Apple Events / OSA, which IS one of the mechanisms
+    /// macOS treats as legitimate cross-Space activation. Tested
+    /// 2026-05-27 (spike #223 Step 4): with Safari full-screen on its
+    /// own Space and iTerm2 frontmost, this call animated the Space
+    /// transition and brought Safari forward. The previously tried
+    /// paths (CGEvent Cmd+Tab synthesis, AppleScript key code 48 +
+    /// Cmd) all filter full-screen-Space apps out of the switch
+    /// cycle; only direct `activate` works.
+    ///
+    /// Falls back to `NSRunningApplication.activate()` (PID-based) on
+    /// any AppleScript error or when bundleID is nil — that keeps the
+    /// regular-Space case working when the target lacks a scripting
+    /// dictionary (rare; vanishingly few user-facing macOS apps).
+    @MainActor
+    static func activate(bundleID: String?, pid: pid_t) {
+        if let bundleID = bundleID, !bundleID.isEmpty {
+            // Quote-strip defense: NSRunningApplication.bundleIdentifier
+            // returns reverse-DNS-form strings under macOS conventions
+            // (com.apple.Safari etc.), but a defensive quote scrub costs
+            // nothing and forecloses any AppleScript-injection vector if
+            // a future caller passes a less-trusted source.
+            let safe = bundleID.replacingOccurrences(of: "\"", with: "")
+            let source = "tell application id \"\(safe)\" to activate"
+            if let script = NSAppleScript(source: source) {
+                var error: NSDictionary?
+                _ = script.executeAndReturnError(&error)
+                if error == nil {
+                    return
+                }
+                // AppleScript failure typically means the app has no
+                // scripting dictionary or has crashed. Fall through to
+                // the PID path below; if the app is just gone, that
+                // call is a no-op too.
+            }
+        }
+        if let app = NSRunningApplication(processIdentifier: pid) {
+            app.activate()
+        }
+    }
+
     /// Set the system pasteboard to `text`, activate the previously-
     /// captured app, wait briefly, post a synthetic Cmd-V to trigger
     /// the paste, then restore whatever pasteboard contents the user
@@ -98,6 +145,17 @@ enum Paster {
             restorePasteboard(pb, from: snapshot)
             throw PasterError.targetGone(target.pid)
         }
+        // PID-based activation — keeps the paste-back path on the
+        // fast direct route for the dominant case (paste target is a
+        // regular-Space app, NSRunningApplication.activate is sub-
+        // 10ms and side-effect-free). The AppleScript bundle-id path
+        // (which crosses full-screen-Space boundaries for issue #212)
+        // is reserved for the reference-capture focus-restore paths
+        // via Paster.activate, where the latency + MainActor block
+        // is acceptable. Routing every dictation's paste through
+        // AppleScript briefly destabilized the CGEventTap state and
+        // surfaced as the press-Space-after-plain-dictation lockout
+        // observed in 0.14.0 Phase 6.5 testing.
         runningApp.activate()
 
         // Empirical: 80 ms is enough for window-server focus to land

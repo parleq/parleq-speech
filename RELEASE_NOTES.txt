@@ -1,143 +1,166 @@
-Parleq 0.13.0
+Parleq 0.14.0
 
-Reference Windows v2 — the headline change since 0.12.0. Attaching
-a window mid-dictation went from "stop, click 'Pick a window…',
-start over" to a fluid one-handed gesture: hold the hotkey, tap
-**Space**, the picker opens with audio paused, pick a window, hold
-the hotkey again to keep dictating or tap-release to send. The
-picker itself is substantially larger now, remembers your size +
-position across launches, and is fully keyboard-navigable (arrow
-keys + Enter). Also includes ASR + focus polish from the
-foundation pass that landed alongside the gesture work.
+The Parleq app shell — Parleq is no longer "a hotkey with a Settings
+dialog." Press your hotkey + P (or click "Show Parleq…" in the menu
+bar) and a real macOS app window opens with four sections: Recent
+Dictations (full-text history with per-card Copy / Paste here /
+delete), Stats (dictation counts, speaking time + ASR/LLM latencies,
+token usage + cost, ref-attached + cleanup-failed rates, all on a
+7-day rolling window), Settings (the same panes, reorganized into a
+sidebar), and About (the brand mark, version, links to source +
+licenses). Same LSUIElement footprint, same global hotkey, same
+paste pipeline — but now there's a home you can browse and configure
+from. Plus a full reference-capture overhaul so attaching windows
+from full-screen Spaces actually works, MDM-configurable
+transcript-history retention, and a stack of polish for the
+Reference Windows v2 latched-compose flow shipped in 0.13.0.
 
 ### Added
 
-- **Reference Windows v2 — latched-compose gesture.** A new way to
-  attach references mid-dictation without abandoning the
-  composition. Hold your dictation hotkey, speak, and tap **Space**
-  while still holding — audio pauses, the window picker opens, you
-  pick a reference, and the overlay enters a "latched" state. Hold
-  the hotkey again to keep dictating (the composition continues
-  across the attachment), or tap-and-release to send. Repeat with
-  Space mid-dictation to attach a second, third, … reference into
-  the same composition. **Esc** cancels the whole composition;
-  **tap-and-release without further speech** sends immediately.
-  The overlay's hint strip teaches the gesture on first encounter
-  ("Press Space to attach a window"), confirms when Space lands
-  ("Picker opens on release · Esc to cancel"), and switches to
-  "Tap ⌥-Right to send · Hold for more · Esc cancel" once you're
-  latched with a reference attached. The feature is gated by the
-  existing Settings → Privacy & Features → Reference Windows
-  toggle — disabled users keep the v1 click-the-button flow with
-  no gesture changes.
+- **Parleq app shell.** A NavigationSplitView-based macOS window
+  with sidebar (Recent / Stats / Settings / About) replacing the
+  prior settings-dialog-as-the-only-window model. Opens via Cmd-,
+  from the menu bar (renamed "Show Parleq…") or by holding the
+  dictation hotkey and tapping P from anywhere on the system. The
+  hold-hotkey + P gesture has a 200ms hold threshold so casual
+  Option-P keystrokes still type π — only deliberate hotkey holds
+  engage the Parleq summon. Cmd-W closes the window. Window size
+  and position persist across launches; closing the window and
+  reopening lands you on Recent unless you came from the
+  post-restart-from-Settings path.
 
-- **Larger, screen-relative window picker.** The picker defaults
-  to ~70% of your active screen's usable area (clamped to 1400x950),
-  centered on the screen you're working on rather than always the
-  primary display. Size and position persist across launches via
-  NSPanel frame autosave so power users who size it once don't
-  have to re-fiddle. Thumbnail cards are larger (adaptive bounds
-  280→420pt vs the prior 240→360pt) so wider pickers give each
-  card real visual weight instead of just adding columns. Falls
-  back to a centered default on first launch or when the saved
-  frame lands on a disconnected external display.
+- **Recent Dictations.** Replaces the menu-bar's "Recent
+  Dictations ▶" submenu with a scrollable card-based history
+  browser. Each card shows the full cleaned text + timestamp +
+  target app icon + reference count + a raw-fallback badge when
+  cleanup failed. Per-card actions: Copy (with a "Copied ✓"
+  flash), Paste here (routes the text into whatever app you were
+  in when you opened Parleq, then dismisses the window so the
+  target comes forward), and × to delete a single entry. Section
+  header has a Clear all button for bulk wipe. Memory-only:
+  history vanishes on Parleq quit — matches the existing privacy
+  invariant.
 
-- **Keyboard navigation in the picker.** Arrow keys move selection
-  through the grid — Left/Right by one card, Up/Down by the
-  current column count (computed deterministically from grid
-  width, stays correct as you resize). Selected card shows a
-  stronger accent ring than the hover state. **Enter** picks the
-  selected window; **Enter with no selection** picks the first
-  entry as a one-handed shortcut. **Cmd-W** also closes the
-  picker now. Selection clears on every refresh / show /
-  permission transition so a stale highlight never points at a
-  removed card.
+- **Stats dashboard.** Four metric cards in a fixed 2×2 grid:
+  Dictations (today's count + this-week + 7-day sparkline),
+  Speaking time (today's seconds + this-week's total + ASR avg ms
+  + LLM avg ms over last 7 days), LLM usage (today's token total
+  + cost in USD, this-week's totals, top-3 all-time models
+  breakdown), and Quality & references (ref-attached % and
+  cleanup-failed % over last 7 days). Metrics are recorded
+  text-free in a separate ring from the visible history so they
+  survive even when retention caps prune the text — your Stats
+  stay accurate even on a tight retention policy.
+
+- **Per-dictation timing capture.** Each dictation records audio
+  duration + ASR latency + LLM latency. Drives the Stats card
+  averages without bolting telemetry onto the hot path.
+
+- **MDM-configurable transcript-history retention.** Two new
+  managed-eligible keys: transcriptHistoryMaxEntries (Int — max
+  cards in Recent) and transcriptHistoryRetentionHours (Int —
+  sweep entries older than this). Setting either to 0 disables
+  history entirely — Parleq returns immediately from the
+  history-append path and BOTH the text ring AND the text-free
+  metrics ring stay empty. Intentional: in regulated contexts,
+  even aggregate per-dictation counts can be a privacy signal,
+  so disabling history disables the counts that fed Stats too.
+  User-configurable too (Settings → Privacy & Features) when no
+  MDM policy is in effect.
+
+- **Reference Windows capture across full-screen Spaces.** The
+  "Switch to that Space first" error from 0.13.0 is largely gone.
+  When you pick a window whose owning app is on a full-screen
+  Space — dedicated or split-view — Parleq now reliably activates
+  the source via the AppleScript bundle-id activate AppleEvent
+  (the only programmatic mechanism that crosses macOS's
+  full-screen-Space guardrail), captures, and animates back to
+  your origin Space. Works cross-monitor (iTerm on secondary,
+  target full-screen on primary), full-screen-to-full-screen
+  transitions, and split full-screen targets like the iOS
+  Simulator. The overlay panel temporarily strips its
+  .canJoinAllSpaces collection-behavior during focus restoration
+  so macOS doesn't suppress the switchback animation, then
+  reattaches on the new Space. After the Space settles, the
+  overlay reclaims key-window status so Enter (accept) and Escape
+  (cancel) keep working without an extra click.
+
+- **Reference Windows v2 latched-compose during refines.** Press
+  Space during a refine hold to attach another window — the
+  latched-compose machinery now activates during the .refining
+  phase, not only during the first-hold .capturing phase. The
+  "Press Space to attach a window" teaching hint shows during
+  refines, and the armed-variant ("Picker opens on release · Esc
+  to cancel") swaps in correctly across every hold of a latched
+  session. Flag lifetime is now strictly per-hold; previously a
+  stale armed state could leak into the next hold's overlay.
+
+- **Brand-coherent accent throughout the new app shell.** Sidebar
+  selection, prominent buttons (Copy, Paste here, Send), the
+  "raw" badge, sparklines, and upgrade banner all read in
+  Parleq's brand amber instead of macOS system blue. Driven by a
+  single .tint(brandAccent) at the app-shell root.
 
 ### Changed
 
-- **ASR silence detection.** Recordings with no detectable voice
-  activity (whispered, mic muted, room-tone-only) no longer get
-  sent to ASR — closes a class of hallucinated short transcripts
-  ("yeah", "okay", "thank you") that the upstream STT would emit
-  on near-silent input. Threshold tuned to 0.002 RMS-over-20ms-
-  frames after testing against quiet-but-real speech and various
-  microphone idle profiles.
+- **Menu bar — final form.** Two-item-shorter status menu now
+  that the app shell carries the heavy navigation. "About Parleq"
+  routes to the in-app About section (richer than the system
+  about panel: brand mark + version + links + copyright +
+  licenses). "Open Source Licenses…" removed — the in-app About
+  surfaces the same link more prominently. Order: status info →
+  Show Parleq / Microphone → Check for Updates / Run Setup →
+  About / Quit.
 
-- **Reference Windows focus restore.** Capturing a window no
-  longer leaves keyboard focus on the source app — Parleq
-  snapshots the frontmost app at capture time and restores it
-  after SCK finishes, so your "Pasting to" target stays
-  consistent across attachments. Full-screen Space windows still
-  can't be captured without switching Spaces manually — those
-  now surface a clear error message ("X is in a full-screen
-  Space. Switch to that Space first, then try attaching it
-  again.") instead of the raw SCStreamErrorDomain blob.
+- **Recent Dictations: bulk Clear all in the section header.**
+  Previously buried at the bottom of the scroll content; now
+  always reachable without scrolling.
 
-- **Overlay polish.** The "PASTING TO <app>" chip is now visible
-  during active dictation states (capturing, cleaning,
-  refining), not only on the awaitingAccept overlay — so flows
-  that inadvertently shift focus mid-composition surface the
-  retarget immediately instead of waiting for streamed text to
-  appear. Same visual treatment in both placements, so the chip
-  doesn't jump or restyle when the overlay transitions.
-
-- **Menu-bar declutter.** "View Managed Configuration…" moved to
-  Settings → Privacy & Features (#213); "Reset ASR" moved to
-  Settings → Advanced (#214). Same dialogs and actions, just
-  relocated to Settings as a step toward a tighter top-level
-  menu.
+- **Restart-speech-model returns to Settings.** When you change
+  the cleanup model in Settings → Cleanup and click the restart
+  banner, the relaunched Parleq lands back on Settings (not the
+  default Recent landing) so you can immediately verify.
 
 ### Fixed
 
-- **Esc during LLM cleanup no longer leaves the overlay stuck.**
-  The streaming cleanup path's empty-result and catch branches
-  would re-show the overlay after cancel()'s closeAndReset hid
-  it, racing the user-cancel signal and leaving the overlay in
-  a fake "processing" state that only a fresh hotkey press could
-  dismiss. Both paths now skip the re-show when Task.isCancelled
-  is set or the caught error is a CancellationError.
+- Cmd+, from outside Parleq's window no longer dead-keys. The
+  Show Parleq menu item handles the routing now, and Cmd-W is
+  wired to close the app window from inside.
 
-- **Error banners no longer persist across dictation sessions.**
-  A failed reference capture used to leave its banner visible on
-  every subsequent overlay show until the user manually clicked
-  the X. The per-dictation reset now clears errorMessage +
-  permissionPrompt on every exit to idle, so a successful next
-  dictation implicitly dismisses any stale banner.
+- iOS-Simulator + other full-screen-Space references no longer
+  fail with the "Switch to that Space first" message in the
+  common case. The retry path was using
+  NSRunningApplication.activate, which macOS refuses for
+  cross-full-screen-Space targets; now routes through AppleScript
+  bundle-id activate. 700ms post-activation wait covers
+  Space-switch animation + Metal-compositor readiness.
+
+- asrEndpoint no longer leaks path / query / fragment to
+  ~/.parleq/app.log. The startup-summary URL sanitizer was wired
+  for sparkleUpdateFeedURL only; it now also strips path + query
+  from a managed asrEndpoint, preserving scheme + host + port so
+  operators can still verify the value at a glance. (#208)
 
 ### Security
 
-- **Sparkle managed-feed-URL state hygiene.** Parleq now calls
-  clearFeedURLFromUserDefaults on every launch where the managed
-  sparkleUpdateFeedURL isn't successfully validated. Without
-  this, Sparkle's setFeedURL persisted any previously-managed URL
-  into user defaults — so an admin removing an MDM profile would
-  leave the corp-mirror URL stuck on every fleet machine,
-  defeating policy removal. Removing the MDM profile (or
-  rejecting an invalid managed value) now reliably restores
-  Sparkle's Info.plist SUFeedURL default.
+- MDM loggingMode accessor. A typed ManagedConfig.LoggingMode
+  enum + loggingMode() accessor land now even though no
+  verbose-logging mode exists yet — future code paths are
+  structurally drawn to consult the accessor, and bypassing it
+  becomes grep-discoverable. Trap for a future PR that adds
+  verbose logging to honor the MDM-pinned policy.
 
-## Install
+- Appcast XML release-notes residual risk — documented.
+  EdDSA-signature gating means a hostile mirror at a managed
+  sparkleUpdateFeedURL cannot ship a binary, but CAN display
+  arbitrary release-notes content as HTML inside Sparkle's update
+  dialog. Risk is social-engineering only; operator mitigation:
+  vet the managed feed URL host. Documented in the
+  managed-configuration security invariant section.
 
-If you're already running Parleq 0.12.x, Sparkle's update prompt
-is the easiest path — it handles download, signature verification,
-and the relaunch for you.
-
-For a fresh install:
-
-1. Download the .dmg attached to this release.
-2. (Optional) Verify the SHA-256: `shasum -a 256 -c Parleq-0.13.0-<sha>.dmg.sha256`
-3. Open the DMG and drag Parleq.app onto the Applications folder.
-4. Eject the DMG, then launch Parleq from Applications.
-5. On first launch, grant Microphone + Accessibility permissions
-   and answer the auto-update prompt. For Reference Windows
-   image-mode captures (the 👁 icon on a reference chip), also
-   grant Screen Recording permission when first prompted.
-
-First launch downloads the speech model (~150 MB) — give it
-30–60 seconds before pressing the hotkey. The menu-bar icon
-switches from a download glyph to the bar mark when ready.
-
-See README.md for hotkey, LLM provider setup (Gemini / Bedrock /
-Vertex AI / Azure OpenAI), Reference Windows usage, and
-custom-dictionary configuration. IT teams deploying Parleq to a
-fleet: see https://parleq.app/docs/admin-guide/.
+- customDictionary entry content — documented limitation. MDM
+  can suppress the entire custom-dictionary feature via
+  customDictionaryEnabled=false, but cannot constrain individual
+  entry text (injected verbatim into the cleanup LLM prompt). In
+  compliance-sensitive deployments where prompt content must be
+  controlled, disable the whole feature.

@@ -144,6 +144,14 @@ final class SettingsModel: ObservableObject {
     @Published var customDictionaryEnabled: Bool
     /// Mirror of Config.customModelEntryEnabled.
     @Published var customModelEntryEnabled: Bool
+    /// Mirror of Config.transcriptHistoryMaxEntries. 0.14.0 PR 6
+    /// (#221). nil = unlimited; 0 = disable history entirely.
+    /// PrivacyFeaturesView binds this through an optionalIntBinding
+    /// that round-trips empty TextField ↔ nil.
+    @Published var transcriptHistoryMaxEntries: Int?
+    /// Mirror of Config.transcriptHistoryRetentionHours. 0.14.0
+    /// PR 6 (#221). nil = unlimited; 0 = disable history entirely.
+    @Published var transcriptHistoryRetentionHours: Int?
     /// Set of Config keys currently managed by MDM. Rows for managed
     /// keys render as `.disabled(true)` with the ManagedIndicator badge.
     @Published var managedKeys: Set<String>
@@ -272,6 +280,8 @@ final class SettingsModel: ObservableObject {
         self.fileReferenceEnabled = config.fileReferenceEnabled
         self.customDictionaryEnabled = config.customDictionaryEnabled
         self.customModelEntryEnabled = config.customModelEntryEnabled
+        self.transcriptHistoryMaxEntries = config.transcriptHistoryMaxEntries
+        self.transcriptHistoryRetentionHours = config.transcriptHistoryRetentionHours
         self.managedKeys = config.managedKeys
         self.initialHotkeyBinding = config.hotkeyBinding
         self.initialLlmModel = config.llmModel
@@ -301,12 +311,11 @@ final class SettingsModel: ObservableObject {
     }
 
     /// Re-read the entire config + Keychain mirror state from disk.
-    /// Called when SettingsWindowController.show() runs so the
-    /// window always reflects current disk state — handles the
-    /// case where the wizard (or a manual config-file edit, or
-    /// any other path) mutated the config while Settings was
-    /// closed but this controller / model instance was kept
-    /// around.
+    /// Called from `ParleqAppView` when the user navigates INTO the
+    /// Settings sidebar section, so the form always reflects current
+    /// disk state — handles the case where the wizard (or a manual
+    /// config-file edit, or any other path) mutated the config while
+    /// Settings was hidden but this model instance was kept around.
     ///
     /// Initial-state constants (initialHotkeyBinding et al) are
     /// intentionally NOT touched. They capture the launch-time
@@ -365,6 +374,8 @@ final class SettingsModel: ObservableObject {
         self.fileReferenceEnabled = config.fileReferenceEnabled
         self.customDictionaryEnabled = config.customDictionaryEnabled
         self.customModelEntryEnabled = config.customModelEntryEnabled
+        self.transcriptHistoryMaxEntries = config.transcriptHistoryMaxEntries
+        self.transcriptHistoryRetentionHours = config.transcriptHistoryRetentionHours
         self.managedKeys = config.managedKeys
         refreshUsage()
     }
@@ -480,9 +491,16 @@ final class SettingsModel: ObservableObject {
         c.fileReferenceEnabled = fileReferenceEnabled
         c.customDictionaryEnabled = customDictionaryEnabled
         c.customModelEntryEnabled = customModelEntryEnabled
+        c.transcriptHistoryMaxEntries = transcriptHistoryMaxEntries
+        c.transcriptHistoryRetentionHours = transcriptHistoryRetentionHours
         c.managedKeys = managedKeys
         do {
             try Config.save(c)
+            // 0.14.0 PR 6 (#221): push the new retention limits
+            // into TranscriptHistory immediately so a save in
+            // Settings → Privacy & Features takes effect without
+            // waiting for the next dictation or an app restart.
+            TranscriptHistory.shared.applyRetentionLimits(from: c)
         } catch {
             let msg = "[parleq] settings: save failed: \(error)\n"
             FileHandle.standardError.write(msg.data(using: .utf8) ?? Data())
@@ -2591,83 +2609,6 @@ private struct UsageRow: View {
     }
 }
 
-@MainActor
-public final class SettingsWindowController {
-    public init() {}
-    private var window: NSWindow?
-    private let model = SettingsModel()
-
-    /// Wire the Reset ASR closure from `parleq-app/main.swift`. The
-    /// Settings → Advanced "Reset speech model" button (#214,
-    /// 0.13.0) calls through to this on click. Safe to call before
-    /// the window is shown — the closure is stored on the model
-    /// and read on demand. Call once at app launch.
-    public func setOnResetASR(_ handler: @escaping () -> Void) {
-        model.onResetASR = handler
-    }
-
-    /// Show the settings window, creating it on first call. Subsequent
-    /// calls bring the existing window to front rather than spawning
-    /// a second one. On first ever creation the window is centered;
-    /// once a position has been saved by setFrameAutosaveName, macOS
-    /// restores it automatically so the window appears where the user
-    /// last left it (important for the restart-reopen path).
-    public func show() {
-        if window == nil {
-            let hosting = NSHostingController(rootView: SettingsView(model: model))
-            let w = NSWindow(contentViewController: hosting)
-            w.title = "Parleq Settings"
-            w.styleMask = [.titled, .closable, .miniaturizable, .resizable]
-            w.collectionBehavior = [.fullScreenAuxiliary]
-            // Don't release when closed — we keep the controller
-            // around so a re-open shows the same instance with its
-            // model state intact.
-            w.isReleasedWhenClosed = false
-            // Persist frame (position + size) across launches. macOS
-            // writes the frame to the app's NSUserDefaults plist under
-            // this key and restores it automatically on the next
-            // setFrameAutosaveName call, so no extra code is needed.
-            // This is what makes the restart-reopen land exactly where
-            // the user was working.
-            w.setFrameAutosaveName("ParleqSettings")
-            // Set the content size ONLY when there is no saved frame
-            // yet (first ever launch). setFrameAutosaveName already
-            // restored a saved frame above if one existed; calling
-            // setContentSize afterward would overwrite it. When the
-            // autosave key is absent the defaults-plist has no entry
-            // and the window frame is still the AppKit default tiny
-            // rect — set an explicit size so center() below works
-            // against the real intended dimensions rather than that
-            // default.
-            let hasSavedFrame = UserDefaults.standard.string(forKey: "NSWindow Frame ParleqSettings") != nil
-            if !hasSavedFrame {
-                w.setContentSize(NSSize(width: 920, height: 660))
-            }
-            self.window = w
-        }
-        // Re-read disk state on every show. Without this, anything
-        // that writes ~/.parleq/config.json or the macOS Keychain
-        // outside the Settings UI (the setup wizard, manual
-        // config-file edits, future Recents-clearing flows, etc.)
-        // would leave the @Published fields stale until the user
-        // quits and relaunches Parleq.
-        model.reload()
-        // Center only when no saved position exists. Once the user
-        // has moved or resized the window the autosave frame takes
-        // over and we respect that position on every subsequent open
-        // (including the restart-reopen). On first launch — and any
-        // time the autosave entry is absent — fall back to centered.
-        let hasSavedFrame = UserDefaults.standard.string(forKey: "NSWindow Frame ParleqSettings") != nil
-        if !hasSavedFrame {
-            window?.center()
-        }
-        // For an LSUIElement app, NSApp.activate brings our windows
-        // forward without adding a Dock icon (since LSUIElement
-        // suppresses the icon regardless of activation policy).
-        NSApp.activate(ignoringOtherApps: true)
-        window?.makeKeyAndOrderFront(nil)
-    }
-}
 
 /// Sub-panel rendered inside the LLM section when the user picks a
 /// provider that's defined in the matrix but not yet wired to a

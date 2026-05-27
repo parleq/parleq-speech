@@ -366,15 +366,21 @@ struct ParleqApp {
         // quit it cleanly. Wired into AppState's phase callback so
         // the icon and "Status: …" line stay in sync.
         let menuBox = MenuBox()
-        let settingsBox = SettingsBox()
+        // SettingsBox removed in 0.14.0 PR 2 (#217) — the legacy
+        // SettingsWindowController has been deleted entirely. The
+        // canonical SettingsModel now lives in
+        // ParleqAppWindowController.shared.settingsModel.
         let wizardBox = WizardBox()
         let updaterBox = UpdaterBox()
         MainActor.assumeIsolated {
             logStderr("[parleq] login-item: status=\(LoginItem.statusDescription), supported=\(LoginItem.isSupported), bundle=\(Bundle.main.bundlePath)")
             let menuBar = MenuBar(hotkeyDisplayName: binding.displayName)
             menuBox.value = menuBar
-            let settings = SettingsWindowController()
-            settingsBox.value = settings
+            // 0.14.0+ : Parleq's primary UI is the new app shell
+            // (NavigationSplitView with Recent / Stats / Settings /
+            // About). The legacy SettingsWindowController was
+            // removed in PR 2 (#217); ParleqAppWindowController
+            // is the only window controller for the new shell.
             let wizard = SetupWizardController()
             wizardBox.value = wizard
             // Sparkle auto-update controller. `startingUpdater: true`
@@ -504,7 +510,11 @@ struct ParleqApp {
             // is a process-wide write-once shim; ParleqApp.main is
             // the only writer.
             SparkleHolder.controller = updaterController
-            menuBar.onOpenSettings = { settings.show() }
+            // Menu bar's "Show Parleq…" (renamed from "Settings…" in
+            // 0.14.0, see MenuBar.swift) opens the new app shell.
+            // Defaults to whichever section was last visible
+            // (.recent on first open).
+            menuBar.onOpenSettings = { ParleqAppWindowController.shared.show() }
             menuBar.onOpenWizard = { wizard.show() }
             menuBar.onCheckForUpdates = { [weak updaterController] in
                 updaterController?.checkForUpdates(nil)
@@ -611,9 +621,20 @@ struct ParleqApp {
                 forName: .parleqOpenSettings,
                 object: nil,
                 queue: .main
-            ) { [weak settingsBox] _ in
+            ) { _ in
+                // 0.14.0+ : go through the app shell controller's
+                // singleton directly instead of holding a weak
+                // reference to the legacy SettingsBox. The legacy
+                // SettingsWindowController is on its way out (PR 2
+                // deletes it) and isn't strongly retained anywhere
+                // we can rely on under optimized builds — a release
+                // could nil out `settingsBox?.value` between
+                // observer registration and notification fire,
+                // making the restart-reopen path a silent no-op.
+                // The shell controller is a process-wide singleton
+                // and always reachable.
                 MainActor.assumeIsolated {
-                    settingsBox?.value?.show()
+                    ParleqAppWindowController.shared.show(section: .settings)
                 }
             }
             if UserDefaults.standard.bool(forKey: "parleq.reopenSettingsOnLaunch") {
@@ -669,6 +690,18 @@ struct ParleqApp {
                 Task { @MainActor in
                     stateBox.value?.spacePressedDuringHold()
                 }
+            },
+            onPPressed: {
+                // 0.14.0 "hold-hotkey + P = Show Parleq" gesture.
+                // Edge-triggered the first time P lands during a
+                // dictation-hotkey hold; the listener has already
+                // consumed the P keyDown + matching keyUp so the
+                // focused app doesn't see a stray P character (or
+                // π, when the hotkey is Option). AppState cancels
+                // the in-flight capture and summons the app window.
+                Task { @MainActor in
+                    stateBox.value?.pPressedDuringHold()
+                }
             }
         )
         do {
@@ -708,10 +741,12 @@ struct ParleqApp {
                 menuBox.value?.setASRLoadFailed(local.loadFailed)
                 stateBox.value?.notifyDownloadProgress(local.downloadProgress)
                 // In 0.13.0 the "Reset ASR" menu item moved to
-                // Settings → Advanced (#214). Wire the same
-                // closure into SettingsModel via the controller's
-                // public setter so the button has work to call.
-                settingsBox.value?.setOnResetASR { [weak local] in
+                // Settings → Advanced (#214). Wire the closure
+                // directly into the app shell's SettingsModel so the
+                // button has work to call. In 0.14.0 PR 2 the legacy
+                // SettingsBox forwarding intermediary was removed
+                // (#217).
+                ParleqAppWindowController.shared.setOnResetASR { [weak local] in
                     local?.reset()
                 }
                 local.start()
@@ -757,13 +792,10 @@ private final class MenuBox: @unchecked Sendable {
     var value: MenuBar?
 }
 
-// SettingsBox holds the SettingsWindowController so it lives for
-// the app's whole runtime — needed because the controller's window
-// is bound to its instance and we want re-opens to show the same
-// window instead of spawning a new one.
-private final class SettingsBox: @unchecked Sendable {
-    var value: SettingsWindowController?
-}
+// SettingsBox removed in 0.14.0 PR 2 (#217) — the legacy
+// SettingsWindowController has been deleted entirely; the canonical
+// SettingsModel now lives on ParleqAppWindowController.shared, which
+// is the only window controller for the app shell.
 
 // WizardBox holds the SetupWizardController for the same reason —
 // re-opens from the menu bar's "Run Setup…" item should reuse

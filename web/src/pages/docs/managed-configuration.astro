@@ -325,7 +325,22 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
         without the maintainer&rsquo;s Ed25519 private key &mdash; every downloaded update is still
         checked against the hardcoded public key before installation.
       </p>
+      <p class="mt-3 text-[14px] leading-relaxed text-amber-900">
+        <strong class="font-semibold">Residual risk &mdash; appcast release-notes content:</strong>
+        Sparkle renders the appcast&rsquo;s release-notes field as HTML inside the update dialog.
+        An attacker who controls the managed feed URL can therefore display arbitrary release-notes content to users (text, links, formatted prose) even though they cannot ship code through the EdDSA gate. The risk is social-engineering only &mdash; a misleading message in a release-notes pane could prompt the user to visit an external URL and install something outside Sparkle. Mitigation: treat the managed feed URL as a security-critical setting, vet the host before pointing fleets at it, and prefer hosting on infrastructure under your own change-control.
+      </p>
     </div>
+
+    <h3 class="mt-12 font-display text-xl font-semibold tracking-tight text-[color:var(--color-text)]">
+      Known limitation &mdash; customDictionary entry content
+    </h3>
+    <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      The <code class="font-mono text-[12px]">customDictionary</code> feature lets users define term/context pairs that are injected verbatim into the LLM cleanup prompt to bias transcription of jargon, proper nouns, and project-specific vocabulary. MDM can suppress the entire feature by setting <code class="font-mono text-[12px]">customDictionaryEnabled=false</code>, but <em>cannot</em> constrain the content of individual entries when the feature is enabled. A user with a permissive policy can therefore add arbitrary text to the dictionary, which Parleq will pass to the LLM provider as part of its prompt for every cleanup call.
+    </p>
+    <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      In compliance-sensitive deployments where prompt content must be controlled, set <code class="font-mono text-[12px]">customDictionaryEnabled=false</code>. There is no &ldquo;allow only these entries&rdquo; mode &mdash; the feature is binary at the MDM level.
+    </p>
 
     <!-- Sample .mobileconfig -->
     <h2 class="mt-12 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
