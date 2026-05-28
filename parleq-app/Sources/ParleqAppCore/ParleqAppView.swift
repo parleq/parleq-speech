@@ -30,11 +30,14 @@ struct ParleqAppView: View {
     /// for. #61/#62.
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
-    /// Tracks whether the window is currently in the auto-hidden
-    /// (narrow) state. We only flip `columnVisibility` when the width
-    /// crosses OUT of the hysteresis band, not on every width change,
-    /// so a manual toggle survives further resizing while still narrow.
-    @State private var isNarrow = false
+    /// Last measured shell width (-1 until the first measurement). The
+    /// auto-hide reacts to width CROSSINGS computed from this, rather
+    /// than from a separate "is narrow" latch — so there's a single
+    /// source of truth (`columnVisibility`) and a manual toggle can't
+    /// desync from it. A manual toggle moves visibility, not width, so
+    /// no crossing fires and the override persists until the width
+    /// genuinely crosses a threshold.
+    @State private var lastShellWidth: CGFloat = -1
 
     /// Hysteresis band for sidebar auto-hide. The sidebar hides once
     /// the window drops below `hideBelowWidth` and only re-appears once
@@ -126,25 +129,37 @@ struct ParleqAppView: View {
 
     /// Auto-hide the sidebar when the window narrows below
     /// `hideBelowWidth`, restore it once it grows back past
-    /// `showAboveWidth`. The hysteresis gap (and the `isNarrow` latch)
-    /// mean a live resize that lingers near the boundary can't make the
-    /// sidebar flicker, and a manual toggle isn't clobbered by every
-    /// resize tick while still narrow.
+    /// `showAboveWidth`. Acts only when the width genuinely CROSSES a
+    /// hysteresis edge (computed from the previous measured width), so:
+    /// a live resize lingering in the dead-band can't flicker the
+    /// sidebar, and a manual toggle — which changes visibility but not
+    /// width — survives subsequent resizing until a real crossing.
     private func adjustSidebar(forWidth width: CGFloat) {
-        if !isNarrow && width < hideBelowWidth {
-            isNarrow = true
-            withAnimation { columnVisibility = .detailOnly }
-        } else if isNarrow && width > showAboveWidth {
-            isNarrow = false
-            withAnimation { columnVisibility = .all }
+        guard width > 0 else { return }
+        let prev = lastShellWidth
+        lastShellWidth = width
+        // First real measurement: set the regime default outright (no
+        // animation — this is the window's initial appearance).
+        if prev < 0 {
+            columnVisibility = width < hideBelowWidth ? .detailOnly : .all
+            return
+        }
+        if prev >= hideBelowWidth && width < hideBelowWidth {
+            withAnimation { columnVisibility = .detailOnly }   // crossed into narrow
+        } else if prev <= showAboveWidth && width > showAboveWidth {
+            withAnimation { columnVisibility = .all }           // crossed into wide
         }
     }
 
     /// Flip the sidebar between hidden and shown. On a narrow window
     /// `.all` shows it as an overlay; on a wide window it sits in its
-    /// own column.
+    /// own column. Intentionally touches only `columnVisibility` (not
+    /// width state), so the override persists until the next genuine
+    /// width crossing in `adjustSidebar`.
     private func toggleSidebar() {
-        columnVisibility = (columnVisibility == .detailOnly) ? .all : .detailOnly
+        withAnimation {
+            columnVisibility = (columnVisibility == .detailOnly) ? .all : .detailOnly
+        }
     }
 
     /// Single unified sidebar (0.15.0): Recent / Stats / Settings

@@ -18,11 +18,25 @@ Window and navigation polish for the app shell that landed in 0.14.0. The Settin
 
 - **Persistent Stats across sessions.** The text-free per-dictation metrics that feed the Stats dashboard now persist to disk (bounded to the last 30 days), so your dictation counts, speaking time, latencies, and token/cost trends span multiple launches instead of resetting every time you quit Parleq. The visible Recent Dictations history remains memory-only — only the anonymous metrics are persisted.
 
+- **MDM key `livePricingEnabled`.** A new managed-configuration key (Boolean, default `true`) lets IT pin off the once-per-launch background fetch of the community LiteLLM pricing table from `raw.githubusercontent.com` (used only to keep Usage/Stats cost figures current). Set `false` for locked-down or air-gapped fleets; the bundled price table then serves and no such request is made. Mirrors the existing `PARLEQ_DISABLE_LIVE_PRICING=1` env var for single users.
+
 ### Changed
 
 - **Window sizing is now pinned, not content-driven.** The app window no longer auto-grows to fit tall content (which could push it partly off a small or low-resolution display) and no longer derives its minimum size from whichever pane happens to be showing. It clamps its frame onto the active screen's visible area on open, enforces one consistent minimum size for every section, and keeps top-aligned content anchored at the top instead of floating to the vertical center. ([#61](https://github.com/parleq/parleq-speech/issues/61))
 
 - **Horizontal-scroll fallback for narrow viewports.** Settings panes and the Stats dashboard now scroll horizontally as well as vertically when the window is narrower than their readable content width — so on a small screen or at a high display-scaling setting, content scrolls into view instead of being cramped or clipped. ([#62](https://github.com/parleq/parleq-speech/issues/62))
+
+### Fixed
+
+- **Reopening the app window preserves its state.** After closing the window (Cmd-W), re-summoning it now reuses the same window instead of rebuilding a fresh one — so sidebar expand/collapse, column visibility, and the restored frame survive a close/reopen.
+
+- **Restored window stays on its own display.** A window validly saved on a connected secondary display is no longer pulled back onto the primary screen on reopen; it's clamped into whichever screen it most overlaps (and only falls back to the main screen if that display is gone).
+
+- **Stats auto-refresh timer no longer restarts on every render.**
+
+### Security
+
+- **Logs never persist transcripts or secrets, even in trace/error paths.** `PARLEQ_BEDROCK_TRACE` (which raises Soto to trace level, logging request bodies + auth headers) is now honored only when stderr is a live terminal, never when it's been redirected to `~/.parleq/app.log` in a bundled app. The ASR pipeline's error path now drops a failed `asr.endpoint`'s HTTP response body from the log (keeping the status code), matching the existing LLM-error redaction.
 
 ## [0.14.0] - 2026-05-27
 

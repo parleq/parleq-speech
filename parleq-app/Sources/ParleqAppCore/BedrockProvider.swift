@@ -28,6 +28,7 @@
 // ID prefix rather than expose the toggle as a separate config
 // knob.
 
+import Darwin
 import Foundation
 import Logging
 import SotoBedrockRuntime
@@ -155,7 +156,17 @@ public final class BedrockProvider: LLMProvider, @unchecked Sendable {
         }
         self.sotoRegion = sotoRegion
 
+        // Only honor PARLEQ_BEDROCK_TRACE when stderr is still a live
+        // terminal. In a bundled .app, LogFile.install() has already
+        // redirected stderr to ~/.parleq/app.log, so trace-level Soto
+        // logging — which includes the HTTP request body (the
+        // transcript) and the SigV4 Authorization header / session
+        // credentials — would be PERSISTED to disk, violating the
+        // no-transcript / no-secrets-in-logs invariants. On a real TTY
+        // (a `swift run` dev session) nothing is persisted, so trace is
+        // safe there.
         let trace = ProcessInfo.processInfo.environment["PARLEQ_BEDROCK_TRACE"] == "1"
+            && isatty(fileno(stderr)) == 1
         var lg = Logger(label: "parleq.bedrock") { label in
             var handler = StreamLogHandler.standardError(label: label)
             handler.logLevel = trace ? .trace : .warning

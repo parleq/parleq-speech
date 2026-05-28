@@ -193,7 +193,15 @@ public final class ParleqAppWindowController: NSObject {
         } else {
             resolved = ParleqAppSelection.from(topLevel)
         }
-        if let existing = window, existing.isVisible {
+        // Reuse the existing window whether it's currently visible OR
+        // was closed. `isReleasedWhenClosed = false` keeps the NSWindow
+        // (and its NSHostingController + SwiftUI state) alive after a
+        // Cmd-W / close, so re-summoning re-displays the SAME window —
+        // preserving sidebar expand/collapse, column visibility, the
+        // last-restored frame, etc. The previous `existing.isVisible`
+        // guard fell through to the else-branch on reopen and rebuilt a
+        // brand-new window, resetting all that state every time.
+        if let existing = window {
             selectedSection.value = resolved
             existing.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)

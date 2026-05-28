@@ -1800,7 +1800,18 @@ public final class AppState {
                 self?.lastLLMLatencyMs = outcome.llmLatencyMs
                 self?.applyResult(outcome.text, cleanupFailureMessage: outcome.failureMessage)
             } catch {
-                self?.log("pipeline failed: \(error)")
+                // Render log-safely: ASRError.badStatus and LLMError can
+                // carry response bodies a custom endpoint controls, which
+                // must not be persisted to ~/.parleq/app.log.
+                let safe: String
+                if let asrError = error as? ASRError {
+                    safe = asrError.logSafeDescription
+                } else if let llmError = error as? LLMError {
+                    safe = llmError.logSafeDescription
+                } else {
+                    safe = String(describing: error)
+                }
+                self?.log("pipeline failed: \(safe)")
                 self?.resetPerDictationOverlayState()
                 self?.phase = .idle
                 self?.overlay.hide()

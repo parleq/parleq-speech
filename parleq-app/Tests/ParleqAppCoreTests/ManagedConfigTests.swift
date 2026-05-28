@@ -498,15 +498,16 @@ final class ManagedConfigTests: XCTestCase {
 
     // MARK: - 13. ManagedConfig.allKeys — single source of truth
 
-    func test_allKeys_count_is_thirtyone() {
-        // Phase 1 (7 Bool) + Phase 2 (8 String/[String]) + Phase 3 (2 operational)
+    func test_allKeys_count_is_thirtytwo() {
+        // Phase 1 (8 Bool: 7 original + livePricingEnabled, 0.15.0)
+        // + Phase 2 (8 String/[String]) + Phase 3 (2 operational)
         // + Phase 4 (3 auth-mode restriction) + Phase 7 (8 destination pins
         // + vertexAuthMode) + Phase 8 (2 transcript-history retention,
-        // 0.14.0 PR 6 / #221) = 31.
+        // 0.14.0 PR 6 / #221) = 32.
         // Bumping this count requires a coordinated change in
         // ManagedConfig.allKeys + the audit-row resolution + the docs page.
-        XCTAssertEqual(ManagedConfig.allKeys.count, 31,
-                       "ManagedConfig.allKeys must contain exactly 31 managed-eligible keys (Phase 1 + 2 + 3 + 4 + 7 + 8)")
+        XCTAssertEqual(ManagedConfig.allKeys.count, 32,
+                       "ManagedConfig.allKeys must contain exactly 32 managed-eligible keys (Phase 1 + 2 + 3 + 4 + 7 + 8)")
     }
 
     func test_allKeys_contains_all_phase7_destination_pin_keys() {

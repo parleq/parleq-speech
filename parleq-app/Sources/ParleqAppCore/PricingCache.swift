@@ -118,6 +118,17 @@ public final class PricingCache: @unchecked Sendable {
             )
             return
         }
+        // MDM-gateable: a managed profile can pin `livePricingEnabled`
+        // to false to suppress this third-party outbound entirely for
+        // locked-down / air-gapped fleets (the bundled price table then
+        // serves). nil = unmanaged → live pricing on (default).
+        if ManagedConfig.managedBool(forKey: "livePricingEnabled") == false {
+            FileHandle.standardError.write(
+                "[parleq] pricing: live fetch disabled by MDM policy (livePricingEnabled=false); using bundled defaults\n"
+                    .data(using: .utf8) ?? Data()
+            )
+            return
+        }
         let needsRefresh: Bool
         lock.lock()
         if fetchInFlight {

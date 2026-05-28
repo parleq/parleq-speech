@@ -45,6 +45,13 @@ dictation-overlay delay and Stats that persist across launches.
   resetting every time you quit. The visible Recent Dictations history
   remains memory-only — only the anonymous metrics are persisted.
 
+- MDM key livePricingEnabled. A new managed-configuration key
+  (Boolean, default true) lets IT pin off the once-per-launch
+  background fetch of the community LiteLLM pricing table from
+  raw.githubusercontent.com (used only to keep Usage/Stats cost
+  figures current). Set false for locked-down / air-gapped fleets;
+  the bundled price table then serves and no such request is made.
+
 ### Changed
 
 - Window sizing is now pinned, not content-driven. The app window no
@@ -61,3 +68,18 @@ dictation-overlay delay and Stats that persist across launches.
   when the window is narrower than their readable content width — so on
   a small screen or at a high display-scaling setting, content scrolls
   into view instead of being cramped or clipped.
+
+### Fixed
+
+- Reopening the app window (after Cmd-W) reuses the same window instead
+  of rebuilding it, so sidebar state and the restored frame survive.
+- A window saved on a secondary display stays there on reopen instead
+  of being pulled back to the primary screen.
+- The Stats auto-refresh timer no longer restarts on every render.
+
+### Security
+
+- Logs never persist transcripts or secrets even in trace/error paths:
+  PARLEQ_BEDROCK_TRACE is honored only on a live terminal (never the
+  bundled app's on-disk log), and the ASR error path drops a failed
+  endpoint's response body from the log.
