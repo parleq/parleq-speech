@@ -3,13 +3,22 @@
 // somewhere unexpected (focus changed mid-flight, target app
 // stopped accepting input, etc.).
 //
-// Compliance shape: process memory only. Never written to disk.
-// Entries vanish on app quit. This sits comfortably inside the
-// "audio in memory only" / "no input data on local computer"
-// rules from `docs/SECURITY_REVIEW.md` § 5 — the cleaned text was
-// already sitting in process memory while the overlay was open;
-// keeping it for the rest of the session adds no new persistence
-// surface.
+// Compliance shape: the TEXT-BEARING `entries` are process memory
+// only — never written to disk, vanish on app quit. This preserves
+// the "audio in memory only" / "no input data on local computer"
+// rules from `docs/SECURITY_REVIEW.md` § 5: the cleaned text was
+// already in process memory while the overlay was open; keeping it
+// for the rest of the session adds no new persistence surface.
+//
+// The parallel TEXT-FREE `metricsRecords` ring IS persisted to
+// ~/.parleq/metrics.jsonl so the Stats section can span sessions
+// (#57). MetricsRecord carries NO transcript text or reference
+// content — only timestamp + durations/latencies + two booleans —
+// so this is metadata, not input data. Persistence honors the same
+// zero-retention short-circuit as the in-memory ring: when
+// transcriptHistoryMaxEntries == 0 or transcriptHistoryRetentionHours
+// == 0 (the MDM "disable history" lever), nothing is written and any
+// existing file is removed.
 //
 // Surfaced via the menu bar's "Recent Dictations" submenu
 // (MenuBar.swift). Clicking an entry copies the full text to the
@@ -180,6 +189,13 @@ final class TranscriptHistory: ObservableObject {
     private var retentionSweepTimer: Timer?
 
     private init() {
+        // Load the persisted text-free metrics ring from disk (#57)
+        // BEFORE applying retention limits, so the loaded records get
+        // pruned by the same count/age caps. If the effective config
+        // is zero-retention, applyRetentionLimits → enforceLimits
+        // wipes them right back out (and re-persists empty), so a
+        // disabled-history fleet never surfaces stale on-disk metrics.
+        metricsRecords = Self.loadPersistedMetrics()
         // Initial config read so first append() sees the right
         // limit. main.swift's setRetentionLimits(from:) is the
         // canonical wiring path but this init read covers any
@@ -254,6 +270,7 @@ final class TranscriptHistory: ObservableObject {
         guard let cutoff = Calendar.current.date(byAdding: .hour, value: -hours, to: Date()) else { return }
         entries.removeAll { $0.timestamp < cutoff }
         metricsRecords.removeAll { $0.timestamp < cutoff }
+        persistMetrics()
     }
 
     /// Apply count + age limits in lockstep. Called from append
@@ -270,6 +287,7 @@ final class TranscriptHistory: ObservableObject {
         if maxEntriesLimit == 0 || retentionHoursLimit == 0 {
             entries.removeAll()
             metricsRecords.removeAll()
+            persistMetrics()
             return
         }
         // Count cap on the text-bearing array. metricsRecords is
@@ -287,6 +305,10 @@ final class TranscriptHistory: ObservableObject {
             entries.removeAll { $0.timestamp < cutoff }
             metricsRecords.removeAll { $0.timestamp < cutoff }
         }
+        // Persist the (now-pruned) metrics ring so the on-disk file
+        // tracks the in-memory state. Covers the append path (append
+        // calls enforceLimits) and the applyRetentionLimits path.
+        persistMetrics()
     }
 
     /// Remove a specific entry by id. Wired to the per-card delete
@@ -299,6 +321,7 @@ final class TranscriptHistory: ObservableObject {
     func remove(id: UUID) {
         entries.removeAll { $0.id == id }
         metricsRecords.removeAll { $0.id == id }
+        persistMetrics()
     }
 
     /// Wipe the buffer. Wired to the "Clear all dictation history"
@@ -309,6 +332,75 @@ final class TranscriptHistory: ObservableObject {
     func clear() {
         entries.removeAll()
         metricsRecords.removeAll()
+        persistMetrics()
+    }
+
+    // MARK: - Disk persistence (#57)
+
+    /// Path to the persisted text-free metrics ring. Mirrors
+    /// UsageLedger's ~/.parleq/usage.jsonl layout. One JSON object
+    /// per line so a partially-written tail (crash mid-append)
+    /// drops at most the last record on the next load.
+    private static func metricsFileURL() -> URL? {
+        guard let home = FileManager.default.homeDirectoryForCurrentUser as URL? else { return nil }
+        let dir = home.appendingPathComponent(".parleq", isDirectory: true)
+        return dir.appendingPathComponent("metrics.jsonl", isDirectory: false)
+    }
+
+    /// Load persisted metrics from disk. Tolerant: skips any line
+    /// that fails to decode (forward-compat with added fields,
+    /// resilient to a torn last line). Returns [] when the file is
+    /// absent. Static so `init` can call it before `self` is fully
+    /// available.
+    private static func loadPersistedMetrics() -> [MetricsRecord] {
+        guard let url = metricsFileURL(),
+              let data = try? Data(contentsOf: url),
+              let text = String(data: data, encoding: .utf8) else {
+            return []
+        }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        var out: [MetricsRecord] = []
+        for line in text.split(separator: "\n", omittingEmptySubsequences: true) {
+            if let lineData = line.data(using: .utf8),
+               let rec = try? decoder.decode(MetricsRecord.self, from: lineData) {
+                out.append(rec)
+            }
+        }
+        return out
+    }
+
+    /// Write the current metrics ring to disk atomically. Called
+    /// after every mutation (append/remove/clear/sweep/enforce).
+    /// When the ring is empty — including the zero-retention
+    /// "disable history" state, where enforceLimits has wiped it —
+    /// the on-disk file is removed so a disabled-history deployment
+    /// leaves nothing behind. Best-effort: a write failure logs and
+    /// is swallowed (persistence is a convenience, never a
+    /// correctness requirement; the in-memory ring is authoritative
+    /// for the running session).
+    private func persistMetrics() {
+        guard let url = Self.metricsFileURL() else { return }
+        if metricsRecords.isEmpty {
+            try? FileManager.default.removeItem(at: url)
+            return
+        }
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        var blob = Data()
+        for rec in metricsRecords {
+            guard let line = try? encoder.encode(rec) else { continue }
+            blob.append(line)
+            blob.append(0x0A) // newline
+        }
+        do {
+            let dir = url.deletingLastPathComponent()
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            try blob.write(to: url, options: .atomic)
+        } catch {
+            let msg = "[parleq] TranscriptHistory: metrics persist failed: \(error)\n"
+            FileHandle.standardError.write(msg.data(using: .utf8) ?? Data())
+        }
     }
 }
 
@@ -317,7 +409,7 @@ final class TranscriptHistory: ObservableObject {
 /// metrics for the full session (the Stats today/this-week
 /// aggregates need it) without retaining the privacy-sensitive
 /// transcript text past the `maxEntries` cap.
-struct MetricsRecord: Sendable {
+struct MetricsRecord: Sendable, Codable {
     /// Matches the parent TranscriptEntry.id so explicit
     /// per-entry deletes (`remove(id:)`) can drop the metric in
     /// lockstep. Records created from cap-pruned entries keep
