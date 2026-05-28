@@ -177,14 +177,28 @@ public final class HotkeyListener {
     /// `pHoldThreshold` for the value + rationale.
     private var keyDownAt: TimeInterval = 0
     /// Minimum hotkey-hold duration before the P-during-hold
-    /// gesture engages. Matches the overlay-show delay so the
-    /// "hold until the overlay appears, then tap P" mental model
-    /// is honest — both UX cues fire at the same moment. A brief
-    /// tap of Option-P (under this threshold) falls through to the
-    /// system and types π exactly as the user expects. Sync with
-    /// AppState.pendingOverlayShowTimer's delay if either ever
-    /// moves.
-    private static let pHoldThreshold: TimeInterval = 0.200
+    /// gesture engages. Kept in lockstep with the overlay-show
+    /// delay (Config.overlayShowDelayMs, #56) so the "hold until
+    /// the overlay appears, then tap P" mental model is honest —
+    /// both UX cues fire at the same moment. A brief tap of
+    /// Option-P (under this threshold) falls through to the system
+    /// and types π exactly as the user expects. Mutable (not a
+    /// static let) so `setPHoldThreshold(_:)` can sync it live when
+    /// the user changes the overlay delay in Settings, without an
+    /// app restart. Default 200ms matches Config's default.
+    private var pHoldThreshold: TimeInterval = 0.200
+
+    /// Update the P-gesture hold threshold to match the current
+    /// overlay-show delay. Wired from main.swift at launch and from
+    /// the Settings-save path so the gesture stays in sync with the
+    /// configurable overlay delay (#56). Thread note: the event-tap
+    /// callback reads `pHoldThreshold` on the main run loop (the tap
+    /// source is added to CFRunLoopGetMain), and Settings save also
+    /// runs on the main actor, so this plain assignment is
+    /// race-free without locking.
+    public func setPHoldThreshold(_ seconds: TimeInterval) {
+        pHoldThreshold = max(0, seconds)
+    }
     /// Per-hold flag set to true when Space is pressed while the
     /// dictation hotkey is held. Reset on each fresh key-DOWN.
     /// Reference Windows v2's latched-compose state machine
@@ -357,7 +371,7 @@ public final class HotkeyListener {
         if keyCode == HotkeyListener.pKeyCode {
             if keyDown {
                 let elapsed = Date().timeIntervalSinceReferenceDate - keyDownAt
-                if elapsed < HotkeyListener.pHoldThreshold {
+                if elapsed < pHoldThreshold {
                     // Brief tap — pass P through so Option-P = π
                     // (and any other modifier-P shortcut) keeps
                     // working as the user expects.

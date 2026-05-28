@@ -61,6 +61,13 @@ extension Notification.Name {
     /// Using a notification keeps ParleqApp_relaunch() and the launch
     /// path both ignorant of the SettingsWindowController instance.
     public static let parleqOpenSettings = Notification.Name("ParleqOpenSettings")
+
+    /// Posted by SettingsModel.save() when the overlay-show delay
+    /// changes (#56). main.swift observes it and calls
+    /// HotkeyListener.setPHoldThreshold so the hold-hotkey+P gesture
+    /// threshold stays in lockstep with the overlay delay without an
+    /// app restart. userInfo["ms"] carries the new delay as an Int.
+    public static let parleqOverlayDelayChanged = Notification.Name("ParleqOverlayDelayChanged")
 }
 
 /// Controller that owns the wizard NSWindow + SwiftUI hosting.
