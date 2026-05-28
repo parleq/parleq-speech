@@ -52,6 +52,14 @@ dictation-overlay delay and Stats that persist across launches.
   figures current). Set false for locked-down / air-gapped fleets;
   the bundled price table then serves and no such request is made.
 
+- Usage is a top-level section. The token + cost ledger moved out of
+  the Settings sub-sections into the primary sidebar — now
+  Recent / Stats / Usage / Settings / About.
+
+- Check for updates from About. The in-app About section has a
+  Check for updates button (a manual Sparkle check; works even when
+  automatic checks are off or MDM-managed).
+
 ### Changed
 
 - Window sizing is now pinned, not content-driven. The app window no
@@ -68,6 +76,11 @@ dictation-overlay delay and Stats that persist across launches.
   when the window is narrower than their readable content width — so on
   a small screen or at a high display-scaling setting, content scrolls
   into view instead of being cramped or clipped.
+
+- Removed the Cmd-, shortcut from "Show Parleq". It conventionally
+  means "Open Settings" and was misleading now that the item opens the
+  whole app shell. The way to summon the window — hold your dictation
+  hotkey and tap P — is hinted in the menu tooltip and the overlay.
 
 ### Fixed
 

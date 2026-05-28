@@ -133,12 +133,12 @@ public final class MenuBar: NSObject {
         let settingsItem = NSMenuItem(
             // Renamed in 0.14.0 from "Settings…" — the menu bar entry
             // now opens the new Parleq app window (which has Settings
-            // as one of four sidebar sections). Same underlying
-            // selector + callback wiring; the user-facing label change
-            // matches the broader "app shell, not a settings dialog"
-            // story. Cmd-, keyEquivalent preserved because users have
-            // muscle memory for it; it now opens the app to whichever
-            // section was last visible (default Recent).
+            // as one of several sidebar sections). The Cmd-, key-
+            // equivalent was dropped in 0.15.0: ⌘, conventionally means
+            // "Open Settings", and decorating a "Show Parleq" item with
+            // it was misleading now that the item opens the whole app
+            // shell, not a settings dialog. The discoverable shortcut is
+            // the hold-hotkey + P gesture (surfaced in the tooltip).
             title: "Show Parleq…",
             // Deliberately not `openSettings`: that selector name is
             // the canonical macOS Ventura+ "Open Settings" responder
@@ -148,9 +148,10 @@ public final class MenuBar: NSObject {
             // styling) so we route through a uniquely-named selector
             // that AppKit doesn't recognize.
             action: #selector(presentSettings),
-            keyEquivalent: ","
+            keyEquivalent: ""
         )
         settingsItem.target = self
+        settingsItem.toolTip = "Tip: hold your dictation hotkey and tap P to open Parleq from anywhere."
 
         let runSetupItem = NSMenuItem(
             title: "Run Setup…",

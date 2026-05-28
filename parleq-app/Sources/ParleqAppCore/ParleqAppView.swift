@@ -172,8 +172,12 @@ struct ParleqAppView: View {
                 .tag(ParleqAppSelection.recent)
             Label(ParleqAppSection.stats.title, systemImage: ParleqAppSection.stats.systemImage)
                 .tag(ParleqAppSelection.stats)
+            Label("Usage", systemImage: "dollarsign.circle")
+                .tag(ParleqAppSelection.usage)
             DisclosureGroup(isExpanded: $settingsExpanded) {
-                ForEach(SettingsView.SettingsSection.allCases) { pane in
+                // Usage is promoted to a top-level row (above), so drop
+                // it from the Settings sub-list to avoid duplication.
+                ForEach(SettingsView.SettingsSection.allCases.filter { $0 != .usage }) { pane in
                     Label(pane.label, systemImage: pane.icon)
                         .tag(ParleqAppSelection.settings(pane))
                 }
@@ -212,6 +216,7 @@ struct ParleqAppView: View {
             switch selectedSection.value {
             case .recent:            recentSection
             case .stats:             statsSection
+            case .usage:             usageSection
             case .settings(let s):   settingsSection(s)
             case .about:             aboutSection
             }
@@ -253,6 +258,14 @@ struct ParleqAppView: View {
     /// sparklines. PR 5 (#220).
     private var statsSection: some View {
         StatsView(history: TranscriptHistory.shared)
+    }
+
+    /// Usage — token + cost ledger. A top-level section in 0.15.0
+    /// (promoted out of Settings), still drawn by SettingsView's
+    /// `.usage` pane so the existing layout + refresh-on-appear are
+    /// reused unchanged.
+    private var usageSection: some View {
+        SettingsView(model: settingsModel, section: .usage)
     }
 
     /// Settings — renders the single pane selected in the unified
@@ -306,6 +319,19 @@ struct ParleqAppView: View {
                 .controlSize(.regular)
                 Link(destination: URL(string: "https://github.com/parleq/parleq-speech/blob/main/THIRD_PARTY_LICENSES.md")!) {
                     Label("Open source licenses", systemImage: "doc.text")
+                        .font(.callout)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.regular)
+                // Posts the same notification as Settings → Updates and
+                // the menu bar's "Check for Updates…"; main.swift's
+                // observer drives Sparkle from there. Always works even
+                // when automatic checks are off / MDM-managed — it's a
+                // manual, user-initiated check.
+                Button {
+                    NotificationCenter.default.post(name: .parleqCheckForUpdates, object: nil)
+                } label: {
+                    Label("Check for updates", systemImage: "arrow.down.circle")
                         .font(.callout)
                 }
                 .buttonStyle(.bordered)

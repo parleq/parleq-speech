@@ -67,6 +67,11 @@ public enum ParleqAppSection: String, Hashable, Identifiable, CaseIterable {
 enum ParleqAppSelection: Hashable {
     case recent
     case stats
+    /// Usage (token + cost ledger) is a top-level section in 0.15.0,
+    /// promoted out of the Settings sub-sections; it still renders via
+    /// SettingsView(section: .usage) but is selected from the primary
+    /// sidebar rather than under Settings.
+    case usage
     case settings(SettingsView.SettingsSection)
     case about
 

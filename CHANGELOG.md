@@ -20,11 +20,17 @@ Window and navigation polish for the app shell that landed in 0.14.0. The Settin
 
 - **MDM key `livePricingEnabled`.** A new managed-configuration key (Boolean, default `true`) lets IT pin off the once-per-launch background fetch of the community LiteLLM pricing table from `raw.githubusercontent.com` (used only to keep Usage/Stats cost figures current). Set `false` for locked-down or air-gapped fleets; the bundled price table then serves and no such request is made. Mirrors the existing `PARLEQ_DISABLE_LIVE_PRICING=1` env var for single users.
 
+- **Usage is a top-level section.** The token + cost ledger moved out of the Settings sub-sections into the primary sidebar — now Recent / Stats / Usage / Settings / About.
+
+- **Check for updates from About.** The in-app About section has a **Check for updates** button (a manual Sparkle check, the same one Settings → Updates and the menu bar offer — it works even when automatic checks are turned off or MDM-managed).
+
 ### Changed
 
 - **Window sizing is now pinned, not content-driven.** The app window no longer auto-grows to fit tall content (which could push it partly off a small or low-resolution display) and no longer derives its minimum size from whichever pane happens to be showing. It clamps its frame onto the active screen's visible area on open, enforces one consistent minimum size for every section, and keeps top-aligned content anchored at the top instead of floating to the vertical center. ([#61](https://github.com/parleq/parleq-speech/issues/61))
 
 - **Horizontal-scroll fallback for narrow viewports.** Settings panes and the Stats dashboard now scroll horizontally as well as vertically when the window is narrower than their readable content width — so on a small screen or at a high display-scaling setting, content scrolls into view instead of being cramped or clipped. ([#62](https://github.com/parleq/parleq-speech/issues/62))
+
+- **Removed the `⌘,` shortcut from "Show Parleq".** `⌘,` conventionally means "Open Settings" and was misleading now that the menu item opens the whole app shell rather than a settings dialog. The discoverable way to summon the window — hold your dictation hotkey and tap **P** — is now hinted in the menu-item tooltip and the dictation overlay ("Press P to open Parleq").
 
 ### Fixed
 
