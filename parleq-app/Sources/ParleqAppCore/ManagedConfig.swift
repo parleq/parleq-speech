@@ -47,6 +47,7 @@ public enum ManagedConfig {
         "customDictionaryEnabled",
         "customModelEntryEnabled",
         "autoUpdateEnabled",
+        "livePricingEnabled",
         // Phase 2 — String / [String] provider & model lockdown
         "cleanupProvider",
         "cleanupAllowedProviders",

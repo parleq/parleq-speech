@@ -4,6 +4,46 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-05-28
+
+Window and navigation polish for the app shell that landed in 0.14.0. The Settings panes fold into the primary sidebar (one column instead of two), so the whole app is navigable from a single list — and that single sidebar auto-hides on a narrow window, handing the full width to whatever you're reading. The window no longer resizes itself to fit content (which used to push it off small or low-resolution displays), it clamps itself onto the visible screen, and every section now enforces the same minimum size so the resize floor stops shifting as you navigate. Plus a couple of smaller quality-of-life wins promoted out of the menu bar: a user-configurable dictation-overlay delay and Stats that persist across launches.
+
+### Added
+
+- **Unified collapsible sidebar.** The Settings sub-sections (Hotkey, Audio, Behavior, Paste, Cleanup, Dictionary, Usage, Permissions, Privacy & Features, Updates, Advanced) now live as expandable children directly under **Settings** in the app's one primary sidebar, replacing the old two-sidebar Settings layout (primary sidebar + a second Settings-only sidebar + detail). Clicking anywhere on the **Settings** row expands/collapses the group — you don't have to hit the small disclosure chevron. The result is a single navigable list for the entire app: Recent / Stats / Settings ▸ panes / About.
+
+- **Auto-hiding sidebar with an explicit toggle.** On a narrow window the sidebar tucks away automatically and gives its width to the detail pane; widen the window and it returns. A sidebar toggle in the title bar brings it back (or dismisses it) at any size — a deliberate, deterministic control rather than a hover zone, so it stays usable for low-vision and motor-impaired users. The hide/show points use a hysteresis band so a resize that lingers near the threshold can't make the sidebar flicker.
+
+- **User-configurable dictation-overlay delay.** A new Settings → Behavior control sets how long Parleq waits before showing the dictation overlay after you start a hold, so quick taps don't flash the overlay. The same value drives the audio cue and the hold-to-summon ("+ P") gesture threshold, keeping all three cues in sync.
+
+- **Persistent Stats across sessions.** The text-free per-dictation metrics that feed the Stats dashboard now persist to disk (bounded to the last 30 days), so your dictation counts, speaking time, latencies, and token/cost trends span multiple launches instead of resetting every time you quit Parleq. The visible Recent Dictations history remains memory-only — only the anonymous metrics are persisted.
+
+- **MDM key `livePricingEnabled`.** A new managed-configuration key (Boolean, default `true`) lets IT pin off the once-per-launch background fetch of the community LiteLLM pricing table from `raw.githubusercontent.com` (used only to keep Usage/Stats cost figures current). Set `false` for locked-down or air-gapped fleets; the bundled price table then serves and no such request is made. Mirrors the existing `PARLEQ_DISABLE_LIVE_PRICING=1` env var for single users.
+
+- **Usage is a top-level section.** The token + cost ledger moved out of the Settings sub-sections into the primary sidebar — now Recent / Stats / Usage / Settings / About.
+
+- **Check for updates from About.** The in-app About section has a **Check for updates** button (a manual Sparkle check, the same one Settings → Updates and the menu bar offer — it works even when automatic checks are turned off or MDM-managed).
+
+### Changed
+
+- **Window sizing is now pinned, not content-driven.** The app window no longer auto-grows to fit tall content (which could push it partly off a small or low-resolution display) and no longer derives its minimum size from whichever pane happens to be showing. It clamps its frame onto the active screen's visible area on open, enforces one consistent minimum size for every section, and keeps top-aligned content anchored at the top instead of floating to the vertical center. ([#61](https://github.com/parleq/parleq-speech/issues/61))
+
+- **Horizontal-scroll fallback for narrow viewports.** Settings panes and the Stats dashboard now scroll horizontally as well as vertically when the window is narrower than their readable content width — so on a small screen or at a high display-scaling setting, content scrolls into view instead of being cramped or clipped. ([#62](https://github.com/parleq/parleq-speech/issues/62))
+
+- **Removed the `⌘,` shortcut from "Show Parleq".** `⌘,` conventionally means "Open Settings" and was misleading now that the menu item opens the whole app shell rather than a settings dialog. The discoverable way to summon the window — hold your dictation hotkey and tap **P** — is now hinted in the menu-item tooltip and the dictation overlay ("Press P to open Parleq").
+
+### Fixed
+
+- **Reopening the app window preserves its state.** After closing the window (Cmd-W), re-summoning it now reuses the same window instead of rebuilding a fresh one — so sidebar expand/collapse, column visibility, and the restored frame survive a close/reopen.
+
+- **Restored window stays on its own display.** A window validly saved on a connected secondary display is no longer pulled back onto the primary screen on reopen; it's clamped into whichever screen it most overlaps (and only falls back to the main screen if that display is gone).
+
+- **Stats auto-refresh timer no longer restarts on every render.**
+
+### Security
+
+- **Logs never persist transcripts or secrets, even in trace/error paths.** `PARLEQ_BEDROCK_TRACE` (which raises Soto to trace level, logging request bodies + auth headers) is now honored only when stderr is a live terminal, never when it's been redirected to `~/.parleq/app.log` in a bundled app. The ASR pipeline's error path now drops a failed `asr.endpoint`'s HTTP response body from the log (keeping the status code), matching the existing LLM-error redaction.
+
 ## [0.14.0] - 2026-05-27
 
 The Parleq app shell — Parleq is no longer "a hotkey with a Settings dialog." Press your hotkey + **P** (or click "Show Parleq…" in the menu bar) and a real macOS app window opens with four sections: **Recent Dictations** (full-text history with per-card Copy / Paste here / delete), **Stats** (dictation counts, speaking time + ASR/LLM latencies, token usage + cost, ref-attached + cleanup-failed rates, all on a 7-day rolling window), **Settings** (the same panes, reorganized into a sidebar), and **About** (the brand mark, version, links to source + licenses). Same LSUIElement footprint, same global hotkey, same paste pipeline — but now there's a home you can browse and configure from. Plus a full reference-capture overhaul so attaching windows from full-screen Spaces actually works, MDM-configurable transcript-history retention, and a stack of polish for the Reference Windows v2 latched-compose flow shipped in 0.13.0.

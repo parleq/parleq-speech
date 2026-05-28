@@ -90,6 +90,18 @@ checkpoints). The model weights are not redistributed inside the
 license terms posted at the corresponding Hugging Face repositories.
 See THIRD_PARTY_LICENSES.md § "Model weights" for details.
 
+FluidAudio embeds two components in its speaker-diarization
+clustering that compile into this .app and require attribution on
+binary redistribution:
+
+  * fastcluster — 2-clause BSD — Copyright (c) 2011 Daniel Müllner;
+    changes from version 1.1.24 on (c) Google Inc.
+  * VBx — Apache-2.0 — Brno University of Technology (BUT Speech@FIT).
+
+Their full license texts ship in FluidAudio's source checkout under
+ThirdPartyLicenses/. See THIRD_PARTY_LICENSES.md § "Embedded
+components" for details.
+
 ============================================================
 Sparkle
 ============================================================

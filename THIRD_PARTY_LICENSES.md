@@ -23,7 +23,7 @@ copy for users who want a clickable view.
 |---|---|---|
 | Direct SwiftPM dependencies (parleq-app) | 3 | 2× Apache-2.0; 1× MIT (Sparkle) |
 | Transitive SwiftPM dependencies | 25 | Apache-2.0 |
-| Components embedded inside SwiftPM dependencies | 3 | 1× MIT (llhttp, inside swift-nio); 1× zlib-style (ed25519-sparkle, inside Sparkle); 1× 2-clause BSD (bsdiff, inside Sparkle) |
+| Components embedded inside SwiftPM dependencies | 5 | 1× MIT (llhttp, inside swift-nio); 1× zlib-style (ed25519-sparkle, inside Sparkle); 2× 2-clause BSD (bsdiff inside Sparkle, fastcluster inside FluidAudio); 1× Apache-2.0 (VBx, inside FluidAudio) |
 | Apple system frameworks | n/a | Bundled with macOS — no attribution required |
 | Run-time downloaded model weights | 2 | See [Model weights](#model-weights) below |
 
@@ -122,6 +122,24 @@ also use direct HTTPS (URLSession) with no SDK.
   Sparkle and its vendored components) satisfies that. Used by
   Sparkle when applying delta-update patches to the existing .app
   bundle.
+
+- **fastcluster** — 2-clause BSD — Vendored inside FluidAudio at
+  `ThirdPartyLicenses/fastcluster-LICENSE.md`, compiled into the
+  `FastClusterWrapper` C++ target that the `FluidAudio` library product
+  depends on, so its object code ships inside `Parleq.app`. Copyright
+  © 2011 Daniel Müllner; changes from version 1.1.24 on © Google Inc.
+  The 2-clause BSD license obliges binary redistributions to reproduce
+  the copyright notice; doing so here (and in the bundled `NOTICE`)
+  satisfies that. Part of FluidAudio's speaker-diarization clustering.
+
+- **VBx** — Apache-2.0 — Vendored inside FluidAudio at
+  `ThirdPartyLicenses/vbx-LICENSE.md`, implemented in
+  `Sources/.../Clustering/VBxClustering.swift` and compiled into the
+  FluidAudio module. Variational-Bayes HMM x-vector clustering from
+  Brno University of Technology (BUT Speech@FIT). Apache-2.0 requires
+  preserving the license/notice on redistribution, satisfied via this
+  entry and the bundled `NOTICE`. Part of FluidAudio's speaker-
+  diarization clustering.
 
 ---
 

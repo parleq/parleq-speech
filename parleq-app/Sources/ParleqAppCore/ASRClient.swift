@@ -55,6 +55,23 @@ public enum ASRError: Error, CustomStringConvertible {
             return "ASR not ready (model still loading)"
         }
     }
+
+    /// Description safe to write to the persisted log (`~/.parleq/app.log`):
+    /// drops the HTTP response body, which a custom `asr.endpoint`
+    /// controls and could echo arbitrary content into. Keeps the status
+    /// code so failures are still diagnosable. Mirrors
+    /// `LLMError.logSafeDescription`; use this anywhere the error is
+    /// logged rather than the raw `description`.
+    public var logSafeDescription: String {
+        switch self {
+        case .badStatus(let code, _):
+            return "ASR HTTP \(code) (body omitted)"
+        case .malformedResponse, .malformedAudio, .notReady:
+            return description
+        case .ioError(let underlying):
+            return "ASR IO: \(underlying)"
+        }
+    }
 }
 
 public struct ASRTranscript {

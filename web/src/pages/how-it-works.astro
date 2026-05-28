@@ -52,7 +52,7 @@ const stages = [
     detail: [
       ['Focused-app capture', 'The original target is captured at hotkey-down. If your focus drifted while dictating, the paste still lands in the right window.'],
       ['Trailing-space override', 'Specific apps (your terminal, terminal-based editors, anything that handles its own spacing) skip the trailing space. Configurable per-app in Settings.'],
-      ['Recent Dictations', 'The last 20 cleaned dictations are kept in process memory and surfaced under the menu bar. Click any entry to copy it back to the clipboard if a paste landed somewhere unexpected. Never written to disk; wiped on app quit.'],
+      ['Recent Dictations', 'Your recent cleaned dictations are kept in process memory and listed in the Parleq window\'s Recent Dictations section (hold the hotkey and tap P to open it). Copy any entry back to the clipboard, or paste it into the app you were just in, if a paste landed somewhere unexpected. The text is never written to disk; wiped on app quit.'],
     ],
   },
 ];
@@ -208,6 +208,12 @@ const stages = [
           </dd>
         </div>
         <div>
+          <dt class="text-sm font-semibold text-[color:var(--color-text)]">Works across full-screen Spaces</dt>
+          <dd class="mt-1 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
+            You can attach a window whose app is on a full-screen Space — a dedicated Space, a split view, or a target on another monitor. Parleq activates the source app, waits for macOS to compose that Space, captures, then animates back to where you were. No "switch to that Space first" step.
+          </dd>
+        </div>
+        <div>
           <dt class="text-sm font-semibold text-[color:var(--color-text)]">Memory only</dt>
           <dd class="mt-1 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
             Captured PNG data lives in process memory and is released when the dictation session ends (accept or cancel). Reference content is sent only to your configured LLM endpoint — no Parleq-controlled relay, no caching, no disk write.
@@ -326,6 +332,7 @@ const stages = [
             <li><code class="rounded bg-[color:var(--color-border-subtle)] px-1.5 py-0.5 font-mono text-[13px] text-[color:var(--color-text)]">~/.parleq/config.json</code> — settings + custom dictionary, user-authored.</li>
             <li><code class="rounded bg-[color:var(--color-border-subtle)] px-1.5 py-0.5 font-mono text-[13px] text-[color:var(--color-text)]">~/.parleq/usage.jsonl</code> — one line per LLM call: timestamp, model, token counts, latency. <strong class="font-semibold text-[color:var(--color-text)]">Metadata only.</strong></li>
             <li><code class="rounded bg-[color:var(--color-border-subtle)] px-1.5 py-0.5 font-mono text-[13px] text-[color:var(--color-text)]">~/.parleq/app.log</code> — diagnostic log. ASR/LLM metrics are length-only ("post-utterance 87 ms, 142 chars / 28 words"); never the transcript itself.</li>
+            <li><code class="rounded bg-[color:var(--color-border-subtle)] px-1.5 py-0.5 font-mono text-[13px] text-[color:var(--color-text)]">~/.parleq/metrics.jsonl</code> — one text-free record per dictation (duration, ASR/LLM latency, token counts, ref-attached + cleanup-failed flags) so the Stats dashboard spans sessions. <strong class="font-semibold text-[color:var(--color-text)]">No transcript text</strong>; bounded to the last 30 days. Disabled entirely when history retention is set to 0.</li>
             <li>Provider secrets in the macOS <strong class="font-semibold text-[color:var(--color-text)]">Keychain</strong> — Gemini API key, OpenAI API key, Bedrock API key, AWS static credentials, Vertex service-account JSON, Azure resource API key. Whichever you've configured.</li>
           </ul>
         </div>
@@ -334,7 +341,7 @@ const stages = [
           <ul class="mt-3 space-y-3 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
             <li><strong class="font-semibold text-[color:var(--color-text)]">Audio bytes.</strong> WAV / PCM stays in process memory only. The Parakeet model is called directly as a Swift function call — there's no IPC, no listening sockets, no <code class="rounded bg-[color:var(--color-border-subtle)] px-1.5 py-0.5 font-mono text-[13px] text-[color:var(--color-text)]">/tmp/parleq-*.wav</code>.</li>
             <li><strong class="font-semibold text-[color:var(--color-text)]">Transcripts.</strong> Raw ASR output stays in memory.</li>
-            <li><strong class="font-semibold text-[color:var(--color-text)]">Cleaned text.</strong> Held in the overlay during cleanup, then in a 20-entry in-memory ring for the menu's Recent Dictations submenu, then gone on app quit. Never serialized.</li>
+            <li><strong class="font-semibold text-[color:var(--color-text)]">Cleaned text.</strong> Held in the overlay during cleanup, then in an in-memory ring backing the Parleq window's Recent Dictations section, then gone on app quit. Never serialized. (Only the text-free per-dictation metrics in <code class="rounded bg-[color:var(--color-border-subtle)] px-1.5 py-0.5 font-mono text-[13px] text-[color:var(--color-text)]">metrics.jsonl</code> persist — never the words.)</li>
             <li><strong class="font-semibold text-[color:var(--color-text)]">Reference captures.</strong> PNG screenshots and OCR'd text from Reference Windows stay in process memory for the duration of a single dictation session. Released on accept or cancel — never written to disk and never cached between sessions.</li>
             <li><strong class="font-semibold text-[color:var(--color-text)]">Cloud session tokens (AWS / GCP / Azure).</strong> CLI-session auth modes delegate token refresh to the official AWS / gcloud / az CLI caches at <code class="rounded bg-[color:var(--color-border-subtle)] px-1.5 py-0.5 font-mono text-[13px] text-[color:var(--color-text)]">~/.aws/sso/cache/</code>, <code class="rounded bg-[color:var(--color-border-subtle)] px-1.5 py-0.5 font-mono text-[13px] text-[color:var(--color-text)]">~/.config/gcloud/</code>, and <code class="rounded bg-[color:var(--color-border-subtle)] px-1.5 py-0.5 font-mono text-[13px] text-[color:var(--color-text)]">~/.azure/</code>. Parleq stores no long-lived session tokens directly.</li>
           </ul>

@@ -72,19 +72,17 @@ public func installApplicationMainMenu() {
     appMenu.addItem(aboutItem)
     appMenu.addItem(.separator())
 
-    // Show Parleq… — opens the app shell window. Cmd-, key-equivalent
-    // gives the standard "Open Settings" muscle memory a working
-    // landing surface when the Parleq window is frontmost (AppKit
-    // dispatches Cmd-, by walking NSApp.mainMenu). The status-item
-    // dropdown also declares the same shortcut for its dropdown
-    // entry, but status-item menus don't participate in global
-    // key-equivalent dispatch — without this main-menu item the
-    // Cmd-, shortcut is dead when the user is interacting with the
-    // Parleq window itself.
+    // Show Parleq… — opens the app shell window. The Cmd-, key-
+    // equivalent was removed in 0.15.0: ⌘, conventionally means "Open
+    // Settings", and now that this opens the whole app shell (not a
+    // settings dialog) the shortcut was misleading. The item stays in
+    // the menu (so the action is reachable via the responder chain),
+    // just without a key-equivalent. The discoverable way to summon the
+    // window is the hold-hotkey + P gesture.
     let showShellItem = NSMenuItem(
         title: "Show \(appName)…",
         action: #selector(ParleqAppWindowController.presentShell),
-        keyEquivalent: ","
+        keyEquivalent: ""
     )
     showShellItem.target = ParleqAppWindowController.shared
     appMenu.addItem(showShellItem)

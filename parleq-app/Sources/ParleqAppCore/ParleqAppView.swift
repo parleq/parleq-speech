@@ -13,13 +13,83 @@ import SwiftUI
 struct ParleqAppView: View {
     @ObservedObject var selectedSection: SectionBox
     @ObservedObject var settingsModel: SettingsModel
+    /// Whether the Settings disclosure group in the sidebar is
+    /// expanded. Starts expanded when the current selection is a
+    /// Settings pane (e.g. a restart-into-Settings reopen) so the
+    /// selected pane is visible; otherwise collapsed to keep the
+    /// sidebar short. 0.15.0 unified navigation (#62).
+    @State private var settingsExpanded: Bool
+
+    /// Sidebar column visibility. Auto-collapses to `.detailOnly` when
+    /// the window gets narrow (so a small / low-res viewport gives the
+    /// whole width to the detail pane) and restores to `.all` when it
+    /// widens again. An explicit toolbar toggle lets the user bring it
+    /// back (or dismiss it) at any width — chosen over hover-to-reveal
+    /// because a deterministic button is the accessible option for the
+    /// low-vision / motor-impaired users this narrow-viewport work is
+    /// for. #61/#62.
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
+
+    /// Last measured shell width (-1 until the first measurement). The
+    /// auto-hide reacts to width CROSSINGS computed from this, rather
+    /// than from a separate "is narrow" latch — so there's a single
+    /// source of truth (`columnVisibility`) and a manual toggle can't
+    /// desync from it. A manual toggle moves visibility, not width, so
+    /// no crossing fires and the override persists until the width
+    /// genuinely crosses a threshold.
+    @State private var lastShellWidth: CGFloat = -1
+
+    /// Hysteresis band for sidebar auto-hide. The sidebar hides once
+    /// the window drops below `hideBelowWidth` and only re-appears once
+    /// it grows back past the wider `showAboveWidth`. The gap is what
+    /// stops the sidebar from flickering — and the layout from
+    /// appearing to "jump" — when a live resize-drag hovers right at a
+    /// single threshold (sub-pixel jitter would otherwise re-cross it
+    /// every frame). `hideBelowWidth` is set so the sidebar tucks away
+    /// BEFORE its ~200pt column would squeeze the detail pane below the
+    /// Settings content's readable width — i.e. before the user would
+    /// be forced to scroll horizontally.
+    private let hideBelowWidth: CGFloat = 720
+    private let showAboveWidth: CGFloat = 820
+
+    init(selectedSection: SectionBox, settingsModel: SettingsModel) {
+        self.selectedSection = selectedSection
+        self.settingsModel = settingsModel
+        _settingsExpanded = State(initialValue: selectedSection.value.isSettings)
+    }
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             sidebar
         } detail: {
             detail
         }
+        // Explicit, always-available sidebar toggle. NavigationSplitView
+        // surfaces this in the title bar; it's the deterministic way to
+        // bring the sidebar back after it auto-hides on a narrow window.
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                Button {
+                    withAnimation { toggleSidebar() }
+                } label: {
+                    Image(systemName: "sidebar.leading")
+                }
+                .help("Show or hide the sidebar")
+            }
+        }
+        // Observe the shell's content width to drive auto-hide. A clear
+        // background GeometryReader reports the NavigationSplitView's
+        // own width (stable — hiding the sidebar doesn't change it, so
+        // there's no oscillation).
+        .background(
+            GeometryReader { geo in
+                Color.clear
+                    .onChange(of: geo.size.width) { _, width in
+                        adjustSidebar(forWidth: width)
+                    }
+                    .onAppear { adjustSidebar(forWidth: geo.size.width) }
+            }
+        )
         // Tint the entire app shell with Parleq's brand amber so the
         // sidebar selection highlight, prominent buttons (Copy +
         // Paste here), and other `.tint`-driven affordances match
@@ -30,59 +100,142 @@ struct ParleqAppView: View {
         // that hard-code `.accentColor(brandAccent)` at their root.
         .tint(SettingsView.brandAccent)
         .accentColor(SettingsView.brandAccent)
-        // Reload Settings from disk whenever the user navigates INTO
-        // the Settings section. Matches the legacy
-        // SettingsWindowController.show() behavior — config can
-        // change underneath the UI from the setup wizard, the menu
-        // bar microphone picker, keychain edits, or manual edits to
-        // ~/.parleq/config.json. Without this, the Settings section
-        // would render whatever state the SettingsModel happened to
-        // have at app-launch and a subsequent save would clobber
-        // newer config. Triggers on transition INTO .settings only;
-        // bouncing within Settings or navigating to other sections
-        // doesn't refire (preserves in-progress edits).
-        .onChange(of: selectedSection.value) { _, newValue in
-            if newValue == .settings {
+        .onChange(of: selectedSection.value) { oldValue, newValue in
+            // Reload Settings from disk on transition INTO any
+            // Settings pane (config can change underneath the UI from
+            // the wizard, the mic picker, keychain edits, or manual
+            // ~/.parleq/config.json edits). Only fires when crossing
+            // from a non-Settings selection so bouncing between panes
+            // doesn't clobber in-progress edits.
+            if newValue.isSettings && !oldValue.isSettings {
                 settingsModel.reload()
             }
+            // Persist the last-visited Settings pane so a restart-
+            // initiated reopen (show(section: .settings)) lands back
+            // on it. Reuses the legacy key the old in-Settings
+            // sub-sidebar used.
+            if case .settings(let pane) = newValue {
+                UserDefaults.standard.set(pane.rawValue, forKey: "parleq.settings.selection")
+                if !settingsExpanded { settingsExpanded = true }
+            }
         }
-        // Also reload on first appearance if Settings is the
-        // landing section (it isn't by default — landing is Recent
-        // — but a future "remember last section" feature could
-        // change that, and this branch costs nothing).
         .onAppear {
-            if selectedSection.value == .settings {
+            if selectedSection.value.isSettings {
                 settingsModel.reload()
+                settingsExpanded = true
             }
         }
     }
 
-    /// Sidebar — fixed list of the four top-level sections. Using a
-    /// List with `selection:` binding gives us native macOS sidebar
-    /// affordances (highlight, keyboard navigation) for free.
-    private var sidebar: some View {
-        List(
-            ParleqAppSection.allCases,
-            selection: Binding(
-                get: { selectedSection.value },
-                set: { selectedSection.value = $0 ?? .recent }
-            )
-        ) { section in
-            Label(section.title, systemImage: section.systemImage)
-                .tag(section)
+    /// Auto-hide the sidebar when the window narrows below
+    /// `hideBelowWidth`, restore it once it grows back past
+    /// `showAboveWidth`. Acts only when the width genuinely CROSSES a
+    /// hysteresis edge (computed from the previous measured width), so:
+    /// a live resize lingering in the dead-band can't flicker the
+    /// sidebar, and a manual toggle — which changes visibility but not
+    /// width — survives subsequent resizing until a real crossing.
+    private func adjustSidebar(forWidth width: CGFloat) {
+        guard width > 0 else { return }
+        let prev = lastShellWidth
+        lastShellWidth = width
+        // First real measurement: set the regime default outright (no
+        // animation — this is the window's initial appearance).
+        if prev < 0 {
+            columnVisibility = width < hideBelowWidth ? .detailOnly : .all
+            return
         }
-        .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 260)
+        if prev >= hideBelowWidth && width < hideBelowWidth {
+            withAnimation { columnVisibility = .detailOnly }   // crossed into narrow
+        } else if prev <= showAboveWidth && width > showAboveWidth {
+            withAnimation { columnVisibility = .all }           // crossed into wide
+        }
+    }
+
+    /// Flip the sidebar between hidden and shown. On a narrow window
+    /// `.all` shows it as an overlay; on a wide window it sits in its
+    /// own column. Intentionally touches only `columnVisibility` (not
+    /// width state), so the override persists until the next genuine
+    /// width crossing in `adjustSidebar`.
+    private func toggleSidebar() {
+        withAnimation {
+            columnVisibility = (columnVisibility == .detailOnly) ? .all : .detailOnly
+        }
+    }
+
+    /// Single unified sidebar (0.15.0): Recent / Stats / Settings
+    /// (expandable into its panes) / About. Folding the Settings
+    /// sub-sections in here collapses the old 3-column Settings layout
+    /// to 2 columns, which is what fits small / low-res viewports.
+    private var sidebar: some View {
+        List(selection: selectionBinding) {
+            Label(ParleqAppSection.recent.title, systemImage: ParleqAppSection.recent.systemImage)
+                .tag(ParleqAppSelection.recent)
+            Label(ParleqAppSection.stats.title, systemImage: ParleqAppSection.stats.systemImage)
+                .tag(ParleqAppSelection.stats)
+            Label("Usage", systemImage: "dollarsign.circle")
+                .tag(ParleqAppSelection.usage)
+            DisclosureGroup(isExpanded: $settingsExpanded) {
+                // Usage is promoted to a top-level row (above), so drop
+                // it from the Settings sub-list to avoid duplication.
+                ForEach(SettingsView.SettingsSection.allCases.filter { $0 != .usage }) { pane in
+                    Label(pane.label, systemImage: pane.icon)
+                        .tag(ParleqAppSelection.settings(pane))
+                }
+            } label: {
+                // Make the whole Settings row toggle the group, not
+                // just the disclosure chevron — clicking the small
+                // chevron directly is fiddly. contentShape makes the
+                // full row width hit-testable; the chevron still works
+                // on its own too.
+                Label(ParleqAppSection.settings.title, systemImage: ParleqAppSection.settings.systemImage)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        withAnimation { settingsExpanded.toggle() }
+                    }
+            }
+            Label(ParleqAppSection.about.title, systemImage: ParleqAppSection.about.systemImage)
+                .tag(ParleqAppSelection.about)
+        }
+        .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 300)
         .listStyle(.sidebar)
+    }
+
+    /// Selection binding into the SectionBox. nil (e.g. user clicks
+    /// empty sidebar space) coalesces to .recent so the detail pane
+    /// always has something to show.
+    private var selectionBinding: Binding<ParleqAppSelection?> {
+        Binding(
+            get: { selectedSection.value },
+            set: { selectedSection.value = $0 ?? .recent }
+        )
     }
 
     @ViewBuilder
     private var detail: some View {
-        switch selectedSection.value {
-        case .recent:   recentSection
-        case .stats:    statsSection
-        case .settings: settingsSection
-        case .about:    aboutSection
+        Group {
+            switch selectedSection.value {
+            case .recent:            recentSection
+            case .stats:             statsSection
+            case .usage:             usageSection
+            case .settings(let s):   settingsSection(s)
+            case .about:             aboutSection
+            }
         }
+        // Fill the detail column; the window's single minimum size
+        // (set on the NSWindow, sizingOptions = []) is now the only
+        // floor — uniform across panes, so the resize limit no longer
+        // wobbles as you navigate (#62). No per-pane minWidth/minHeight
+        // here on purpose: a minHeight would overflow + clip the pane
+        // when the window is shorter than it (Stats couldn't scroll to
+        // the clipped cards), and a minWidth would stop the window
+        // before the detail got narrow enough to engage the Settings
+        // horizontal-scroll accessibility fallback.
+        //
+        // topLeading alignment: panes shorter than the viewport pin to
+        // the top-left instead of floating to the vertical center
+        // (which looked broken on tall windows with short panes).
+        // Panes that fill (the ScrollView-based ones) are unaffected.
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     // MARK: - Section placeholders (PR 1)
@@ -107,14 +260,19 @@ struct ParleqAppView: View {
         StatsView(history: TranscriptHistory.shared)
     }
 
-    /// Settings — embeds the existing SettingsView directly in PR 1
-    /// so all current settings remain functional during the app-shell
-    /// rollout. PR 2 restructures this into a nested sidebar (Hotkey
-    /// / Audio / … each as a sub-section) instead of the current
-    /// horizontal-tabs layout, but the underlying SettingsModel +
-    /// per-tab content stays unchanged.
-    private var settingsSection: some View {
-        SettingsView(model: settingsModel)
+    /// Usage — token + cost ledger. A top-level section in 0.15.0
+    /// (promoted out of Settings), still drawn by SettingsView's
+    /// `.usage` pane so the existing layout + refresh-on-appear are
+    /// reused unchanged.
+    private var usageSection: some View {
+        SettingsView(model: settingsModel, section: .usage)
+    }
+
+    /// Settings — renders the single pane selected in the unified
+    /// sidebar (0.15.0). SettingsView no longer owns a sub-sidebar;
+    /// it just draws the pane for `section` (+ the restart banner).
+    private func settingsSection(_ section: SettingsView.SettingsSection) -> some View {
+        SettingsView(model: settingsModel, section: section)
     }
 
     /// About section — the brand mark, version, source link, and
@@ -161,6 +319,19 @@ struct ParleqAppView: View {
                 .controlSize(.regular)
                 Link(destination: URL(string: "https://github.com/parleq/parleq-speech/blob/main/THIRD_PARTY_LICENSES.md")!) {
                     Label("Open source licenses", systemImage: "doc.text")
+                        .font(.callout)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.regular)
+                // Posts the same notification as Settings → Updates and
+                // the menu bar's "Check for Updates…"; main.swift's
+                // observer drives Sparkle from there. Always works even
+                // when automatic checks are off / MDM-managed — it's a
+                // manual, user-initiated check.
+                Button {
+                    NotificationCenter.default.post(name: .parleqCheckForUpdates, object: nil)
+                } label: {
+                    Label("Check for updates", systemImage: "arrow.down.circle")
                         .font(.callout)
                 }
                 .buttonStyle(.bordered)

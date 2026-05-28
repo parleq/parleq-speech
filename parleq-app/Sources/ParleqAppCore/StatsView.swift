@@ -34,9 +34,21 @@ import SwiftUI
 struct StatsView: View {
     @ObservedObject var history: TranscriptHistory
     @State private var usage: UsageAggregate = .empty
+    /// Stored (not computed) so the publisher is created ONCE per view
+    /// identity. A computed property would mint a fresh
+    /// Timer.publish().autoconnect() on every body re-render, and
+    /// `.onReceive` would re-subscribe each time — restarting the 60s
+    /// interval on every render and churning Combine subscriptions.
+    @State private var usageReloadTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        ScrollView {
+        // Both-axes scroll (#62): the 2-column card grid can't compress
+        // below ~2×240pt, so on a narrow viewport it would otherwise be
+        // clipped with no way to reach the right column / lower cards.
+        // GeometryReader feeds the `minHeight` pin so the both-axes
+        // ScrollView doesn't vertically center short content.
+        GeometryReader { geo in
+        ScrollView([.vertical, .horizontal]) {
             VStack(alignment: .leading, spacing: 16) {
                 Text("Stats")
                     .font(.title2.weight(.semibold))
@@ -73,8 +85,13 @@ struct StatsView: View {
                     .padding(.top, 8)
             }
             .padding(20)
+            // minWidth keeps the 2-column grid readable; below it the
+            // ScrollView scrolls horizontally instead of clipping the
+            // right column. minHeight pins short content to the top so
+            // the both-axes ScrollView doesn't vertically center it.
+            .frame(minWidth: 520, maxWidth: .infinity, alignment: .leading)
+            .frame(minHeight: geo.size.height, alignment: .topLeading)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
             // Read the disk usage ledger on first appearance. Cheap
             // (a few KB) but worth doing lazily so it doesn't block
@@ -85,6 +102,7 @@ struct StatsView: View {
         }
         .onReceive(usageReloadTimer) { _ in
             usage = UsageLedger.shared.aggregate()
+        }
         }
     }
 
@@ -291,15 +309,6 @@ struct StatsView: View {
         StatsMetrics.compute(records: history.metricsRecords)
     }
 
-    /// Heartbeat that reloads the on-disk usage ledger every 60s
-    /// while the Stats section is visible. Captures dictations
-    /// that completed since the section was last shown without
-    /// requiring the user to navigate away and back. Bigger
-    /// future improvement: have UsageLedger publish a Combine
-    /// signal on append; for PR 5 the polling pattern is fine.
-    private var usageReloadTimer: Publishers.Autoconnect<Timer.TimerPublisher> {
-        Timer.publish(every: 60, on: .main, in: .common).autoconnect()
-    }
 }
 
 import Combine
