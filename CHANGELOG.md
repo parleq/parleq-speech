@@ -40,7 +40,7 @@ The Parleq app shell — Parleq is no longer "a hotkey with a Settings dialog." 
 
 - **iOS-Simulator + other full-screen-Space references** no longer fail with the "Switch to that Space first" message in the common case. The retry path inside `ReferenceCapture.captureWithRetry` was using `NSRunningApplication.activate(options:)` for the source-app activation, which macOS refuses for cross-full-screen-Space targets; now routed through `Paster.activate` (AppleScript bundle-id activate). 700ms post-activation wait covers Space-switch animation + Metal-compositor readiness for the Simulator's special compositing.
 
-- **`asrEndpoint` no longer leaks path / query / fragment to `~/.parleq/app.log`.** The startup-summary URL sanitizer was wired for `sparkleUpdateFeedURL` only; it now also strips path + query from a managed `asrEndpoint`, preserving scheme + host + optional port so operators can still verify the managed value at a glance without exposing tokenized paths. ([#208](https://github.com/parleq/parleq-speech/issues/208))
+- **`asrEndpoint` no longer leaks path / query / fragment to `~/.parleq/app.log`.** The startup-summary URL sanitizer was wired for `sparkleUpdateFeedURL` only; it now also strips path + query from a managed `asrEndpoint`, preserving scheme + host + optional port so operators can still verify the managed value at a glance without exposing tokenized paths.
 
 ### Security
 

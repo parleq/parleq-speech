@@ -139,7 +139,7 @@ Reference Windows v2 latched-compose flow shipped in 0.13.0.
   ~/.parleq/app.log. The startup-summary URL sanitizer was wired
   for sparkleUpdateFeedURL only; it now also strips path + query
   from a managed asrEndpoint, preserving scheme + host + port so
-  operators can still verify the value at a glance. (#208)
+  operators can still verify the value at a glance.
 
 ### Security
 
