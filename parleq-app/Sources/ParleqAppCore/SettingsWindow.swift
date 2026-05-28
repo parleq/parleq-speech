@@ -435,7 +435,17 @@ final class SettingsModel: ObservableObject {
         var c = existing
         c.hotkeyBinding = hotkeyBinding
         c.autoAcceptSeconds = autoAcceptSeconds
-        c.overlayShowDelayMs = overlayShowDelayMs
+        // Clamp to the same 0...2000 range Config.load() enforces, so
+        // the live listeners (P-gesture threshold + start-sound) that
+        // receive the posted value below get the SAME clamped number
+        // the overlay does — otherwise an out-of-range entry would
+        // desync the cues until the next config reload. Reflect the
+        // clamp back into the model so the field shows the stored value.
+        let clampedDelay = min(2000, max(0, overlayShowDelayMs))
+        if clampedDelay != overlayShowDelayMs {
+            overlayShowDelayMs = clampedDelay
+        }
+        c.overlayShowDelayMs = clampedDelay
         c.acousticFeedback = acousticFeedback
         c.continueOtherAudio = continueOtherAudio
         c.audioInputDeviceUID = audioInputDeviceUID.trimmingCharacters(in: .whitespacesAndNewlines)

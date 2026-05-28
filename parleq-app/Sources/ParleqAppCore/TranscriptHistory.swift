@@ -269,8 +269,14 @@ final class TranscriptHistory: ObservableObject {
         guard let hours = retentionHoursLimit, hours > 0 else { return }
         guard let cutoff = Calendar.current.date(byAdding: .hour, value: -hours, to: Date()) else { return }
         entries.removeAll { $0.timestamp < cutoff }
+        let before = metricsRecords.count
         metricsRecords.removeAll { $0.timestamp < cutoff }
-        persistMetrics()
+        // Only rewrite the file when the sweep actually dropped a
+        // metrics record — otherwise the 60s timer would trigger a
+        // periodic full-file rewrite even on a steady-state ring.
+        if metricsRecords.count != before {
+            persistMetrics()
+        }
     }
 
     /// Apply count + age limits in lockstep. Called from append
@@ -337,24 +343,48 @@ final class TranscriptHistory: ObservableObject {
 
     // MARK: - Disk persistence (#57)
 
+    /// How many days of metrics to keep on disk. The Stats dashboard
+    /// only renders a 7-day rolling window, so a generous 30-day disk
+    /// horizon fully covers it while bounding file growth: a heavy
+    /// 100-dictations/day user tops out at ~3k records (~few hundred
+    /// KB), not unbounded across the app's lifetime. The IN-MEMORY
+    /// ring stays uncapped-by-count for the session (Stats accuracy);
+    /// this bound applies only to what's persisted + reloaded.
+    private static let persistedRetentionDays = 30
+
+    /// Serial queue for metrics disk writes. Keeps the encode + write
+    /// off the main actor (the file is rewritten wholesale on each
+    /// mutation; doing that on @MainActor would stall the UI as the
+    /// file grows) and serializes overlapping writes so two rapid
+    /// appends can't interleave a half-written file.
+    private static let persistQueue = DispatchQueue(label: "com.parleq.metrics-persist")
+
     /// Path to the persisted text-free metrics ring. Mirrors
     /// UsageLedger's ~/.parleq/usage.jsonl layout. One JSON object
-    /// per line so a partially-written tail (crash mid-append)
-    /// drops at most the last record on the next load.
-    private static func metricsFileURL() -> URL? {
-        guard let home = FileManager.default.homeDirectoryForCurrentUser as URL? else { return nil }
+    /// per line so a partially-written tail (crash mid-write) drops
+    /// at most the last record on the next load.
+    private static func metricsFileURL() -> URL {
+        let home = FileManager.default.homeDirectoryForCurrentUser
         let dir = home.appendingPathComponent(".parleq", isDirectory: true)
         return dir.appendingPathComponent("metrics.jsonl", isDirectory: false)
     }
 
-    /// Load persisted metrics from disk. Tolerant: skips any line
-    /// that fails to decode (forward-compat with added fields,
-    /// resilient to a torn last line). Returns [] when the file is
-    /// absent. Static so `init` can call it before `self` is fully
-    /// available.
+    /// Records within the persisted retention horizon (last N days).
+    private static func boundedForPersistence(_ records: [MetricsRecord]) -> [MetricsRecord] {
+        guard let cutoff = Calendar.current.date(
+            byAdding: .day, value: -persistedRetentionDays, to: Date()
+        ) else { return records }
+        return records.filter { $0.timestamp >= cutoff }
+    }
+
+    /// Load persisted metrics from disk, bounded to the retention
+    /// horizon so a large legacy file doesn't balloon memory on
+    /// launch. Tolerant: skips any line that fails to decode
+    /// (forward-compat with added fields, resilient to a torn last
+    /// line). Returns [] when the file is absent. Static so `init`
+    /// can call it before `self` is fully available.
     private static func loadPersistedMetrics() -> [MetricsRecord] {
-        guard let url = metricsFileURL(),
-              let data = try? Data(contentsOf: url),
+        guard let data = try? Data(contentsOf: metricsFileURL()),
               let text = String(data: data, encoding: .utf8) else {
             return []
         }
@@ -367,39 +397,43 @@ final class TranscriptHistory: ObservableObject {
                 out.append(rec)
             }
         }
-        return out
+        return boundedForPersistence(out)
     }
 
-    /// Write the current metrics ring to disk atomically. Called
-    /// after every mutation (append/remove/clear/sweep/enforce).
-    /// When the ring is empty — including the zero-retention
-    /// "disable history" state, where enforceLimits has wiped it —
-    /// the on-disk file is removed so a disabled-history deployment
-    /// leaves nothing behind. Best-effort: a write failure logs and
-    /// is swallowed (persistence is a convenience, never a
-    /// correctness requirement; the in-memory ring is authoritative
-    /// for the running session).
+    /// Write the metrics ring to disk. Called after every mutation
+    /// (append/remove/clear/sweep/enforce). Snapshots a retention-
+    /// bounded copy on the main actor, then hands the encode + atomic
+    /// write to a serial background queue so UI never blocks on disk.
+    /// When the bounded snapshot is empty — including the zero-
+    /// retention "disable history" state, where enforceLimits has
+    /// wiped the ring — the on-disk file is removed so a disabled-
+    /// history deployment leaves nothing behind. Best-effort: a write
+    /// failure logs and is swallowed (the in-memory ring is
+    /// authoritative for the running session).
     private func persistMetrics() {
-        guard let url = Self.metricsFileURL() else { return }
-        if metricsRecords.isEmpty {
-            try? FileManager.default.removeItem(at: url)
-            return
-        }
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        var blob = Data()
-        for rec in metricsRecords {
-            guard let line = try? encoder.encode(rec) else { continue }
-            blob.append(line)
-            blob.append(0x0A) // newline
-        }
-        do {
-            let dir = url.deletingLastPathComponent()
-            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            try blob.write(to: url, options: .atomic)
-        } catch {
-            let msg = "[parleq] TranscriptHistory: metrics persist failed: \(error)\n"
-            FileHandle.standardError.write(msg.data(using: .utf8) ?? Data())
+        let snapshot = Self.boundedForPersistence(metricsRecords)
+        let url = Self.metricsFileURL()
+        Self.persistQueue.async {
+            if snapshot.isEmpty {
+                try? FileManager.default.removeItem(at: url)
+                return
+            }
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            var blob = Data()
+            for rec in snapshot {
+                guard let line = try? encoder.encode(rec) else { continue }
+                blob.append(line)
+                blob.append(0x0A) // newline
+            }
+            do {
+                let dir = url.deletingLastPathComponent()
+                try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+                try blob.write(to: url, options: .atomic)
+            } catch {
+                let msg = "[parleq] TranscriptHistory: metrics persist failed: \(error)\n"
+                FileHandle.standardError.write(msg.data(using: .utf8) ?? Data())
+            }
         }
     }
 }

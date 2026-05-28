@@ -757,11 +757,16 @@ struct ParleqApp {
             forName: .parleqOverlayDelayChanged,
             object: nil,
             queue: .main
-        ) { [weak listenerBox, weak soundBox] note in
+        ) { [listenerBox, weak soundBox] note in
+            // listenerBox captured STRONGLY: it has no other strong
+            // owner after this registration, and the observer lives
+            // for the app session, so a weak capture would let the
+            // box deallocate and silently stop live threshold updates.
+            // No retain cycle — the box doesn't reference the observer.
             let ms = (note.userInfo?["ms"] as? Int) ?? 200
             let seconds = TimeInterval(ms) / 1000.0
             MainActor.assumeIsolated {
-                listenerBox?.value?.setPHoldThreshold(seconds)
+                listenerBox.value?.setPHoldThreshold(seconds)
                 soundBox?.value?.setStartDelay(seconds)
             }
         }
