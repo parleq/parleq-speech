@@ -110,6 +110,12 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
             <td class="px-4 py-3">true</td>
             <td class="px-4 py-3">Disables Sparkle&rsquo;s automatic appcast checks. The &ldquo;Automatically check for updates&rdquo; toggle in Settings is disabled and shows a lock icon with &ldquo;Managed by your organization.&rdquo; The manual &ldquo;Check for Updates Now&rdquo; button remains functional. Additionally, when this key is set to <code class="font-mono text-[12px]">true</code>, Parleq clears any user-domain <code class="font-mono text-[12px]">SUSkippedVersion</code> default on launch &mdash; closing the &ldquo;skip every version to stay on a stale build&rdquo; bypass against the forced-update policy.</td>
           </tr>
+          <tr class="bg-[color:var(--color-surface)]">
+            <td class="px-4 py-3 font-mono text-[13px] text-[color:var(--color-text)]">livePricingEnabled</td>
+            <td class="px-4 py-3">Boolean</td>
+            <td class="px-4 py-3">true</td>
+            <td class="px-4 py-3">Disables the background fetch of LLM model-pricing data that Parleq pulls once per launch (when stale) from <code class="font-mono text-[12px]">raw.githubusercontent.com</code> (the community LiteLLM price table) to keep the Usage / Stats cost figures current. When <code class="font-mono text-[12px]">false</code>, Parleq makes no such request and serves its bundled price table instead. Set this for locked-down or air-gapped fleets where any outbound HTTPS to a non-approved host must be justified. (The <code class="font-mono text-[12px]">PARLEQ_DISABLE_LIVE_PRICING=1</code> environment variable does the same for a single user without MDM.)</td>
+          </tr>
         </tbody>
       </table>
     </div>
@@ -384,7 +390,7 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
       Sample .mobileconfig
     </h2>
     <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      The snippet below shows the seven feature-toggle keys set to enforce a privacy-focused posture: reference windows are allowed but image-mode and file references are disabled, auto-update is managed centrally. The full sample profile in the repo also exercises the provider/model lockdown and auth-mode restriction keys.
+      The snippet below shows the feature-toggle keys set to enforce a privacy-focused posture: reference windows are allowed but image-mode and file references are disabled, auto-update is managed centrally, and the live-pricing fetch is turned off. The full sample profile in the repo also exercises the provider/model lockdown and auth-mode restriction keys.
     </p>
 
     <div class="mt-6 overflow-x-auto rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5">

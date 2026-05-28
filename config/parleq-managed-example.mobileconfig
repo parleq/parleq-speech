@@ -122,6 +122,16 @@
                                 <key>autoUpdateEnabled</key>
                                 <false/>
 
+                                <!-- Live pricing fetch. Default true: Parleq pulls the
+                                     community LiteLLM model-pricing table from
+                                     raw.githubusercontent.com once per launch (when stale)
+                                     to keep Usage/Stats cost figures current. Set false for
+                                     locked-down / air-gapped fleets where any outbound HTTPS
+                                     to a non-approved host must be justified; the bundled
+                                     price table then serves and no such request is made. -->
+                                <key>livePricingEnabled</key>
+                                <false/>
+
                                 <!-- ═══ Operational policy ════════════════════════════════════ -->
 
                                 <!-- Sparkle update feed URL (optional).

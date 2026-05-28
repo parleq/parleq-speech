@@ -78,7 +78,7 @@ There is no server-side storage of audio or transcripts. Parleq's only persisten
 Parleq trusts:
 - The user's macOS user account (process isolation, Keychain ACLs, AWS CLI session cache integrity).
 - The configured LLM provider's HTTPS endpoint (Google Gemini or AWS Bedrock).
-- LiteLLM's community pricing JSON (`raw.githubusercontent.com/BerriAI/litellm/...`) — used for cost reporting only; not load-bearing for any user-facing functionality. **Disable-able via env var.**
+- LiteLLM's community pricing JSON (`raw.githubusercontent.com/BerriAI/litellm/...`) — used for cost reporting only; not load-bearing for any user-facing functionality. **Disable-able via the `livePricingEnabled: false` MDM key (fleet-wide) or the `PARLEQ_DISABLE_LIVE_PRICING=1` env var (single user).**
 - The FluidAudio model artifacts in `~/Library/Application Support/FluidAudio/Models/` (downloaded by FluidAudio's own loader from `huggingface.co` on first run; their integrity is FluidAudio's responsibility, not Parleq's).
 
 Parleq does **not** trust:
@@ -184,7 +184,7 @@ All network calls are HTTPS via URLSession or Soto, both using the system trust 
 | `bedrock-runtime.<region>.amazonaws.com` | Bedrock cleanup (provider=bedrock) | Per dictation | Switch provider to gemini |
 | `oidc.<region>.amazonaws.com` | SSO token refresh (Bedrock path) | Periodic, when token nears expiry | N/A (managed by Soto) |
 | `portal.sso.<region>.amazonaws.com` | SSO GetRoleCredentials (Bedrock path) | Periodic | N/A (managed by Soto) |
-| `raw.githubusercontent.com/BerriAI/litellm/...` | LiteLLM pricing JSON | Once per 24 h, on launch | `PARLEQ_DISABLE_LIVE_PRICING=1` |
+| `raw.githubusercontent.com/BerriAI/litellm/...` | LiteLLM pricing JSON | Once per 24 h, on launch | MDM `livePricingEnabled: false` (fleet) or `PARLEQ_DISABLE_LIVE_PRICING=1` (single user) |
 | `huggingface.co` (FluidAudio's loader) | First-run model download (Parakeet TDT v3 ≈ 150 MB; CTC encoder ≈ 97 MB if custom dictionary used) | Once per machine, then cached at `~/Library/Application Support/FluidAudio/Models/` | N/A — bundled ASR requires the models. Switch to a custom `asr.endpoint` to skip. |
 | `parleq.app/appcast.xml` | Sparkle auto-update check | On app launch + every 24 h (default; configurable) | Settings → Updates → "Automatically check for updates" off. The menu-bar "Check for Updates…" item still hits the URL on demand. |
 | `github.com/parleq/parleq-speech/releases/download/...` | Downloads the .dmg referenced by the appcast, when the user accepts an update prompt | Per update install (user-initiated) | Don't accept the prompt; the request never fires. |
@@ -266,7 +266,7 @@ The following items were identified during an internal security audit and have b
 | 1 | Sidecar `/inference` had no authentication; any local process could submit audio. | HIGH | **OBSOLETE** — first remediated in 2026-05-06 (`6d64646`) with bearer-token auth, then dropped entirely in v0.9.0 by retiring the sidecar boundary (§3.1). No listening socket means nothing to authenticate. |
 | 2 | Gemini API key resolved from a plaintext-on-disk fallback path. | HIGH | **FIXED** — Keychain is the only on-disk store; the plaintext fallback was removed entirely (§4.1). Closes [#18](https://github.com/parleq/parleq-speech/issues/18). |
 | 3 | Soto package pinned `from: "7.0.0"` allowed any 7.x at resolve time. | MEDIUM | **FIXED** — pinned to `"7.14.0"..<"7.15.0"`, `Package.resolved` committed (§7). |
-| 4 | LiteLLM JSON download was not user-controllable. | MEDIUM | **FIXED** — `PARLEQ_DISABLE_LIVE_PRICING=1` env var (§6). |
+| 4 | LiteLLM JSON download was not user-controllable. | MEDIUM | **FIXED** — `PARLEQ_DISABLE_LIVE_PRICING=1` env var (§6), plus the `livePricingEnabled: false` MDM key for fleet-wide control (added 0.15.0). |
 | 5 | Accessibility entitlement = full keystroke read capability. | MEDIUM | **DOCUMENTED** (§3.3). No technical fix possible without losing the global hotkey feature. Mitigated by code transparency, notarization, and stable bundle ID. |
 | 6 | `usage.jsonl` records target-app bundle IDs (user behavior metadata). | LOW | **DOCUMENTED** (§5). Not transcript content. Optional config knob to suppress can be added on request. |
 
@@ -286,7 +286,7 @@ CGEventTap requires the broadest macOS keystroke-monitoring permission. Parleq u
 
 ### 9.3 LiteLLM pricing JSON as third-party trust boundary
 
-We trust an external GitHub-hosted JSON file for accurate model pricing. The worst case if the upstream is compromised is incorrect cost reporting in the Settings UI; we don't enforce any spending limits, so cost lies don't translate to real harm. Disable via `PARLEQ_DISABLE_LIVE_PRICING=1` if even this trust is too much.
+We trust an external GitHub-hosted JSON file for accurate model pricing. The worst case if the upstream is compromised is incorrect cost reporting in the Settings UI; we don't enforce any spending limits, so cost lies don't translate to real harm. The fetch also exposes the user's IP and launch cadence to GitHub/Fastly. Disable fleet-wide with the `livePricingEnabled: false` MDM key (recommended for locked-down or air-gapped deployments), or per-user with `PARLEQ_DISABLE_LIVE_PRICING=1`, if even this trust/exposure is too much; the bundled price table then serves.
 
 ### 9.4 No audit trail of dictations
 
