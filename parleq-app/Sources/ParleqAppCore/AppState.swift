@@ -240,7 +240,14 @@ public final class AppState {
     /// realistic first-tap of a double-tap-and-hold gesture (50–150 ms)
     /// and short enough that a real hold still gets visual feedback
     /// before the user has finished their first word.
-    private static let overlayShowDelay: TimeInterval = 0.20
+    /// How long to wait after hotkey-down before showing the overlay
+    /// for a fresh capture. User-configurable via Config.overlayShowDelayMs
+    /// (#56); refreshed from config at every fresh capture so a
+    /// Settings change takes effect on the next dictation. Default
+    /// 200ms — longer than any realistic first-tap of a double-tap-
+    /// and-hold gesture (50–150 ms) and short enough that a real
+    /// hold still gets visual feedback before the first word.
+    private var overlayShowDelaySeconds: TimeInterval = 0.20
 
     /// Whether to append a trailing space to pasted text. Wired
     /// from Config.trailingSpace at construction. Effective per
@@ -1418,7 +1425,11 @@ public final class AppState {
         // attach a window") suppresses when the feature is off. The
         // .recording hint shows BEFORE hotkeyUp, so we need the model
         // updated at hotkeyDown time, not later.
-        overlay.model.referenceWindowsEnabled = Config.load().config.referenceWindowsEnabled
+        let freshConfig = Config.load().config
+        overlay.model.referenceWindowsEnabled = freshConfig.referenceWindowsEnabled
+        // Refresh the overlay-show delay from config so a Settings
+        // change applies on the next dictation without a restart (#56).
+        overlayShowDelaySeconds = TimeInterval(freshConfig.overlayShowDelayMs) / 1000.0
         // Clear the per-hold Space-armed flag at every fresh down so
         // a stale "armed" state from a previous hold can't leak
         // visually into this one.
@@ -1441,7 +1452,7 @@ public final class AppState {
     private func schedulePendingOverlayShow() {
         cancelPendingOverlayShow()
         pendingOverlayShowTimer = Timer.scheduledTimer(
-            withTimeInterval: AppState.overlayShowDelay, repeats: false
+            withTimeInterval: overlayShowDelaySeconds, repeats: false
         ) { [weak self] _ in
             Task { @MainActor in
                 guard let self = self else { return }

@@ -67,7 +67,25 @@ public enum Sounds {
 @MainActor
 public final class HotkeySoundDebouncer {
     public init() {}
-    private static let startDelay: TimeInterval = 0.15
+
+    /// Delay before the capture-start cue plays. Kept in lockstep
+    /// with the dictation overlay's show delay (Config.overlayShowDelayMs,
+    /// #56) so the audio cue, the visual overlay, and the
+    /// hold-hotkey+P gesture all engage at the same moment. Without
+    /// this sync the sound fired on its own fixed clock while the
+    /// overlay waited the configurable delay — jarring at longer
+    /// delays. Safe to delay: audio recording starts immediately at
+    /// hotkey-down, so the cue is confirmation, not the actual
+    /// capture-start; delaying it can't clip the first word.
+    /// Wired from main.swift at launch + on .parleqOverlayDelayChanged.
+    private var startDelay: TimeInterval = 0.20
+
+    /// Update the start-cue delay to match the current overlay-show
+    /// delay (#56). Main-actor isolated; called from the same paths
+    /// that update HotkeyListener.pHoldThreshold.
+    public func setStartDelay(_ seconds: TimeInterval) {
+        startDelay = max(0, seconds)
+    }
 
     private var pendingStart: Timer?
     private var startPlayed = false
@@ -76,8 +94,17 @@ public final class HotkeySoundDebouncer {
     public func scheduleStart() {
         cancelPendingStart()
         startPlayed = false
+        // Delay 0 → play immediately (the user opted into an instant
+        // overlay, so the cue should be instant too). Timer with a 0
+        // interval still defers to the next runloop tick; fire
+        // synchronously instead so "instant" really is instant.
+        guard startDelay > 0 else {
+            Sounds.playCaptureStart()
+            startPlayed = true
+            return
+        }
         pendingStart = Timer.scheduledTimer(
-            withTimeInterval: HotkeySoundDebouncer.startDelay,
+            withTimeInterval: startDelay,
             repeats: false
         ) { [weak self] _ in
             Task { @MainActor in

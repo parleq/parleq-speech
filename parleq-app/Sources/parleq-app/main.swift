@@ -732,6 +732,39 @@ struct ParleqApp {
             logStderr("[parleq] hotkey listener failed: \(error)")
             exit(1)
         }
+        // Sync the hold-hotkey+P gesture threshold to the configured
+        // overlay-show delay at launch, and keep it live thereafter:
+        // SettingsModel.save() posts .parleqOverlayDelayChanged with
+        // the new ms value when the user edits the delay, so the
+        // gesture threshold tracks the overlay delay without a
+        // restart (#56). The observer captures `listener` strongly —
+        // intentional: the listener lives for the whole app session.
+        // Sync the configurable overlay-show delay (#56) into the two
+        // launch-time singletons that can't read it per-dictation the
+        // way AppState does: the hotkey listener's P-gesture threshold
+        // and the start-sound debouncer's delay. Set at launch from
+        // config + kept live via .parleqOverlayDelayChanged (posted by
+        // SettingsModel.save). Both fire with the overlay so the
+        // audio, visual, and gesture cues engage at one moment.
+        let initialDelay = TimeInterval(config.overlayShowDelayMs) / 1000.0
+        listener.setPHoldThreshold(initialDelay)
+        MainActor.assumeIsolated {
+            soundBox.value?.setStartDelay(initialDelay)
+        }
+        let listenerBox = ListenerBox()
+        listenerBox.value = listener
+        NotificationCenter.default.addObserver(
+            forName: .parleqOverlayDelayChanged,
+            object: nil,
+            queue: .main
+        ) { [weak listenerBox, weak soundBox] note in
+            let ms = (note.userInfo?["ms"] as? Int) ?? 200
+            let seconds = TimeInterval(ms) / 1000.0
+            MainActor.assumeIsolated {
+                listenerBox?.value?.setPHoldThreshold(seconds)
+                soundBox?.value?.setStartDelay(seconds)
+            }
+        }
 
         // Kick off in-process FluidAudio model download + load (or
         // skip everything when the user has chosen a custom
@@ -844,6 +877,10 @@ private final class RecorderBox: @unchecked Sendable {
 // closures a Sendable handle to capture.
 private final class UpdaterBox: @unchecked Sendable {
     var value: SPUStandardUpdaterController?
+}
+
+private final class ListenerBox: @unchecked Sendable {
+    var value: HotkeyListener?
 }
 
 private func logStderr(_ message: String) {

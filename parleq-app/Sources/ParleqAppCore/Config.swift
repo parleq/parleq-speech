@@ -129,6 +129,13 @@ public struct DictionaryEntry: Sendable, Equatable {
 public struct Config: Sendable {
     public var hotkeyBinding: String
     public var autoAcceptSeconds: TimeInterval
+    /// Delay in milliseconds after hotkey-down before the dictation
+    /// overlay appears for a fresh capture (#56). Default 200. Also
+    /// the threshold for the hold-hotkey+P "Show Parleq" gesture —
+    /// HotkeyListener reads the same value so the two cues stay in
+    /// lockstep ("hold until the overlay appears, then press P").
+    /// Clamped to 0...2000 on load.
+    public var overlayShowDelayMs: Int
     public var acousticFeedback: Bool
     public var asrMode: String
     public var llmMode: String
@@ -355,6 +362,7 @@ public struct Config: Sendable {
         // ~/.parleq/config.json `ui.auto_accept_seconds = 6` if you
         // want the auto behavior back.
         autoAcceptSeconds: 0,
+        overlayShowDelayMs: 200,
         acousticFeedback: true,
         asrMode: "default",
         llmMode: "default",
@@ -418,6 +426,12 @@ public struct Config: Sendable {
             if let ui = dict["ui"] as? [String: Any] {
                 if let secs = ui["auto_accept_seconds"] as? NSNumber {
                     c.autoAcceptSeconds = TimeInterval(truncating: secs)
+                }
+                if let delay = ui["overlay_show_delay_ms"] as? NSNumber {
+                    // Clamp to a sane 0...2000ms so a fat-fingered
+                    // config can't make the overlay never appear or
+                    // lag absurdly. 0 = show immediately.
+                    c.overlayShowDelayMs = min(2000, max(0, delay.intValue))
                 }
                 if let aucousticFeedback = ui["acoustic_feedback"] as? Bool {
                     c.acousticFeedback = aucousticFeedback
@@ -1347,6 +1361,7 @@ public struct Config: Sendable {
             ],
             "ui": [
                 "auto_accept_seconds": config.autoAcceptSeconds,
+                "overlay_show_delay_ms": config.overlayShowDelayMs,
                 "acoustic_feedback": config.acousticFeedback,
             ],
             "audio": [

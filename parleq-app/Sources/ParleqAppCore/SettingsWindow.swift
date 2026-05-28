@@ -61,6 +61,11 @@ struct DictionaryEntryRow: Identifiable, Equatable {
 final class SettingsModel: ObservableObject {
     @Published var hotkeyBinding: String
     @Published var autoAcceptSeconds: Double
+    /// Overlay-show delay in milliseconds (#56). Mirror of
+    /// Config.overlayShowDelayMs; also drives the hold-hotkey+P
+    /// gesture threshold (kept in sync via .parleqOverlayDelayChanged
+    /// on save). Edited in Settings → Advanced.
+    @Published var overlayShowDelayMs: Int
     @Published var acousticFeedback: Bool
     @Published var continueOtherAudio: Bool
     /// Explicit microphone selection by Core Audio device UID. Empty
@@ -234,6 +239,7 @@ final class SettingsModel: ObservableObject {
         let (config, _) = Config.load()
         self.hotkeyBinding = config.hotkeyBinding
         self.autoAcceptSeconds = config.autoAcceptSeconds
+        self.overlayShowDelayMs = config.overlayShowDelayMs
         self.acousticFeedback = config.acousticFeedback
         self.continueOtherAudio = config.continueOtherAudio
         self.audioInputDeviceUID = config.audioInputDeviceUID
@@ -328,6 +334,7 @@ final class SettingsModel: ObservableObject {
         let (config, _) = Config.load()
         self.hotkeyBinding = config.hotkeyBinding
         self.autoAcceptSeconds = config.autoAcceptSeconds
+        self.overlayShowDelayMs = config.overlayShowDelayMs
         self.acousticFeedback = config.acousticFeedback
         self.continueOtherAudio = config.continueOtherAudio
         self.audioInputDeviceUID = config.audioInputDeviceUID
@@ -428,6 +435,7 @@ final class SettingsModel: ObservableObject {
         var c = existing
         c.hotkeyBinding = hotkeyBinding
         c.autoAcceptSeconds = autoAcceptSeconds
+        c.overlayShowDelayMs = overlayShowDelayMs
         c.acousticFeedback = acousticFeedback
         c.continueOtherAudio = continueOtherAudio
         c.audioInputDeviceUID = audioInputDeviceUID.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -501,6 +509,18 @@ final class SettingsModel: ObservableObject {
             // Settings → Privacy & Features takes effect without
             // waiting for the next dictation or an app restart.
             TranscriptHistory.shared.applyRetentionLimits(from: c)
+            // Keep the hold-hotkey+P gesture threshold in lockstep
+            // with the overlay-show delay without a restart (#56).
+            // main.swift observes this and calls
+            // HotkeyListener.setPHoldThreshold. AppState reads the
+            // overlay delay fresh per-dictation, so it needs no
+            // signal; only the listener (constructed once at launch)
+            // does.
+            NotificationCenter.default.post(
+                name: .parleqOverlayDelayChanged,
+                object: nil,
+                userInfo: ["ms": c.overlayShowDelayMs]
+            )
         } catch {
             let msg = "[parleq] settings: save failed: \(error)\n"
             FileHandle.standardError.write(msg.data(using: .utf8) ?? Data())
@@ -1172,6 +1192,22 @@ struct SettingsView: View {
                 Spacer()
             }
             SettingsCaption("Set to 0 to never auto-accept; press Enter to accept manually.")
+        }
+        SettingsCard {
+            HStack(alignment: .center, spacing: 8) {
+                Text("Overlay appears after")
+                TextField(
+                    "200",
+                    value: bind(\.overlayShowDelayMs),
+                    format: .number
+                )
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 60)
+                Text("ms")
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            SettingsCaption("How long to hold the hotkey before the dictation overlay appears (0–2000 ms; default 200). This is also when the hold-hotkey + P \u{201C}Show Parleq\u{201D} gesture engages — a quicker tap of Option-P still types π.")
         }
     }
 
