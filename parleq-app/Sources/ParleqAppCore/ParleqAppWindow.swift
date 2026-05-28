@@ -262,10 +262,14 @@ public final class ParleqAppWindowController: NSObject {
         // this call, taking precedence over setContentSize above.
         w.setFrameAutosaveName("ParleqApp")
         // Re-clamp whatever frame is now in effect (default or restored
-        // autosave) into the visible frame so the window can never sit
-        // partly off-screen — covers a frame saved on a larger external
-        // display and reopened on the laptop alone (#61).
-        w.setFrame(Self.clampFrame(w.frame, into: visible), display: false)
+        // autosave) so the window can never sit partly off-screen.
+        // Clamp into the screen the frame MOST overlaps — NOT always the
+        // primary. A frame validly autosaved on a still-connected
+        // secondary display must stay there; only a frame whose display
+        // is gone (saved on an external, reopened on the laptop alone)
+        // falls back to the main screen. #61.
+        let clampTarget = Self.visibleFrame(bestOverlapping: w.frame)
+        w.setFrame(Self.clampFrame(w.frame, into: clampTarget), display: false)
         w.isReleasedWhenClosed = false
         w.collectionBehavior = [.fullScreenAuxiliary]
         w.makeKeyAndOrderFront(nil)
@@ -350,6 +354,29 @@ public final class ParleqAppWindowController: NSObject {
     /// links, and the open-source licenses entry point.
     @objc public func presentAbout() {
         show(section: .about)
+    }
+
+    /// The `visibleFrame` of the screen the given frame most overlaps.
+    /// Used to pick the clamp target so a window restored onto a
+    /// still-connected secondary display stays on that display instead
+    /// of being yanked back to the primary. Falls back to the main
+    /// screen when the frame intersects no screen at all — i.e. its
+    /// display was disconnected since the frame was autosaved (#61).
+    static func visibleFrame(bestOverlapping frame: NSRect) -> NSRect {
+        let fallback = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame
+            ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        var best: NSRect?
+        var bestArea: CGFloat = 0
+        for screen in NSScreen.screens {
+            let inter = screen.visibleFrame.intersection(frame)
+            guard !inter.isNull else { continue }
+            let area = inter.width * inter.height
+            if area > bestArea {
+                bestArea = area
+                best = screen.visibleFrame
+            }
+        }
+        return best ?? fallback
     }
 
     /// Clamp `frame` so it fits entirely within `bounds` (a screen's
