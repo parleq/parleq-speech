@@ -292,37 +292,58 @@ final class ScreenCaptureKitReferenceCapture: ReferenceCapturer, @unchecked Send
                 "[parleq] reference-capture got -3811 for \(bundleID); activating + retrying"
             )
             let pid = scWindow.owningApplication?.processID ?? 0
-            let priorFrontmost = await MainActor.run { () -> NSRunningApplication? in
-                NSWorkspace.shared.frontmostApplication
-            }
+            // Route through Paster.activate (AppleScript bundle-id
+            // `activate` AppleEvent) instead of NSRunningApplication.
+            // activate. NSRunningApplication.activate is blocked by
+            // macOS from crossing full-screen-Space boundaries — so
+            // when the user is ALREADY on a full-screen Space and the
+            // SCK target is on a different full-screen Space (or a
+            // split-screen Space), the activate silently no-ops and
+            // the SCK retry fails again with -3811. Paster.activate
+            // uses the AppleEvent activate path that DOES cross those
+            // boundaries (validated in spike #223). Same fallback to
+            // PID-based activate if AppleScript fails.
+            let sourceBundleID = scWindow.owningApplication?.bundleIdentifier
             await MainActor.run {
-                if pid != 0, let app = NSRunningApplication(processIdentifier: pid) {
-                    app.activate(options: [])
-                }
+                Paster.activate(bundleID: sourceBundleID, pid: pid)
             }
-            // Wait for the WindowServer to register the activated window.
-            // ~200ms is empirically enough; we won't tighten this until
-            // the basic flow is proven.
-            try? await Task.sleep(nanoseconds: 200_000_000)
+            // Wait for the WindowServer to register the activated
+            // window AND, if the activation triggered a full-screen
+            // Space transition, for that animation to land + the
+            // target Space's compositor to be fully ready.
+            //
+            // 200ms was sufficient when the activation path was
+            // NSRunningApplication.activate (near-instant, no Space
+            // animation). With the spike-#223 fix routing through
+            // AppleScript bundle-id activate, full-screen targets
+            // get a Space-switch animation (~500ms) before WindowServer
+            // composes the target Space's contents. The iOS Simulator's
+            // Metal-backed window specifically fails the SCK retry if
+            // sampled mid-animation. 700ms covers the animation + a
+            // small settle margin without being so long it hurts the
+            // common case (regular Space, no animation, 200ms more
+            // than enough).
+            try? await Task.sleep(nanoseconds: 700_000_000)
 
-            // Restore focus on every exit path from the retry. If the
-            // prior-frontmost app has quit since we snapshotted, the
-            // activate() call is a best-effort no-op rather than an
-            // error. Same priorFrontmost is reused in both success
-            // and failure branches below.
-            func restorePriorFrontmost() async {
-                guard let prior = priorFrontmost else { return }
-                await MainActor.run {
-                    prior.activate(options: [])
-                }
-            }
+            // Focus restoration is the OUTER caller's responsibility
+            // now (AppState.restoreFocusToDictationOrigin, which
+            // routes through OverlayWindow.performActivationWithSpaceSwitch
+            // to handle the .canJoinAllSpaces collection-behavior
+            // strip needed for #229). The previous inner
+            // restorePriorFrontmost snapshotted NSWorkspace's
+            // frontmost AT RETRY TIME — typically Parleq itself
+            // because the picker UI had taken focus by then — and
+            // activating Parleq mid-flow contended with the outer
+            // restore's activate-iTerm call, causing the iTerm
+            // activation to fail to take when iTerm was on a
+            // different monitor's regular Space. The outer path
+            // owns this restoration end-to-end now.
 
             do {
                 let image = try await SCScreenshotManager.captureImage(
                     contentFilter: filter,
                     configuration: config
                 )
-                await restorePriorFrontmost()
                 return image
             } catch let retryError as NSError {
                 Self.logStderr(
@@ -331,10 +352,6 @@ final class ScreenCaptureKitReferenceCapture: ReferenceCapturer, @unchecked Send
                     "scale=\(scaleFactor) capture=\(Int(captureSize.width))×\(Int(captureSize.height)) " +
                     "bundle=\(bundleID))"
                 )
-                // Restore focus even on failure — leaving the user
-                // stranded on the activated source app after an error
-                // is worse than the error itself.
-                await restorePriorFrontmost()
                 // A second -3811 after the activate-and-retry means the
                 // target is on a full-screen Space that macOS won't
                 // switch to from a non-foreground app — see task #212

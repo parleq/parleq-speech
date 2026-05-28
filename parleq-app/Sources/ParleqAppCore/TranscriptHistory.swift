@@ -16,6 +16,7 @@
 // pasteboard so the user can ⌘V it wherever they wanted in the
 // first place.
 
+import Combine
 import Foundation
 
 struct TranscriptEntry: Identifiable, Sendable {
@@ -56,6 +57,30 @@ struct TranscriptEntry: Identifiable, Sendable {
     /// `referenceCount > 0` only if labels were dropped for length.
     let referenceLabels: [String]
 
+    // MARK: - Timing fields (0.14.0 PR 4 — for the Stats section in PR 5)
+
+    /// Wall-clock duration of the audio recording in milliseconds.
+    /// Measured from hotkey-down to hotkey-up (or quick-mode end).
+    /// Used by the Stats section to compute "total speaking time"
+    /// across today + this week. 0 for dictations where the start
+    /// time wasn't captured (defensive — shouldn't happen in
+    /// normal flow).
+    let audioDurationMs: Int
+
+    /// ASR latency in milliseconds — time from sending audio to
+    /// receiving the transcript. nil when ASR was skipped (empty
+    /// utterance) or when AppState didn't observe a latency for
+    /// this dictation. Used by Stats to surface an average ASR
+    /// latency line ("am I getting slower transcripts than usual?").
+    let asrLatencyMs: Int?
+
+    /// LLM cleanup latency in milliseconds — total stream duration
+    /// from request to last token. nil when cleanup was skipped
+    /// (no LLM configured, empty transcript, etc.) or when it
+    /// failed before timing. Used by Stats for the latency average
+    /// and for noticing provider degradation.
+    let llmLatencyMs: Int?
+
     init(
         id: UUID = UUID(),
         timestamp: Date = Date(),
@@ -63,7 +88,10 @@ struct TranscriptEntry: Identifiable, Sendable {
         targetAppName: String?,
         wasCleanupSuccessful: Bool = true,
         referenceCount: Int = 0,
-        referenceLabels: [String] = []
+        referenceLabels: [String] = [],
+        audioDurationMs: Int = 0,
+        asrLatencyMs: Int? = nil,
+        llmLatencyMs: Int? = nil
     ) {
         self.id = id
         self.timestamp = timestamp
@@ -72,6 +100,9 @@ struct TranscriptEntry: Identifiable, Sendable {
         self.wasCleanupSuccessful = wasCleanupSuccessful
         self.referenceCount = referenceCount
         self.referenceLabels = referenceLabels
+        self.audioDurationMs = audioDurationMs
+        self.asrLatencyMs = asrLatencyMs
+        self.llmLatencyMs = llmLatencyMs
     }
 
     /// Single-line preview suitable for a menu-item title. Caps
@@ -90,35 +121,214 @@ struct TranscriptEntry: Identifiable, Sendable {
     }
 }
 
+/// ObservableObject in 0.14.0+ so the new Parleq app's Recent
+/// Dictations section (`RecentDictationsView`) can observe entry
+/// list changes via SwiftUI's `@ObservedObject` and re-render on
+/// every append / remove / clear without a manual refresh hook.
+/// The pre-0.14.0 menu-bar Recent Dictations submenu was deleted
+/// in PR 3 (#218); its old `delegate { rebuildSubmenu }` poll-
+/// before-open pattern doesn't need the @Published wrapping.
 @MainActor
-final class TranscriptHistory {
-    /// Singleton — accessed by AppState (the writer, on accept)
-    /// and MenuBar (the reader, when the menu opens).
+final class TranscriptHistory: ObservableObject {
+    /// Singleton — written by `AppState.accept`; read by the
+    /// in-app Recent Dictations section.
     static let shared = TranscriptHistory()
 
-    /// Cap on how many recent dictations we hold. Picked low
-    /// because the menu UI gets unwieldy past ~20 items, and
-    /// because the typical "I missed where this pasted" recovery
-    /// only needs the last 1–3 anyway. Bump if real usage
-    /// suggests it's too tight.
-    private static let maxEntries = 20
+    // 0.14.0 PR 6 (#221) introduced configurable retention with
+    // "unlimited" as the default — matches the UI label
+    // ("Unlimited") + the spec's framing ("unlimited until quit"
+    // within the in-memory invariant). The 0.13.x behavior of an
+    // implicit 20-entry cap (sized for the menu-bar submenu, now
+    // gone) doesn't carry forward. Users who want a cap set one
+    // in Settings → Privacy & Features → Dictation history
+    // retention; IT admins set the matching managed keys.
 
-    /// Newest-first. Reads are cheap (the menu rebuilds on every
-    /// open), so we keep the storage shape simple.
-    private(set) var entries: [TranscriptEntry] = []
+    /// Newest-first. Reads are cheap; SwiftUI list diffing keys on
+    /// TranscriptEntry.id which is stable across reorderings.
+    @Published private(set) var entries: [TranscriptEntry] = []
 
-    private init() {}
+    /// Text-free metric records for every accepted dictation in
+    /// the session. The Stats section (PR 5, #220) reads from this
+    /// so its today/this-week aggregates aren't silently
+    /// undercounted by the `entries` cap. Each record is ~48
+    /// bytes; 10k dictations = ~480KB, trivial vs the alternative
+    /// of retaining every transcript's text. No transcript text
+    /// or reference content lives in records. Subject to the same
+    /// retention limits as `entries` (PR 6, #221) — count + age
+    /// enforcement applies to both arrays.
+    @Published private(set) var metricsRecords: [MetricsRecord] = []
 
-    /// Add a new entry. Drops the oldest when over the cap.
+    /// Effective max-entries cap. nil = unlimited (the default).
+    /// Combined source of truth for both `entries` and
+    /// `metricsRecords` count pruning. Refreshed by
+    /// `applyRetentionLimits()` which is wired from
+    /// SettingsModel.save() so live UI edits in Settings →
+    /// Privacy & Features take effect immediately, plus from
+    /// the init Config.load() so MDM pushes are applied before
+    /// the first append.
+    private var maxEntriesLimit: Int?
+
+    /// Effective retention-hours cap. nil = unlimited. 0 means
+    /// "disable history entirely" (per the spec). Periodic sweep
+    /// runs every 60s on the main actor to enforce age-based
+    /// retention without requiring user actions.
+    private var retentionHoursLimit: Int?
+
+    /// Backing timer for the retention sweep. Recreated when the
+    /// cap changes; nil when retentionHoursLimit is nil (no need
+    /// to burn a wakeup if there's no age limit to enforce).
+    private var retentionSweepTimer: Timer?
+
+    private init() {
+        // Initial config read so first append() sees the right
+        // limit. main.swift's setRetentionLimits(from:) is the
+        // canonical wiring path but this init read covers any
+        // pre-main.swift access (rare; defense-in-depth).
+        applyRetentionLimits(from: Config.load().config)
+    }
+
+    /// Refresh the retention limits from the live Config. Wire
+    /// this from a Config-change observer (main.swift) so MDM
+    /// pushes + Settings edits take effect without waiting for
+    /// the next dictation. Also re-arms the sweep timer if the
+    /// hours-limit changed.
+    func applyRetentionLimits(from config: Config) {
+        // nil propagates as "no count cap"; matches the UI's
+        // "Unlimited" label when the TextField is empty. 0 still
+        // means "disable history entirely" via the cap==0 branch
+        // in enforceLimits().
+        maxEntriesLimit = config.transcriptHistoryMaxEntries
+        retentionHoursLimit = config.transcriptHistoryRetentionHours
+
+        // Re-arm the sweep timer based on the new hours limit.
+        retentionSweepTimer?.invalidate()
+        retentionSweepTimer = nil
+        if let hours = retentionHoursLimit, hours > 0 {
+            retentionSweepTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+                Task { @MainActor in self?.sweepExpiredEntries() }
+            }
+        }
+        // Apply both limits immediately to current entries.
+        enforceLimits()
+    }
+
+    /// Add a new entry. Enforces count + age limits after
+    /// insertion. 0 max-entries means "drop everything" — a
+    /// zero-retention deployment policy intentionally discards
+    /// the entry right after we recorded it, leaving Stats at 0
+    /// session counts. The append still happens so any
+    /// concurrent listeners see the transition, but enforceLimits
+    /// immediately wipes both arrays.
     func append(_ entry: TranscriptEntry) {
+        // Zero-retention short-circuit: when either cap is 0
+        // (compliance lever, set via the
+        // transcriptHistoryMaxEntries / transcriptHistoryRetentionHours
+        // managed keys or Privacy & Features fields), skip the
+        // mutation entirely. Inserting and then immediately
+        // clearing via enforceLimits would still fire @Published
+        // change notifications, giving subscribers a transient
+        // view of the supposedly-disabled entry — weakens the
+        // "0 = disabled" guarantee for downstream observers.
+        if maxEntriesLimit == 0 || retentionHoursLimit == 0 {
+            return
+        }
         entries.insert(entry, at: 0)
-        if entries.count > Self.maxEntries {
-            entries.removeLast(entries.count - Self.maxEntries)
+        metricsRecords.append(MetricsRecord(
+            id: entry.id,
+            timestamp: entry.timestamp,
+            audioDurationMs: entry.audioDurationMs,
+            asrLatencyMs: entry.asrLatencyMs,
+            llmLatencyMs: entry.llmLatencyMs,
+            hadReference: entry.referenceCount > 0,
+            cleanupFailed: !entry.wasCleanupSuccessful
+        ))
+        enforceLimits()
+    }
+
+    /// Periodic sweep — drops entries older than the
+    /// retentionHoursLimit cutoff. No-op when the limit is nil
+    /// or 0 (the timer doesn't run in either case, so this is
+    /// only reached when there's actually work to do).
+    private func sweepExpiredEntries() {
+        guard let hours = retentionHoursLimit, hours > 0 else { return }
+        guard let cutoff = Calendar.current.date(byAdding: .hour, value: -hours, to: Date()) else { return }
+        entries.removeAll { $0.timestamp < cutoff }
+        metricsRecords.removeAll { $0.timestamp < cutoff }
+    }
+
+    /// Apply count + age limits in lockstep. Called from append
+    /// (after every insert) and from applyRetentionLimits (when
+    /// the user / MDM changes a limit value). Both arrays prune
+    /// to the same boundary so Stats and Recent Dictations stay
+    /// in sync.
+    private func enforceLimits() {
+        // 0 on EITHER limit = disable entirely. Both limits are
+        // spec'd as "0 means disable history" — this is the
+        // zero-retention deployment lever for compliance fleets,
+        // and either knob (count or age) should produce the
+        // same outcome.
+        if maxEntriesLimit == 0 || retentionHoursLimit == 0 {
+            entries.removeAll()
+            metricsRecords.removeAll()
+            return
+        }
+        // Count cap on the text-bearing array. metricsRecords is
+        // intentionally uncapped by count (text-free, low per-
+        // record cost; Stats needs uncapped history to be
+        // accurate). The hours-based sweep prunes metricsRecords;
+        // count-based pruning is for text only.
+        if let cap = maxEntriesLimit, entries.count > cap {
+            entries.removeLast(entries.count - cap)
+        }
+        // Age cap fires both arrays' pruning. 0 hours is handled
+        // by the cap==0 branch above; nil = unlimited so skip.
+        if let hours = retentionHoursLimit, hours > 0,
+           let cutoff = Calendar.current.date(byAdding: .hour, value: -hours, to: Date()) {
+            entries.removeAll { $0.timestamp < cutoff }
+            metricsRecords.removeAll { $0.timestamp < cutoff }
         }
     }
 
-    /// Wipe the buffer. Wired to the menu's "Clear Recent" item.
+    /// Remove a specific entry by id. Wired to the per-card delete
+    /// button (×) in RecentDictationsView. Removes from BOTH the
+    /// text-bearing entries list AND the parallel metricsRecords
+    /// — the user explicitly asked to drop this dictation, so its
+    /// metrics shouldn't continue contributing to Stats either.
+    /// No-op if the id has already been removed (e.g. concurrent
+    /// delete + clear).
+    func remove(id: UUID) {
+        entries.removeAll { $0.id == id }
+        metricsRecords.removeAll { $0.id == id }
+    }
+
+    /// Wipe the buffer. Wired to the "Clear all dictation history"
+    /// button at the bottom of the Recent Dictations section.
+    /// Clears both the text-bearing entries and the metrics
+    /// records so Stats also resets — "Clear all" is a user
+    /// intent to nuke session state across the board.
     func clear() {
         entries.removeAll()
+        metricsRecords.removeAll()
     }
+}
+
+/// Text-free per-dictation metric record used by the Stats
+/// section. Decoupled from `TranscriptEntry` so we can retain
+/// metrics for the full session (the Stats today/this-week
+/// aggregates need it) without retaining the privacy-sensitive
+/// transcript text past the `maxEntries` cap.
+struct MetricsRecord: Sendable {
+    /// Matches the parent TranscriptEntry.id so explicit
+    /// per-entry deletes (`remove(id:)`) can drop the metric in
+    /// lockstep. Records created from cap-pruned entries keep
+    /// their original id but never get explicitly removed (their
+    /// text was dropped, but the metric stays as part of the
+    /// session aggregate).
+    let id: UUID
+    let timestamp: Date
+    let audioDurationMs: Int
+    let asrLatencyMs: Int?
+    let llmLatencyMs: Int?
+    let hadReference: Bool
+    let cleanupFailed: Bool
 }

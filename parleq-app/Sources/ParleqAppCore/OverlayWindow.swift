@@ -431,6 +431,59 @@ public final class OverlayWindow {
         model.setLevel(value)
     }
 
+    /// Run `activation` with the overlay's `.canJoinAllSpaces`
+    /// collection-behavior temporarily stripped. Used by AppState's
+    /// post-reference-capture focus restore (issue #229) so macOS
+    /// will actually animate the Space switch back to the user's
+    /// origin Space — when the overlay carries `.canJoinAllSpaces`,
+    /// WindowServer treats the overlay as "still relevant here" and
+    /// suppresses the Space-switch even though the target app's
+    /// activation succeeds. Stripping the flag for the duration of
+    /// the activate call removes that suppression. After the Space
+    /// animation has had time to land we restore the flag and
+    /// `orderFront` so the overlay reattaches to the new (now-current)
+    /// Space — without the orderFront the overlay would be stuck on
+    /// the source app's Space (where it was when we stripped the
+    /// flag) and the user would see no overlay on their new Space.
+    ///
+    /// 600ms wait is empirical — macOS Space-switch animations are
+    /// ~500ms; adding a small settle margin avoids the orderFront
+    /// landing on the wrong Space if it fires mid-animation.
+    public func performActivationWithSpaceSwitch(_ activation: () -> Void) async {
+        // Restore to a CANONICAL known-good value rather than
+        // snapshotting `panel.collectionBehavior` before stripping.
+        // If a second call to this method starts while the first is
+        // sleeping, the second would snapshot the already-stripped
+        // [.fullScreenAuxiliary] value and write THAT back at the
+        // end — losing `.canJoinAllSpaces` permanently. Using a
+        // constant target makes the operation idempotent across
+        // overlapping calls. The constant must match the overlay's
+        // init-time collection behavior (line ~103) so the post-
+        // restore state is identical to the unmolested overlay.
+        let canonicalBehavior: NSWindow.CollectionBehavior =
+            [.canJoinAllSpaces, .fullScreenAuxiliary]
+        panel.collectionBehavior = [.fullScreenAuxiliary]
+        activation()
+        try? await Task.sleep(nanoseconds: 600_000_000)
+        panel.collectionBehavior = canonicalBehavior
+        if panel.isVisible {
+            panel.orderFront(nil)
+            // Reclaim key-window status. Activating the dictation-
+            // origin app (e.g. iTerm) above moves the OS-level key
+            // window to that app, which means the overlay's
+            // per-window keyboard shortcuts — Enter (accept) and
+            // Escape (cancel) — stop working until the user clicks
+            // back on the overlay. Calling makeKey here brings key
+            // status back to the panel without changing the active
+            // app (panel is a .nonactivatingPanel, so makeKey does
+            // not steal foreground activation from the just-
+            // activated dictation-origin app — the user still sees
+            // their origin as active while the overlay accepts
+            // Enter / Escape again).
+            panel.makeKey()
+        }
+    }
+
     public func hide() {
         panel.orderOut(nil)
     }

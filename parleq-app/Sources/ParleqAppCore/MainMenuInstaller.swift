@@ -54,13 +54,40 @@ public func installApplicationMainMenu() {
     let appMenuItem = NSMenuItem()
     let appMenu = NSMenu(title: appName)
 
-    appMenu.addItem(
-        NSMenuItem(
-            title: "About \(appName)",
-            action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)),
-            keyEquivalent: ""
-        )
+    // About — route through the app shell's About section instead of
+    // the system about panel. The status-item dropdown's "About
+    // Parleq" item routes the same way (see MenuBar.swift's
+    // showAbout), so both ways of hitting About land on a single
+    // canonical surface. Target is the long-lived
+    // ParleqAppWindowController singleton; without an explicit
+    // target the action would walk the responder chain and fall
+    // through to nothing (no first responder responds to
+    // presentAbout).
+    let aboutItem = NSMenuItem(
+        title: "About \(appName)",
+        action: #selector(ParleqAppWindowController.presentAbout),
+        keyEquivalent: ""
     )
+    aboutItem.target = ParleqAppWindowController.shared
+    appMenu.addItem(aboutItem)
+    appMenu.addItem(.separator())
+
+    // Show Parleq… — opens the app shell window. Cmd-, key-equivalent
+    // gives the standard "Open Settings" muscle memory a working
+    // landing surface when the Parleq window is frontmost (AppKit
+    // dispatches Cmd-, by walking NSApp.mainMenu). The status-item
+    // dropdown also declares the same shortcut for its dropdown
+    // entry, but status-item menus don't participate in global
+    // key-equivalent dispatch — without this main-menu item the
+    // Cmd-, shortcut is dead when the user is interacting with the
+    // Parleq window itself.
+    let showShellItem = NSMenuItem(
+        title: "Show \(appName)…",
+        action: #selector(ParleqAppWindowController.presentShell),
+        keyEquivalent: ","
+    )
+    showShellItem.target = ParleqAppWindowController.shared
+    appMenu.addItem(showShellItem)
     appMenu.addItem(.separator())
 
     let hideItem = NSMenuItem(

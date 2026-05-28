@@ -53,6 +53,12 @@ struct UsageBucket: Sendable {
 
 struct UsageAggregate: Sendable {
     let today: UsageBucket
+    /// 0.14.0 PR 5 (#220): rolling-7-day bucket used by the Stats
+    /// section. `Calendar`'s standard `startOfWeek` would tie us
+    /// to locale week-start (Sunday in US, Monday in many EU
+    /// locales) — a rolling 7-day window is more useful for the
+    /// "am I dictating more or less than last week?" framing.
+    let thisWeek: UsageBucket
     let thisMonth: UsageBucket
     let allTime: UsageBucket
     /// All-time totals re-bucketed per (provider, model) so the
@@ -67,8 +73,9 @@ struct UsageAggregate: Sendable {
     let recent: [UsageEntry]
 
     static let empty = UsageAggregate(
-        today: UsageBucket(), thisMonth: UsageBucket(),
-        allTime: UsageBucket(), byModel: [], recent: []
+        today: UsageBucket(), thisWeek: UsageBucket(),
+        thisMonth: UsageBucket(), allTime: UsageBucket(),
+        byModel: [], recent: []
     )
 }
 
@@ -246,8 +253,13 @@ final class UsageLedger: @unchecked Sendable {
         let now = Date()
         let startOfToday = cal.startOfDay(for: now)
         let startOfMonth = cal.date(from: cal.dateComponents([.year, .month], from: now)) ?? startOfToday
+        // Rolling 7-day window — counts back from now() rather than
+        // using cal.startOfWeek to avoid locale-dependent
+        // Sunday/Monday week-start surprises. 0.14.0 PR 5 (#220).
+        let startOfWeek = cal.date(byAdding: .day, value: -7, to: now) ?? startOfToday
 
         var today = UsageBucket()
+        var thisWeek = UsageBucket()
         var thisMonth = UsageBucket()
         var allTime = UsageBucket()
         // Per-(provider, model) accumulator keyed on a composite ID
@@ -261,6 +273,7 @@ final class UsageLedger: @unchecked Sendable {
                 outputTokens: e.outputTokens
             ) ?? 0
             if e.ts >= startOfToday { add(e, cost: cost, to: &today) }
+            if e.ts >= startOfWeek { add(e, cost: cost, to: &thisWeek) }
             if e.ts >= startOfMonth { add(e, cost: cost, to: &thisMonth) }
             add(e, cost: cost, to: &allTime)
 
@@ -276,7 +289,7 @@ final class UsageLedger: @unchecked Sendable {
 
         let recent = Array(entries.suffix(UsageLedger.recentLimit).reversed())
         return UsageAggregate(
-            today: today, thisMonth: thisMonth,
+            today: today, thisWeek: thisWeek, thisMonth: thisMonth,
             allTime: allTime, byModel: byModel, recent: recent
         )
     }

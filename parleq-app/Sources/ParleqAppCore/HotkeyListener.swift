@@ -132,6 +132,15 @@ public final class HotkeyListener {
     /// the modifier keys.
     private static let spaceKeyCode: Int64 = 0x31
 
+    /// Virtual keycode for P. Used by the "hold the dictation
+    /// hotkey + tap P" gesture (0.14.0) — fires the
+    /// "Show Parleq app window" intent without colliding with the
+    /// system's Option-P = π typing, because the hotkey itself
+    /// has to be held for the consumption to kick in. Brief
+    /// Option-P taps that don't engage the dictation hold path
+    /// fall through unchanged and still produce π.
+    private static let pKeyCode: Int64 = 0x23
+
     private let binding: HotkeyBinding
     private let onKeyDown: (HotkeyDownEvent) -> Void
     private let onKeyUp: (HotkeyUpEvent) -> Void
@@ -144,6 +153,13 @@ public final class HotkeyListener {
     /// the picker opens, which feels unresponsive on the dominant
     /// "Space-then-immediately-release" path.
     private let onSpacePressed: (() -> Void)?
+    /// Fires the FIRST time P is pressed during a single hotkey
+    /// hold. 0.14.0 "hold-hotkey + P" gesture for summoning the
+    /// Parleq app window from anywhere. AppState's handler
+    /// cancels the in-flight dictation and opens the app — the
+    /// gesture is "instead of dictating, show me the app", not
+    /// "after dictating".
+    private let onPPressed: (() -> Void)?
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     // Press-state tracking: CGEventTap delivers a flagsChanged event
@@ -155,6 +171,20 @@ public final class HotkeyListener {
     /// "double-tap-and-hold" gesture: a key-DOWN within
     /// doubleTapWindow seconds of a prior key-UP.
     private var lastKeyUpAt: TimeInterval = 0
+    /// Wall-clock of the most recent key-DOWN. Used by the P-key
+    /// gesture's hold-threshold gate so brief hotkey taps don't
+    /// hijack the standard Option-P (π) typing path. See
+    /// `pHoldThreshold` for the value + rationale.
+    private var keyDownAt: TimeInterval = 0
+    /// Minimum hotkey-hold duration before the P-during-hold
+    /// gesture engages. Matches the overlay-show delay so the
+    /// "hold until the overlay appears, then tap P" mental model
+    /// is honest — both UX cues fire at the same moment. A brief
+    /// tap of Option-P (under this threshold) falls through to the
+    /// system and types π exactly as the user expects. Sync with
+    /// AppState.pendingOverlayShowTimer's delay if either ever
+    /// moves.
+    private static let pHoldThreshold: TimeInterval = 0.200
     /// Per-hold flag set to true when Space is pressed while the
     /// dictation hotkey is held. Reset on each fresh key-DOWN.
     /// Reference Windows v2's latched-compose state machine
@@ -162,6 +192,13 @@ public final class HotkeyListener {
     /// (false — release without space, the normal case) or to
     /// enter the latched state and open the picker (true).
     private var spacePressedThisHold = false
+    /// Mirror of spacePressedThisHold for the 0.14.0 P-gesture.
+    /// Reset on each fresh key-DOWN. Not strictly needed by
+    /// HotkeyUpEvent (the P gesture fires synchronously via the
+    /// onPPressed callback and aborts the capture before the
+    /// hotkey is released), but tracked anyway for symmetry +
+    /// to make the edge-trigger guard in handleKeyDown simple.
+    private var pPressedThisHold = false
     /// Cross-cutting flag tracking a Space keyDown we consumed.
     /// Set when the keyDown is swallowed; checked when the
     /// matching keyUp arrives so we also consume it. Without this,
@@ -176,17 +213,24 @@ public final class HotkeyListener {
     /// dictation hotkey has already been released, and we still
     /// need to swallow that lingering keyUp.
     private var pendingSpaceKeyUpToSwallow = false
+    /// P-key counterpart of pendingSpaceKeyUpToSwallow. Same
+    /// rationale: if we consumed the P keyDown, we must also
+    /// consume the matching keyUp so the focused app doesn't see
+    /// a dangling release.
+    private var pendingPKeyUpToSwallow = false
 
     public init(
         binding: HotkeyBinding = .defaultBinding,
         onKeyDown: @escaping (HotkeyDownEvent) -> Void,
         onKeyUp: @escaping (HotkeyUpEvent) -> Void,
-        onSpacePressed: (() -> Void)? = nil
+        onSpacePressed: (() -> Void)? = nil,
+        onPPressed: (() -> Void)? = nil
     ) {
         self.binding = binding
         self.onKeyDown = onKeyDown
         self.onKeyUp = onKeyUp
         self.onSpacePressed = onSpacePressed
+        self.onPPressed = onPPressed
     }
 
     public func start() throws {
@@ -249,10 +293,14 @@ public final class HotkeyListener {
             let isDoubleTap = (now - lastKeyUpAt) < HotkeyListener.doubleTapWindow
             // maskShift covers both left and right Shift.
             let isShiftHeld = event.flags.contains(.maskShift)
-            // Reset the per-hold space flag at every fresh down,
-            // so a Space pressed during a *previous* hold doesn't
-            // leak into this one.
+            // Reset the per-hold space + P flags at every fresh
+            // down, so a key pressed during a *previous* hold
+            // doesn't leak into this one.
             spacePressedThisHold = false
+            pPressedThisHold = false
+            // Record the hold-start time for the P-gesture's
+            // hold-threshold gate (see pHoldThreshold).
+            keyDownAt = now
             onKeyDown(HotkeyDownEvent(isDoubleTapHold: isDoubleTap, isShiftHeld: isShiftHeld))
         } else {
             lastKeyUpAt = Date().timeIntervalSinceReferenceDate
@@ -278,30 +326,55 @@ public final class HotkeyListener {
     /// Other keyDowns pass through unchanged.
     private func handleKeyDown(event: CGEvent) -> Bool {
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-        guard keyCode == HotkeyListener.spaceKeyCode else { return false }
-        // Case (a): the dictation hotkey is held. Start consume cycle.
-        if keyDown {
-            // Fire onSpacePressed only on the FIRST press of this
-            // hold — subsequent calls into case (a) would imply the
-            // user released Space and re-pressed it (rare; we'd want
-            // to surface that too if we tracked it), but in practice
-            // case (b) handles auto-repeats and a re-press would
-            // arrive as case (a) AFTER a Space keyUp. Guarding on
-            // the prior spacePressedThisHold value keeps the
-            // callback edge-triggered.
-            let firstPressThisHold = !spacePressedThisHold
-            spacePressedThisHold = true
-            pendingSpaceKeyUpToSwallow = true
-            if firstPressThisHold {
-                onSpacePressed?()
+        // Space-during-hold path (Reference Windows v2 picker gesture).
+        if keyCode == HotkeyListener.spaceKeyCode {
+            if keyDown {
+                let firstPressThisHold = !spacePressedThisHold
+                spacePressedThisHold = true
+                pendingSpaceKeyUpToSwallow = true
+                if firstPressThisHold {
+                    onSpacePressed?()
+                }
+                return true
             }
-            return true
+            if pendingSpaceKeyUpToSwallow {
+                return true
+            }
+            return false
         }
-        // Case (b): auto-repeat of an already-consumed Space press.
-        // Keep the pending-keyUp flag set; consume the repeat so the
-        // focused app doesn't see a partial sequence.
-        if pendingSpaceKeyUpToSwallow {
-            return true
+        // P-during-hold path (0.14.0 Show Parleq gesture). Same
+        // shape as the Space path, with one critical difference:
+        // a hold-duration threshold. The threshold preserves
+        // standard Option-P = π typing for users whose dictation
+        // hotkey IS Option (the common case). When the user
+        // briefly taps Option-P to type π, the hotkey hold is
+        // under the threshold so P passes through to the system.
+        // When the user deliberately holds the hotkey long enough
+        // for the dictation overlay to appear, they're in
+        // "Parleq mode" and a subsequent P opens the app.
+        // Matches the user's mental model: "hold until the
+        // overlay shows, then press P."
+        if keyCode == HotkeyListener.pKeyCode {
+            if keyDown {
+                let elapsed = Date().timeIntervalSinceReferenceDate - keyDownAt
+                if elapsed < HotkeyListener.pHoldThreshold {
+                    // Brief tap — pass P through so Option-P = π
+                    // (and any other modifier-P shortcut) keeps
+                    // working as the user expects.
+                    return false
+                }
+                let firstPressThisHold = !pPressedThisHold
+                pPressedThisHold = true
+                pendingPKeyUpToSwallow = true
+                if firstPressThisHold {
+                    onPPressed?()
+                }
+                return true
+            }
+            if pendingPKeyUpToSwallow {
+                return true
+            }
+            return false
         }
         return false
     }
@@ -316,11 +389,15 @@ public final class HotkeyListener {
     /// still need to swallow the lingering keyUp.
     private func handleKeyUp(event: CGEvent) -> Bool {
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-        guard keyCode == HotkeyListener.spaceKeyCode, pendingSpaceKeyUpToSwallow else {
-            return false
+        if keyCode == HotkeyListener.spaceKeyCode, pendingSpaceKeyUpToSwallow {
+            pendingSpaceKeyUpToSwallow = false
+            return true
         }
-        pendingSpaceKeyUpToSwallow = false
-        return true
+        if keyCode == HotkeyListener.pKeyCode, pendingPKeyUpToSwallow {
+            pendingPKeyUpToSwallow = false
+            return true
+        }
+        return false
     }
 
     private static let eventTapCallback: CGEventTapCallBack = {

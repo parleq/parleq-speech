@@ -67,6 +67,26 @@ public final class AppState {
             if phase == .idle, composeState != .idle {
                 composeState = nextComposeState(composeState, event: .submitted)
             }
+            // Defense-in-depth: clear the per-hold Space-armed visual
+            // flag at dictation-cycle close. startFreshCapture also
+            // clears it at every new hotkey-down, but that reset
+            // happens AFTER the new dictation's overlay model state
+            // has started rendering. Resetting at cycle close keeps
+            // the flag's lifetime scoped to the dictation cycle that
+            // observed the Space press. Investigation of the related
+            // press-Space-after-plain-dictation regression continues
+            // in a separate followup (the regression survives this
+            // reset, so it has a different root cause).
+            if phase == .idle, overlay.model.spaceArmedDuringHold {
+                overlay.model.spaceArmedDuringHold = false
+            }
+            // Clear the latched-from-refining marker on cycle close
+            // so a future fresh dictation (entered from .idle, not
+            // from .refining) doesn't inherit refine semantics from
+            // a prior session. See `latchedFromRefining` docstring.
+            if phase == .idle, latchedFromRefining {
+                latchedFromRefining = false
+            }
         }
     }
     /// Called on every phase transition. Used by the menu-bar status
@@ -93,6 +113,24 @@ public final class AppState {
     /// quick-mode users will see.
     public var onCleanupResult: (@MainActor (String?) -> Void)?
     private var pasteTarget: PasteTarget?
+    /// True when the current latched-compose session was entered
+    /// from `.refining` phase (user pressed Space during a refine
+    /// hold). Determines what the latched-resume branch sets `phase`
+    /// to on a subsequent hold (`.refining` if true, `.capturing`
+    /// otherwise) AND what `finalizeCapture` is called with on the
+    /// eventual release (`asRefine: true` if true, false otherwise).
+    /// Without this flag, latched-resume unconditionally clobbers
+    /// `phase` to `.capturing` and the eventual submit drops the
+    /// prior refinement's accumulated text — treating the new
+    /// audio + new reference as a fresh dictation instead of a
+    /// continuation of the refine.
+    ///
+    /// Lifetime: set when transitioning to `.pickerOpen` from
+    /// `.refining` in `hotkeyUp(spaceWasPressedDuringHold: true)`;
+    /// cleared when `composeState` resets to `.idle` (via the
+    /// `phase == .idle` branch in `phase`'s `didSet`). Survives
+    /// across multiple holds within the same latched session.
+    private var latchedFromRefining: Bool = false
     private var currentText: String = ""        // last cleaned/refined text in the overlay
     /// True when the most recent applyResult came back with a
     /// cleanup-failure message — i.e. `currentText` is the raw ASR
@@ -117,6 +155,37 @@ public final class AppState {
     /// already-cleaned text. Reset at the start of each fresh capture
     /// and cleared in closeAndReset().
     private var lastRawTranscript: String = ""
+
+    // 0.14.0 PR 4 (#219): per-dictation timing capture for the Stats
+    // section in PR 5. All three reset on every fresh capture; ASR
+    // / LLM latencies are populated by the cleanup pipeline as it
+    // runs, then read at accept() time when the TranscriptEntry is
+    // built. Audio duration is captured at recorder-stop time
+    // (capture.durationSeconds) which is the actual audio length,
+    // not the wall-clock from hotkey-down to accept — the latter
+    // would include LLM streaming + user review time.
+
+    /// Recorded audio duration in milliseconds for the most recent
+    /// capture. Populated immediately after `recorder.stop()`
+    /// returns the Capture in finalizeCapture. 0 between
+    /// dictations or when the recorder didn't produce audio
+    /// (cancelled mid-capture).
+    private var lastAudioDurationMs: Int = 0
+
+    /// ASR latency in milliseconds for the most recent dictation.
+    /// Populated immediately after the ASR call returns; read at
+    /// accept() time. nil when ASR was skipped (empty utterance)
+    /// or hasn't run yet for the current capture.
+    private var lastASRLatencyMs: Int?
+
+    /// LLM cleanup latency in milliseconds for the most recent
+    /// dictation. Populated when streamCleanupOrRefine completes
+    /// successfully; read at accept() time. nil when cleanup was
+    /// skipped (no LLM configured / empty transcript) or failed
+    /// before timing. Also re-populated by switchModelAndRecleanup
+    /// so accepting after a model switch records the LATENCY OF
+    /// THE ACCEPTED CLEANUP, not the originally-rendered one.
+    private var lastLLMLatencyMs: Int?
     // ConversationState is intentionally NOT stored here. Phase 1 is
     // single-turn-per-dispatch: streamCleanupOrRefine builds messages
     // directly from overlay.model.references each call, so the dispatch
@@ -390,6 +459,21 @@ public final class AppState {
     ///   - from cleaning: refine the in-flight transcript directly
     ///     (already a hold by the time we got here).
     public func hotkeyDown(isDoubleTapHold: Bool = false, isShiftHeld: Bool = false) {
+        // Reset the per-hold Space-armed visual flag at every fresh
+        // hotkey-down. The flag's semantic is "Space has been pressed
+        // during THIS specific hold" — scoping it to a single hold.
+        // Without this reset the flag survives across latched-compose
+        // re-holds (e.g. .latched → .latchedRecording when the user
+        // resumes after picking a reference), so the second hold's
+        // overlay opens already showing the "Picker opens on release"
+        // armed variant even though the user hasn't pressed Space
+        // yet in this hold. startFreshCapture clears it too for the
+        // .idle → fresh-dictation path, but that doesn't cover the
+        // latched-compose resume branches that bypass
+        // startFreshCapture.
+        if overlay.model.spaceArmedDuringHold {
+            overlay.model.spaceArmedDuringHold = false
+        }
         if !isSystemReady() {
             initializingOverlayShowing = true
             overlay.show(
@@ -413,9 +497,14 @@ public final class AppState {
         // entering a NEW dictation — we're continuing the current one.
         if composeState == .latched {
             composeState = nextComposeState(composeState, event: .hotkeyDown)
-            phase = .capturing
+            // If the latched session was entered from a refine, the
+            // resume keeps refine semantics — phase stays `.refining`
+            // and the eventual release will call
+            // `finalizeCapture(asRefine: true)` so the prior text
+            // isn't dropped. See `latchedFromRefining` docstring.
+            phase = latchedFromRefining ? .refining : .capturing
             recorder.resume()
-            log("hotkeyDown in latched compose → latchedRecording; audio resumed")
+            log("hotkeyDown in latched compose → \(latchedFromRefining ? "latched-refining" : "latchedRecording"); audio resumed")
             return
         }
         // User pressed the hotkey while the picker is still open.
@@ -426,9 +515,9 @@ public final class AppState {
         if composeState == .pickerOpen {
             dismissPicker()
             composeState = nextComposeState(composeState, event: .hotkeyDown)
-            phase = .capturing
+            phase = latchedFromRefining ? .refining : .capturing
             recorder.resume()
-            log("hotkeyDown while picker open → dismissed picker + latchedRecording; audio resumed")
+            log("hotkeyDown while picker open → \(latchedFromRefining ? "refining" : "latchedRecording"); audio resumed")
             return
         }
 
@@ -542,7 +631,21 @@ public final class AppState {
             // attach a window" while the same flag prevents Space
             // from doing anything).
             overlay.model.referenceWindowsEnabled = rwEnabled
-            if phase == .capturing, rwEnabled {
+            // Honor the press-Space-attach gesture during BOTH active
+            // dictation phases. Originally only .capturing was gated;
+            // .refining is also an active hold from the user's
+            // perspective (they're recording audio that will merge
+            // into / replace the current dictation), so refusing
+            // Space there breaks the "press Space anytime to attach"
+            // mental model. The latched-compose state machine
+            // handles both phases identically once we route into
+            // .pickerOpen.
+            if (phase == .capturing || phase == .refining), rwEnabled {
+                // Remember if we're entering latched compose from a
+                // refine — used by the latched-resume + finalize
+                // branches to preserve refine semantics across the
+                // intervening picker / latched-recording cycle.
+                latchedFromRefining = (phase == .refining)
                 recorder.pause()
                 // Quick mode bypasses the review overlay and paste-
                 // directly path. Latched compose requires the picker
@@ -579,10 +682,9 @@ public final class AppState {
                 return
             }
             // Narrowed log: only fire when the feature flag IS the
-            // deciding factor (phase == .capturing means we'd have
-            // taken the latch path; refinement phase falls through
-            // for unrelated reasons documented above).
-            if phase == .capturing, !rwEnabled {
+            // deciding factor (an active dictation phase means we'd
+            // have taken the latch path).
+            if (phase == .capturing || phase == .refining), !rwEnabled {
                 log("hotkeyUp(space=true) but referenceWindowsEnabled=false; falling through to normal submit")
             }
         }
@@ -641,7 +743,39 @@ public final class AppState {
                 finalizeCapture(asRefine: false)
             }
         case .refining:
-            finalizeCapture(asRefine: true)
+            // Mirrors the `.capturing` bookkeeping above. The
+            // 0.14.0 latched-compose-from-refine flow can leave
+            // pending async reference-attach Tasks in flight at
+            // the refine's release moment (e.g. user pressed Space
+            // mid-refine, picked a window, picker's async append
+            // hasn't resolved yet, user re-holds and submits) —
+            // without pause-and-await here, the cleanup task would
+            // read `overlay.model.references` before the picked
+            // reference lands in the array, dropping it from the
+            // refine. composeState advance + recorder pause +
+            // pendingCaptureTasks await + inFlightTask serialization
+            // all replicated; only the eventual `asRefine` flag
+            // differs.
+            if composeState == .pickerOpen {
+                log("hotkeyUp while .pickerOpen during refine — picker is active, not submitting")
+                return
+            }
+            composeState = nextComposeState(
+                composeState,
+                event: .hotkeyUp(spaceWasPressedDuringHold: false)
+            )
+            if !pendingCaptureTasks.isEmpty {
+                recorder.pause()
+                inFlightTask?.cancel()
+                inFlightTask = Task { @MainActor [weak self] in
+                    await self?.awaitPendingCaptures()
+                    guard let self else { return }
+                    guard !Task.isCancelled else { return }
+                    self.finalizeCapture(asRefine: true)
+                }
+            } else {
+                finalizeCapture(asRefine: true)
+            }
         default:
             // Spurious key-up (we ignored its key-down) — no-op.
             return
@@ -926,6 +1060,15 @@ public final class AppState {
                 guard !Task.isCancelled else { return }
                 await MainActor.run {
                     self.overlay.model.references.append(reference)
+                    // Restore focus to the user's origin Space/app
+                    // after a cross-Space capture. The capture may
+                    // have switched the visible Space to the source
+                    // app's full-screen Space; without this, the
+                    // user is stranded there. See
+                    // restoreFocusToDictationOrigin for why this is
+                    // at the outer scope rather than relying on the
+                    // inner restorePriorFrontmost.
+                    self.restoreFocusToDictationOrigin()
                     // Single-pick exit: when pick-mode was entered via the
                     // WindowPicker's "Pick by clicking" button, exit
                     // immediately after a successful capture. The
@@ -942,6 +1085,7 @@ public final class AppState {
                 guard !Task.isCancelled else { return }
                 await MainActor.run {
                     self.overlay.model.permissionPrompt = "Screen Recording permission needed. Grant in System Settings, then try again."
+                    self.restoreFocusToDictationOrigin()
                 }
             } catch let captureError as CaptureError {
                 guard !Task.isCancelled else { return }
@@ -953,11 +1097,13 @@ public final class AppState {
                 // screen Space. Switch…").
                 await MainActor.run {
                     self.overlay.model.errorMessage = captureError.localizedDescription
+                    self.restoreFocusToDictationOrigin()
                 }
             } catch {
                 guard !Task.isCancelled else { return }
                 await MainActor.run {
                     self.overlay.model.errorMessage = "Couldn't capture window: \(error.localizedDescription)"
+                    self.restoreFocusToDictationOrigin()
                 }
             }
         }
@@ -1111,16 +1257,11 @@ public final class AppState {
         // Stores the bare cleaned text without the trailing-space
         // rule applied, so re-pastes match the user's intent rather
         // than the previous target's convention.
-        if !currentText.isEmpty {
-            let refs = overlay.model.references
-            TranscriptHistory.shared.append(TranscriptEntry(
-                text: currentText,
-                targetAppName: target?.name,
-                wasCleanupSuccessful: !lastCleanupFailed,
-                referenceCount: refs.count,
-                referenceLabels: refs.map(\.label)
-            ))
-        }
+        appendTranscriptHistory(
+            text: currentText,
+            target: target,
+            wasCleanupSuccessful: !lastCleanupFailed
+        )
         if overlay.model.isPickingWindow { endHoldPickMode() }
         // Cancel any in-flight reference captures before resetting
         // overlay state. Without this, a capture task that's still
@@ -1211,14 +1352,40 @@ public final class AppState {
     /// here doubles as defense against future caller changes.
     @MainActor
     public func spacePressedDuringHold() {
-        // Only meaningful during .capturing — Space outside a hold
-        // isn't consumed by the listener (case (a) gates on
-        // keyDown), so this code path shouldn't fire then, but guard
-        // anyway so a future listener change can't surprise us.
-        guard phase == .capturing else { return }
+        // Honored during .capturing AND .refining — both phases
+        // represent an active dictation hold where attaching a
+        // reference window makes sense (the refine flow is just
+        // another dictation segment from the user's perspective).
+        // Space outside a hold isn't consumed by the listener
+        // (case (a) gates on keyDown), so this code path shouldn't
+        // fire from other phases, but guard anyway so a future
+        // listener change can't surprise us.
+        guard phase == .capturing || phase == .refining else { return }
         guard overlay.model.referenceWindowsEnabled else { return }
         overlay.model.spaceArmedDuringHold = true
-        log("space pressed during hold — overlay armed")
+        log("space pressed during hold — overlay armed (phase=\(phase))")
+    }
+
+    /// Called from HotkeyListener.onPPressed when the user taps P
+    /// while the dictation hotkey is held. 0.14.0 "Show Parleq"
+    /// gesture (#221 — replacing the deferred global hotkey
+    /// question with a chord that builds on the existing hold
+    /// pattern). Cancels the in-flight dictation and summons the
+    /// app window, so the user can think of the gesture as
+    /// "instead of dictating, show me the app." Quick Option-P
+    /// taps without a hotkey hold still produce π — the listener
+    /// only consumes P during a held hotkey, so this code path
+    /// can't fire from a casual π-typing gesture.
+    @MainActor
+    public func pPressedDuringHold() {
+        log("p pressed during hold — cancelling capture, opening app window")
+        // Route through cancel() so the recorder is stopped, the
+        // streaming session aborted, and the overlay closed —
+        // same teardown as Esc-during-dictation. Whatever phase
+        // we're in (.capturing, .staging, .latched, etc.) the
+        // cancel() switch handles it.
+        cancel()
+        ParleqAppWindowController.shared.show()
     }
 
     private func startFreshCapture() {
@@ -1226,6 +1393,15 @@ public final class AppState {
         currentText = ""
         lastRawTranscript = ""
         lastCleanupFailed = false
+        // 0.14.0 PR 4 (#219): clear last-pass timings so a previous
+        // dictation's measurements don't leak into this entry if
+        // the cleanup pass fails before populating them. The audio
+        // duration is populated in finalizeCapture from the
+        // recorder's reported duration; ASR + LLM latencies are
+        // populated by the cleanup pipeline as they're measured.
+        lastAudioDurationMs = 0
+        lastASRLatencyMs = nil
+        lastLLMLatencyMs = nil
         guard openRecorder() else { return }
         // Advance the latched-compose state machine so a subsequent
         // hotkeyUp(spaceWasPressedDuringHold: true) can transition
@@ -1306,6 +1482,16 @@ public final class AppState {
         cancelAutoAcceptTimer()
         guard openRecorder() else { return }
         phase = .refining
+        // Advance the latched-compose state machine so the user's
+        // current refine hold can also support press-Space-during-
+        // hold → picker. Without this transition composeState stays
+        // .idle and `OverlayHintStrip` renders nothing, AND the
+        // press-Space gates in hotkeyUp + spacePressedDuringHold
+        // reject the gesture during a refine. Treating .refining
+        // symmetrically with .capturing matches the user mental
+        // model "press Space anytime to attach a window" — the
+        // refine itself is just another dictation segment.
+        composeState = nextComposeState(composeState, event: .hotkeyDown)
         overlay.show(
             state: .refining,
             text: currentText,
@@ -1433,6 +1619,18 @@ public final class AppState {
             return
         }
 
+        // 0.14.0 PR 4 (#219): ACCUMULATE the actual audio length
+        // across refinement turns. A single accepted dictation
+        // session can include the original capture plus N
+        // refinement captures; the stat we want for the user
+        // ("how much time did you speak today?") is the sum across
+        // all of them, not just the last one. Placed AFTER both
+        // the short-utterance + silence guards so accidental taps
+        // / silent refinement holds aren't counted as speaking
+        // time. Reset to 0 happens only in startFreshCapture,
+        // marking the boundary of a new dictation session.
+        lastAudioDurationMs += max(0, Int(capture.durationSeconds * 1000))
+
         phase = .cleaning
         if quickMode {
             // In quick mode we don't show the overlay — the user
@@ -1496,6 +1694,11 @@ public final class AppState {
                     vocabulary: vocabularyEntries
                 )
                 let asrLatency = Date().timeIntervalSince(asrStart)
+                // 0.14.0 PR 4 (#219): record ASR latency on the
+                // AppState instance so the eventual TranscriptEntry
+                // built in accept() can include it for the Stats
+                // section.
+                self?.lastASRLatencyMs = Int(asrLatency * 1000)
                 // Compliance #17: log length-only, never the
                 // transcript itself. The overlay still renders the
                 // full text — it just doesn't get persisted to
@@ -1579,6 +1782,11 @@ public final class AppState {
                 )
                 if Task.isCancelled { return }
 
+                // 0.14.0 PR 4 (#219): stash the LLM latency on
+                // the instance so the eventual accept() can
+                // include it in the TranscriptEntry. nil when no
+                // LLM ran (no-LLM-configured / empty-transcript).
+                self?.lastLLMLatencyMs = outcome.llmLatencyMs
                 self?.applyResult(outcome.text, cleanupFailureMessage: outcome.failureMessage)
             } catch {
                 self?.log("pipeline failed: \(error)")
@@ -1615,6 +1823,19 @@ public final class AppState {
             phase = .pasting
             let target = pasteTarget
             let textToPaste = textForPaste(text, target: target)
+            // 0.14.0 PR 4 (#219): quick mode used to bypass
+            // TranscriptHistory entirely because accept() was the
+            // only writer. With the Stats section (PR 5) reading
+            // history for total speaking time + counts, quick-mode
+            // dictations need to be recorded too — otherwise the
+            // Stats undercount for users who default to quick mode.
+            // The same helper used by accept() runs here, before
+            // the async paste starts.
+            appendTranscriptHistory(
+                text: text,
+                target: target,
+                wasCleanupSuccessful: cleanupFailureMessage == nil
+            )
             Task { @MainActor in
                 if let t = target {
                     do {
@@ -1667,6 +1888,25 @@ public final class AppState {
     /// misrouting the model or suppressing the conflict warning.
     @MainActor
     private func resetPerDictationOverlayState() {
+        // Cancel any in-flight async reference-attach Tasks BEFORE
+        // clearing the references array. Without this, an async
+        // reference-add that started during .capturing / .cleaning
+        // (e.g. an NSOpenPanel completion still resolving, an SCK
+        // capture still running, a drag-drop callback still
+        // processing) can append its result to `overlay.model.
+        // references` AFTER this reset clears the array — leaking
+        // the reference into the next dictation session. Reported
+        // by RoboRev job 4282; surfaced specifically for the
+        // submit-then-quickly-restart and cleaning-failure exit
+        // paths where the user has moved on to the next dictation
+        // before the prior async work resolved. trackCaptureTask's
+        // completion-tracker child Task still removes its dictionary
+        // entry on .value completion, so the dictionary stays tidy
+        // even when we cancel here.
+        for (_, task) in pendingCaptureTasks {
+            task.cancel()
+        }
+        pendingCaptureTasks.removeAll()
         overlay.model.references = []
         overlay.model.pickedModelOverride = nil
         overlay.model.userDowngradedConflict = false
@@ -1840,6 +2080,47 @@ public final class AppState {
     /// dictation, this returns the app they're currently focused on
     /// — matching the chip — rather than the app that happened to be
     /// frontmost at hotkey-down.
+    /// Restore focus to the user's pre-hotkey frontmost app (the
+    /// dictation's `pasteTarget`), used after a reference-window
+    /// capture so the user is returned to their original Space
+    /// instead of stranded on the captured app's Space.
+    ///
+    /// The inner restorePriorFrontmost inside ReferenceCapture.
+    /// captureWithRetry snapshots NSWorkspace.frontmostApplication
+    /// AT RETRY TIME — which is typically Parleq itself, because the
+    /// picker UI has already taken visible focus by then. That inner
+    /// restore therefore activates Parleq (a no-op for Space-switch)
+    /// rather than the user's true origin. This outer helper uses
+    /// the pasteTarget captured at hotkey-down (via
+    /// Paster.captureFrontmost in startFreshCapture), which is the
+    /// authoritative origin app even after the picker has taken
+    /// over visible focus. Routes through Paster.activate, which
+    /// uses the AppleScript bundle-id `activate` AppleEvent — the
+    /// only synthesized-event path that crosses full-screen-Space
+    /// boundaries (spike #223 / issue #212).
+    @MainActor
+    private func restoreFocusToDictationOrigin() {
+        guard let origin = pasteTarget else { return }
+        // Route through OverlayWindow.performActivationWithSpaceSwitch
+        // so the overlay's `.canJoinAllSpaces` collection behavior is
+        // temporarily stripped during the activate call. Without that
+        // strip, macOS sees the overlay as "still relevant on the
+        // current Space" and suppresses the Space-switch animation
+        // even though the target app's activate succeeded — paste
+        // target ends up correct but the visible Space stays on the
+        // captured app's full-screen Space (issue #229).
+        //
+        // Fire-and-forget: the call sites live inside MainActor.run
+        // closures that can't suspend, so we kick off a Task that
+        // does the async sleep + restore. The caller continues
+        // synchronously; the Space animation completes on its own.
+        Task { @MainActor in
+            await overlay.performActivationWithSpaceSwitch {
+                Paster.activate(bundleID: origin.bundleID, pid: origin.pid)
+            }
+        }
+    }
+
     @MainActor
     private func liveTrackedPasteTarget() -> PasteTarget? {
         guard let dest = pasteTargetTracker.current else { return nil }
@@ -1882,17 +2163,25 @@ public final class AppState {
             // NEXT dictation session after resetPerDictationOverlayState.
             guard !Task.isCancelled else { return }
             overlay.model.references.append(reference)
+            // Restore the user's pre-hotkey Space/app — capture may
+            // have crossed onto the source app's full-screen Space,
+            // and without this the user is stranded there. See
+            // restoreFocusToDictationOrigin's docstring.
+            restoreFocusToDictationOrigin()
         } catch CaptureError.permissionDenied {
             guard !Task.isCancelled else { return }
             overlay.model.permissionPrompt = "Screen Recording permission denied. Grant in System Settings, then try again."
+            restoreFocusToDictationOrigin()
         } catch let captureError as CaptureError {
             guard !Task.isCancelled else { return }
             // See the matching handler in the pick-by-click path above —
             // CaptureError already carries a user-facing description.
             overlay.model.errorMessage = captureError.localizedDescription
+            restoreFocusToDictationOrigin()
         } catch {
             guard !Task.isCancelled else { return }
             overlay.model.errorMessage = "Couldn't capture window: \(error.localizedDescription)"
+            restoreFocusToDictationOrigin()
         }
     }
 
@@ -1965,8 +2254,45 @@ public final class AppState {
                 }
             )
             if Task.isCancelled { return }
+            // 0.14.0 PR 4 (#219): the model-switch path runs its
+            // own cleanup pass — record the NEW pass's latency so
+            // accepting after the switch reflects what the user
+            // actually accepted, not the original pre-switch run.
+            self?.lastLLMLatencyMs = outcome.llmLatencyMs
             self?.applyResult(outcome.text, cleanupFailureMessage: outcome.failureMessage)
         }
+    }
+
+    /// Single writer for `TranscriptHistory.shared` used by both
+    /// the accept() path and the quick-mode auto-paste path. 0.14.0
+    /// PR 4 (#219) extracted this from accept() so quick-mode
+    /// dictations also land in history (previously they bypassed
+    /// it entirely, which would have undercounted the Stats
+    /// section's "total speaking time" + count metrics for users
+    /// who default to quick mode).
+    ///
+    /// Skips empty text — an empty cleaned result isn't a useful
+    /// history entry and would only add noise. The timing fields
+    /// + reference list are read from the per-dictation instance
+    /// state populated by finalizeCapture + the cleanup task.
+    @MainActor
+    private func appendTranscriptHistory(
+        text: String,
+        target: PasteTarget?,
+        wasCleanupSuccessful: Bool
+    ) {
+        guard !text.isEmpty else { return }
+        let refs = overlay.model.references
+        TranscriptHistory.shared.append(TranscriptEntry(
+            text: text,
+            targetAppName: target?.name,
+            wasCleanupSuccessful: wasCleanupSuccessful,
+            referenceCount: refs.count,
+            referenceLabels: refs.map(\.label),
+            audioDurationMs: lastAudioDurationMs,
+            asrLatencyMs: lastASRLatencyMs,
+            llmLatencyMs: lastLLMLatencyMs
+        ))
     }
 
     @MainActor
@@ -1997,6 +2323,19 @@ public final class AppState {
 struct CleanupOutcome {
     public let text: String
     public let failureMessage: String?
+    /// 0.14.0 PR 4 (#219): total LLM stream latency in
+    /// milliseconds. nil when no LLM ran (the no-LLM-configured
+    /// branch and the empty-transcript branch — both return the
+    /// fallback text without invoking the provider). Threaded
+    /// into TranscriptEntry by AppState so the Stats section can
+    /// surface latency averages.
+    public let llmLatencyMs: Int?
+
+    init(text: String, failureMessage: String?, llmLatencyMs: Int? = nil) {
+        self.text = text
+        self.failureMessage = failureMessage
+        self.llmLatencyMs = llmLatencyMs
+    }
 }
 
 /// Stream a cleanup or refine call into the overlay — chunks are
@@ -2113,6 +2452,7 @@ private func streamCleanupOrRefine(
     }
 
     let assembled = AssembledTextBox()
+    let latencyBox = LatencyBox()
 
     do {
         try await llm.generateStreaming(
@@ -2134,6 +2474,7 @@ private func streamCleanupOrRefine(
                 let kind = asRefine ? "refine" : "cleanup"
                 let ttftMs = Int(summary.ttft * 1000)
                 let totalMs = Int(summary.totalLatency * 1000)
+                latencyBox.set(totalMs)
                 let logLine = "[parleq] \(kind) stream done (ttft=\(ttftMs)ms, total=\(totalMs)ms, in=\(summary.inputTokens) out=\(summary.outputTokens) tok)\n"
                 FileHandle.standardError.write(logLine.data(using: .utf8) ?? Data())
                 // Persist to the usage ledger for the Settings →
@@ -2168,9 +2509,9 @@ private func streamCleanupOrRefine(
             if useOverlay, !Task.isCancelled {
                 overlay.show(state: .cleaning, text: fallback)
             }
-            return CleanupOutcome(text: fallback, failureMessage: nil)
+            return CleanupOutcome(text: fallback, failureMessage: nil, llmLatencyMs: latencyBox.value)
         }
-        return CleanupOutcome(text: final, failureMessage: nil)
+        return CleanupOutcome(text: final, failureMessage: nil, llmLatencyMs: latencyBox.value)
     } catch {
         // Short-circuit on cancellation. The outer Task sees
         // Task.isCancelled === true and skips applyResult, but
@@ -2263,4 +2604,17 @@ private final class AssembledTextBox: @unchecked Sendable {
         _value.append(chunk)
     }
     var value: String { _value }
+}
+
+/// Reference-typed holder for the LLM stream's total latency in
+/// milliseconds. Populated in the `.done(let summary)` case of the
+/// streaming callback (which runs sequentially on URLSession's
+/// stream-handling queue) and read once after the stream
+/// completes. 0.14.0 PR 4 (#219) wires this into the
+/// TranscriptEntry written at accept() time for the Stats section.
+/// Same serial-access pattern as AssembledTextBox.
+private final class LatencyBox: @unchecked Sendable {
+    private var _value: Int?
+    func set(_ ms: Int) { _value = ms }
+    var value: Int? { _value }
 }

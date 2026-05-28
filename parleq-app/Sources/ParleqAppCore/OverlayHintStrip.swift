@@ -101,8 +101,18 @@ struct OverlayHintStrip: View {
 
             case .latchedRecording:
                 // Second-or-later hold in the latched session.
-                // User has the vocabulary; trim to action cues.
-                Text("Release to send · Space: another reference")
+                // User has the vocabulary; trim to action cues. The
+                // spaceArmedDuringHold variant swaps for an "armed"
+                // confirmation when Space is pressed mid-hold, so
+                // the hint behaves symmetrically with .recording —
+                // the user gets the same instant feedback signal
+                // whether they're in their first hold or a later
+                // latched-compose hold.
+                if spaceArmedDuringHold {
+                    Text("Picker opens on release · Esc to cancel")
+                } else {
+                    Text("Release to send · Space: another reference")
+                }
 
             case .idle:
                 // v1 dominant case — no strip. Keeps the existing

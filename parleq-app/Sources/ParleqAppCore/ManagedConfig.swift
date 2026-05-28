@@ -79,6 +79,26 @@ public enum ManagedConfig {
         "awsProfile",
         "azureResource",
         "azureDeployment",
+        // Phase 8 (0.14.0 PR 6, #221) — transcript-history retention.
+        // Both Int, non-negative. 0 disables in-memory dictation
+        // history entirely (zero-retention deployments). Either or
+        // both can be set; whichever triggers first drops entries.
+        // Default unmanaged behavior is "unlimited until quit" per
+        // the in-memory invariant — no on-disk retention surface
+        // either way.
+        "transcriptHistoryMaxEntries",
+        "transcriptHistoryRetentionHours",
+    ]
+
+    /// Subset of `allKeys` whose effective value is an Int.
+    /// Used by the startup-summary helper (and any future
+    /// type-aware dispatcher) to resolve via `managedInt`
+    /// instead of `managedBool` — `managedBool` accepts a
+    /// CFNumber 0/1 fallback for Bool keys, which would silently
+    /// coerce an Int 5 → "true" if checked first.
+    static let intTypedKeys: Set<String> = [
+        "transcriptHistoryMaxEntries",
+        "transcriptHistoryRetentionHours",
     ]
 
     /// Emit a one-line startup summary of which managed keys were
@@ -101,17 +121,55 @@ public enum ManagedConfig {
             // Emit the key=value pairs for each managed key so the log
             // is self-contained — no need to also run `plutil -p ...`.
             let kvPairs = managedKeys.sorted().map { key -> String in
+                // Int-typed keys must be resolved via managedInt
+                // BEFORE managedBool — managedBool coerces a
+                // CFNumber 0/1 into Bool true/false to handle MDM
+                // tools that push 0/1 for boolean keys, but that
+                // same coercion would silently log a managed
+                // transcriptHistoryMaxEntries=5 as "true".
+                if Self.intTypedKeys.contains(key),
+                   let val = managedInt(forKey: key) {
+                    return "\(key)=\(val)"
+                }
                 if let val = managedBool(forKey: key) {
                     return "\(key)=\(val ? "true" : "false")"
                 }
+                if let val = managedInt(forKey: key) {
+                    return "\(key)=\(val)"
+                }
                 if let val = managedString(forKey: key) {
-                    // Sanitize URLs (only key that may contain userinfo /
-                    // query tokens we don't want in the log). Other String
-                    // managed keys (provider/model/auth-mode IDs) are
-                    // non-sensitive.
+                    // Sanitize URLs that may carry userinfo / query / path
+                    // tokens we don't want appearing in ~/.parleq/app.log.
+                    // Other String managed keys (provider/model/auth-mode
+                    // IDs) are non-sensitive and pass through verbatim.
+                    //
+                    // The Compliance Audit dialog (ManagedConfigAuditView)
+                    // already strips paths from these URLs at render time;
+                    // this is the symmetric server-side log sanitization
+                    // so app.log stays consistent with what the audit
+                    // dialog shows. Preserves scheme://host[:port] so
+                    // operators can still tell at a glance whether the
+                    // managed value pointed at the expected host, but
+                    // drops path, query, and fragment.
                     if key == "sparkleUpdateFeedURL", let url = validateFeedURL(val) {
-                        let safe = "\(url.scheme ?? "https")://\(url.host ?? "?")"
-                        return "\(key)=\(safe)"
+                        return "\(key)=\(sanitizedHostOnly(url))"
+                    }
+                    if key == "asrEndpoint" {
+                        // Bundled sentinel is a non-URL string ("bundled"
+                        // or similar) — log it verbatim. Only the
+                        // network-URL form needs scrubbing.
+                        if val == Config.bundledASREndpoint {
+                            return "\(key)=\(val)"
+                        }
+                        if let validated = validateASREndpoint(val),
+                           let url = URL(string: validated) {
+                            return "\(key)=\(sanitizedHostOnly(url))"
+                        }
+                        // Failed validation — don't echo the raw value
+                        // (it may contain credentials or tokens that
+                        // got through some weaker upstream check); log
+                        // the key as present with a placeholder.
+                        return "\(key)=<invalid>"
                     }
                     return "\(key)=\(val)"
                 }
@@ -163,6 +221,35 @@ public enum ManagedConfig {
         return nil
     }
 
+    /// Returns the MDM-managed non-negative Int for `key`, or nil
+    /// if the key is not managed, is not an Int value, or is
+    /// negative. Same CFPreferencesAppValueIsForced semantics as
+    /// `managedBool`. 0 is a valid sentinel value for "disable
+    /// entirely" used by the transcript-retention keys
+    /// (transcriptHistoryMaxEntries / transcriptHistoryRetentionHours,
+    /// 0.14.0 PR 6 / #221). Negative integers are rejected so a
+    /// fat-fingered `-1` MDM push doesn't underflow the retention
+    /// sweep arithmetic.
+    public static func managedInt(forKey key: String) -> Int? {
+        let appID = bundleID as CFString
+        let cfKey = key as CFString
+        guard CFPreferencesAppValueIsForced(cfKey, appID) else {
+            return nil
+        }
+        guard let raw = CFPreferencesCopyAppValue(cfKey, appID) else {
+            return nil
+        }
+        // Bridge CFNumber → Swift Int. Some MDM tools also push
+        // numeric values as String; accept that as a fallback.
+        if let intValue = raw as? Int, intValue >= 0 {
+            return intValue
+        }
+        if let str = raw as? String, let parsed = Int(str), parsed >= 0 {
+            return parsed
+        }
+        return nil
+    }
+
     /// Returns the MDM-managed String for `key`, or nil if the key is
     /// not managed or is not a string value. Same CFPreferencesAppValueIsForced
     /// semantics as `managedBool` — only values from /Library/Managed
@@ -204,6 +291,54 @@ public enum ManagedConfig {
     ///   | bedrock        | sso            | NO      |
     ///   | none / unknown | —              | NO      |
     ///
+    /// Logging-mode policy values pinned by MDM via the `loggingMode`
+    /// key. Recognized values today:
+    ///   - `.lengthOnly` (default; Parleq's only current behavior)
+    ///   - `.verbose`    (anticipated future; reserved for an opt-in
+    ///                    verbose mode that does not yet exist)
+    ///
+    /// Existence of this accessor is the discoverability trap for a
+    /// future PR that adds verbose logging: anyone introducing such a
+    /// mode should grep for `ManagedConfig.loggingMode` to find this
+    /// gate and route the new code through it. Without going through
+    /// this accessor a verbose-mode PR would silently bypass any
+    /// MDM-pinned `lengthOnly` policy. The unrecognized-value branch
+    /// in `Config.applyManagedOverlay` ensures only the recognized
+    /// rawValues reach this code path; any unknown plist value is
+    /// logged + rejected upstream.
+    public enum LoggingMode: String {
+        case lengthOnly
+        case verbose
+    }
+
+    /// Returns the MDM-pinned `LoggingMode`, or nil when unmanaged.
+    /// Nil means "no policy expressed" — the app may use its default
+    /// (length-only). When non-nil, code paths sensitive to the
+    /// distinction (e.g. a future verbose-logging path) MUST honour
+    /// the returned value.
+    public static func loggingMode() -> LoggingMode? {
+        guard let raw = managedString(forKey: "loggingMode") else {
+            return nil
+        }
+        return LoggingMode(rawValue: raw)
+    }
+
+    /// Renders a URL as scheme://host[:port] only — drops path, query,
+    /// fragment, and any userinfo. Used by `logStartupSummary` to
+    /// scrub managed URLs (`sparkleUpdateFeedURL`, `asrEndpoint`)
+    /// before they hit ~/.parleq/app.log. Port is preserved because
+    /// non-standard ports are a useful operator signal (e.g. an
+    /// internal ASR endpoint on :8443) and aren't sensitive on
+    /// their own.
+    private static func sanitizedHostOnly(_ url: URL) -> String {
+        let scheme = url.scheme ?? "https"
+        let host = url.host ?? "?"
+        if let port = url.port {
+            return "\(scheme)://\(host):\(port)"
+        }
+        return "\(scheme)://\(host)"
+    }
+
     /// Strict validator for the managed `sparkleUpdateFeedURL` value.
     /// Centralized so `main.swift`, `Config.applyManagedOverlay`, and
     /// `ManagedConfigAuditView` all agree on what "valid" means.

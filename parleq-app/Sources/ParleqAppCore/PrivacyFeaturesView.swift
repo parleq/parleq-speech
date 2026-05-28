@@ -69,6 +69,17 @@ struct PrivacyFeaturesSectionContent: View {
                 .disabled(model.managedKeys.contains("customModelEntryEnabled"))
             }
 
+            // Dictation history retention (PR 6, #221). Two
+            // optional integer fields backing the managed keys
+            // transcriptHistoryMaxEntries +
+            // transcriptHistoryRetentionHours. Both default unset
+            // (= unlimited within the in-memory invariant). 0
+            // means "disable history entirely" — useful as a
+            // zero-retention deployment lever for compliance
+            // fleets. ManagedIndicator + disabled handled by
+            // the existing pattern via managedKeys.
+            historyRetentionCard
+
             // Managed Configuration audit (#213). Moved here from the
             // menu bar's "View Managed Configuration…" item in 0.13.0
             // as part of the menu-bar declutter — Privacy & Features
@@ -216,5 +227,114 @@ struct PrivacyFeaturesSectionContent: View {
                 model.save()
             }
         )
+    }
+
+    // MARK: - History retention card (PR 6, #221)
+
+    @ViewBuilder
+    private var historyRetentionCard: some View {
+        let maxEntriesManaged = model.managedKeys.contains("transcriptHistoryMaxEntries")
+        let retentionHoursManaged = model.managedKeys.contains("transcriptHistoryRetentionHours")
+        SettingsCard {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Dictation history retention")
+                    .font(.callout.weight(.medium))
+                SettingsCaption("Dictation history lives in memory only — entries clear when you quit Parleq. Use these fields to bound the in-memory retention further. Leave blank for unlimited. Set either to 0 to disable history entirely. Changes apply when you press Return or click out of the field.")
+
+                RetentionIntField(
+                    label: "Keep how many entries?",
+                    value: $model.transcriptHistoryMaxEntries,
+                    managed: maxEntriesManaged,
+                    onCommit: { model.save() }
+                )
+                ManagedCaption(isManaged: maxEntriesManaged)
+
+                RetentionIntField(
+                    label: "For how long (hours)?",
+                    value: $model.transcriptHistoryRetentionHours,
+                    managed: retentionHoursManaged,
+                    onCommit: { model.save() }
+                )
+                ManagedCaption(isManaged: retentionHoursManaged)
+            }
+        }
+    }
+}
+
+/// A retention TextField that stages its String input locally and
+/// only commits to the parent Int? binding on submit (Return) or
+/// focus loss. Without this staging, save-on-every-keystroke
+/// would replace `20 → 100` via the destructive intermediate
+/// states `2 → 1 → 10 → 100`, each one immediately trimming
+/// in-memory history + Stats (Medium RoboRev finding during PR
+/// 6 iteration). The staging keeps the visible field "live" for
+/// the user while the persistent Config-level value waits for an
+/// explicit commit signal.
+@MainActor
+private struct RetentionIntField: View {
+    let label: String
+    @Binding var value: Int?
+    let managed: Bool
+    let onCommit: () -> Void
+
+    @State private var draftText: String = ""
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 6) {
+            Text(label)
+                .font(.system(size: 12))
+                .frame(width: 200, alignment: .leading)
+            TextField("Unlimited", text: $draftText)
+                .textFieldStyle(.roundedBorder)
+                .frame(maxWidth: 120)
+                .disabled(managed)
+                .focused($isFocused)
+                .onSubmit(commit)
+                .onChange(of: isFocused) { _, focused in
+                    if !focused { commit() }
+                }
+                .onAppear { draftText = renderText(value) }
+                .onChange(of: value) { _, newValue in
+                    // Sync if the bound value changes externally
+                    // (e.g. MDM push lands while the user is
+                    // looking at the field). Skip while focused so
+                    // we don't clobber the user's in-progress edit.
+                    if !isFocused {
+                        draftText = renderText(newValue)
+                    }
+                }
+            ManagedIndicator(isManaged: managed)
+            Spacer()
+        }
+    }
+
+    private func renderText(_ v: Int?) -> String {
+        guard let v else { return "" }
+        return "\(v)"
+    }
+
+    private func commit() {
+        guard !managed else {
+            draftText = renderText(value)
+            return
+        }
+        let trimmed = draftText.trimmingCharacters(in: .whitespaces)
+        if trimmed.isEmpty {
+            value = nil
+            onCommit()
+            return
+        }
+        if let parsed = Int(trimmed), parsed >= 0 {
+            value = parsed
+            onCommit()
+            // Re-render in case parsed differs from the literal
+            // (leading zeros, whitespace, etc.).
+            draftText = renderText(parsed)
+            return
+        }
+        // Invalid input — revert the draft to the current bound
+        // value so the field doesn't show garbage.
+        draftText = renderText(value)
     }
 }
