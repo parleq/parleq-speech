@@ -43,16 +43,16 @@ On first launch, the in-process FluidAudio engine downloads Parakeet TDT v3 (~15
 
 Parleq's cleanup pass runs against one of two providers. Default is **Google Gemini direct API**; **AWS Bedrock** is the configurable alternative for environments where Google API calls aren't allowed (compliance, network policy, etc.).
 
-Switch in **Settings → LLM → Provider**. The Settings restart-required banner walks you through quitting and relaunching — required because the provider is read once at app launch.
+Switch in **Settings → Cleanup → Provider**. The Settings restart-required banner walks you through quitting and relaunching — required because the provider is read once at app launch.
 
 ### Gemini setup
 
 1. Visit [Google AI Studio](https://aistudio.google.com/app/apikey) (sign in with a Google account).
 2. **Create API key** → copy it. Free tier is sufficient for dictation use.
 3. Make the key available to Parleq. Two options:
-   - **Settings UI (recommended)**: open Parleq → Settings → LLM (with Provider = Gemini), click **Set Gemini API Key…**, paste the key, Save. Stored in the macOS Keychain — never written to plaintext config files. The Settings UI shows "•••• stored in Keychain" once a key is present.
+   - **Settings UI (recommended)**: open Parleq → Settings → Cleanup (with Provider = Gemini), click **Set Gemini API Key…**, paste the key, Save. Stored in the macOS Keychain — never written to plaintext config files. The Settings UI shows "•••• stored in Keychain" once a key is present.
    - **Environment variable**: add `export GEMINI_API_KEY=...` to your shell rc and launch Parleq from a terminal that has it set. Useful for CI / automated testing. Note that Finder-launched apps don't inherit shell env, so for everyday use the Keychain path is more robust.
-4. Open Settings → LLM, set **Provider = Google Gemini (direct API)** and **Model = gemini-2.5-flash** (or another from the picker). Quit + relaunch.
+4. Open Settings → Cleanup, set **Provider = Google Gemini (direct API)** and **Model = gemini-2.5-flash** (or another from the picker). Quit + relaunch.
 
 Cleanup TTFT against `gemini-2.5-flash` typically lands at 500–700 ms.
 
@@ -102,7 +102,7 @@ Today this is the only Bedrock auth path Parleq's provider supports (see the aut
 
 #### 4. Configure Parleq for Bedrock
 
-In Parleq → Settings → LLM:
+In Parleq → Settings → Cleanup:
 
 1. **Provider** = AWS Bedrock.
 2. **Model** = pick from the dropdown:
@@ -171,7 +171,7 @@ When done debugging, kill the terminal-launched instance (`pkill -f ParleqApp`) 
 
 The key isn't reaching the launched process. Most likely you tried to set `GEMINI_API_KEY` in `~/.zshrc` and then launched from Finder — Finder-launched apps don't inherit shell env at all. Easiest fix:
 
-- Open Parleq → Settings → LLM → **Set Gemini API Key…**, paste the key, Save. Stored in the macOS Keychain — works the same regardless of launch method.
+- Open Parleq → Settings → Cleanup → **Set Gemini API Key…**, paste the key, Save. Stored in the macOS Keychain — works the same regardless of launch method.
 
 If you really want the env-var path (e.g. for `swift run` development), use `launchctl setenv GEMINI_API_KEY '...'` to push it into launchd's environment for the current login session. The Keychain path is recommended for everyday use.
 

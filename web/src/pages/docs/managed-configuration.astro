@@ -332,6 +332,43 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
       </p>
     </div>
 
+    <!-- Transcript-history retention keys (Phase 8) -->
+    <h3 class="mt-10 font-display text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Transcript-history retention</h3>
+    <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      These keys bound the in-memory Recent Dictations history (the cleaned-text list in the Parleq window). Both are integers; either or both can be set, and whichever limit is hit first drops entries. With no policy, history is unbounded until the app quits &mdash; there is no on-disk transcript retention surface either way.
+    </p>
+
+    <div class="mt-6 overflow-x-auto rounded-xl border border-[color:var(--color-border)]">
+      <table class="w-full text-[14px] text-[color:var(--color-text-muted)]">
+        <thead class="border-b border-[color:var(--color-border)] bg-[color:var(--color-surface)]">
+          <tr>
+            <th class="px-4 py-3 text-left font-semibold text-[color:var(--color-text)]">Key</th>
+            <th class="px-4 py-3 text-left font-semibold text-[color:var(--color-text)]">Type</th>
+            <th class="px-4 py-3 text-left font-semibold text-[color:var(--color-text)]">Behavior</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-[color:var(--color-border)]">
+          <tr class="bg-[color:var(--color-bg)]">
+            <td class="px-4 py-3 font-mono text-[13px] text-[color:var(--color-text)]">transcriptHistoryMaxEntries</td>
+            <td class="px-4 py-3 font-mono text-[13px]">Int</td>
+            <td class="px-4 py-3">Maximum number of cleaned dictations kept in the Recent Dictations list at any time. Older entries drop off as new ones arrive. <code class="font-mono text-[12px]">0</code> disables history entirely (see the security invariant below).</td>
+          </tr>
+          <tr class="bg-[color:var(--color-surface)]">
+            <td class="px-4 py-3 font-mono text-[13px] text-[color:var(--color-text)]">transcriptHistoryRetentionHours</td>
+            <td class="px-4 py-3 font-mono text-[13px]">Int</td>
+            <td class="px-4 py-3">Sweep Recent Dictations entries older than this many hours. <code class="font-mono text-[12px]">0</code> disables history entirely (see the security invariant below).</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-5">
+      <p class="text-[14px] leading-relaxed text-amber-900">
+        <strong class="font-semibold">Security invariant &mdash; <code class="font-mono text-[12px]">0</code> is the zero-retention sentinel:</strong>
+        Setting either key to <code class="font-mono text-[12px]">0</code> disables dictation history outright &mdash; Parleq returns immediately from the history-append path, so <em>both</em> the cleaned-text Recent Dictations list <em>and</em> the text-free per-dictation metrics ring stay empty. This is intentional: in regulated deployments even aggregate per-dictation counts can be a privacy signal, so a zero-retention policy also empties the Stats dashboard and stops writing <code class="font-mono text-[12px]">~/.parleq/metrics.jsonl</code>. Neither history nor metrics is ever written to disk in cleaned-text form regardless of these values; the only persisted artifact is the text-free <code class="font-mono text-[12px]">metrics.jsonl</code>, which the <code class="font-mono text-[12px]">0</code> sentinel suppresses entirely.
+      </p>
+    </div>
+
     <h3 class="mt-12 font-display text-xl font-semibold tracking-tight text-[color:var(--color-text)]">
       Known limitation &mdash; customDictionary entry content
     </h3>

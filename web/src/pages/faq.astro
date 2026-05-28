@@ -18,7 +18,7 @@ const sections = [
       },
       {
         q: 'What does the cloud cleanup provider see, and what gets logged on my Mac?',
-        a: `The cleanup provider receives only the transcript — the same words the on-device speech model emitted, plus any custom-dictionary hints you've configured. It never receives audio. On your Mac, Parleq writes three files under \`~/.parleq/\`: \`config.json\` (your settings), \`usage.jsonl\` (one line per cleanup call — timestamp, model, token counts, latency — metadata only, no transcript text), and \`app.log\` (a diagnostic log that records lengths and timing, e.g. "post-utterance 87 ms, 142 chars / 28 words", but never the words themselves). Cleaned text is held in memory during the overlay session and kept in a 20-entry in-memory list for the menu bar's Recent Dictations submenu — wiped on app quit, never written to disk.`,
+        a: `The cleanup provider receives only the transcript — the same words the on-device speech model emitted, plus any custom-dictionary hints you've configured. It never receives audio. On your Mac, Parleq writes four files under \`~/.parleq/\`: \`config.json\` (your settings), \`usage.jsonl\` (one line per cleanup call — timestamp, model, token counts, latency — metadata only, no transcript text), \`app.log\` (a diagnostic log that records lengths and timing, e.g. "post-utterance 87 ms, 142 chars / 28 words", but never the words themselves), and \`metrics.jsonl\` (one text-free record per dictation — duration, latencies, token counts, ref-attached/cleanup-failed flags — so the Stats dashboard spans sessions; no transcript text, kept to the last 30 days). Cleaned text is held in memory during the overlay session and kept in an in-memory list that backs the Parleq window's Recent Dictations section — wiped on app quit, never written to disk.`,
       },
       {
         q: 'Will my prompts and responses be used to train someone\'s model?',
@@ -43,11 +43,11 @@ const sections = [
       },
       {
         q: 'Can I switch providers later?',
-        a: `Yes. Open Settings → LLM → Provider, pick the one you want, and click **Finish & Restart** when prompted (the provider is read once at app launch, so a relaunch is needed for the switch to take effect). Every provider's credentials are stored independently, so switching back later doesn't lose anything you'd configured.`,
+        a: `Yes. Open Settings → Cleanup → Provider, pick the one you want, and click **Finish & Restart** when prompted (the provider is read once at app launch, so a relaunch is needed for the switch to take effect). Every provider's credentials are stored independently, so switching back later doesn't lose anything you'd configured.`,
       },
       {
         q: 'Can I run cleanup entirely locally, with no cloud at all?',
-        a: `Not yet — but you can skip cleanup entirely. Open Settings → LLM → Provider and pick **None — paste raw ASR (skip cleanup)**. Parleq will paste exactly what the on-device speech model emitted, with no punctuation/casing pass. The result is rougher but fully local and zero-cost. A future build may add a local-LLM cleanup option for users with the GPU/RAM headroom; not committed.`,
+        a: `Not yet — but you can skip cleanup entirely. Open Settings → Cleanup → Provider and pick **None — paste raw ASR (skip cleanup)**. Parleq will paste exactly what the on-device speech model emitted, with no punctuation/casing pass. The result is rougher but fully local and zero-cost. A future build may add a local-LLM cleanup option for users with the GPU/RAM headroom; not committed.`,
       },
       {
         q: 'Can I use a model that isn\'t in the dropdown?',
@@ -77,6 +77,15 @@ const sections = [
       {
         q: 'Why does Parleq need Microphone *and* Accessibility permissions?',
         a: `Microphone is for capturing audio (obviously). Accessibility is for two things: (1) reading which app currently has keyboard focus when you press the hotkey, so the cleaned text pastes back into that app even if your focus drifts mid-dictation; (2) synthesizing the paste keystrokes via \`CGEventTap\` — macOS's standard mechanism for system-wide hotkey + paste apps. Parleq doesn't use Accessibility for any kind of screen reading, keystroke logging, or window inspection beyond identifying the originally-focused app's bundle ID. **Screen Recording** is a third permission, requested lazily — only when you use Reference Windows for the first time, not at startup.`,
+      },
+    ],
+  },
+  {
+    title: 'The Parleq window',
+    items: [
+      {
+        q: 'How do I open the Parleq window, and what\'s in it?',
+        a: `Hold your dictation hotkey and tap **P** to summon the Parleq window from anywhere — or pick **Show Parleq…** from the menu-bar icon. (The hold-then-P gesture has a 200 ms threshold, so a quick Option-P still types π; only a deliberate hotkey hold opens the window.) The window has one sidebar with four sections: **Recent Dictations** (your cleaned-text history, with Copy / Paste-here / delete per entry), **Stats** (dictation counts, speaking time, ASR/LLM latencies, token usage + cost on a rolling window), **Settings** (every preference pane, expandable in the sidebar), and **About**. On a narrow window the sidebar auto-hides to give the content room; a toggle in the title bar brings it back. \`Cmd-W\` closes the window — Parleq keeps running in the menu bar.`,
       },
     ],
   },
@@ -123,7 +132,7 @@ const sections = [
       },
       {
         q: 'What can my organization configure or restrict via MDM?',
-        a: `The managed configuration schema has 20 supported keys. The main categories: <strong>Provider and model</strong> — pin the cleanup provider (e.g. <code class="rounded bg-[color:var(--color-bg)] px-1 font-mono text-[13px]">cleanupProvider: bedrock</code>), restrict the allowed model list, and disable the custom-model entry field so users cannot route around the list. <strong>Auth mode</strong> — force federated identity (AWS SSO, Entra ID, gcloud ADC) and disable all static API-key paths globally; previously-stored Keychain credentials are not deleted but are not used while the policy is active. <strong>Feature toggles</strong> — disable image reference capture, file reference, or other optional features your security review requires off. <strong>Updates</strong> — disable automatic update checks, or redirect the Sparkle feed URL to an internal mirror your security team vets before distribution. <strong>Logging mode</strong> — assert the <code class="rounded bg-[color:var(--color-bg)] px-1 font-mono text-[13px]">lengthOnly</code> policy for auditors. All keys are documented in the <a href="${baseUrl}/docs/managed-configuration/" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Managed Configuration reference</a>.`,
+        a: `The managed configuration schema has 31 supported keys. The main categories: <strong>Provider and model</strong> — pin the cleanup provider (e.g. <code class="rounded bg-[color:var(--color-bg)] px-1 font-mono text-[13px]">cleanupProvider: bedrock</code>), restrict the allowed model list, and disable the custom-model entry field so users cannot route around the list. <strong>Auth mode</strong> — force federated identity (AWS SSO, Entra ID, gcloud ADC) and disable all static API-key paths globally; previously-stored Keychain credentials are not deleted but are not used while the policy is active. <strong>Feature toggles</strong> — disable image reference capture, file reference, or other optional features your security review requires off. <strong>Updates</strong> — disable automatic update checks, or redirect the Sparkle feed URL to an internal mirror your security team vets before distribution. <strong>Destination pins</strong> — pin the cloud project, region, resource, and ASR endpoint so an allowed provider can't be re-targeted at a personal tenant. <strong>Transcript-history retention</strong> — bound the in-memory Recent Dictations history by entry count or age, or set it to <code class="rounded bg-[color:var(--color-bg)] px-1 font-mono text-[13px]">0</code> to disable dictation history (and the text-free Stats metrics) entirely. <strong>Logging mode</strong> — assert the <code class="rounded bg-[color:var(--color-bg)] px-1 font-mono text-[13px]">lengthOnly</code> policy for auditors. All keys are documented in the <a href="${baseUrl}/docs/managed-configuration/" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Managed Configuration reference</a>.`,
       },
     ],
   },

@@ -21,9 +21,9 @@ Press a global hotkey, speak, see post-processed text appear in a floating overl
 
 - **Preview-and-refine overlay.** Cleaned text appears in a floating overlay first; further voice commands edit, reformat, or extend it in a multi-turn conversation. Final accept pastes into the originally-focused app.
 - **Mac-native primary.** ASR runs locally on the Apple Neural Engine via FluidAudio Parakeet TDT v3 — ~64 ms transcription, ~150 MB resident, audio never leaves the device. No cold start, no provisioned GPU, no cents-per-call.
-- **Pluggable LLM cleanup across four providers.** Google Gemini (direct AI Studio API) is the default for personal use; Google Vertex AI, AWS Bedrock (Claude Haiku 4.5 / GPT-OSS 120B), and Azure OpenAI are the enterprise paths. Each provider supports both pasted API keys and your existing CLI session (gcloud, AWS SSO, az login). Or skip cleanup entirely and paste raw transcripts.
+- **Pluggable LLM cleanup across five providers.** Google Gemini (direct AI Studio API) is the default for personal use; OpenAI (direct API) is the other quick personal path; Google Vertex AI, AWS Bedrock (Claude Haiku 4.5 / GPT-OSS 120B), and Azure OpenAI are the enterprise paths. Each provider supports both pasted API keys and your existing CLI session (gcloud, AWS SSO, az login). Or skip cleanup entirely and paste raw transcripts.
 - **Custom dictionary.** Names and terms that ASR commonly mis-transcribes (project names, proper nouns) bias both the STT pass (CTC keyword-spotting) and the LLM cleanup (smart-vocabulary hint with optional context blurbs). Each entry can list alternate spellings the ASR commonly emits — the rescorer matches against any of them but always emits the canonical term. Per-entry biasing toggle lets you skip the STT pass on terms that trigger false positives there while keeping the LLM hint. Edits apply on the next dictation, no restart.
-- **Recent dictations recovery.** Last 20 cleaned transcripts are kept in process memory and surfaced via the menu bar's Recent Dictations submenu. Click an entry to copy it back to the clipboard — useful when a paste landed somewhere unexpected. Wiped on app quit; never written to disk.
+- **App window with Recent Dictations + Stats.** Hold the dictation hotkey and tap **P** (or pick "Show Parleq…" from the menu bar) to open the Parleq window: a sidebar with **Recent Dictations** (your cleaned-text history — copy back or paste-here per entry, useful when a paste landed somewhere unexpected), a **Stats** dashboard, **Settings**, and **About**. Recent-dictation text is memory-only, wiped on app quit, never written to disk. Only text-free per-dictation metrics persist (`~/.parleq/metrics.jsonl`, last 30 days) so Stats span sessions.
 - **Compliance-friendly.** Audio is memory-only end-to-end. Logs at `~/.parleq/app.log` carry length-only diagnostics (no transcripts, no audio, no auth values). Provider API keys live in the macOS Keychain (no plaintext-on-disk fallback); CLI-session auth modes (gcloud, AWS SSO, az login) delegate token refresh to the relevant CLI cache so Parleq doesn't store long-lived cloud session tokens directly. Designed to satisfy enterprise policies that prohibit storing input data on the local computer.
 - **Enterprise-deployable via MDM.** IT departments can deploy Parleq fleet-wide and centrally configure provider/model selection, lock auth modes to federated (Entra ID / AWS SSO / gcloud ADC), disable optional features like image-mode references, override the Sparkle update feed to an internal mirror, and surface a Compliance Audit dialog for in-app policy verification. Reads `/Library/Managed Preferences/com.parleq.app.plist` — no SDK or vendor admin portal. See the [Admin Guide](https://parleq.app/docs/admin-guide/) for the deployment workflow.
 
@@ -43,7 +43,7 @@ Grant Microphone + Accessibility on first launch (both required). Hold **right O
 
 First launch downloads the speech model (~150 MB) — the menu-bar icon shows a download glyph until ready, typically 30–60 s on first run and under 5 s on subsequent launches. The icon switches to a microphone once the app is ready to capture.
 
-To enable LLM cleanup, pick a provider in the first-run setup wizard or **Settings → LLM**. Google Gemini is the simplest (one API key from AI Studio); the enterprise paths (Vertex AI, AWS Bedrock, Azure OpenAI) all support your existing CLI sign-in. **See [parleq.app/docs](https://parleq.app/docs/) for per-provider setup walkthroughs.** AWS-specific operational notes are in [`docs/SETUP.md`](docs/SETUP.md).
+To enable LLM cleanup, pick a provider in the first-run setup wizard or **Settings → Cleanup**. Google Gemini is the simplest (one API key from AI Studio); the enterprise paths (Vertex AI, AWS Bedrock, Azure OpenAI) all support your existing CLI sign-in. **See [parleq.app/docs](https://parleq.app/docs/) for per-provider setup walkthroughs.** AWS-specific operational notes are in [`docs/SETUP.md`](docs/SETUP.md).
 
 ## Architecture at a glance
 
@@ -59,7 +59,7 @@ A walkthrough of the four-stage pipeline (capture → transcribe → clean up �
 ## Project posture
 
 - **Open-source from day one** under Apache 2.0. Designed to be self-hosted, forked, modified.
-- **Local-first storage.** Settings, dictionary, and the LLM-call ledger live at `~/.parleq/`. Audio and transcripts are never persisted.
+- **Local-first storage.** Settings, dictionary, the LLM-call ledger, and text-free per-dictation metrics live at `~/.parleq/`. Audio and transcripts are never persisted.
 - **Pluggable seams.** ASR endpoint, LLM provider, AWS profile/region, hotkey binding, custom dictionary — all configurable. Same binary works on a personal Mac with Gemini and on a work Mac with Bedrock.
 
 ## Related
