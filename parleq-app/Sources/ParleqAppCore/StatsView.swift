@@ -36,7 +36,13 @@ struct StatsView: View {
     @State private var usage: UsageAggregate = .empty
 
     var body: some View {
-        ScrollView {
+        // Both-axes scroll (#62): the 2-column card grid can't compress
+        // below ~2×240pt, so on a narrow viewport it would otherwise be
+        // clipped with no way to reach the right column / lower cards.
+        // GeometryReader feeds the `minHeight` pin so the both-axes
+        // ScrollView doesn't vertically center short content.
+        GeometryReader { geo in
+        ScrollView([.vertical, .horizontal]) {
             VStack(alignment: .leading, spacing: 16) {
                 Text("Stats")
                     .font(.title2.weight(.semibold))
@@ -73,8 +79,13 @@ struct StatsView: View {
                     .padding(.top, 8)
             }
             .padding(20)
+            // minWidth keeps the 2-column grid readable; below it the
+            // ScrollView scrolls horizontally instead of clipping the
+            // right column. minHeight pins short content to the top so
+            // the both-axes ScrollView doesn't vertically center it.
+            .frame(minWidth: 520, maxWidth: .infinity, alignment: .leading)
+            .frame(minHeight: geo.size.height, alignment: .topLeading)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
             // Read the disk usage ledger on first appearance. Cheap
             // (a few KB) but worth doing lazily so it doesn't block
@@ -85,6 +96,7 @@ struct StatsView: View {
         }
         .onReceive(usageReloadTimer) { _ in
             usage = UsageLedger.shared.aggregate()
+        }
         }
     }
 

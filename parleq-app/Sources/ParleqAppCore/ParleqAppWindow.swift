@@ -58,6 +58,41 @@ public enum ParleqAppSection: String, Hashable, Identifiable, CaseIterable {
     }
 }
 
+/// Fine-grained sidebar selection for the 0.15.0 unified navigation.
+/// The primary sidebar now folds the Settings sub-sections directly
+/// in (no more secondary Settings sidebar), so the selection has to
+/// distinguish which Settings pane is active. `ParleqAppSection`
+/// stays the top-level identity for the `show(section:)` API + menu
+/// items; this is what the sidebar List + SectionBox actually bind to.
+enum ParleqAppSelection: Hashable {
+    case recent
+    case stats
+    case settings(SettingsView.SettingsSection)
+    case about
+
+    /// True for any Settings pane — used by the reload-on-navigate-in
+    /// trigger that refreshes SettingsModel from disk.
+    var isSettings: Bool {
+        if case .settings = self { return true }
+        return false
+    }
+
+    /// Map a top-level section to a concrete selection. `.settings`
+    /// resolves to a specific pane (the supplied `settingsSection`,
+    /// or Hotkey as the default landing).
+    static func from(
+        _ section: ParleqAppSection,
+        settingsSection: SettingsView.SettingsSection = .hotkey
+    ) -> ParleqAppSelection {
+        switch section {
+        case .recent:   return .recent
+        case .stats:    return .stats
+        case .settings: return .settings(settingsSection)
+        case .about:    return .about
+        }
+    }
+}
+
 /// Manages the lifecycle of the main app window. Singleton because
 /// there's only ever one Parleq app window (Parleq is LSUIElement —
 /// no Dock icon, no multi-window app semantics; the window is the
@@ -143,7 +178,21 @@ public final class ParleqAppWindowController: NSObject {
         // case where a user who'd closed the window while on Settings
         // got Settings again on next hotkey open instead of the
         // landing page they expected.
-        let resolved = section ?? .recent
+        // Map the top-level section to a concrete selection. For
+        // .settings, restore the last-visited Settings pane (persisted
+        // by ParleqAppView under "parleq.settings.selection") so a
+        // restart-initiated reopen lands where the user was, defaulting
+        // to Hotkey.
+        let topLevel = section ?? .recent
+        let resolved: ParleqAppSelection
+        if topLevel == .settings {
+            let lastPane = SettingsView.SettingsSection(
+                rawValue: UserDefaults.standard.string(forKey: "parleq.settings.selection") ?? ""
+            ) ?? .hotkey
+            resolved = .settings(lastPane)
+        } else {
+            resolved = ParleqAppSelection.from(topLevel)
+        }
         if let existing = window, existing.isVisible {
             selectedSection.value = resolved
             existing.makeKeyAndOrderFront(nil)
@@ -156,34 +205,67 @@ public final class ParleqAppWindowController: NSObject {
             settingsModel: settingsModel
         )
         let hosting = NSHostingController(rootView: root)
+        // Do NOT let SwiftUI content drive the window's size at all.
+        //
+        // [.preferredContentSize] auto-grew the window to fit tall
+        // content (pushed it off small displays); [.minSize] tied the
+        // window's minimum to the content's min, which had three bad
+        // effects: (a) the minimum differed per pane (NavigationSplitView
+        // under-reports its detail column's min, so the floor wobbled
+        // as you navigated); (b) a per-pane `minHeight` on the detail
+        // could exceed the window NavigationSplitView allowed, so the
+        // pane overflowed and was center-clipped beyond scroll reach
+        // (Stats); and (c) a per-pane `minWidth` stopped the window
+        // before the detail pane could get narrow enough to trigger the
+        // accessibility horizontal-scroll fallback.
+        //
+        // With [] the window's min/initial size is OURS alone (set via
+        // w.minSize + setContentSize below) — one consistent floor for
+        // every pane, low enough that the detail can get narrow enough
+        // to engage horizontal scroll, and the ScrollView panes always
+        // receive the true viewport height so they scroll instead of
+        // clipping. w.minSize prevents the collapse-to-nothing that []
+        // alone (no explicit floor) used to cause. #61/#62.
+        hosting.sizingOptions = []
         let w = ParleqAppNSWindow(contentViewController: hosting)
         w.title = "Parleq"
         w.styleMask = [.titled, .closable, .miniaturizable, .resizable]
-        // Minimum window size sized so the embedded SettingsView
-        // (which declares its own minWidth: 860 + minHeight: 600,
-        // see SettingsWindow.swift L938) is not clipped behind the
-        // sidebar. ~200pt sidebar + 860pt detail + chrome = 1080;
-        // round to 1100 for a touch of breathing room. PR 2's
-        // restructured Settings (nested sub-sidebar replacing the
-        // current horizontal tab list) will likely shrink the
-        // detail width requirement; minSize can be revisited then.
-        w.minSize = NSSize(width: 1100, height: 640)
-        // Initial frame: 1140×740 centered, clamped to 70% of the
-        // active screen's visible frame so we don't blow past small
-        // laptop displays. Frame autosave overrides this on second
-        // and subsequent launches if the user resized.
+        // Visible frame of the active screen (excludes menu bar +
+        // Dock) — the hard ceiling for default + min size so the
+        // window never exceeds the usable area on small/low-res
+        // displays.
+        let visible = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame
+            ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        // One pane-independent floor for the unified 2-column layout.
+        // Deliberately narrow: at this width the sidebar (~200) leaves
+        // the detail pane below the Settings content's readable minimum
+        // (420pt), so the detail's horizontal-scroll fallback engages
+        // for low-vision / high-display-scaling users instead of
+        // cramming controls. Clamp to the visible frame so a genuinely
+        // tiny display can still satisfy minSize (otherwise AppKit lets
+        // the window exceed the screen to honor an impossible minimum).
+        w.minSize = NSSize(
+            width: min(520, visible.width),
+            height: min(420, visible.height)
+        )
+        // Initial frame: ~1040×720, clamped to the visible frame so it
+        // fits small displays. Frame autosave overrides this on later
+        // launches; the restored frame is re-clamped below.
         let defaultSize = NSSize(
-            width: max(1100, min(1140, (NSScreen.main?.visibleFrame.width ?? 1440) * 0.70)),
-            height: max(640, min(740, (NSScreen.main?.visibleFrame.height ?? 900) * 0.70))
+            width: max(w.minSize.width, min(1040, visible.width)),
+            height: max(w.minSize.height, min(720, visible.height))
         )
         w.setContentSize(defaultSize)
         w.center()
         // setFrameAutosaveName persists size + position across
-        // launches once the user resizes / moves. Independent of
-        // the explicit `setContentSize` above — when a saved frame
-        // exists, AppKit restores it after window creation, which
-        // takes precedence.
+        // launches. When a saved frame exists AppKit restores it after
+        // this call, taking precedence over setContentSize above.
         w.setFrameAutosaveName("ParleqApp")
+        // Re-clamp whatever frame is now in effect (default or restored
+        // autosave) into the visible frame so the window can never sit
+        // partly off-screen — covers a frame saved on a larger external
+        // display and reopened on the laptop alone (#61).
+        w.setFrame(Self.clampFrame(w.frame, into: visible), display: false)
         w.isReleasedWhenClosed = false
         w.collectionBehavior = [.fullScreenAuxiliary]
         w.makeKeyAndOrderFront(nil)
@@ -270,6 +352,20 @@ public final class ParleqAppWindowController: NSObject {
         show(section: .about)
     }
 
+    /// Clamp `frame` so it fits entirely within `bounds` (a screen's
+    /// visibleFrame): shrink the size to the bounds, then shift the
+    /// origin so no edge sits outside. Self-corrects a default or
+    /// restored-autosave frame that would exceed a small/single
+    /// display (#61).
+    static func clampFrame(_ frame: NSRect, into bounds: NSRect) -> NSRect {
+        var f = frame
+        f.size.width = min(f.size.width, bounds.size.width)
+        f.size.height = min(f.size.height, bounds.size.height)
+        f.origin.x = min(max(f.origin.x, bounds.minX), bounds.maxX - f.size.width)
+        f.origin.y = min(max(f.origin.y, bounds.minY), bounds.maxY - f.size.height)
+        return f
+    }
+
     /// `@objc` shim for the App main-menu's "Show Parleq…" entry —
     /// gives AppKit a no-arg selector to dispatch when the user hits
     /// Cmd-, while Parleq's window is frontmost. Without this entry,
@@ -289,9 +385,9 @@ public final class ParleqAppWindowController: NSObject {
 /// passed binding; the box exists outside the view's lifecycle.
 @MainActor
 final class SectionBox: ObservableObject {
-    @Published var value: ParleqAppSection
+    @Published var value: ParleqAppSelection
 
-    init(value: ParleqAppSection) {
+    init(value: ParleqAppSelection) {
         self.value = value
     }
 }

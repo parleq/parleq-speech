@@ -710,6 +710,11 @@ final class SettingsModel: ObservableObject {
 struct SettingsView: View {
     @ObservedObject var model: SettingsModel
 
+    /// Which settings pane to render. Driven by the app-shell primary
+    /// sidebar's selection (0.15.0 unified navigation) — SettingsView
+    /// no longer owns a sub-sidebar or its own selection state.
+    let section: SettingsSection
+
     /// User-visible labels paired with the strings HotkeyBinding.parse
     /// accepts. Keep this in sync with HotkeyListener.HotkeyBinding.parse —
     /// anything we offer here must round-trip through that parser.
@@ -881,7 +886,14 @@ struct SettingsView: View {
     /// Sidebar sections in display order. Each maps to a single
     /// detail-pane view (`hotkeySection`, `audioSection`, …) and
     /// carries a label + SF Symbol for the sidebar List.
-    private enum SettingsSection: String, Hashable, CaseIterable, Identifiable {
+    // Internal (not private) so the app-shell primary sidebar
+    // (ParleqAppView) can fold these sub-sections directly into its
+    // single sidebar — the 0.15.0 unified-navigation restructure that
+    // collapses the old 3-column Settings layout (primary sidebar +
+    // this sub-sidebar + detail) down to 2 columns. SettingsView no
+    // longer owns a sidebar; it renders the pane for whichever section
+    // the app-shell selection points at.
+    enum SettingsSection: String, Hashable, CaseIterable, Identifiable {
         case hotkey, audio, behavior, paste, cleanup, dictionary, usage, permissions, privacyFeatures, updates, advanced
         var id: String { rawValue }
         var label: String {
@@ -958,96 +970,17 @@ struct SettingsView: View {
         return NSColor.black.withAlphaComponent(0.08)
     })
 
-    // Persisted via UserDefaults so (a) the selected tab survives a
-    // normal quit + relaunch, and (b) the restart-initiated reopen
-    // lands on the same tab the user was configuring. SettingsSection
-    // is String-raw-valued so we store the rawValue directly.
-    @AppStorage("parleq.settings.selection") private var selectionRaw: String = SettingsSection.hotkey.rawValue
-    private var selection: SettingsSection {
-        get { SettingsSection(rawValue: selectionRaw) ?? .hotkey }
-        nonmutating set { selectionRaw = newValue.rawValue }
-    }
-    @State private var hoveredSection: SettingsSection? = nil
-
     var body: some View {
         VStack(spacing: 0) {
             if model.requiresRestart {
                 RestartBanner(onRestart: { ParleqApp_relaunch() })
             }
-            HStack(spacing: 0) {
-                sidebar
-                Divider()
-                    .opacity(0.5)
-                detailPane
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Self.detailBackground)
-            }
+            detailPane(for: section)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Self.detailBackground)
         }
-        .frame(minWidth: 860, idealWidth: 920, minHeight: 600, idealHeight: 660)
         .accentColor(Self.brandAccent)
         .onAppear { model.refreshUsage() }
-    }
-
-    /// Hand-rolled sidebar — fixed width, custom row styling. Going
-    /// with this instead of NavigationSplitView + .listStyle(.sidebar)
-    /// because (a) NavigationSplitView's auto-balancing was shrinking
-    /// the sidebar visibly when navigating to wide-content sections
-    /// (Dictionary in particular), and (b) the system sidebar List
-    /// doesn't let us theme the selected-row background — it always
-    /// uses NSColor.controlAccentColor at the AppKit level. With a
-    /// hand-rolled HStack the column width is sticky and the brand
-    /// accent applies cleanly to the selection.
-    private var sidebar: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            ForEach(SettingsSection.allCases) { section in
-                sidebarRow(section)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.vertical, 12)
-        .padding(.horizontal, 8)
-        .frame(width: 200, alignment: .leading)
-        .background(Self.sidebarBackground)
-    }
-
-    private func sidebarRow(_ section: SettingsSection) -> some View {
-        let isSelected = selection == section
-        let isHovered = hoveredSection == section
-        return Button {
-            selection = section
-        } label: {
-            // Custom HStack rather than SwiftUI's `Label` — Label uses
-            // each SF Symbol's intrinsic width, so text after a wide
-            // icon (`keyboard`) shifts right relative to text after
-            // a narrow one (`speaker.wave.2`), making the column
-            // jitter. Pinning the icon to a fixed-width frame aligns
-            // every label's leading edge to the same x.
-            HStack(spacing: 8) {
-                Image(systemName: section.icon)
-                    .font(.callout)
-                    .frame(width: 20, alignment: .center)
-                Text(section.label)
-                    .font(.callout.weight(isSelected ? .semibold : .regular))
-            }
-                .foregroundStyle(isSelected ? Color.white : Color.primary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(rowBackground(isSelected: isSelected, isHovered: isHovered))
-                )
-        }
-        .buttonStyle(.plain)
-        .onHover { hovering in
-            hoveredSection = hovering ? section : (hoveredSection == section ? nil : hoveredSection)
-        }
-    }
-
-    private func rowBackground(isSelected: Bool, isHovered: Bool) -> Color {
-        if isSelected { return Self.brandAccent.opacity(0.85) }
-        if isHovered  { return Color.primary.opacity(0.06) }
-        return Color.clear
     }
 
     /// Right-pane content. Wraps each section view in a scrollable
@@ -1057,31 +990,54 @@ struct SettingsView: View {
     /// capped at 720pt wide so very wide sections (Dictionary)
     /// can't push the sidebar around.
     @ViewBuilder
-    private var detailPane: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                Text(selection.label)
-                    .font(.title.weight(.semibold))
-                    .padding(.bottom, 4)
+    private func detailPane(for section: SettingsSection) -> some View {
+        // Scrolls BOTH axes (#62 accessibility). Vertical is the
+        // normal case (panes taller than the window). Horizontal is
+        // the fallback for low-vision users running high display
+        // scaling (few effective points) or genuinely small screens:
+        // the content holds a readable minimum width and scrolls
+        // sideways instead of cramping. A normal-width window never
+        // triggers horizontal scroll — the content fits within the
+        // 420...720 band.
+        //
+        // GeometryReader supplies the viewport height for the
+        // `minHeight` pin below: a both-axes ScrollView CENTERS content
+        // smaller than its bounds along the scroll axis, so a short
+        // pane (Hotkey) would otherwise float to the vertical middle.
+        // Pinning the content to at least the viewport height, top
+        // aligned, keeps every pane anchored at the top.
+        GeometryReader { geo in
+            ScrollView([.vertical, .horizontal]) {
+                VStack(alignment: .leading, spacing: 18) {
+                    Text(section.label)
+                        .font(.title.weight(.semibold))
+                        .padding(.bottom, 4)
 
-                switch selection {
-                case .hotkey:          hotkeySection
-                case .audio:           audioSection
-                case .behavior:        behaviorSection
-                case .paste:           pasteSection
-                case .cleanup:         cleanupSection
-                case .dictionary:      dictionarySection
-                case .usage:           usageSection
-                case .permissions:     permissionsSection
-                case .privacyFeatures: privacyFeaturesSection
-                case .updates:         updatesSection
-                case .advanced:        advancedSection
+                    switch section {
+                    case .hotkey:          hotkeySection
+                    case .audio:           audioSection
+                    case .behavior:        behaviorSection
+                    case .paste:           pasteSection
+                    case .cleanup:         cleanupSection
+                    case .dictionary:      dictionarySection
+                    case .usage:           usageSection
+                    case .permissions:     permissionsSection
+                    case .privacyFeatures: privacyFeaturesSection
+                    case .updates:         updatesSection
+                    case .advanced:        advancedSection
+                    }
                 }
+                .padding(.horizontal, 28)
+                .padding(.vertical, 24)
+                // minWidth keeps the form readable — below it the
+                // ScrollView scrolls horizontally rather than squashing
+                // controls. maxWidth caps very wide sections (Dictionary)
+                // so they don't sprawl.
+                .frame(minWidth: 420, maxWidth: 720, alignment: .leading)
+                // Fill at least the viewport height, top-aligned, so the
+                // ScrollView doesn't vertically center short content.
+                .frame(minHeight: geo.size.height, alignment: .topLeading)
             }
-            .padding(.horizontal, 28)
-            .padding(.vertical, 24)
-            .frame(maxWidth: 720, alignment: .leading)
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
