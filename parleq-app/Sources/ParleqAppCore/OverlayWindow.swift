@@ -1786,7 +1786,10 @@ private struct BlinkingDots: View {
 /// the Parleq favicon's asymmetric pattern, so the icon literally
 /// IS the Parleq logo when silent and morphs into an audio
 /// waveform when speech comes in.
-private struct ParleqListeningIndicator: View {
+/// Internal (not private) so the quick-mode recording-pulse window can
+/// reuse the exact same brand mark, keeping quick-dictation feedback
+/// visually consistent with the in-overlay listening indicator.
+struct ParleqListeningIndicator: View {
     /// Normalized 0…1 mic level driven by OverlayModel.level. Both
     /// .capturing and .refining states feed live values via
     /// AppState.openRecorder() → recorder.levelHandler →

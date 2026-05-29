@@ -4,7 +4,13 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
-## [0.15.0] - 2026-05-28
+## [0.16.0] - 2026-05-29
+
+A small but lovely bit of feedback for quick dictation. Quick mode — double-tap-and-hold to fire off a dictation without the preview overlay — used to give you nothing visual: just the start sound, and nothing at all if you run with acoustic feedback off. Now Parleq's brand mark appears as a near-transparent floating indicator near the bottom of the screen while you speak, so you always know you're being recorded.
+
+### Added
+
+- **Recording pulse for quick dictation.** During a quick (double-tap-hold) dictation — which shows no overlay — Parleq's five-bar brand mark floats near the bottom-center of the screen: the static Parleq logo at rest, a level-reactive waveform that dances with your voice as you speak. It's the visual analog of the start sound, so it's especially useful with acoustic feedback turned off. The indicator is informational only — near-transparent, never takes keyboard focus, and never intercepts clicks. It reuses the same listening indicator the full overlay shows, so quick-mode feedback matches normal capture. Toggle it off in **Settings → Behavior** (or via `ui.recording_pulse` in `~/.parleq/config.json`); on by default.
 
 Window and navigation polish for the app shell that landed in 0.14.0. The Settings panes fold into the primary sidebar (one column instead of two), so the whole app is navigable from a single list — and that single sidebar auto-hides on a narrow window, handing the full width to whatever you're reading. The window no longer resizes itself to fit content (which used to push it off small or low-resolution displays), it clamps itself onto the visible screen, and every section now enforces the same minimum size so the resize floor stops shifting as you navigate. Plus a couple of smaller quality-of-life wins promoted out of the menu bar: a user-configurable dictation-overlay delay and Stats that persist across launches.
 

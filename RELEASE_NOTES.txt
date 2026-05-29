@@ -1,98 +1,23 @@
-Parleq 0.15.0
+Parleq 0.16.0
 
-Window and navigation polish for the app shell that landed in
-0.14.0. The Settings panes fold into the primary sidebar (one column
-instead of two), so the whole app is navigable from a single list —
-and that single sidebar auto-hides on a narrow window, handing the
-full width to whatever you're reading. The window no longer resizes
-itself to fit content (which used to push it off small or
-low-resolution displays), it clamps itself onto the visible screen,
-and every section now enforces the same minimum size so the resize
-floor stops shifting as you navigate. Plus a couple of smaller
-quality-of-life wins promoted out of the menu bar: a user-configurable
-dictation-overlay delay and Stats that persist across launches.
+A small but lovely bit of feedback for quick dictation. Quick mode —
+double-tap-and-hold to fire off a dictation without the preview
+overlay — used to give you nothing visual: just the start sound, and
+nothing at all if you run with acoustic feedback off. Now Parleq's
+brand mark appears as a near-transparent floating indicator near the
+bottom of the screen while you speak, so you always know you're being
+recorded.
 
 ### Added
 
-- Unified collapsible sidebar. The Settings sub-sections (Hotkey,
-  Audio, Behavior, Paste, Cleanup, Dictionary, Usage, Permissions,
-  Privacy & Features, Updates, Advanced) now live as expandable
-  children directly under Settings in the app's one primary sidebar,
-  replacing the old two-sidebar Settings layout. Clicking anywhere on
-  the Settings row expands/collapses the group — you don't have to hit
-  the small disclosure chevron. One navigable list for the whole app:
-  Recent / Stats / Settings ▸ panes / About.
-
-- Auto-hiding sidebar with an explicit toggle. On a narrow window the
-  sidebar tucks away automatically and gives its width to the detail
-  pane; widen the window and it returns. A sidebar toggle in the title
-  bar brings it back (or dismisses it) at any size — a deliberate,
-  deterministic control rather than a hover zone, so it stays usable
-  for low-vision and motor-impaired users. The hide/show points use a
-  hysteresis band so a resize that lingers near the threshold can't
-  make the sidebar flicker.
-
-- User-configurable dictation-overlay delay. A new Settings → Behavior
-  control sets how long Parleq waits before showing the dictation
-  overlay after you start a hold, so quick taps don't flash the
-  overlay. The same value drives the audio cue and the hold-to-summon
-  (+ P) gesture threshold, keeping all three cues in sync.
-
-- Persistent Stats across sessions. The text-free per-dictation
-  metrics that feed the Stats dashboard now persist to disk (bounded
-  to the last 30 days), so your dictation counts, speaking time,
-  latencies, and token/cost trends span multiple launches instead of
-  resetting every time you quit. The visible Recent Dictations history
-  remains memory-only — only the anonymous metrics are persisted.
-
-- MDM key livePricingEnabled. A new managed-configuration key
-  (Boolean, default true) lets IT pin off the once-per-launch
-  background fetch of the community LiteLLM pricing table from
-  raw.githubusercontent.com (used only to keep Usage/Stats cost
-  figures current). Set false for locked-down / air-gapped fleets;
-  the bundled price table then serves and no such request is made.
-
-- Usage is a top-level section. The token + cost ledger moved out of
-  the Settings sub-sections into the primary sidebar — now
-  Recent / Stats / Usage / Settings / About.
-
-- Check for updates from About. The in-app About section has a
-  Check for updates button (a manual Sparkle check; works even when
-  automatic checks are off or MDM-managed).
-
-### Changed
-
-- Window sizing is now pinned, not content-driven. The app window no
-  longer auto-grows to fit tall content (which could push it partly
-  off a small or low-resolution display) and no longer derives its
-  minimum size from whichever pane happens to be showing. It clamps
-  its frame onto the active screen's visible area on open, enforces one
-  consistent minimum size for every section, and keeps top-aligned
-  content anchored at the top instead of floating to the vertical
-  center.
-
-- Horizontal-scroll fallback for narrow viewports. Settings panes and
-  the Stats dashboard now scroll horizontally as well as vertically
-  when the window is narrower than their readable content width — so on
-  a small screen or at a high display-scaling setting, content scrolls
-  into view instead of being cramped or clipped.
-
-- Removed the Cmd-, shortcut from "Show Parleq". It conventionally
-  means "Open Settings" and was misleading now that the item opens the
-  whole app shell. The way to summon the window — hold your dictation
-  hotkey and tap P — is hinted in the menu tooltip and the overlay.
-
-### Fixed
-
-- Reopening the app window (after Cmd-W) reuses the same window instead
-  of rebuilding it, so sidebar state and the restored frame survive.
-- A window saved on a secondary display stays there on reopen instead
-  of being pulled back to the primary screen.
-- The Stats auto-refresh timer no longer restarts on every render.
-
-### Security
-
-- Logs never persist transcripts or secrets even in trace/error paths:
-  PARLEQ_BEDROCK_TRACE is honored only on a live terminal (never the
-  bundled app's on-disk log), and the ASR error path drops a failed
-  endpoint's response body from the log.
+- Recording pulse for quick dictation. During a quick (double-tap-
+  hold) dictation — which shows no overlay — Parleq's five-bar brand
+  mark floats near the bottom-center of the screen: the static Parleq
+  logo at rest, a level-reactive waveform that dances with your voice
+  as you speak. It's the visual analog of the start sound, so it's
+  especially useful with acoustic feedback turned off. Informational
+  only — near-transparent, never takes keyboard focus, never
+  intercepts clicks. Reuses the same listening indicator the full
+  overlay shows, so quick-mode feedback matches normal capture. Toggle
+  it off in Settings → Behavior (or via ui.recording_pulse in
+  ~/.parleq/config.json); on by default.

@@ -67,6 +67,9 @@ final class SettingsModel: ObservableObject {
     /// on save). Edited in Settings → Advanced.
     @Published var overlayShowDelayMs: Int
     @Published var acousticFeedback: Bool
+    /// Show the near-transparent recording pulse during quick
+    /// (double-tap-hold) dictation. Mirror of Config.recordingPulse.
+    @Published var recordingPulse: Bool
     @Published var continueOtherAudio: Bool
     /// Explicit microphone selection by Core Audio device UID. Empty
     /// string means "System Default + auto-route heuristic" (the
@@ -241,6 +244,7 @@ final class SettingsModel: ObservableObject {
         self.autoAcceptSeconds = config.autoAcceptSeconds
         self.overlayShowDelayMs = config.overlayShowDelayMs
         self.acousticFeedback = config.acousticFeedback
+        self.recordingPulse = config.recordingPulse
         self.continueOtherAudio = config.continueOtherAudio
         self.audioInputDeviceUID = config.audioInputDeviceUID
         self.trailingSpace = config.trailingSpace
@@ -336,6 +340,7 @@ final class SettingsModel: ObservableObject {
         self.autoAcceptSeconds = config.autoAcceptSeconds
         self.overlayShowDelayMs = config.overlayShowDelayMs
         self.acousticFeedback = config.acousticFeedback
+        self.recordingPulse = config.recordingPulse
         self.continueOtherAudio = config.continueOtherAudio
         self.audioInputDeviceUID = config.audioInputDeviceUID
         self.trailingSpace = config.trailingSpace
@@ -447,6 +452,7 @@ final class SettingsModel: ObservableObject {
         }
         c.overlayShowDelayMs = clampedDelay
         c.acousticFeedback = acousticFeedback
+        c.recordingPulse = recordingPulse
         c.continueOtherAudio = continueOtherAudio
         c.audioInputDeviceUID = audioInputDeviceUID.trimmingCharacters(in: .whitespacesAndNewlines)
         c.trailingSpace = trailingSpace
@@ -1174,6 +1180,10 @@ struct SettingsView: View {
                 Spacer()
             }
             SettingsCaption("How long to hold the hotkey before the dictation overlay appears (0–2000 ms; default 200). This is also when the hold-hotkey + P \u{201C}Show Parleq\u{201D} gesture engages — a quicker tap of Option-P still types π.")
+        }
+        SettingsCard {
+            Toggle("Show a recording pulse during quick dictation", isOn: bind(\.recordingPulse))
+            SettingsCaption("Quick (double-tap-and-hold) dictation shows no overlay, so Parleq's bar mark appears near the bottom of the screen and dances with your voice to confirm you're being recorded — useful when acoustic feedback is off. It never takes focus or blocks clicks.")
         }
     }
 
