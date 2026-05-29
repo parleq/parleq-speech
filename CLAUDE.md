@@ -29,6 +29,20 @@ swift run ParleqApp  # build + run (TCC prompts attribute to terminal)
 
 There is no formal test target. Verification is `swift build` + `make install` + manual end-to-end dictation.
 
+## Development & release workflow
+
+The loop that works well here — follow it unless told otherwise:
+
+1. **Work in worktrees.** Build a meaningful chunk on a feature branch in a worktree under `../parleq-worktrees/` (single branch, or stacked branches). Keep the main checkout on `main`.
+2. **AI-assisted step-by-step testing.** When the chunk is ready, the AI assistant builds and restarts the app (`parleq-app/scripts/make-app.sh --debug`, then `pkill -x ParleqApp` + `open parleq-app/build/Parleq.app`) and walks the maintainer through testing one numbered step at a time. The maintainer just follows the steps and reports back — they shouldn't have to drive the build/restart themselves.
+3. **Audit round (often).** After testing passes, do another pass — serious bugs, security, proprietary-data exposure, open-source-license-page completeness (`THIRD_PARTY_LICENSES.md` + `NOTICE`), and unwanted competitor references. Fix findings; re-test.
+4. **Local review pass until clean.** Commit in small increments; run your local code-review and lint tooling (`swift build` at minimum) and resolve what it flags before moving on. Don't push to GitHub until it's clean.
+5. **Hard approval gate.** Do **NOT** push to GitHub or open/update a PR until the maintainer gives explicit approval. Stage everything (branch committed, local checks clean) and wait.
+6. **Version bump happens inside the PR (the AI assistant handles it, not the maintainer).** `make set-version VERSION=x.y.z` (edits `parleq-app/Resources/Info.plist`) + a `CHANGELOG.md` section + rewrite `RELEASE_NOTES.txt` (first line must be `Parleq <version>` — `make release` validates this).
+7. **One PR per logical change.** Bundle phased/stacked work into a single PR. Push + `gh pr create` only after approval; use a separate `Closes #N.` sentence per issue (comma-separated lists only close the first).
+8. **Maintainer merges** (usually squash — so the branch tip won't be an ancestor of `main`; use `git branch -D` after confirming the PR merged).
+9. **Maintainer pulls `main` and runs `make release`** (DMG + GitHub release + appcast). Don't run destructive git ops (worktree remove / branch delete) while `make release` is running — wait for it to exit. After merge + release, clean up worktrees and delete the merged branches.
+
 ## Dependency upgrade policy
 
 `parleq-app/Package.swift` pins each external dependency to a tight version range (e.g. `"7.14.0"..<"7.15.0"` for Soto), and `Package.resolved` is committed to the repo so fresh clones build against the exact versions we tested. This is intentional supply-chain hygiene: it eliminates "works on my machine" version drift and forces dependency bumps to be explicit, reviewable commits rather than silent picks at resolve time.
@@ -132,7 +146,7 @@ These are non-obvious and worth flagging to anyone editing the codebase:
   "azure":      { "resource": "", "deployment": "", "api_version": "2025-04-01-preview", "auth_mode": "apiKey", "family": "standard" },
   "wizard":     { "completed": false },
   "paste":      { "trailing_space": true, "no_trailing_space_apps": [] },
-  "dictionary": { "terms": [{ "term": "Parleq", "context": "the app I'm building", "aliases": ["parlay", "parlez"], "biasing": "asrAndLLM" }] },
+  "dictionary": { "terms": [{ "term": "Parleq", "context": "voice dictation app", "aliases": ["parlay", "parlez"], "biasing": "asrAndLLM" }] },
   "telemetry":  { "enabled": false }
 }
 ```
