@@ -21,3 +21,15 @@ recorded.
   overlay shows, so quick-mode feedback matches normal capture. Toggle
   it off in Settings → Behavior (or via ui.recording_pulse in
   ~/.parleq/config.json); on by default.
+
+### Fixed
+
+- Settings controls on scrollable panes respond on the first click
+  again. A 0.15.0 regression: the both-axes scrolling view added then
+  had a horizontal scroll gesture that competed with embedded controls,
+  so on scrollable panes (Privacy & Features, Permissions, Behavior)
+  toggles/buttons stopped responding and others needed a double-click,
+  and tall panes clipped their intro paragraph at the top with no way
+  to scroll up. Reverted to a plain vertical scroll. (This drops the
+  0.15.0 horizontal-scroll fallback; the auto-hiding sidebar + window
+  minimum width keep the detail pane wide enough in practice.)
