@@ -228,17 +228,15 @@ public final class ParleqAppWindowController: NSObject {
         // as you navigated); (b) a per-pane `minHeight` on the detail
         // could exceed the window NavigationSplitView allowed, so the
         // pane overflowed and was center-clipped beyond scroll reach
-        // (Stats); and (c) a per-pane `minWidth` stopped the window
-        // before the detail pane could get narrow enough to trigger the
-        // accessibility horizontal-scroll fallback.
+        // (Stats); and (c) a per-pane `minWidth` made the window's
+        // minimum width wobble between panes.
         //
         // With [] the window's min/initial size is OURS alone (set via
         // w.minSize + setContentSize below) — one consistent floor for
-        // every pane, low enough that the detail can get narrow enough
-        // to engage horizontal scroll, and the ScrollView panes always
-        // receive the true viewport height so they scroll instead of
-        // clipping. w.minSize prevents the collapse-to-nothing that []
-        // alone (no explicit floor) used to cause. #61/#62.
+        // every pane, and the ScrollView panes always receive the true
+        // viewport height so they scroll instead of clipping. w.minSize
+        // prevents the collapse-to-nothing that [] alone (no explicit
+        // floor) used to cause. #61.
         hosting.sizingOptions = []
         let w = ParleqAppNSWindow(contentViewController: hosting)
         w.title = "Parleq"
@@ -250,13 +248,13 @@ public final class ParleqAppWindowController: NSObject {
         let visible = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame
             ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         // One pane-independent floor for the unified 2-column layout.
-        // Deliberately narrow: at this width the sidebar (~200) leaves
-        // the detail pane below the Settings content's readable minimum
-        // (420pt), so the detail's horizontal-scroll fallback engages
-        // for low-vision / high-display-scaling users instead of
-        // cramming controls. Clamp to the visible frame so a genuinely
-        // tiny display can still satisfy minSize (otherwise AppKit lets
-        // the window exceed the screen to honor an impossible minimum).
+        // Narrow enough to be comfortable on small displays but still
+        // wide enough that, with the sidebar auto-hidden, the detail
+        // pane clears the Settings content's readable width (~420pt) so
+        // panes stay usable without horizontal scrolling. Clamp to the
+        // visible frame so a genuinely tiny display can still satisfy
+        // minSize (otherwise AppKit lets the window exceed the screen to
+        // honor an impossible minimum).
         w.minSize = NSSize(
             width: min(520, visible.width),
             height: min(420, visible.height)

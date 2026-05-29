@@ -47,8 +47,8 @@ struct ParleqAppView: View {
     /// single threshold (sub-pixel jitter would otherwise re-cross it
     /// every frame). `hideBelowWidth` is set so the sidebar tucks away
     /// BEFORE its ~200pt column would squeeze the detail pane below the
-    /// Settings content's readable width — i.e. before the user would
-    /// be forced to scroll horizontally.
+    /// Settings content's readable width — handing the full window width
+    /// to the detail so its panes stay usable on a narrow window.
     private let hideBelowWidth: CGFloat = 720
     private let showAboveWidth: CGFloat = 820
 
