@@ -58,6 +58,14 @@ public final class RecordingPulseWindow {
     public func show() {
         guard !panel.isVisible else { return }
         positionBottomCenter()
+        // Bump the generation so the bar indicator's @State level
+        // history resets to the idle Parleq silhouette — the SwiftUI
+        // host persists across orderOut/orderFront, so without this the
+        // bars would briefly show stale levels from the prior dictation
+        // before live levels arrive ("static logo at rest" on every
+        // fresh show).
+        model.level = 0
+        model.generation &+= 1
         // orderFrontRegardless shows without activating Parleq — the
         // panel is .nonactivatingPanel so focus stays put.
         panel.orderFrontRegardless()
@@ -91,6 +99,10 @@ public final class RecordingPulseWindow {
 final class RecordingPulseModel: ObservableObject {
     /// Latest normalized mic level (0…1). Drives the bar heights.
     @Published var level: Float = 0
+    /// Bumped on each show() to reset the indicator's identity so its
+    /// internal level-history @State starts fresh at the idle Parleq
+    /// silhouette (the SwiftUI host isn't recreated between shows).
+    @Published var generation: Int = 0
 }
 
 /// The visual: Parleq's own brand mark — five amber bars that sit as
@@ -105,6 +117,8 @@ struct RecordingPulseView: View {
 
     var body: some View {
         ParleqListeningIndicator(level: model.level, scale: 2.6)
+            // Reset the indicator's @State level-history on each show.
+            .id(model.generation)
             .shadow(color: .black.opacity(0.35), radius: 5)
             .frame(width: 96, height: 96)
             .accessibilityLabel("Recording")
