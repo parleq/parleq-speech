@@ -42,13 +42,14 @@ struct StatsView: View {
     @State private var usageReloadTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        // Both-axes scroll (#62): the 2-column card grid can't compress
-        // below ~2×240pt, so on a narrow viewport it would otherwise be
-        // clipped with no way to reach the right column / lower cards.
-        // GeometryReader feeds the `minHeight` pin so the both-axes
-        // ScrollView doesn't vertically center short content.
-        GeometryReader { geo in
-        ScrollView([.vertical, .horizontal]) {
+        // Plain vertical ScrollView — same reasoning as
+        // SettingsView.detailPane: a both-axes scroll gesture competes
+        // with embedded controls and mis-anchors tall content so the top
+        // clips. Stats has no controls, but keep it consistent and
+        // top-anchored. The grid's column minimum (below) is sized to
+        // fit the window's minimum width, so horizontal scroll is never
+        // needed.
+        ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 Text("Stats")
                     .font(.title2.weight(.semibold))
@@ -66,8 +67,11 @@ struct StatsView: View {
                 // rows rather than a lopsided 3+1).
                 LazyVGrid(
                     columns: [
-                        GridItem(.flexible(minimum: 240), spacing: 16),
-                        GridItem(.flexible(minimum: 240), spacing: 16)
+                        // 220pt min so two columns fit within the
+                        // window's minimum content width without needing
+                        // horizontal scroll (2×220 + spacing + padding).
+                        GridItem(.flexible(minimum: 220), spacing: 16),
+                        GridItem(.flexible(minimum: 220), spacing: 16)
                     ],
                     spacing: 16
                 ) {
@@ -85,12 +89,7 @@ struct StatsView: View {
                     .padding(.top, 8)
             }
             .padding(20)
-            // minWidth keeps the 2-column grid readable; below it the
-            // ScrollView scrolls horizontally instead of clipping the
-            // right column. minHeight pins short content to the top so
-            // the both-axes ScrollView doesn't vertically center it.
-            .frame(minWidth: 520, maxWidth: .infinity, alignment: .leading)
-            .frame(minHeight: geo.size.height, alignment: .topLeading)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .onAppear {
             // Read the disk usage ledger on first appearance. Cheap
@@ -102,7 +101,6 @@ struct StatsView: View {
         }
         .onReceive(usageReloadTimer) { _ in
             usage = UsageLedger.shared.aggregate()
-        }
         }
     }
 

@@ -50,6 +50,12 @@ public final class AppState {
     /// without changing the default cleanup provider.
     private let contextLLM: (any LLMProvider)?
     private let overlay: OverlayWindow
+    /// Near-transparent floating pulse shown while a quick (double-tap-
+    /// hold) dictation records — the visual stand-in for the start
+    /// sound, since quick mode shows no overlay. Owned here (not
+    /// injected like `overlay`) because it's a self-contained leaf with
+    /// no external wiring. Lifecycle driven by `updateRecordingPulse()`.
+    private let recordingPulse = RecordingPulseWindow()
 
     // MARK: - Per-utterance state
 
@@ -87,6 +93,11 @@ public final class AppState {
             if phase == .idle, latchedFromRefining {
                 latchedFromRefining = false
             }
+            // Drive the quick-mode recording pulse off the phase. It's
+            // the single source of truth for show/hide, so every exit
+            // path (release, cancel, error reset → .idle / .cleaning /
+            // …) tears the pulse down without per-callsite bookkeeping.
+            updateRecordingPulse()
         }
     }
     /// Called on every phase transition. Used by the menu-bar status
@@ -229,7 +240,14 @@ public final class AppState {
     /// captures (#6 — the Pop + BT-routing-click combo on release
     /// sounded like a doubled end-cue; in quick mode the paste is
     /// the end-cue, no sound needed).
-    public private(set) var quickMode = false
+    public private(set) var quickMode = false {
+        didSet {
+            // quickMode can flip false mid-capture (e.g. the user
+            // presses Space, handing off to the full overlay) without a
+            // phase change, so reconcile the pulse here too.
+            if oldValue != quickMode { updateRecordingPulse() }
+        }
+    }
 
     // The configured auto-accept delay. Default 6 s per the design;
     // wired to Config.autoAcceptSeconds at construction time.
@@ -248,6 +266,11 @@ public final class AppState {
     /// and-hold gesture (50–150 ms) and short enough that a real
     /// hold still gets visual feedback before the first word.
     private var overlayShowDelaySeconds: TimeInterval = 0.20
+
+    /// Whether the quick-mode recording pulse is enabled. Refreshed
+    /// from `Config.recordingPulse` at every fresh capture so a Settings
+    /// toggle takes effect on the next dictation without a restart.
+    private var recordingPulseEnabled = true
 
     /// Whether to append a trailing space to pasted text. Wired
     /// from Config.trailingSpace at construction. Effective per
@@ -1430,6 +1453,9 @@ public final class AppState {
         // Refresh the overlay-show delay from config so a Settings
         // change applies on the next dictation without a restart (#56).
         overlayShowDelaySeconds = TimeInterval(freshConfig.overlayShowDelayMs) / 1000.0
+        // Refresh the recording-pulse toggle from config too, so a
+        // Settings change applies on the next quick dictation.
+        recordingPulseEnabled = freshConfig.recordingPulse
         // Clear the per-hold Space-armed flag at every fresh down so
         // a stale "armed" state from a previous hold can't leak
         // visually into this one.
@@ -1485,6 +1511,18 @@ public final class AppState {
         pendingOverlayShowTimer = nil
     }
 
+    /// Show the recording pulse only while a quick-mode capture is in
+    /// flight (and the feature is enabled); hide it otherwise. Called
+    /// from the `phase` and `quickMode` didSets, so it reconciles on
+    /// every relevant transition. show()/hide() are idempotent.
+    private func updateRecordingPulse() {
+        if phase == .capturing, quickMode, recordingPulseEnabled {
+            recordingPulse.show()
+        } else {
+            recordingPulse.hide()
+        }
+    }
+
     private func startRefineCapture() {
         // Cancel any in-flight LLM stream from the prior turn before
         // we overwrite currentText with a refined version.
@@ -1538,6 +1576,9 @@ public final class AppState {
         recorder.levelHandler = { [weak self] value in
             Task { @MainActor [weak self] in
                 self?.overlay.setLevel(value)
+                // Feed the same level to the quick-mode pulse; it's a
+                // no-op while the pulse is hidden.
+                self?.recordingPulse.setLevel(value)
             }
         }
         do {

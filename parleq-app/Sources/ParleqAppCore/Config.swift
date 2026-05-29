@@ -137,6 +137,11 @@ public struct Config: Sendable {
     /// Clamped to 0...2000 on load.
     public var overlayShowDelayMs: Int
     public var acousticFeedback: Bool
+    /// Show a near-transparent floating "recording pulse" during quick
+    /// (double-tap-hold) dictation, which otherwise shows no overlay —
+    /// the visual analog of the start sound for audio-off users.
+    /// Default true.
+    public var recordingPulse: Bool
     public var asrMode: String
     public var llmMode: String
     public var llmModel: String
@@ -364,6 +369,7 @@ public struct Config: Sendable {
         autoAcceptSeconds: 0,
         overlayShowDelayMs: 200,
         acousticFeedback: true,
+        recordingPulse: true,
         asrMode: "default",
         llmMode: "default",
         llmModel: "gemini-2.5-flash",
@@ -435,6 +441,9 @@ public struct Config: Sendable {
                 }
                 if let aucousticFeedback = ui["acoustic_feedback"] as? Bool {
                     c.acousticFeedback = aucousticFeedback
+                }
+                if let recordingPulse = ui["recording_pulse"] as? Bool {
+                    c.recordingPulse = recordingPulse
                 }
             }
             if let asr = dict["asr"] as? [String: Any] {
@@ -1363,6 +1372,7 @@ public struct Config: Sendable {
                 "auto_accept_seconds": config.autoAcceptSeconds,
                 "overlay_show_delay_ms": config.overlayShowDelayMs,
                 "acoustic_feedback": config.acousticFeedback,
+                "recording_pulse": config.recordingPulse,
             ],
             "audio": [
                 "continue_other_audio": config.continueOtherAudio,

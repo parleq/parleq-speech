@@ -67,6 +67,9 @@ final class SettingsModel: ObservableObject {
     /// on save). Edited in Settings → Advanced.
     @Published var overlayShowDelayMs: Int
     @Published var acousticFeedback: Bool
+    /// Show the near-transparent recording pulse during quick
+    /// (double-tap-hold) dictation. Mirror of Config.recordingPulse.
+    @Published var recordingPulse: Bool
     @Published var continueOtherAudio: Bool
     /// Explicit microphone selection by Core Audio device UID. Empty
     /// string means "System Default + auto-route heuristic" (the
@@ -241,6 +244,7 @@ final class SettingsModel: ObservableObject {
         self.autoAcceptSeconds = config.autoAcceptSeconds
         self.overlayShowDelayMs = config.overlayShowDelayMs
         self.acousticFeedback = config.acousticFeedback
+        self.recordingPulse = config.recordingPulse
         self.continueOtherAudio = config.continueOtherAudio
         self.audioInputDeviceUID = config.audioInputDeviceUID
         self.trailingSpace = config.trailingSpace
@@ -336,6 +340,7 @@ final class SettingsModel: ObservableObject {
         self.autoAcceptSeconds = config.autoAcceptSeconds
         self.overlayShowDelayMs = config.overlayShowDelayMs
         self.acousticFeedback = config.acousticFeedback
+        self.recordingPulse = config.recordingPulse
         self.continueOtherAudio = config.continueOtherAudio
         self.audioInputDeviceUID = config.audioInputDeviceUID
         self.trailingSpace = config.trailingSpace
@@ -447,6 +452,7 @@ final class SettingsModel: ObservableObject {
         }
         c.overlayShowDelayMs = clampedDelay
         c.acousticFeedback = acousticFeedback
+        c.recordingPulse = recordingPulse
         c.continueOtherAudio = continueOtherAudio
         c.audioInputDeviceUID = audioInputDeviceUID.trimmingCharacters(in: .whitespacesAndNewlines)
         c.trailingSpace = trailingSpace
@@ -991,53 +997,47 @@ struct SettingsView: View {
     /// can't push the sidebar around.
     @ViewBuilder
     private func detailPane(for section: SettingsSection) -> some View {
-        // Scrolls BOTH axes (#62 accessibility). Vertical is the
-        // normal case (panes taller than the window). Horizontal is
-        // the fallback for low-vision users running high display
-        // scaling (few effective points) or genuinely small screens:
-        // the content holds a readable minimum width and scrolls
-        // sideways instead of cramping. A normal-width window never
-        // triggers horizontal scroll — the content fits within the
-        // 420...720 band.
+        // A plain VERTICAL ScrollView. SwiftUI controls (toggles,
+        // buttons, text fields) hit-test reliably inside it, and content
+        // scrolls from the top so each section's intro paragraph is
+        // always reachable.
         //
-        // GeometryReader supplies the viewport height for the
-        // `minHeight` pin below: a both-axes ScrollView CENTERS content
-        // smaller than its bounds along the scroll axis, so a short
-        // pane (Hotkey) would otherwise float to the vertical middle.
-        // Pinning the content to at least the viewport height, top
-        // aligned, keeps every pane anchored at the top.
-        GeometryReader { geo in
-            ScrollView([.vertical, .horizontal]) {
-                VStack(alignment: .leading, spacing: 18) {
-                    Text(section.label)
-                        .font(.title.weight(.semibold))
-                        .padding(.bottom, 4)
+        // This deliberately is NOT a both-axes `ScrollView([.vertical,
+        // .horizontal])`: a horizontal scroll gesture competes with
+        // embedded controls for clicks (toggles/buttons on scrollable
+        // panes — Privacy & Features, Permissions, Behavior — stopped
+        // responding, and others needed a double-click), and it
+        // mis-anchored tall content so the top paragraph was clipped and
+        // unscrollable. The earlier horizontal-scroll accessibility
+        // fallback wasn't doing real work anyway: the auto-hiding
+        // sidebar plus the window's minimum width keep the detail pane
+        // wider than the content's readable width in practice.
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                Text(section.label)
+                    .font(.title.weight(.semibold))
+                    .padding(.bottom, 4)
 
-                    switch section {
-                    case .hotkey:          hotkeySection
-                    case .audio:           audioSection
-                    case .behavior:        behaviorSection
-                    case .paste:           pasteSection
-                    case .cleanup:         cleanupSection
-                    case .dictionary:      dictionarySection
-                    case .usage:           usageSection
-                    case .permissions:     permissionsSection
-                    case .privacyFeatures: privacyFeaturesSection
-                    case .updates:         updatesSection
-                    case .advanced:        advancedSection
-                    }
+                switch section {
+                case .hotkey:          hotkeySection
+                case .audio:           audioSection
+                case .behavior:        behaviorSection
+                case .paste:           pasteSection
+                case .cleanup:         cleanupSection
+                case .dictionary:      dictionarySection
+                case .usage:           usageSection
+                case .permissions:     permissionsSection
+                case .privacyFeatures: privacyFeaturesSection
+                case .updates:         updatesSection
+                case .advanced:        advancedSection
                 }
-                .padding(.horizontal, 28)
-                .padding(.vertical, 24)
-                // minWidth keeps the form readable — below it the
-                // ScrollView scrolls horizontally rather than squashing
-                // controls. maxWidth caps very wide sections (Dictionary)
-                // so they don't sprawl.
-                .frame(minWidth: 420, maxWidth: 720, alignment: .leading)
-                // Fill at least the viewport height, top-aligned, so the
-                // ScrollView doesn't vertically center short content.
-                .frame(minHeight: geo.size.height, alignment: .topLeading)
             }
+            .padding(.horizontal, 28)
+            .padding(.vertical, 24)
+            // Cap the content width so wide sections (Dictionary) don't
+            // sprawl, and push it to the leading edge.
+            .frame(maxWidth: 720, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -1174,6 +1174,10 @@ struct SettingsView: View {
                 Spacer()
             }
             SettingsCaption("How long to hold the hotkey before the dictation overlay appears (0–2000 ms; default 200). This is also when the hold-hotkey + P \u{201C}Show Parleq\u{201D} gesture engages — a quicker tap of Option-P still types π.")
+        }
+        SettingsCard {
+            Toggle("Show a recording pulse during quick dictation", isOn: bind(\.recordingPulse))
+            SettingsCaption("Quick (double-tap-and-hold) dictation shows no overlay, so Parleq's bar mark appears near the bottom of the screen and dances with your voice to confirm you're being recorded — useful when acoustic feedback is off. It never takes focus or blocks clicks.")
         }
     }
 
