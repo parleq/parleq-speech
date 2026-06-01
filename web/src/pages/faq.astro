@@ -90,6 +90,15 @@ const sections = [
     ],
   },
   {
+    title: 'Gestures & help',
+    items: [
+      {
+        q: 'What keyboard gestures can I use while dictating?',
+        a: `Beyond hold-to-dictate, a few one-key gestures speed things up. **Double-tap-and-hold** the hotkey for quick dictation that pastes straight away with no review step. **While holding the hotkey — or while reviewing a result —** tap **Space** to pick a window as context, **C** to attach the window you're already looking at, or **P** to cancel and bring up the Parleq window. **While reviewing**, press **Enter** to accept and paste, **V** to send the text to a different window, or hold the hotkey again to **refine** it ("make it shorter"). And **?** (or **/**) opens an in-app card listing every gesture — the same reference lives on the How it works page.`,
+      },
+    ],
+  },
+  {
     title: 'Customization',
     items: [
       {
@@ -107,6 +116,14 @@ const sections = [
       {
         q: 'Can I customize the cleanup style (more formal, more terse, etc.)?',
         a: `Not through Settings today. The cleanup prompt is curated to produce light edits — punctuation, capitalization, light filler removal, common ASR misrecognitions — without rewriting your voice. If you want a heavier-handed pass, use the refinement loop instead: hold the hotkey again while the overlay is open and say what you want different ("make it more professional", "shorter, end with a question mark"). The cleanup prompt itself lives in \`SystemPrompts.swift\` if you want to fork.`,
+      },
+      {
+        q: 'Can I change the sounds Parleq makes?',
+        a: `Yes — **Settings → Audio**. Parleq plays a short cue when capture starts and another when it ends; you can set each one independently to any macOS system sound (Tink, Bottle, Frog, Pop, …) or turn either off. Both are governed by the master **Acoustic feedback** toggle, so one switch silences everything. Defaults are Tink (start) and Bottle (end).`,
+      },
+      {
+        q: 'Does Parleq fix it when I correct myself or spell a word out?',
+        a: `Yes, both. If you correct yourself mid-sentence — "scratch that", "no wait", "I mean Rob" — the cleanup pass drops the retracted words and keeps only your final intent (conservatively: if it can't tell whether you're correcting or genuinely listing both, it leaves your words alone). And if you spell a word out loud — "M I R A" — it assembles the letters into the single word and capitalizes it correctly (a name stays a name, an acronym like URL stays all-caps) — the easiest way to fix a name the speech model keeps mishearing.`,
       },
     ],
   },

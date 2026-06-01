@@ -34,12 +34,13 @@ const stages = [
     title: 'Clean up',
     where: 'cloud LLM (or skipped)',
     summary:
-      'The raw transcript streams to a configurable AI provider that lightly cleans the text — capitalization, punctuation, filler-word removal, common transcription errors, and spoken numbers turned into digits when context is technical. Cleaned words stream into the overlay as they arrive.',
+      'The raw transcript streams to a configurable AI provider that polishes it into finished text — capitalization, punctuation, filler-word removal, common transcription errors, and spoken numbers turned into digits when the context is technical. Cleaned words stream into the overlay as they arrive.',
     detail: [
       ['Pluggable providers', 'Six options: Google Gemini direct API (default — free tier, ~500–700 ms TTFT), OpenAI direct API (GPT-4o / GPT-4.1 family), Google Vertex AI (Gemini + Claude on GCP with IAM + audit logs), AWS Bedrock (Claude or GPT-OSS via your AWS account), Azure OpenAI (GPT-4o / GPT-4.1 + reasoning models on Microsoft\'s contract), or skip cleanup entirely and paste raw ASR. The choice is made in Settings or via the first-run setup wizard. For IT-deployed Macs, the provider and allowed model list can be pinned centrally via an MDM-managed configuration profile so users cannot change it.'],
       ['Auth flexibility per provider', 'Each cloud supports both pasted API keys (stored in the macOS Keychain) and your existing CLI session — gcloud Application Default Credentials for Vertex (or service-account JSON), AWS SSO / static IAM keys / scoped Bedrock API keys for Bedrock, az login or resource keys for Azure. Parleq never stores long-lived cloud session tokens directly; the AWS/GCP/Azure CLIs handle refresh through their own caches.'],
       ['Skippable', 'Pick "None — paste raw ASR (skip cleanup)" from the Settings provider list. Parleq will paste the raw transcript exactly as the on-device speech model emitted it. Useful when transcript content must never leave the device.'],
       ['Custom dictionary hint', 'Your dictionary feeds a smart-vocabulary addendum to the cleanup prompt — terms with optional context blurbs and aliases. The LLM judges topic alignment and prefers your canonical spellings without force-correcting genuine homophones.'],
+      ['Catches self-corrections and spelled-out words', 'Say "scratch that", "no wait", or "I mean Rob" and Parleq drops the retracted words, keeping only your final intent (conservatively — when it can\'t tell whether you\'re correcting or listing both, it leaves your words alone). Spell a word aloud — "M I R A" — and it assembles the letters into the single word and capitalizes it correctly: a name stays a name, an acronym like URL stays all-caps. Most useful for fixing a name the speech model misheard.'],
       ['Refinement', 'When the overlay is already open, the next hotkey press re-runs this stage with a different system prompt that takes your speech as an edit instruction over the existing text. Walked through in detail in the section below.'],
     ],
   },
@@ -53,6 +54,41 @@ const stages = [
       ['Focused-app capture', 'The original target is captured at hotkey-down. If your focus drifted while dictating, the paste still lands in the right window.'],
       ['Trailing-space override', 'Specific apps (your terminal, terminal-based editors, anything that handles its own spacing) skip the trailing space. Configurable per-app in Settings.'],
       ['Recent Dictations', 'Your recent cleaned dictations are kept in process memory and listed in the Parleq window\'s Recent Dictations section (hold the hotkey and tap P to open it). Copy any entry back to the clipboard, or paste it into the app you were just in, if a paste landed somewhere unexpected. The text is never written to disk; wiped on app quit.'],
+    ],
+  },
+];
+
+// The same quick reference Parleq shows in-app when you press "?" during
+// a dictation. Grouped the way the help overlay groups them. The hotkey
+// is named once (default: right Option) so the rows can stay generic.
+const gestures = [
+  {
+    group: 'Dictate',
+    rows: [
+      ['Hold the hotkey', 'Dictate — review, then accept'],
+      ['Double-tap + hold the hotkey', 'Quick dictate — pastes straight away'],
+    ],
+  },
+  {
+    group: 'Refine',
+    rows: [
+      ['Hold the hotkey again', 'Revise the reviewed text — say what to change'],
+    ],
+  },
+  {
+    group: 'While dictating, refining, or reviewing',
+    rows: [
+      ['Space', 'Attach another window as context'],
+      ['C', 'Attach the current window as context'],
+      ['P', 'Cancel and show the Parleq window'],
+      ['? or /', 'Show this help'],
+    ],
+  },
+  {
+    group: 'Reviewing your text',
+    rows: [
+      ['Enter', 'Accept & paste to the current app'],
+      ['V', 'Send to a different window'],
     ],
   },
 ];
@@ -89,6 +125,9 @@ const stages = [
     <p class="mt-6 text-lg leading-relaxed text-[color:var(--color-text-muted)]">
       When you hold the hotkey, four stages run in sequence. Three of them stay on your Mac. The middle one — LLM cleanup — talks to a cloud provider you configure (or skip entirely). This page walks each stage and what gets persisted versus what doesn't.
     </p>
+    <p class="mt-5 text-sm">
+      <a href="#gestures" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Just want the keyboard gestures? Jump to the cheat sheet →</a>
+    </p>
   </section>
 
   <!-- Pipeline overview: a concrete data-transformation strip. The
@@ -123,6 +162,50 @@ const stages = [
           <p class="text-[10px] font-medium uppercase tracking-wider text-[color:var(--color-accent)]">Pasted</p>
           <p class="mt-1 font-mono text-[12px] text-[color:var(--color-text)]">into the focused app</p>
         </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Keyboard gestures: the same quick reference the in-app "?" help
+       overlay shows, grouped the same way. Placed high with its own
+       anchor (#gestures) so it's reachable in a single jump, for
+       readers who'd otherwise get lost in the verbose stage cards. -->
+  <section id="gestures" class="mx-auto max-w-3xl scroll-mt-8 px-6 pb-16">
+    <div class="rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6 sm:p-8">
+      <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">
+        Keyboard gestures
+      </p>
+      <h2 class="mt-3 font-display text-2xl font-medium tracking-tight sm:text-3xl">
+        Every gesture, in one place.
+      </h2>
+      <p class="mt-4 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
+        The same quick reference Parleq shows in-app when you press
+        <kbd class="rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-1.5 py-0.5 font-mono text-[12px]">?</kbd>
+        during a dictation. Your dictation hotkey defaults to
+        <kbd class="rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-1.5 py-0.5 font-mono text-[12px]">right Option</kbd>;
+        “the hotkey” below means whichever key you’ve bound.
+      </p>
+
+      <div class="mt-8 space-y-7">
+        {gestures.map((g) => (
+          <div>
+            <h3 class="text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--color-accent)]">
+              {g.group}
+            </h3>
+            <dl class="mt-3 space-y-2">
+              {g.rows.map(([keys, desc]) => (
+                <div class="flex flex-col gap-0.5 sm:flex-row sm:gap-4">
+                  <dt class="font-mono text-[13px] font-medium text-[color:var(--color-text)] sm:w-64 sm:shrink-0">
+                    {keys}
+                  </dt>
+                  <dd class="text-[14px] leading-snug text-[color:var(--color-text-muted)]">
+                    {desc}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        ))}
       </div>
     </div>
   </section>
@@ -187,6 +270,12 @@ const stages = [
           <dt class="text-sm font-semibold text-[color:var(--color-text)]">Space-during-dictation gesture</dt>
           <dd class="mt-1 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
             The fastest way to attach a window: while holding your dictation hotkey, tap <strong>Space</strong>. Audio pauses, the window picker opens, you pick a window (arrow keys + Enter, or click), and the overlay enters a <em>latched</em> state. Hold the hotkey again to keep dictating with the reference attached, or just tap-and-release to send. Tap Space mid-dictation again to attach a second, third, … reference into the same composition. Esc cancels the entire composition.
+          </dd>
+        </div>
+        <div>
+          <dt class="text-sm font-semibold text-[color:var(--color-text)]">Tap C for the window you're looking at</dt>
+          <dd class="mt-1 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
+            When the window you want is the one you dictated from, skip the picker entirely: while holding the hotkey, tap <strong>C</strong> to attach the current front window as a reference. Both Space and C also work while you're <em>reviewing</em> a result, so you can pull in context after seeing the draft and then refine with it.
           </dd>
         </div>
         <div>
