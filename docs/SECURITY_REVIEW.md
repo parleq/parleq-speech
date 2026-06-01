@@ -4,8 +4,8 @@ This document is the starting point for an enterprise security / cloudops review
 
 The intended audience is a security reviewer who needs to decide whether deploying Parleq on a managed workstation meets the organization's policy. We've tried to make every claim grep-able to a specific file in the source tree, so anything here can be verified independently.
 
-**Last reviewed:** 2026-05-13 (in-process FluidAudio consolidation; v0.9.0 retired the bundled HTTP sidecar — the document was updated alongside that change so any sidecar references that survive grepping should be reported as bugs)
-**Source:** [github.com/parleq/parleq-speech](https://github.com/parleq/parleq-speech) at v0.9.0 or later
+**Last reviewed:** 2026-06-01 (v0.17.0 — refreshed to cover all five LLM providers and their auth modes, Reference Windows screen capture, persistent text-free metrics, and the expanded managed-configuration surface)
+**Source:** [github.com/parleq/parleq-speech](https://github.com/parleq/parleq-speech) at v0.17.0 or later
 **Review trigger / context:** [docs/SETUP.md](SETUP.md) covers end-user installation; this document covers the security model.
 
 ---
@@ -15,9 +15,11 @@ The intended audience is a security reviewer who needs to decide whether deployi
 Parleq is an open-source macOS dictation utility. The user holds a global hotkey (right Option), speaks, and a cleaned-up transcript appears in a floating overlay; on accept, the cleaned text pastes into whatever app was focused. Two passes:
 
 1. **Speech-to-text (ASR):** local FluidAudio Parakeet TDT v3 inference on the Apple Neural Engine, **in-process** (no separate sidecar, no listening sockets). Audio never leaves the device.
-2. **LLM cleanup:** the raw transcript goes to a configurable LLM provider (Google Gemini direct API, or AWS Bedrock — `ConverseStream` against Anthropic Claude or OpenAI GPT-OSS). Cleanup output streams into the overlay; on accept it pastes and is forgotten.
+2. **LLM cleanup:** the raw transcript goes to a configurable LLM provider — one of **Google Gemini** (direct API), **OpenAI** (direct API), **Google Vertex AI**, **AWS Bedrock**, or **Azure OpenAI** — or cleanup can be skipped entirely (paste raw ASR). Cleanup output streams into the overlay; on accept it pastes and is forgotten.
 
-There is no server-side storage of audio or transcripts. Parleq's only persistent state is local user configuration (settings, the user's custom dictionary, a metadata-only LLM-call ledger) under `~/.parleq/`.
+There is no server-side storage of audio or transcripts. Parleq's only persistent local state is under `~/.parleq/`: user configuration (settings + custom dictionary), a metadata-only LLM-call ledger, and a metadata-only per-dictation metrics file — none contain transcript text. Provider secrets live in the macOS Keychain.
+
+**What changed since this packet was last reviewed (v0.9.0).** Four LLM providers were added beyond Gemini (OpenAI, Vertex AI, Bedrock, Azure OpenAI), each with its own authentication; the **Reference Windows** feature lets the user optionally attach a window's content (captured via ScreenCaptureKit) as cleanup context, which introduces a Screen Recording permission and a new outbound data class; a persistent **text-free** metrics file was added; and the managed-configuration (MDM) surface grew substantially. Each is covered below.
 
 ---
 
@@ -39,18 +41,19 @@ There is no server-side storage of audio or transcripts. Parleq's only persisten
    │     │                                    │   │
    │     ◄────────── transcript text ─────────┘   │
    │     │                                        │
-   │     ▼ transcript text only                   │
-   └─────┬────────────────────────────────────────┘
+   │     ▼ transcript text (+ attached reference   │
+   │       window content, only if the user used   │
+   │       Reference Windows this dictation)        │
+   └─────┬──────────────────────────────────────────┘
          │
-         │  (HTTPS, API key / SigV4 authed)
+         │  (HTTPS; per-provider auth — API key / Bearer / SigV4 / OAuth)
          │
          ▼
-   ┌──────────────────────┐         ┌──────────────────────┐
-   │   Gemini API         │   OR    │   AWS Bedrock        │
-   │   generativelanguage │         │   bedrock-runtime    │
-   │   .googleapis.com    │         │   .<region>.amazon-  │
-   │                      │         │   aws.com            │
-   └──────────────────────┘         └──────────────────────┘
+   ┌────────────────────────────────────────────────────────┐
+   │   configured LLM provider — exactly one, user-chosen:   │
+   │     Gemini · OpenAI · Vertex AI · Bedrock · Azure OpenAI │
+   │     (per-provider host + auth — see §3.2 and §6)        │
+   └────────────────────────────────────────────────────────┘
                                               │
                                               ▼ (cleaned text)
    ┌──────────────────────────────────────────────────────┐
@@ -68,23 +71,26 @@ There is no server-side storage of audio or transcripts. Parleq's only persisten
 | Raw audio (16 kHz mono WAV) | Process memory only | During a single dictation; freed at end of `AppState.finalizeCapture` |
 | Raw ASR transcript | Process memory only | From `LocalASR.transcribe` return value until paste; never written to disk |
 | Cleaned transcript | Process memory + paste destination app | In overlay during accept; held in `TranscriptHistory` ring buffer (cap 20, in memory only) for the rest of the session; pasted into target app |
-| AWS credentials | macOS-managed AWS CLI cache (`~/.aws/sso/cache/`) | Per the user's existing AWS CLI setup — Parleq does not store these |
-| Gemini API key | macOS Keychain (Parleq-managed) | Persistent until user removes |
-| User dictionary | `~/.parleq/config.json` | User-authored, local-only |
+| Reference-window captures (PNG + OCR'd text) | Process memory only | Captured via ScreenCaptureKit when the user attaches a window; sent to the LLM as part of the cleanup payload; released at end of dictation (accept/cancel). Never written to disk. |
+| Provider secrets (key-based auth modes) | macOS Keychain (service `com.parleq.app`) | Persistent until user removes. Gemini / OpenAI / Azure API keys, the scoped Bedrock API key, static AWS IAM credentials, and the Vertex service-account JSON — whichever the configured provider/mode uses. |
+| CLI-session credentials (SSO / ADC / Entra modes) | AWS/gcloud/az CLI caches (e.g. `~/.aws/sso/cache/`) | Per the user's existing CLI session — Parleq stores nothing and delegates refresh to the CLI. |
+| User dictionary + settings | `~/.parleq/config.json` | User-authored, local-only |
 | LLM-call ledger | `~/.parleq/usage.jsonl` | Token counts + provider/model + target-app bundle ID. **No transcript content.** |
+| Per-dictation metrics | `~/.parleq/metrics.jsonl` | id, timestamp, audio duration, ASR/LLM latency, `hadReference` + `cleanupFailed` booleans. **No transcript text, no window labels.** Bounded retention (§5). |
 
 ### Trust boundaries
 
 Parleq trusts:
-- The user's macOS user account (process isolation, Keychain ACLs, AWS CLI session cache integrity).
-- The configured LLM provider's HTTPS endpoint (Google Gemini or AWS Bedrock).
+- The user's macOS user account (process isolation, Keychain ACLs, AWS/gcloud/az CLI session-cache integrity).
+- The configured LLM provider's HTTPS endpoint — exactly one of Gemini, OpenAI, Vertex AI, Bedrock, or Azure OpenAI (§3.2, §6).
+- macOS system frameworks **ScreenCaptureKit** and **Vision** (used by Reference Windows to capture + OCR a window the user explicitly picks; only exercised when that feature is used).
 - LiteLLM's community pricing JSON (`raw.githubusercontent.com/BerriAI/litellm/...`) — used for cost reporting only; not load-bearing for any user-facing functionality. **Disable-able via the `livePricingEnabled: false` MDM key (fleet-wide) or the `PARLEQ_DISABLE_LIVE_PRICING=1` env var (single user).**
 - The FluidAudio model artifacts in `~/Library/Application Support/FluidAudio/Models/` (downloaded by FluidAudio's own loader from `huggingface.co` on first run; their integrity is FluidAudio's responsibility, not Parleq's).
 
 Parleq does **not** trust:
 - Other processes on the user's device (Keychain is per-app via service identifier; no listening sockets to attack in the first place — see §3.1).
-- Network attackers between the user and AWS / Google (HTTPS via the system trust store; no certificate pinning, but no plaintext fallback either).
-- The user's own custom `asr.endpoint` setting if set (no shared secret with external servers; user manages their own server's auth).
+- Network attackers between the user and the configured provider (HTTPS via the system trust store; no certificate pinning, but no plaintext fallback either).
+- The user's own custom `asr.endpoint` setting if set (no shared secret with external servers; user manages their own server's auth). On managed Macs this setting can be pinned via MDM so a user cannot redirect audio to an arbitrary endpoint (§9.6).
 
 ---
 
@@ -100,12 +106,19 @@ This replaces the bearer-token-authed `127.0.0.1:8767` HTTP sidecar that earlier
 
 ### 3.2 LLM provider authentication
 
-- **Gemini direct API:** API key sent as the `x-goog-api-key` HTTP header on every request (Google supports both header and `?key=…` query param; we use the header so the key never appears in any URL string that framework logging could capture). Resolved per-request from env → Keychain (see §4.1) — no plaintext-on-disk fallback.
-- **Bedrock:** AWS SigV4 via Soto SDK. Today's `BedrockProvider` calls Soto's `.sso()` credential provider specifically, which resolves credentials through AWS Identity Center cached tokens at `~/.aws/sso/cache/`. Static IAM access keys (`~/.aws/credentials`) and the newer scoped Bedrock API keys are not currently consumed by Parleq — first-class support is tracked in #21. Either way, Parleq never stores AWS credentials directly; refresh is delegated entirely to the user's existing AWS CLI session.
+Five providers are supported; the user picks one (Settings or the setup wizard), and on managed Macs the provider + allowed models + auth mode can be pinned via MDM (§6, §9.6). Each provider authenticates differently:
+
+- **Gemini direct API:** API key sent as the `x-goog-api-key` HTTP **header** on every request (Google also accepts a `?key=…` query param; we use the header so the key never appears in a URL string that framework logging could capture). Resolved per-request from env (`GEMINI_API_KEY`) → Keychain (§4.1) — no plaintext-on-disk fallback.
+- **OpenAI direct API:** API key sent as `Authorization: Bearer <key>`. Stored in the Keychain (account `openai-api-key`); env (`OPENAI_API_KEY`) fallback for dev. Endpoint `api.openai.com`.
+- **Google Vertex AI:** two auth modes. **gcloud ADC** — shells out to the user's `gcloud` for a short-lived OAuth token (no secret stored by Parleq). **Service-account JSON** — the SA key JSON is stored in the Keychain (account `vertex-service-account-json`) and Parleq mints OAuth tokens itself via JWT-bearer/RS256 against `oauth2.googleapis.com/token`. Endpoint `{region}-aiplatform.googleapis.com`.
+- **AWS Bedrock:** three auth modes (`aws.auth_mode`). **`sso`** — Soto's SSO credential provider resolves AWS Identity Center cached tokens at `~/.aws/sso/cache/` (no AWS secret stored by Parleq). **`static`** — static IAM access keys, stored **in the Keychain** (account `aws-static-credentials`, JSON-encoded). **`bedrockApiKey`** — a scoped Bedrock API key stored in the Keychain (account `bedrock-api-key`), sent as `Authorization: Bearer <key>` over plain HTTPS by `BedrockBearerProvider`, bypassing Soto entirely. (This supersedes the earlier "#21 not yet supported / Parleq never stores AWS credentials" note — static and bearer-key auth have since shipped and *do* persist credentials in the Keychain. See §4.2.)
+- **Azure OpenAI:** two auth modes (`azure.auth_mode`). **`apiKey`** — the resource key sent as the `api-key:` header, stored in the Keychain (account `azure-openai-key`). **Microsoft Entra ID** — shells out to `az` for a token (no secret stored by Parleq). Endpoint `{resource}.openai.azure.com`.
+
+In every key-based mode the secret lives only in the macOS Keychain (service `com.parleq.app`) — never in a Parleq-owned file on disk. In the CLI-session modes (Bedrock SSO, Vertex ADC, Azure Entra) Parleq stores nothing and delegates token refresh to the official AWS/gcloud/az CLI caches. An MDM key (`staticApiKeysAllowed: false`) can forbid the key-based modes fleet-wide, forcing CLI-session auth.
 
 ### 3.3 Macros / Login Items
 
-The user's hotkey requires the **Accessibility** TCC grant (CGEventTap-based listener). Microphone TCC is required for AVAudioEngine input. No app-sandbox; Hardened Runtime entitlements are minimal: `audio-input`, `network.client`, `network.server`, `cs.allow-jit` (for CoreML JIT). See `parleq-app/Resources/Parleq.entitlements`.
+The user's hotkey requires the **Accessibility** TCC grant (CGEventTap-based listener). **Microphone** TCC is required for AVAudioEngine input. **Screen Recording** TCC is required *only* for the optional Reference Windows feature (ScreenCaptureKit window capture) — it is requested lazily the first time the user attaches a window, never at startup, and the rest of the app works without it. No app-sandbox; Hardened Runtime entitlements are minimal: `audio-input`, `network.client`, `network.server`, `cs.allow-jit` (for CoreML JIT). See `parleq-app/Resources/Parleq.entitlements`. (Microphone, Accessibility, and Screen Recording are TCC permissions, not Hardened Runtime entitlements, so they don't appear in that file — verify them in System Settings → Privacy & Security.)
 
 **Implication:** the Accessibility grant gives Parleq the technical ability to read all keystrokes globally. The actual code uses CGEventTap only for the right-Option press-and-hold detection, but a reviewer should treat this as "Parleq is a privileged process on this machine" and weigh the source code accordingly. Mitigation: open-source code audit, Apple notarization, stable bundle-ID + signature so TCC grants don't silently transfer to a tampered build.
 
@@ -113,23 +126,34 @@ The user's hotkey requires the **Accessibility** TCC grant (CGEventTap-based lis
 
 ## 4. Secrets management
 
-### 4.1 Gemini API key resolution chain
+### 4.1 Provider secrets in the Keychain
 
-`LLMClient.resolveAPIKey()` checks in order:
+Every key-based provider secret lives in the macOS Keychain under service `com.parleq.app`, class `kSecClassGenericPassword`, accessibility `kSecAttrAccessibleAfterFirstUnlock`. The Settings UI is the only writer (`KeychainStore.swift`); secrets are never displayed in plaintext after save and never written to a Parleq-owned file:
 
-1. **Environment variable** `GEMINI_API_KEY` — useful for CI, `swift run` development, dotfile-driven setups. Highest precedence.
-2. **macOS Keychain** — Parleq-managed item under service `com.parleq.app`, account `gemini-api-key`, class `kSecClassGenericPassword`, accessibility `kSecAttrAccessibleAfterFirstUnlock`. The Settings UI is the canonical writer (`KeychainStore.setGeminiAPIKey`); never displayed in plaintext after save.
+| Keychain account | Secret | Used by |
+|---|---|---|
+| `gemini-api-key` | Google AI API key | Gemini direct |
+| `openai-api-key` | OpenAI API key | OpenAI direct |
+| `azure-openai-key` | Azure resource key | Azure OpenAI (`apiKey` mode) |
+| `bedrock-api-key` | Scoped Bedrock API key | Bedrock (`bedrockApiKey` mode) |
+| `aws-static-credentials` | Static IAM access key + secret (JSON) | Bedrock (`static` mode) |
+| `vertex-service-account-json` | GCP service-account key JSON | Vertex AI (`serviceAccount` mode) |
 
-There is **no plaintext-on-disk fallback**. If neither resolution path returns a key, LLM cleanup is disabled and the runtime falls through to pasting the raw ASR transcript (existing best-effort fallback behavior).
+The CLI-session auth modes (Bedrock `sso`, Vertex gcloud ADC, Azure Entra) store **nothing** — they shell out to the user's AWS/gcloud/az CLI for short-lived tokens.
 
-### 4.2 AWS credentials
+**Resolution order (Gemini example).** `LLMClient.resolveAPIKey()` checks env `GEMINI_API_KEY` first (CI / `swift run` / dotfiles), then the Keychain. The other key-based providers resolve their secret from the Keychain (with a dev env var where present). There is **no plaintext-on-disk fallback** for any provider — if no secret resolves, LLM cleanup is disabled and Parleq falls through to pasting the raw ASR transcript.
 
-Parleq does **not** store AWS credentials of any kind. All AWS-credential material is read from AWS-CLI-managed locations:
-- `~/.aws/config` for SSO profile metadata (start URL, account, role) — the only path consumed today.
-- `~/.aws/sso/cache/<sha1>.json` for the OAuth refresh-capable session token.
-- `~/.aws/credentials` for static keys (recognized by AWS CLI / Soto in general, but **not currently consumed by Parleq's `BedrockProvider`** — see roadmap note in §3.2).
+### 4.2 AWS / Bedrock credentials
 
-Today, Soto's SSO credential provider invokes the standard AWS Identity Center token-refresh flow against `oidc.<region>.amazonaws.com` to exchange the cached SSO token for short-lived `AccessKeyId`/`SecretAccessKey`/`SessionToken` triples for each Bedrock call. These short-lived credentials live in the Soto client's in-memory rotating cache and are never persisted by Parleq. When multi-mode auth lands (#21) the same in-memory pattern applies: any pasted Bedrock API keys or static IAM credentials would live in the macOS Keychain (alongside the existing Gemini key) rather than on disk in a Parleq-owned file.
+Bedrock has three auth modes (`aws.auth_mode`); what Parleq stores depends on the mode:
+
+- **`sso` (default):** Parleq stores **nothing**. Soto's SSO credential provider reads profile metadata from `~/.aws/config` and the session token from `~/.aws/sso/cache/<sha1>.json`, refreshing against `oidc.<region>.amazonaws.com` / `portal.sso.<region>.amazonaws.com`. The resulting short-lived `AccessKeyId`/`SecretAccessKey`/`SessionToken` triples live only in Soto's in-memory rotating cache.
+- **`static`:** the user's static IAM access key + secret are stored **in the macOS Keychain** (account `aws-static-credentials`, JSON-encoded) and handed to Soto as static credentials — not read from `~/.aws/credentials`.
+- **`bedrockApiKey`:** a scoped Bedrock API key is stored in the Keychain (account `bedrock-api-key`) and sent as `Authorization: Bearer <key>` over plain HTTPS by `BedrockBearerProvider`, bypassing Soto.
+
+> **Correction vs. the v0.9.0 packet.** Earlier revisions said "Parleq does not store AWS credentials of any kind" and that static / Bedrock-API-key auth was "not currently consumed (tracked in #21)." That work shipped: in `static` and `bedrockApiKey` modes Parleq **does** persist credentials — in the Keychain, never in a Parleq-owned file on disk. The `sso` mode remains zero-storage.
+
+MDM can pin the Bedrock auth mode (`bedrockAuthMode`) and forbid key-based modes fleet-wide (`staticApiKeysAllowed: false`).
 
 ### 4.3 ASR auth tokens
 
@@ -145,6 +169,7 @@ Parleq writes the following files. Audited against the enterprise rule "no input
 |---|---|---|
 | `~/.parleq/config.json` | Settings: hotkey, dictionary terms, AWS profile name, model selection, etc. | User-authored config. No transcripts, no audio, no API keys. |
 | `~/.parleq/usage.jsonl` | One JSON line per LLM call: timestamp, kind (cleanup/refine), provider, model, input/output token counts, latency, target-app bundle ID. | **Metadata only.** No transcript or cleanup-output content. |
+| `~/.parleq/metrics.jsonl` | One JSON line per dictation (`MetricsRecord`): id, timestamp, audio duration, ASR latency, LLM latency, `hadReference` boolean, `cleanupFailed` boolean. Feeds the cross-session Stats dashboard. | **Metadata only — no transcript text, no window labels, no app names.** Bounded by `transcriptHistoryMaxEntries` / `transcriptHistoryRetentionHours` (default 30 days); **not written at all when history retention is set to 0** (zero-retention lever). |
 | `~/.parleq/pricing-cache.json` | LiteLLM JSON snapshot (public reference data). | Not user data. Disable-able via `PARLEQ_DISABLE_LIVE_PRICING=1`. |
 | `~/.parleq/app.log` | Stderr-redirected diagnostics: phase transitions, ASR latency + length, LLM token counts, model-load progress, error stack traces. Capped at 10 MB; truncates to last 5 MB on launch when over the cap. | **No transcript content, no audio, no auth values.** Same redaction discipline as the rest of the codebase. Skipped in dev mode (when stderr is a TTY). |
 | `~/Library/Application Support/FluidAudio/Models/` | Downloaded Parakeet TDT v3 + CTC vocab encoder model weights. | Public model artifacts, not user data. |
@@ -153,6 +178,7 @@ Parleq writes the following files. Audited against the enterprise rule "no input
 - Audio bytes (WAV or PCM). `AudioRecorder.stop()` returns `Data` in memory; the bundled `LocalASR` decodes that buffer to Float samples in-process and hands them to FluidAudio without touching the filesystem. When the user has configured a custom `asr.endpoint`, `ASRClient` POSTs via `request.httpBody` (in-memory), not `httpBodyStream` (potentially file-backed).
 - Transcript text. `AppState`'s ASR diagnostic logs `(N chars / W words)` — length only.
 - Cleanup output text **on disk**. Held in process memory only — first in the overlay during cleanup, then in the `TranscriptHistory` ring buffer (see § 5.1 below) for the rest of the session, then gone on app quit. Never serialized to a file.
+- Reference-window captures. PNG screenshots + OCR'd text from Reference Windows (and any attached file/clipboard content) live in process memory for the duration of one dictation and are released on accept/cancel — never written to disk, never cached between sessions.
 
 This was explicitly verified after a full source sweep on 2026-05-06 (see git history for commits `631f6e0` and `6d64646`).
 
@@ -180,19 +206,24 @@ All network calls are HTTPS via URLSession or Soto, both using the system trust 
 
 | Destination | Purpose | Frequency | Disable? |
 |---|---|---|---|
-| `generativelanguage.googleapis.com` | Gemini cleanup (provider=gemini) | Per dictation | Switch provider to bedrock |
-| `bedrock-runtime.<region>.amazonaws.com` | Bedrock cleanup (provider=bedrock) | Per dictation | Switch provider to gemini |
-| `oidc.<region>.amazonaws.com` | SSO token refresh (Bedrock path) | Periodic, when token nears expiry | N/A (managed by Soto) |
-| `portal.sso.<region>.amazonaws.com` | SSO GetRoleCredentials (Bedrock path) | Periodic | N/A (managed by Soto) |
+| `generativelanguage.googleapis.com` | Gemini cleanup (provider=gemini) | Per dictation | Switch provider / skip cleanup |
+| `api.openai.com` | OpenAI cleanup (provider=openai) | Per dictation | Switch provider / skip cleanup |
+| `{region}-aiplatform.googleapis.com` | Vertex AI cleanup (provider=vertex) | Per dictation | Switch provider / skip cleanup |
+| `bedrock-runtime.<region>.amazonaws.com` | Bedrock cleanup (provider=bedrock) | Per dictation | Switch provider / skip cleanup |
+| `{resource}.openai.azure.com` | Azure OpenAI cleanup (provider=azure) | Per dictation | Switch provider / skip cleanup |
+| `oidc.<region>.amazonaws.com`, `portal.sso.<region>.amazonaws.com` | AWS SSO token refresh (Bedrock `sso` mode) | Periodic, near token expiry | N/A (managed by Soto) |
+| `oauth2.googleapis.com` | Vertex service-account OAuth token mint (`serviceAccount` mode) | Periodic, token refresh | Use gcloud ADC mode |
+| `login.microsoftonline.com` | Azure Entra ID token (Entra mode, via `az`) | Periodic, token refresh | Use `apiKey` mode |
 | `raw.githubusercontent.com/BerriAI/litellm/...` | LiteLLM pricing JSON | Once per 24 h, on launch | MDM `livePricingEnabled: false` (fleet) or `PARLEQ_DISABLE_LIVE_PRICING=1` (single user) |
 | `huggingface.co` (FluidAudio's loader) | First-run model download (Parakeet TDT v3 ≈ 150 MB; CTC encoder ≈ 97 MB if custom dictionary used) | Once per machine, then cached at `~/Library/Application Support/FluidAudio/Models/` | N/A — bundled ASR requires the models. Switch to a custom `asr.endpoint` to skip. |
 | `parleq.app/appcast.xml` | Sparkle auto-update check | On app launch + every 24 h (default; configurable) | Settings → Updates → "Automatically check for updates" off. The menu-bar "Check for Updates…" item still hits the URL on demand. |
 | `github.com/parleq/parleq-speech/releases/download/...` | Downloads the .dmg referenced by the appcast, when the user accepts an update prompt | Per update install (user-initiated) | Don't accept the prompt; the request never fires. |
 
 **Outbound data classifications:**
-- Transcript text → LLM provider on cleanup (intentional, the entire point).
-- AWS request metadata (model ID, region, request body of token-shaped JSON) → Bedrock.
-- API key in Gemini URL query parameter → Gemini.
+- Transcript text → the configured LLM provider on cleanup (intentional, the entire point).
+- Attached reference content (OCR'd window/file/clipboard text, or a PNG when a vision model is selected) → the configured LLM provider, **only** when the user used Reference Windows for that dictation (§9.6).
+- Request metadata (model ID, region/resource, token-shaped JSON body) → the provider.
+- Provider auth travels in headers, never in a URL: `x-goog-api-key` (Gemini), `Authorization: Bearer` (OpenAI; Bedrock `bedrockApiKey` mode), `api-key` (Azure `apiKey` mode), SigV4 signature (Bedrock `sso`/`static`), OAuth bearer (Vertex; Azure Entra).
 - Sparkle's update check sends a User-Agent including the app version + macOS version; no other identifying information. The appcast response is a static XML file; Sparkle verifies each enclosure's Ed25519 signature against the `SUPublicEDKey` baked into Info.plist before installing.
 - No telemetry, no analytics, no crash reporting to any Parleq-controlled server. Parleq itself has no backend.
 
@@ -249,8 +280,8 @@ Sparkle sends a User-Agent string containing the app version and macOS version w
 
 ### Implementation references
 
-- `parleq-app/Sources/ParleqApp/ParleqApp.swift` — `SPUStandardUpdaterController` instantiation.
-- `parleq-app/Sources/ParleqApp/UpdatesView.swift` — Settings → Updates pane.
+- `parleq-app/Sources/parleq-app/main.swift` — `SPUStandardUpdaterController` instantiation.
+- `parleq-app/Sources/ParleqAppCore/UpdatesView.swift` — Settings → Updates pane.
 - `parleq-app/Resources/Info.plist` — `SUFeedURL` + `SUPublicEDKey`.
 - `web/public/appcast.xml` — the feed itself, regenerated by `make release` per release.
 - `Makefile` — `release` recipe runs `sign_update` against each .dmg + inserts the corresponding `<item>` into the appcast.
@@ -270,13 +301,15 @@ The following items were identified during an internal security audit and have b
 | 5 | Accessibility entitlement = full keystroke read capability. | MEDIUM | **DOCUMENTED** (§3.3). No technical fix possible without losing the global hotkey feature. Mitigated by code transparency, notarization, and stable bundle ID. |
 | 6 | `usage.jsonl` records target-app bundle IDs (user behavior metadata). | LOW | **DOCUMENTED** (§5). Not transcript content. Optional config knob to suppress can be added on request. |
 
+**Changes since this audit (v0.9.0 → v0.17.0).** Four more LLM providers shipped, each authenticated as in §3.2 with key-based secrets confined to the Keychain (§4.1); the multi-mode AWS auth previously tracked as #21 landed (correction in §4.2). Reference Windows added a Screen Recording permission and a new outbound data class (§3.3, §9.6). The only new persistent file, `metrics.jsonl`, is metadata-only (§5) — no new on-disk store of transcript content was introduced. These post-date the 2026-05-06 audit and have not had a dedicated audit pass of their own; they are documented here for reviewer awareness.
+
 ---
 
 ## 9. Known limitations & accepted risks
 
 ### 9.1 Cleanup payload sent to LLM provider
 
-When LLM cleanup is enabled (default), the **raw transcript text** is sent to Google Gemini or AWS Bedrock as part of the cleanup request. This is intentional — it's the entire point of the cleanup pass — but it means transcript content crosses an organizational boundary. Mitigation: pick the provider that matches your data-residency policy (Gemini = Google; Bedrock = your own AWS account).
+When LLM cleanup is enabled (default), the **raw transcript text** (plus any attached reference content — §9.6) is sent to the configured LLM provider as part of the cleanup request. This is intentional — it's the entire point of the cleanup pass — but it means transcript content crosses an organizational boundary. Mitigation: pick the provider that matches your data-residency policy — Gemini = Google; OpenAI = OpenAI; Vertex AI = Google but in *your* GCP project (IAM + audit logs); Bedrock = your own AWS account; Azure OpenAI = your Microsoft tenant. On managed Macs the provider can be pinned fleet-wide via MDM (§9.7).
 
 If transcript content must never leave the device, the user can disable LLM cleanup by simply not configuring an API key. Dictation still works; the overlay shows the raw ASR transcript and the user can edit before pasting. This isn't a documented "feature flag" per se, just a side effect of the existing best-effort fallback path.
 
@@ -296,6 +329,14 @@ Parleq does not log a per-dictation audit record beyond token counts. Organizati
 
 We rely on the system trust store for TLS validation. If your security policy requires pinned certificates for outbound connections, that's a feature request — not currently implemented.
 
+### 9.6 Reference Windows captures sent to the LLM
+
+When the user attaches a window (or file / clipboard) as context, that content — OCR'd text via Vision, or a full-resolution PNG when a vision-capable model is selected — is sent to the configured LLM provider alongside the transcript. It is opt-in per dictation and never persisted (§2, §5), but it means on-screen content the user points at crosses the same provider boundary as the transcript, and the feature requires the Screen Recording TCC grant (§3.3). The feature and each sub-capability can be disabled fleet-wide via MDM (`referenceWindowsEnabled`, `imageReferenceEnabled`, `clipboardReferenceEnabled`, `fileReferenceEnabled`); when the parent key is off, Parleq never requests Screen Recording and the window picker is unavailable.
+
+### 9.7 Destination pinning on managed Macs
+
+Beyond enabling/disabling features, managed configuration can pin *where data goes* so a user can't redirect it to a personal account: cleanup/context provider, allowed providers + models (`cleanupProvider`, `cleanupAllowedProviders`, `cleanupModel`, `contextProvider`, …), auth mode (`bedrockAuthMode`, `azureAuthMode`, `staticApiKeysAllowed`), the Sparkle update feed URL, logging mode, transcript-history retention, and the **ASR endpoint** (pinning it closes the "point dictation audio at an arbitrary server" gap within an otherwise-allowed config). The authoritative key set lives in `ManagedConfig.swift`; the public reference is [parleq.app/docs/managed-configuration](https://parleq.app/docs/managed-configuration/).
+
 ---
 
 ## 10. Where to look in source
@@ -304,17 +345,20 @@ For reviewers who want to verify the claims above against code:
 
 | Concern | File(s) |
 |---|---|
-| Audio in memory only | `parleq-app/Sources/ParleqApp/AudioRecorder.swift`, `LocalASR.swift`, `ASRClient.swift` |
-| No listening sockets on the default path | `parleq-app/Sources/ParleqApp/LocalASR.swift` (FluidAudio called as a Swift function, not over HTTP); confirm with `lsof -i -nP -a -p <pid>` on a running Parleq (the `-a` flag is required — without it, lsof ORs the filters instead of ANDing) |
-| Keychain for Gemini key | `parleq-app/Sources/ParleqApp/KeychainStore.swift`, `LLMClient.swift:resolveAPIKey()` |
-| AWS SSO via Soto | `parleq-app/Sources/ParleqApp/BedrockProvider.swift` |
-| Length-only ASR diagnostic | `parleq-app/Sources/ParleqApp/AppState.swift` (search "ASR batch") |
-| Count-only vocab log | `parleq-app/Sources/ParleqApp/LocalASR.swift` (search "[vocab]") |
-| Usage ledger schema (metadata-only) | `parleq-app/Sources/ParleqApp/UsageLedger.swift` |
+| Audio in memory only | `parleq-app/Sources/ParleqAppCore/AudioRecorder.swift`, `LocalASR.swift`, `ASRClient.swift` |
+| No listening sockets on the default path | `parleq-app/Sources/ParleqAppCore/LocalASR.swift` (FluidAudio called as a Swift function, not over HTTP); confirm with `lsof -i -nP -a -p <pid>` on a running Parleq (the `-a` flag is required — without it, lsof ORs the filters instead of ANDing) |
+| Provider secrets in the Keychain (all six accounts) | `parleq-app/Sources/ParleqAppCore/KeychainStore.swift` |
+| Per-provider auth + endpoints | `LLMClient.swift`/`LLMStreaming.swift` (Gemini), `OpenAIProvider.swift`, `VertexProvider.swift` + `VertexServiceAccount.swift`, `BedrockProvider.swift` + `BedrockBearerProvider.swift`, `AzureOpenAIProvider.swift` — all under `parleq-app/Sources/ParleqAppCore/` |
+| Screen Recording permission + window capture/OCR | `parleq-app/Sources/ParleqAppCore/Permissions.swift`, `ReferenceCapture.swift` |
+| Managed-configuration (MDM) keys | `parleq-app/Sources/ParleqAppCore/ManagedConfig.swift` |
+| Per-dictation metrics file (text-free) | `parleq-app/Sources/ParleqAppCore/TranscriptHistory.swift` (`persistMetrics`, `MetricsRecord`) |
+| Length-only ASR diagnostic | `parleq-app/Sources/ParleqAppCore/AppState.swift` (search "ASR batch") |
+| Count-only vocab log | `parleq-app/Sources/ParleqAppCore/LocalASR.swift` (search "[vocab]") |
+| Usage ledger schema (metadata-only) | `parleq-app/Sources/ParleqAppCore/UsageLedger.swift` |
 | Hardened Runtime entitlements | `parleq-app/Resources/Parleq.entitlements` |
-| Recent Dictations in-memory history | `parleq-app/Sources/ParleqApp/TranscriptHistory.swift`, `MenuBar.swift` (`menuNeedsUpdate` rebuild) |
+| Recent Dictations in-memory history | `parleq-app/Sources/ParleqAppCore/TranscriptHistory.swift`, `MenuBar.swift` (`menuNeedsUpdate` rebuild) |
 | `Package.resolved` (pinned versions) | `parleq-app/Package.resolved` |
-| LiteLLM disable knob | `parleq-app/Sources/ParleqApp/PricingCache.swift` (search "PARLEQ_DISABLE_LIVE_PRICING") |
+| LiteLLM disable knob | `parleq-app/Sources/ParleqAppCore/PricingCache.swift` (search "PARLEQ_DISABLE_LIVE_PRICING") |
 | Code-signing flow | `parleq-app/scripts/make-app.sh` |
 
 ---
@@ -326,7 +370,7 @@ If you have 15 minutes, verify the high-impact claims by running these from a ch
 ```bash
 # 1. Confirm there is no longer a sidecar package or supervisor.
 test ! -d third_party/fluidaudio-sidecar && echo "OK: sidecar package removed"
-test ! -f parleq-app/Sources/ParleqApp/SidecarSupervisor.swift && echo "OK: supervisor removed"
+test ! -f parleq-app/Sources/ParleqAppCore/SidecarSupervisor.swift && echo "OK: supervisor removed"
 
 # 2. Confirm no listening sockets are bound by a running Parleq.
 #    (Launch /Applications/Parleq.app first; replace the pgrep target
@@ -362,6 +406,8 @@ For the operational side (AWS account configuration, Identity Center, Bedrock mo
 
 ## Appendix: change log relevant to security posture
 
+- **2026-06-01** (v0.17.0): security-review refresh — documented all five LLM providers + their auth modes, Reference Windows screen capture, the text-free `metrics.jsonl`, and the expanded MDM surface. (0.17.0's own feature changes — dictation/review gestures, configurable sounds, self-correction/spelled-out-word cleanup rules — stay within existing trust boundaries.)
+- **v0.10.0–v0.16.0** (rolled up): multi-provider LLM auth added — OpenAI direct, Vertex AI (gcloud ADC / service-account JSON), Azure OpenAI (resource key / Entra), and Bedrock `static` + scoped-`bedrockApiKey` modes — with all key-based secrets confined to the Keychain; **Reference Windows** (ScreenCaptureKit capture + Vision OCR; Screen Recording TCC; memory-only); persistent **text-free** `metrics.jsonl` (0.15.0; bounded retention, zero-retention-able); and a much larger **managed-configuration** surface (provider/model/auth pins, `asrEndpoint` pin, `staticApiKeysAllowed`, `livePricingEnabled`, transcript-history retention keys).
 - **2026-05-06** (`6d64646`): bearer-token sidecar auth, Keychain Gemini key, Soto pin tightening, LiteLLM disable knob.
 - **2026-05-05** (`631f6e0`): compliance pass — audio in memory only, transcript redaction from all logs.
 - **2026-05-05** (`50d5905`): Bedrock auth — AWS_PROFILE env-var fallback, Soto INI parser bug documented.
