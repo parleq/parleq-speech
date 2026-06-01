@@ -76,6 +76,29 @@ public final class OverlayWindow {
     public var onAccept: (() -> Void)?
     public var onCancel: (() -> Void)?
     public var onCopy: (() -> Void)?
+    /// AppState wires this to the "send to a different window" flow.
+    /// Triggered by a bare V keypress while the overlay has key focus
+    /// during review (the focus-free hold+V variant is deferred — it
+    /// collides with the awaitingAccept refine timer).
+    public var onSendTo: (() -> Void)?
+    /// AppState wires this to the "?" help overlay. Triggered by "?" /
+    /// "/" while the overlay has key focus (during capture or review).
+    public var onShowHelp: (() -> Void)?
+    /// AppState wires this to "attach another window as context" during
+    /// review. Triggered by a bare Space keypress while the overlay has
+    /// key focus during review (mirrors the hold+Space gesture, but as a
+    /// resting-state key). The attached reference feeds the next refine.
+    public var onAttachWindow: (() -> Void)?
+    /// AppState wires this to "attach the current window as context"
+    /// during review. Triggered by a bare C keypress while the overlay
+    /// has key focus during review (mirrors the hold+C gesture). The
+    /// attached reference feeds the next refine.
+    public var onAttachCurrent: (() -> Void)?
+    /// AppState wires this to "show the Parleq window" (cancelling the
+    /// current dictation). Triggered by a bare P keypress while the
+    /// overlay has key focus during review — the resting-state twin of
+    /// the hold+P gesture.
+    public var onShowParleq: (() -> Void)?
     /// AppState wires this to open the WindowPickerWindow. The picker
     /// itself owns the entry-pick callback chain; the overlay just
     /// requests the picker be shown.
@@ -165,6 +188,11 @@ public final class OverlayWindow {
         // class (which AppState fills in via onAccept/onCancel).
         panel.onEnter = { [weak self] in self?.onAccept?() }
         panel.onEscape = { [weak self] in self?.onCancel?() }
+        panel.onSendTo = { [weak self] in self?.onSendTo?() }
+        panel.onShowHelp = { [weak self] in self?.onShowHelp?() }
+        panel.onAttachWindow = { [weak self] in self?.onAttachWindow?() }
+        panel.onAttachCurrent = { [weak self] in self?.onAttachCurrent?() }
+        panel.onShowParleq = { [weak self] in self?.onShowParleq?() }
 
         sizeObservation = hc.observe(\.preferredContentSize, options: [.new]) { [weak self] _, change in
             // Trace: prove the KVO fires. Captures the .new value so
@@ -510,6 +538,11 @@ public final class OverlayWindow {
 private final class OverlayPanel: NSPanel {
     var onEnter: (() -> Void)?
     var onEscape: (() -> Void)?
+    var onSendTo: (() -> Void)?
+    var onShowHelp: (() -> Void)?
+    var onAttachWindow: (() -> Void)?
+    var onAttachCurrent: (() -> Void)?
+    var onShowParleq: (() -> Void)?
     /// When non-nil, every setFrame call forces origin.y to this
     /// value so the bottom edge stays on screen and the panel grows
     /// upward. Without this, NSWindow's auto-tracking of
@@ -567,7 +600,40 @@ private final class OverlayPanel: NSPanel {
         case 53:        // Escape
             onEscape?()
         default:
-            super.keyDown(with: event)
+            // Match produced glyphs, not raw key codes — key positions
+            // differ across AZERTY/QWERTZ/Dvorak, so keyCode matching
+            // would break these gestures for non-US layouts. Check both
+            // `characters` and `charactersIgnoringModifiers` for "?"/"/"
+            // so it works even while the hotkey (often Option) is held —
+            // Option-Shift-/ yields a modified glyph in `characters` but
+            // "?" in `charactersIgnoringModifiers`.
+            let glyph = event.characters
+            let baseGlyph = event.charactersIgnoringModifiers
+            // Bare (no Cmd/Ctrl/Option/Shift) gestures share this guard
+            // so a modified keypress (e.g. ⌘V paste in some future field)
+            // never trips them.
+            let noMods = event.modifierFlags
+                .intersection([.command, .control, .option, .shift]).isEmpty
+            if glyph == "?" || glyph == "/" || baseGlyph == "?" || baseGlyph == "/" {
+                onShowHelp?()
+            } else if noMods, baseGlyph?.lowercased() == "v" {
+                // Bare "V" — send-to.
+                onSendTo?()
+            } else if noMods, event.keyCode == 49 {
+                // Bare Space — attach another window as context (review).
+                // keyCode 49 is Space on every layout; AppState gates the
+                // action to .awaitingAccept so it no-ops elsewhere.
+                onAttachWindow?()
+            } else if noMods, baseGlyph?.lowercased() == "c" {
+                // Bare "C" — attach the current window as context (review).
+                onAttachCurrent?()
+            } else if noMods, baseGlyph?.lowercased() == "p" {
+                // Bare "P" — show the Parleq window (cancels review).
+                // AppState gates to .awaitingAccept so it no-ops elsewhere.
+                onShowParleq?()
+            } else {
+                super.keyDown(with: event)
+            }
         }
     }
 }
@@ -933,6 +999,10 @@ private struct OverlayContent: View {
                 // row to one line.
                 OverlayButtons(
                     isKey: model.isKey,
+                    // Mirror sendToPressed()'s gate so the V hint is
+                    // hidden when reference windows (hence the window
+                    // picker) are disabled.
+                    sendToEnabled: model.referenceWindowsEnabled,
                     pasteTarget: model.pasteTarget,
                     conflict: headerBadgeState.conflict,
                     visionFallbackOption: firstConfiguredVisionModel(in: headerBadgeState.pickerEntries),
@@ -1711,21 +1781,30 @@ private struct OverlayContent: View {
         .frame(maxWidth: .infinity, alignment: .center)
     }
 
+    /// The user's actual hotkey name for footer hints, so they adapt to
+    /// a rebind. Falls back to the neutral "the hotkey" (matching
+    /// OverlayHintStrip — NOT an Option-specific glyph) only if the name
+    /// hasn't been wired yet (pre-launch); in practice main.swift sets
+    /// model.hotkeyDisplayName at startup.
+    private var hotkeyLabel: String {
+        model.hotkeyDisplayName.isEmpty ? "the hotkey" : model.hotkeyDisplayName
+    }
+
     @ViewBuilder
     private var footer: some View {
         switch model.state {
         case .initializing:
             Text("[Esc] dismiss")
         case .staging:
-            Text("[hold ⌥] start dictating   [Esc] cancel")
+            Text("[hold \(hotkeyLabel)] start dictating   [Esc] cancel")
         case .capturing:
-            Text("Release ⌥ when done")
+            Text("Release \(hotkeyLabel) when done")
         case .cleaning:
             Text("[Esc] cancel")
         case .awaitingAccept:
-            Text("[tap ⌥] accept   [Esc] cancel   [hold ⌥] refine")
+            Text("[tap \(hotkeyLabel)] accept   [Esc] cancel   [hold \(hotkeyLabel)] refine")
         case .refining:
-            Text("Release ⌥ when done")
+            Text("Release \(hotkeyLabel) when done")
         }
     }
 

@@ -106,7 +106,14 @@ public final class MenuBar: NSObject {
         }
     }
 
+    /// The user's dictation hotkey name (e.g. "right Option"), captured
+    /// at launch. Used in the status label so it adapts to a rebind —
+    /// the hotkey is a restart-required setting, so the launch-time value
+    /// is always current for this process.
+    private let hotkeyDisplayName: String
+
     public init(hotkeyDisplayName: String) {
+        self.hotkeyDisplayName = hotkeyDisplayName
         // .variableLength sizes the item to the icon's intrinsic
         // width — what most well-behaved menu-bar apps use.
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -372,7 +379,7 @@ public final class MenuBar: NSObject {
             label = "Processing…"
         case .awaitingAccept:
             isActive = true
-            label = "Ready — tap ⌥ to accept"
+            label = "Ready — tap \(hotkeyDisplayName) to accept"
         case .refining:
             isActive = true
             label = "Refining…"

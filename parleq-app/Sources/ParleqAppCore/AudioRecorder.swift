@@ -254,6 +254,13 @@ public final class AudioRecorder {
         isCapturingGate.withLock { $0 = false }
     }
 
+    /// True when the recorder is running AND actively appending samples
+    /// (not paused). Lets callers avoid double-pausing a recorder that
+    /// another flow (e.g. latched-compose) already paused.
+    public var isCapturing: Bool {
+        isRunning && isCapturingGate.withLock { $0 }
+    }
+
     /// Re-enable sample capture after a `pause()`. Audio captured
     /// after resume() is appended to whatever was in `accumulated`
     /// before the pause — the resulting WAV has the two segments

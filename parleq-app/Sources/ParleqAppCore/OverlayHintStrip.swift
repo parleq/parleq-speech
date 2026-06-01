@@ -66,7 +66,7 @@ struct OverlayHintStrip: View {
                     if spaceArmedDuringHold {
                         Text("Picker opens on release · Esc to cancel")
                     } else {
-                        Text("Press Space to attach a window · Press P to open Parleq")
+                        Text("Space: attach a window · C: current window · P: open Parleq")
                     }
                 } else {
                     // Reference windows are off, so there's no Space

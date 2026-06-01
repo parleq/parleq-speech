@@ -93,6 +93,18 @@ public final class AppState {
             if phase == .idle, latchedFromRefining {
                 latchedFromRefining = false
             }
+            // Force-hide the help overlay on ANY reset to .idle —
+            // including cleaning-failure / empty-result paths that don't
+            // route through closeAndReset — so the help panel and its
+            // flags can't be orphaned past the dictation cycle. Teardown
+            // context: don't resume the recorder (it's being stopped).
+            if phase == .idle, helpVisible {
+                helpVisible = false
+                helpPausedRecorder = false
+                holdEndedDuringHelp = false
+                helpReleaseSpaceWasPressed = false
+                helpOverlay.hide()
+            }
             // Drive the quick-mode recording pulse off the phase. It's
             // the single source of truth for show/hide, so every exit
             // path (release, cancel, error reset → .idle / .cleaning /
@@ -124,6 +136,15 @@ public final class AppState {
     /// quick-mode users will see.
     public var onCleanupResult: (@MainActor (String?) -> Void)?
     private var pasteTarget: PasteTarget?
+    /// User-chosen send-to destination (picked via V during review).
+    /// When set, accept() pastes here instead of the default target.
+    /// Reset at the start of every fresh capture.
+    private var chosenDestination: PasteTarget?
+    /// Which role the shared window picker is currently serving. The
+    /// picker's onPick is wired once; this flag routes a pick to either
+    /// reference-capture (.source) or send-to-destination (.destination).
+    private enum PickerMode { case source, destination }
+    private var pickerMode: PickerMode = .source
     /// True when the current latched-compose session was entered
     /// from `.refining` phase (user pressed Space during a refine
     /// hold). Determines what the latched-resume branch sets `phase`
@@ -153,6 +174,35 @@ public final class AppState {
     /// working. Reset by every fresh capture and by closeAndReset.
     private var lastCleanupFailed: Bool = false
     private var autoAcceptTimer: Timer?
+    /// Bumped every time the auto-accept timer is cancelled/re-armed.
+    /// A fired Timer has already dispatched its `Task { accept() }` onto
+    /// the MainActor by the time `invalidate()` runs, so invalidation
+    /// alone can't stop a just-fired auto-accept from pasting out from
+    /// under a review action (C/Space/V suspend auto-accept but can lose
+    /// that race). The queued task captures the generation and bails if
+    /// it no longer matches.
+    private var autoAcceptGeneration = 0
+    /// True once the user attaches a reference (C/Space) DURING review —
+    /// a strong signal they intend to refine, not walk away — so the
+    /// auto-accept timer suspends rather than pasting the un-refined
+    /// text. Set by the references subscription on any count INCREASE
+    /// while phase == .awaitingAccept (so it catches a remove-then-add
+    /// "replace" edit, which a net-count comparison would miss). Reset
+    /// at the start of each review. References carried in from the
+    /// original dictation don't set it — only additions made in review.
+    ///
+    /// One-way within a review cycle, by design (the maintainer chose
+    /// "suspend until they act"): once set, removing the attached chip
+    /// does NOT clear it or re-arm auto-accept. Attaching signals "I'm
+    /// composing a refine"; the user resumes by refining, accepting, or
+    /// cancelling — not by un-attaching. Cleared only at the next review
+    /// start (applyResult).
+    private var didAttachReferenceDuringReview = false
+    /// Last-seen reference count, tracked by the references subscription
+    /// so it can detect an increase (an attach) vs a removal.
+    private var previousReferenceCount = 0
+    /// Watches overlay.model.references to set didAttachReferenceDuringReview.
+    private var referencesSubscription: AnyCancellable?
     /// Timer that delays the initial overlay show on a fresh capture
     /// so a brief tap (the first half of a double-tap-and-hold, or a
     /// fumbled keypress) doesn't flash the overlay. Cancelled when
@@ -210,6 +260,26 @@ public final class AppState {
     /// thumbnail grid actually has room. Opened by the overlay's `+`
     /// chip-row button, hidden after a pick or via Esc / close.
     private let windowPickerWindow = WindowPickerWindow()
+    /// "?" help overlay — a transient floating panel listing every
+    /// gesture. Shown while the dictation overlay has focus.
+    private let helpOverlay = HelpOverlayWindow()
+    /// True while the help panel is up. Used to pause the in-progress
+    /// dictation (audio preserved) and to suppress submit-on-release so
+    /// reading help can't accidentally finalize or pollute the capture.
+    private var helpVisible = false
+    /// True when showHelp() paused the recorder, so hideHelp() knows to
+    /// resume it (and doesn't resume a recorder that was never running,
+    /// e.g. help opened from the review state).
+    private var helpPausedRecorder = false
+    /// True when the hotkey was RELEASED while help was up (so there's no
+    /// pending hotkeyUp to finalize the capture). hideHelp() then
+    /// replays the release through hotkeyUp() instead of resuming into a
+    /// capture with no terminator.
+    private var holdEndedDuringHelp = false
+    /// The `spaceWasPressedDuringHold` value from the release that
+    /// happened while help was up, so hideHelp() can replay it faithfully
+    /// (latched-compose vs plain submit).
+    private var helpReleaseSpaceWasPressed = false
     /// Transparent per-screen overlay that draws an orange border
     /// around the window under the cursor during hold-pick mode.
     private let windowHighlight = WindowHighlightOverlay()
@@ -297,6 +367,13 @@ public final class AppState {
     /// starting refine by this short window. If a key-up arrives
     /// first, the tap counts as accept and we paste.
     private var pendingRefineTimer: Timer?
+    /// Generation token guarding the refine timer's dispatched task —
+    /// same race as autoAcceptGeneration. cancelPendingRefine() (called
+    /// by showHelp, among others) invalidates the timer, but a refine
+    /// that already fired keeps phase at .awaitingAccept, so its queued
+    /// task would otherwise call startRefineCapture() under the help
+    /// overlay. The task bails when the generation no longer matches.
+    private var refineGeneration = 0
     private static let refineHoldThreshold: TimeInterval = 0.18
     /// In-flight reference capture tasks spawned from any of the
     /// async reference-attachment paths (window pick, file pick,
@@ -383,6 +460,12 @@ public final class AppState {
         self.trailingSpaceEnabled = trailingSpaceEnabled
         self.noTrailingSpaceAppBundleIDs = Set(noTrailingSpaceAppBundleIDs)
         overlay.onAccept = { [weak self] in self?.accept() }
+        overlay.onSendTo = { [weak self] in self?.sendToPressed() }
+        overlay.onShowHelp = { [weak self] in self?.showHelp() }
+        overlay.onAttachWindow = { [weak self] in self?.attachWindowFromReview() }
+        overlay.onAttachCurrent = { [weak self] in self?.attachCurrentWindowFromReview() }
+        overlay.onShowParleq = { [weak self] in self?.pPressedDuringReview() }
+        helpOverlay.onDismiss = { [weak self] in self?.hideHelp() }
         overlay.onCancel = { [weak self] in self?.cancel() }
         overlay.onCopy = { [weak self] in self?.copy() }
         overlay.onShowWindowPicker = { [weak self] in
@@ -409,27 +492,58 @@ public final class AppState {
         windowPickerWindow.setCallbacks(
             onPick: { [weak self] entry in
                 guard let self else { return }
-                self.dismissPicker()
-                // Track the capture task so a fast submit (release
-                // hotkey without space immediately after picking)
-                // can await it before finalizing. Without this, the
-                // race window between picker-dismiss and async
-                // capture-append could submit the composition with
-                // a missing reference. See trackCaptureTask /
-                // awaitPendingCaptures below.
-                let task = Task { @MainActor in
-                    await self.capture(entry)
+                switch self.pickerMode {
+                case .source:
+                    self.dismissPicker()
+                    // Track the capture task so a fast submit (release
+                    // hotkey without space immediately after picking)
+                    // can await it before finalizing. Without this, the
+                    // race window between picker-dismiss and async
+                    // capture-append could submit the composition with
+                    // a missing reference. See trackCaptureTask /
+                    // awaitPendingCaptures below.
+                    let task = Task { @MainActor in
+                        await self.capture(entry)
+                    }
+                    self.trackCaptureTask(task)
+                case .destination:
+                    // Destination pick (send-to). Not part of the
+                    // latched-compose flow, so hide directly rather than
+                    // routing through dismissPicker (which mutates
+                    // composeState).
+                    self.windowPickerWindow.hide()
+                    self.setDestination(from: entry)
                 }
-                self.trackCaptureTask(task)
+                // Always fall back to source mode after a pick so a
+                // later reference pick can't be misrouted.
+                self.pickerMode = .source
             },
             onAddFile: { [weak self] in
-                Task { @MainActor in self?.handleAddFileFromPicker() }
+                // Add-File / Add-Clipboard / Pick-by-clicking are
+                // source-capture actions. If invoked while the picker is
+                // in destination (send-to) mode, abort the send-to
+                // cleanly instead of half-switching to source semantics
+                // (which previously dropped the auto-accept timer or
+                // misrouted a later pick). Otherwise run the source action.
+                Task { @MainActor in
+                    guard let self else { return }
+                    if self.abortSendToIfDestination() { return }
+                    self.handleAddFileFromPicker()
+                }
             },
             onAddClipboard: { [weak self] in
-                Task { @MainActor in self?.handleAddClipboardFromPicker() }
+                Task { @MainActor in
+                    guard let self else { return }
+                    if self.abortSendToIfDestination() { return }
+                    self.handleAddClipboardFromPicker()
+                }
             },
             onPickByClicking: { [weak self] in
-                Task { @MainActor in self?.handlePickByClickingFromPicker() }
+                Task { @MainActor in
+                    guard let self else { return }
+                    if self.abortSendToIfDestination() { return }
+                    self.handlePickByClickingFromPicker()
+                }
             }
         )
         // Native close paths (title-bar close button, Esc, Cmd-W)
@@ -449,12 +563,40 @@ public final class AppState {
                 self.composeState,
                 event: .pickerDismissed
             )
+            // If the send-to (destination) picker was abandoned via a
+            // native close without choosing a window, restore source
+            // mode and re-arm auto-accept (sendToPressed cancelled it
+            // when opening the picker). Our own hide() on a successful
+            // pick uses orderOut and does not fire onDismiss, so this
+            // only runs on the abandon path.
+            if self.pickerMode == .destination {
+                self.pickerMode = .source
+                if self.phase == .awaitingAccept {
+                    self.startAutoAcceptTimer()
+                }
+            }
         }
 
         pasteTargetSubscription = pasteTargetTracker.$current
             .receive(on: DispatchQueue.main)
             .sink { [weak self] target in
                 self?.overlay.model.pasteTarget = target
+            }
+
+        // Flag a review-time reference attach the moment the count goes
+        // UP while in review, from any append path (picker pick, hold/
+        // review C, Add file, Add clipboard, click-pick). Comparing
+        // against the last-seen count (not the review-start baseline)
+        // catches a remove-then-add "replace" edit, where the net count
+        // is unchanged but the user did attach new context.
+        referencesSubscription = overlay.model.$references
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] refs in
+                guard let self else { return }
+                if self.phase == .awaitingAccept, refs.count > self.previousReferenceCount {
+                    self.didAttachReferenceDuringReview = true
+                }
+                self.previousReferenceCount = refs.count
             }
     }
 
@@ -489,6 +631,18 @@ public final class AppState {
     ///   - from cleaning: refine the in-flight transcript directly
     ///     (already a hold by the time we got here).
     public func hotkeyDown(isDoubleTapHold: Bool = false, isShiftHeld: Bool = false) {
+        // If the help overlay is up, a hotkey press dismisses it and
+        // RESUMES the paused dictation — "press the hotkey to resume."
+        // This is distinct from an Esc/?/click dismiss: if the user
+        // released the hotkey while help was up and now presses it to
+        // continue, we must resume (not replay that release as a submit).
+        // When help was opened from review (.awaitingAccept), the press
+        // simply dismisses and returns to review (re-arming auto-accept);
+        // the reviewed text is still there to accept/cancel.
+        if helpVisible {
+            dismissHelpForResume()
+            return
+        }
         // Reset the per-hold Space-armed visual flag at every fresh
         // hotkey-down. The flag's semantic is "Space has been pressed
         // during THIS specific hold" — scoping it to a single hold.
@@ -575,6 +729,16 @@ public final class AppState {
             dismissPicker()
             startFreshCapture()
         case .awaitingAccept:
+            // If a send-to (destination) picker is open, a hotkey hold
+            // means the user wants to refine/accept — not send-to. Close
+            // the stray picker and restore source mode before proceeding,
+            // so we don't schedule a refine with the picker still
+            // floating and pickerMode stuck at .destination. (Timer is
+            // governed by schedulePendingRefine below, so no re-arm here.)
+            if pickerMode == .destination {
+                windowPickerWindow.hide()
+                pickerMode = .source
+            }
             // Phase 1 contract: tap = accept, hold = refine. We
             // schedule a 0.18 s timer; if the user releases before
             // it fires (tap), hotkeyUp calls accept(). If it fires
@@ -628,6 +792,16 @@ public final class AppState {
     ///     session and submit together at the eventual release-without-
     ///     space.
     public func hotkeyUp(spaceWasPressedDuringHold: Bool = false) {
+        // While the help overlay is up, a release must NOT submit the
+        // utterance — the user paused to read help, not to finish. Record
+        // that the hold ended so dismissing help finalizes the preserved
+        // buffer (rather than resuming into a capture with no pending
+        // release). The capture stays paused until help is dismissed.
+        if helpVisible {
+            holdEndedDuringHelp = true
+            helpReleaseSpaceWasPressed = spaceWasPressedDuringHold
+            return
+        }
         // Tap-on-awaitingAccept: refine timer still armed means the
         // user released before the 0.18 s hold threshold — they meant
         // "accept", not "refine."
@@ -863,13 +1037,19 @@ public final class AppState {
 
     private func schedulePendingRefine() {
         cancelPendingRefine()
+        let gen = refineGeneration
         pendingRefineTimer = Timer.scheduledTimer(
             withTimeInterval: AppState.refineHoldThreshold, repeats: false
         ) { [weak self] _ in
             Task { @MainActor in
                 guard let self = self else { return }
+                // Bail if this timer was cancelled/superseded after it
+                // fired but before this task ran (e.g. "?" opened help,
+                // which leaves phase == .awaitingAccept so the phase
+                // guard below wouldn't catch it).
+                guard self.refineGeneration == gen else { return }
                 self.pendingRefineTimer = nil
-                guard self.phase == .awaitingAccept else { return }
+                guard self.phase == .awaitingAccept, !self.helpVisible else { return }
                 self.startRefineCapture()
             }
         }
@@ -878,6 +1058,7 @@ public final class AppState {
     private func cancelPendingRefine() {
         pendingRefineTimer?.invalidate()
         pendingRefineTimer = nil
+        refineGeneration &+= 1
     }
 
     // MARK: - Hold-pick mode (Task 13)
@@ -1052,6 +1233,9 @@ public final class AppState {
     /// inside its caller chain). Separating concerns keeps this
     /// helper trivial.
     private func presentPicker() {
+        // Source-context open. Reset the mode so a previously-cancelled
+        // destination pick can't leave the picker routing to send-to.
+        pickerMode = .source
         windowPickerWindow.show()
         // Synthesize a "picker opened" transition. Use the existing
         // events to walk through .recording / .latchedRecording →
@@ -1259,6 +1443,12 @@ public final class AppState {
     /// what M1 had working.
     public func accept() {
         guard phase == .awaitingAccept else { return }
+        // Don't accept/paste while the help overlay is up — the user is
+        // reading help, not finishing. Covers the case where the auto-
+        // accept timer gets (re)armed by the cleaning→awaitingAccept
+        // transition while help is open; hideHelp() re-arms it on
+        // dismissal so auto-accept resumes normally afterward.
+        guard !helpVisible else { return }
         // H2 conflict gate: when image-mode references are attached to
         // a non-vision model and the user hasn't acknowledged the
         // downgrade, Accept is suppressed. OverlayButtons already hides
@@ -1278,7 +1468,10 @@ public final class AppState {
         // 'Pastes to: X' is what they expect Accept to honor. If the
         // tracker has nothing newer than the captured-at-start value,
         // fall through to the original.
-        let target = liveTrackedPasteTarget() ?? pasteTarget
+        // A user-chosen send-to destination (V during review) wins over
+        // the default/live-tracked target — that's the whole point of
+        // "send this somewhere else."
+        let target = chosenDestination ?? liveTrackedPasteTarget() ?? pasteTarget
         let textToPaste = textForPaste(currentText, target: target)
         // Record to the in-memory transcription history before the
         // paste attempt — even if the paste lands in the wrong app
@@ -1371,6 +1564,101 @@ public final class AppState {
 
     // MARK: - Phase transitions
 
+    /// Show the "?" help overlay. Triggered by "?" / "/" while the
+    /// dictation overlay has key focus. If a dictation is actively
+    /// capturing/refining, pause the recorder (audio is preserved) so
+    /// the time spent reading help isn't recorded into the utterance;
+    /// hideHelp() resumes it. No-op for the brief transient phases.
+    @MainActor
+    public func showHelp() {
+        guard !helpVisible else { return }
+        switch phase {
+        case .capturing, .refining, .cleaning, .awaitingAccept, .staging:
+            break
+        case .idle, .pasting:
+            return
+        }
+        helpVisible = true
+        holdEndedDuringHelp = false
+        helpReleaseSpaceWasPressed = false
+        // Suspend the auto-accept timer so an enabled auto-accept can't
+        // fire accept() and tear down the session while the user reads
+        // help. Re-armed in hideHelp() if we return to review.
+        cancelAutoAcceptTimer()
+        // Likewise cancel a pending refine timer: if "?" is pressed within
+        // the 0.18s hold window in review, the refine timer could
+        // otherwise fire and start capturing the time spent reading help.
+        // We don't restart it on dismiss — the user can re-press to refine.
+        cancelPendingRefine()
+        // Only pause if the recorder is ACTUALLY capturing — another flow
+        // (latched-compose) may already have it paused; pausing again
+        // here would make hideHelp's resume un-pause it incorrectly.
+        if (phase == .capturing || phase == .refining), recorder.isCapturing {
+            recorder.pause()
+            helpPausedRecorder = true
+        }
+        helpOverlay.show(
+            hotkeyName: overlay.model.hotkeyDisplayName,
+            referenceWindowsEnabled: overlay.model.referenceWindowsEnabled
+        )
+    }
+
+    /// Dismiss the help overlay (Esc / "?" / click-away) and resume the
+    /// paused dictation if showHelp() paused it.
+    @MainActor
+    public func hideHelp() {
+        guard helpVisible else { return }
+        helpVisible = false
+        helpOverlay.hide()
+
+        // If the hotkey was RELEASED while help was up, replay that
+        // release through the normal hotkeyUp path (helpVisible is now
+        // false, so it won't re-guard) so the proper bookkeeping runs —
+        // awaiting in-flight reference attaches, advancing composeState,
+        // and finalize/latched routing. Done first and unconditionally
+        // (even if we never paused the recorder) so a terminating release
+        // can never be silently dropped.
+        if holdEndedDuringHelp {
+            holdEndedDuringHelp = false
+            helpPausedRecorder = false
+            let spaceWasPressed = helpReleaseSpaceWasPressed
+            helpReleaseSpaceWasPressed = false
+            hotkeyUp(spaceWasPressedDuringHold: spaceWasPressed)
+            return
+        }
+        helpReleaseSpaceWasPressed = false
+
+        if helpPausedRecorder {
+            // Still holding — continue capturing where we left off; the
+            // eventual release submits as usual.
+            helpPausedRecorder = false
+            recorder.resume()
+        } else if phase == .awaitingAccept {
+            // Help was opened from review; re-arm the auto-accept timer
+            // that showHelp() cancelled.
+            startAutoAcceptTimer()
+        }
+    }
+
+    /// Dismiss help via a HOTKEY PRESS — "press the hotkey to resume."
+    /// Unlike hideHelp(), this discards any release that happened while
+    /// help was up (so it does NOT finalize/submit) and resumes the
+    /// paused capture, because the press signals intent to keep dictating.
+    @MainActor
+    private func dismissHelpForResume() {
+        guard helpVisible else { return }
+        helpVisible = false
+        helpOverlay.hide()
+        holdEndedDuringHelp = false
+        helpReleaseSpaceWasPressed = false
+        if helpPausedRecorder {
+            helpPausedRecorder = false
+            recorder.resume()
+        } else if phase == .awaitingAccept {
+            startAutoAcceptTimer()
+        }
+    }
+
     /// Called from HotkeyListener.onSpacePressed the first time Space
     /// is pressed within a single hotkey hold. Surfaces visual
     /// feedback in the overlay (the hint strip swaps to an "armed"
@@ -1408,7 +1696,26 @@ public final class AppState {
     /// can't fire from a casual π-typing gesture.
     @MainActor
     public func pPressedDuringHold() {
-        log("p pressed during hold — cancelling capture, opening app window")
+        cancelAndShowParleqWindow(reason: "p pressed during hold")
+    }
+
+    /// Bare P during review (overlay has key focus): the resting-state
+    /// twin of the hold+P gesture. We originally kept P out of review
+    /// because it cancels the in-flight result — but P already works
+    /// during a refine-hold, so withholding it at rest was an arbitrary
+    /// gap. Cancels the reviewed dictation and summons the app window.
+    @MainActor
+    public func pPressedDuringReview() {
+        guard phase == .awaitingAccept else { return }
+        cancelAndShowParleqWindow(reason: "p pressed during review")
+    }
+
+    /// Shared body for the hold+P and review+P gestures: cancel whatever
+    /// dictation is in flight and bring up the main Parleq window.
+    /// cancel() handles every phase's teardown.
+    @MainActor
+    private func cancelAndShowParleqWindow(reason: String) {
+        log("\(reason) — cancelling capture, opening app window")
         // Route through cancel() so the recorder is stopped, the
         // streaming session aborted, and the overlay closed —
         // same teardown as Esc-during-dictation. Whatever phase
@@ -1418,8 +1725,180 @@ public final class AppState {
         ParleqAppWindowController.shared.show()
     }
 
+    /// Called from HotkeyListener.onCPressed when the user taps C while
+    /// the dictation hotkey is held. Attaches the *current* frontmost
+    /// window of the app that was frontmost at hotkey-down (the app's
+    /// pid is recorded in `pasteTarget`; the specific window is resolved
+    /// live, so if that app raised a different window during the hold it
+    /// attaches the new one) as a reference — the no-picker shortcut for
+    /// "use what I'm looking at as context." Mirrors the picker's capture
+    /// path (permission handling, error banners, focus restoration) by
+    /// routing through `capture(_:)`.
+    @MainActor
+    public func cPressedDuringHold() {
+        guard phase == .capturing || phase == .refining else { return }
+        attachOriginWindowAsReference(reason: "c pressed during hold")
+    }
+
+    /// Bare C in the overlay — attach the dictation-origin window as
+    /// context. Fires in two states (the bare key only reaches here when
+    /// the dictation hotkey is NOT held; during a normal hold the event
+    /// tap consumes C → cPressedDuringHold):
+    ///   - review (.awaitingAccept): stage context for the next refine.
+    ///   - latched-compose recording (.capturing / .refining, e.g. "say
+    ///     what to do with these references"): attach mid-compose.
+    /// Both just attach the origin window via attachOriginWindowAsReference,
+    /// a background capture with no recorder pause — matching hold+C. In
+    /// review, the auto-accept timer defers while the capture is in flight
+    /// (see startAutoAcceptTimer); a no-op attach registers no task so
+    /// auto-accept proceeds normally.
+    @MainActor
+    public func attachCurrentWindowFromReview() {
+        guard phase == .awaitingAccept || phase == .capturing || phase == .refining else { return }
+        attachOriginWindowAsReference(reason: "c pressed (overlay)")
+    }
+
+    /// Bare Space in the overlay — open the window picker to attach a
+    /// reference. Like attachCurrentWindowFromReview, fires in review
+    /// (.awaitingAccept) AND in the latched-compose recording states
+    /// (.capturing / .refining) — mirroring the overlay "+" button, which
+    /// is the other way to attach in those states. In the recording
+    /// states the recorder is live, so pause it first (as the + button
+    /// and the during-hold Space path do) so picker interaction isn't
+    /// recorded. The auto-accept timer defers while the picker is open
+    /// (see startAutoAcceptTimer), so no explicit suspend/re-arm is
+    /// needed — abandoning the picker lets auto-accept resume on its next
+    /// tick.
+    @MainActor
+    public func attachWindowFromReview() {
+        guard overlay.model.referenceWindowsEnabled else { return }
+        guard phase == .awaitingAccept || phase == .capturing || phase == .refining else { return }
+        if recorder.isCapturing { recorder.pause() }
+        presentPicker()
+    }
+
+    /// Attach the current frontmost window of the dictation-origin app
+    /// (the app whose pid was recorded in `pasteTarget` at hotkey-down;
+    /// the window itself is resolved live via `Paster.frontmostWindow`)
+    /// as a reference. Shared by the during-hold C gesture and the
+    /// review C gesture. Routes through `capture(_:)` so it inherits
+    /// permission handling, error banners, and focus restoration.
+    /// No-ops (with a log) when reference windows are off or no origin
+    /// window can be resolved.
+    @MainActor
+    private func attachOriginWindowAsReference(reason: String) {
+        guard overlay.model.referenceWindowsEnabled else { return }
+        guard let target = pasteTarget else {
+            log("\(reason) — no front app captured at hotkey-down; ignoring")
+            return
+        }
+        guard let win = Paster.frontmostWindow(forPID: target.pid) else {
+            log("\(reason) — no front window resolved for \(target.name); ignoring")
+            return
+        }
+        let displayTitle = win.title.isEmpty ? target.name : win.title
+        let entry = WindowPickerModel.Entry(
+            windowID: win.windowID,
+            pid: target.pid,
+            bundleID: target.bundleID ?? "",
+            appName: target.name,
+            title: displayTitle,
+            appIcon: NSRunningApplication(processIdentifier: target.pid)?.icon
+        )
+        // Log the app name only, never the window title — titles can
+        // carry sensitive content (document names, email subjects) that
+        // should not land in the on-disk app.log. The title still shows
+        // in the in-RAM overlay chip.
+        log("\(reason) — attaching current window from \(target.name) as reference")
+        let task = Task { @MainActor in await self.capture(entry) }
+        _ = trackCaptureTask(task)
+    }
+
+    /// Bare V during review (overlay has key focus): choose a window to
+    /// send the reviewed output to, then send immediately on pick. The
+    /// focus-independent hold+V variant is deferred — during review a
+    /// hotkey hold schedules a refine (0.18 s) before the secondary-key
+    /// hold threshold (0.2 s) would fire, so the two gestures collide.
+    @MainActor
+    public func sendToPressed() {
+        guard phase == .awaitingAccept else { return }
+        // Honor the master reference-windows privacy/MDM gate, like every
+        // other path that opens the window picker (staging, +-menu,
+        // attachWindowFromReview, attachOriginWindowAsReference). The
+        // picker enumerates on-screen window titles and offers "pick by
+        // clicking" — exactly the surface this lock suppresses — and the
+        // picker's own code assumes it never opens when the flag is off
+        // (WindowPicker shows the window list unconditionally on that
+        // premise). So send-to is unavailable when reference windows are
+        // disabled. (A future dedicated managed key could decouple
+        // paste-targeting from content capture if wanted.)
+        guard overlay.model.referenceWindowsEnabled else {
+            log("send-to: reference windows disabled — ignoring V")
+            return
+        }
+        // Stop the auto-accept timer while the user chooses a
+        // destination. Otherwise it could fire accept() with
+        // chosenDestination == nil mid-pick, paste to the original
+        // target, and move phase to .pasting — after which the
+        // destination pick's accept() guard fails and the send-to is
+        // silently dropped, landing the text in the wrong window.
+        cancelAutoAcceptTimer()
+        pickerMode = .destination
+        windowPickerWindow.show()
+    }
+
+    /// If the picker is open in destination (send-to) mode, abort the
+    /// send-to: hide the picker, restore source mode, and re-arm the
+    /// auto-accept timer that sendToPressed() cancelled. Returns true if
+    /// it aborted (caller should not proceed with a source action).
+    /// Used by the source-only picker actions so taking one of them in
+    /// destination mode can't leave a stuck timer or misroute a pick.
+    @MainActor
+    private func abortSendToIfDestination() -> Bool {
+        guard pickerMode == .destination else { return false }
+        pickerMode = .source
+        windowPickerWindow.hide()
+        if phase == .awaitingAccept { startAutoAcceptTimer() }
+        return true
+    }
+
+    /// Resolve a picked window into a paste target and send the reviewed
+    /// output there immediately — picking the destination is the commit
+    /// (the text was already reviewed). The picker Entry already carries
+    /// the owning app's pid/bundleID/name, so no extra lookup is needed.
+    @MainActor
+    private func setDestination(from entry: WindowPickerModel.Entry) {
+        // Apply the same conflict gate as accept() BEFORE committing the
+        // destination. Otherwise accept() would early-return on its beep
+        // path, leaving chosenDestination stuck set — and a later plain
+        // Enter would then silently route to this V-picked window instead
+        // of the original target. Beep and bail without mutating state.
+        if hasUnresolvedConflict() {
+            NSSound.beep()
+            // Re-arm auto-accept: sendToPressed() cancelled it when the
+            // picker opened, and this bail leaves us back in review.
+            startAutoAcceptTimer()
+            return
+        }
+        // Intentionally APP-LEVEL: we keep pid/bundleID and drop
+        // entry.windowID. Paster activates the app and Cmd-Vs into its
+        // focused field, so for a multi-window target the paste lands in
+        // that app's frontmost window, not necessarily the exact one
+        // picked. This is the documented field-precise-targeting
+        // limitation (see the cross-window plan); window-precise routing
+        // is deferred to the broader targeting work.
+        chosenDestination = PasteTarget(
+            pid: entry.pid,
+            name: entry.appName,
+            bundleID: entry.bundleID.isEmpty ? nil : entry.bundleID
+        )
+        log("send-to: destination set to \(entry.appName) — sending")
+        accept()
+    }
+
     private func startFreshCapture() {
         pasteTarget = Paster.captureFrontmost()
+        chosenDestination = nil
         currentText = ""
         lastRawTranscript = ""
         lastCleanupFailed = false
@@ -1925,12 +2404,34 @@ public final class AppState {
             text: text,
             cleanupFailureMessage: cleanupFailureMessage
         )
+        // Reset the "attached context during review" flag at the start
+        // of each review cycle. The references subscription sets it on
+        // any later count increase while .awaitingAccept, which suspends
+        // the walk-away auto-accept timer (intent to refine).
+        didAttachReferenceDuringReview = false
         startAutoAcceptTimer()
     }
 
     private func closeAndReset() async {
+        // Clear per-dictation overlay state (references, model override,
+        // banners) and cancel in-flight reference captures. The accept()
+        // and cancel() callers also do this before their async paste, so
+        // for them this is a harmless redundant clear — but the quick-
+        // mode finalize path (applyResult) reaches closeAndReset WITHOUT
+        // a preceding reset, so a reference attached via C during a
+        // quick-mode hold would otherwise leak into the next dictation.
+        // Centralizing it here makes every teardown path leak-free.
+        resetPerDictationOverlayState()
         cancelPendingOverlayShow()
         cancelPendingRefine()
+        // Force-hide the help overlay without resuming the recorder —
+        // this is a teardown path (cancel / accept / done), so there's
+        // nothing to resume into.
+        helpVisible = false
+        helpPausedRecorder = false
+        holdEndedDuringHelp = false
+        helpReleaseSpaceWasPressed = false
+        helpOverlay.hide()
         currentText = ""
         lastRawTranscript = ""
         lastCleanupFailed = false
@@ -1990,17 +2491,57 @@ public final class AppState {
     private func startAutoAcceptTimer() {
         cancelAutoAcceptTimer()
         guard autoAcceptInterval > 0 else { return }
+        let gen = autoAcceptGeneration
         autoAcceptTimer = Timer.scheduledTimer(withTimeInterval: autoAcceptInterval, repeats: false) { [weak self] _ in
             // Timer callbacks run on the run loop the timer was
             // scheduled on (main here), but we hop to MainActor
-            // explicitly to satisfy Swift 6.
-            Task { @MainActor in self?.accept() }
+            // explicitly to satisfy Swift 6. Re-check the generation on
+            // the MainActor: a fired timer has already queued this task
+            // by the time cancelAutoAcceptTimer() invalidates it, so a
+            // manual accept/cancel could otherwise lose the race.
+            Task { @MainActor in
+                guard let self, self.autoAcceptGeneration == gen else { return }
+                // Suspend (don't re-arm) if the user attached context
+                // during review: that's intent to refine, not walk away,
+                // so auto-accept stops until they refine / accept / cancel
+                // rather than pasting the un-refined text. The flag is set
+                // by the references subscription on any in-review attach
+                // (including a remove-then-add replace, which a net-count
+                // check would miss).
+                if self.didAttachReferenceDuringReview {
+                    return
+                }
+                // Defer (re-arm to re-check) while the user is mid-task:
+                // help is open, the window picker is open, click-pick
+                // mode is active, or a reference capture is still
+                // resolving (e.g. the "Add file…" NSOpenPanel, whose task
+                // is tracked before the panel opens). Firing now would
+                // paste + tear the session down out from under the user.
+                // Once things settle, auto-accept proceeds. This lets the
+                // review-time Space/C attach gestures skip explicit timer
+                // juggling, closes the pre-existing race where auto-accept
+                // could fire while the +-menu picker was open in review,
+                // and keeps auto-accept armed across a help-open during
+                // .cleaning (the dismiss handlers also re-arm, but the
+                // defer here means we don't depend on them to avoid an
+                // accept() that bails on `guard !helpVisible` without
+                // rescheduling).
+                if self.helpVisible
+                    || self.windowPickerWindow.isVisible
+                    || self.overlay.model.isPickingWindow
+                    || !self.pendingCaptureTasks.isEmpty {
+                    self.startAutoAcceptTimer()
+                    return
+                }
+                self.accept()
+            }
         }
     }
 
     private func cancelAutoAcceptTimer() {
         autoAcceptTimer?.invalidate()
         autoAcceptTimer = nil
+        autoAcceptGeneration &+= 1
     }
 
     // MARK: - Pending capture tracking
