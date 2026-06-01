@@ -20,6 +20,11 @@ import SwiftUI
 
 struct OverlayButtons: View {
     let isKey: Bool
+    /// Whether the send-to (V) gesture is available — mirrors the master
+    /// reference-windows gate that sendToPressed() enforces. When false,
+    /// the "V — send elsewhere" hint is hidden so we don't advertise a
+    /// gesture that's locked off.
+    let sendToEnabled: Bool
     /// Paste destination, rendered inline as a non-interactive label
     /// immediately before the Accept button — so the user can read
     /// the row as "Cancel, → Slack, Accept" and it's visually obvious
@@ -112,6 +117,22 @@ struct OverlayButtons: View {
         HStack(spacing: 8) {
             if let target = pasteTarget {
                 PastingToLabel(target: target)
+            }
+            // Discoverability for the send-to gesture: V opens the
+            // picker to route the reviewed text to a different window
+            // (review-then-route). Shown throughout the review row —
+            // V works even when there's no current paste target, since
+            // it lets the user pick a destination. Hidden when send-to
+            // is gated off (reference windows disabled), so we don't
+            // advertise a no-op.
+            if sendToEnabled {
+                HStack(spacing: 4) {
+                    keyCap("V", isProminent: false)
+                    Text("send elsewhere")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                }
+                .help("Press V to send this text to a different window")
             }
             Spacer(minLength: 12)
 
@@ -217,6 +238,7 @@ private let _previewTarget = PasteDestination(
 #Preview("Key, with paste target") {
     OverlayButtons(
         isKey: true,
+        sendToEnabled: true,
         pasteTarget: _previewTarget,
         conflict: nil,
         visionFallbackOption: nil,
@@ -233,6 +255,7 @@ private let _previewTarget = PasteDestination(
 #Preview("Key, no paste target") {
     OverlayButtons(
         isKey: true,
+        sendToEnabled: true,
         pasteTarget: nil,
         conflict: nil,
         visionFallbackOption: nil,
@@ -249,6 +272,7 @@ private let _previewTarget = PasteDestination(
 #Preview("Not key, focus-loss message visible") {
     OverlayButtons(
         isKey: false,
+        sendToEnabled: true,
         pasteTarget: _previewTarget,
         conflict: nil,
         visionFallbackOption: nil,
@@ -265,6 +289,7 @@ private let _previewTarget = PasteDestination(
 #Preview("Conflict — vision refs, vision fallback available") {
     OverlayButtons(
         isKey: true,
+        sendToEnabled: true,
         pasteTarget: _previewTarget,
         conflict: .visionRefsButNonVisionModel(refCount: 3),
         visionFallbackOption: ModelIdentifier(provider: "gemini", model: "gemini-2.5-flash"),
@@ -281,6 +306,7 @@ private let _previewTarget = PasteDestination(
 #Preview("Conflict — vision refs, no vision fallback") {
     OverlayButtons(
         isKey: true,
+        sendToEnabled: true,
         pasteTarget: _previewTarget,
         conflict: .visionRefsButNonVisionModel(refCount: 1),
         visionFallbackOption: nil,

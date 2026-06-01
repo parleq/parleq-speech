@@ -68,6 +68,30 @@ enum Paster {
         )
     }
 
+    /// The frontmost on-screen, normal-layer window owned by `pid`.
+    /// `CGWindowListCopyWindowInfo` returns windows front-to-back, so
+    /// the first layer-0 match is the frontmost window of that app —
+    /// used by the "hold-hotkey + C" gesture to attach the window the
+    /// user is currently looking at as a reference, without a picker.
+    /// `title` may be empty without Screen Recording permission; only
+    /// `windowID` is needed to capture.
+    static func frontmostWindow(forPID pid: pid_t) -> (windowID: CGWindowID, title: String)? {
+        let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
+        guard let infoList = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else {
+            return nil
+        }
+        for info in infoList {
+            guard let owner = (info[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value,
+                  owner == pid else { continue }
+            let layer = (info[kCGWindowLayer as String] as? NSNumber)?.intValue ?? 0
+            guard layer == 0 else { continue }
+            guard let windowNumber = (info[kCGWindowNumber as String] as? NSNumber)?.uint32Value else { continue }
+            let title = (info[kCGWindowName as String] as? String) ?? ""
+            return (windowNumber, title)
+        }
+        return nil
+    }
+
     /// Activate an app by bundle ID via an AppleScript `tell
     /// application id "..." to activate` AppleEvent. This is the
     /// activation path that crosses full-screen-Space boundaries

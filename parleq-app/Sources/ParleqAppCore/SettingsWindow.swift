@@ -67,6 +67,10 @@ final class SettingsModel: ObservableObject {
     /// on save). Edited in Settings → Advanced.
     @Published var overlayShowDelayMs: Int
     @Published var acousticFeedback: Bool
+    /// Per-cue sound names (a macOS system sound, or "Off"). Gated by
+    /// `acousticFeedback`.
+    @Published var startSound: String = "Tink"
+    @Published var endSound: String = "Bottle"
     /// Show the near-transparent recording pulse during quick
     /// (double-tap-hold) dictation. Mirror of Config.recordingPulse.
     @Published var recordingPulse: Bool
@@ -244,6 +248,8 @@ final class SettingsModel: ObservableObject {
         self.autoAcceptSeconds = config.autoAcceptSeconds
         self.overlayShowDelayMs = config.overlayShowDelayMs
         self.acousticFeedback = config.acousticFeedback
+        self.startSound = config.startSound
+        self.endSound = config.endSound
         self.recordingPulse = config.recordingPulse
         self.continueOtherAudio = config.continueOtherAudio
         self.audioInputDeviceUID = config.audioInputDeviceUID
@@ -340,6 +346,8 @@ final class SettingsModel: ObservableObject {
         self.autoAcceptSeconds = config.autoAcceptSeconds
         self.overlayShowDelayMs = config.overlayShowDelayMs
         self.acousticFeedback = config.acousticFeedback
+        self.startSound = config.startSound
+        self.endSound = config.endSound
         self.recordingPulse = config.recordingPulse
         self.continueOtherAudio = config.continueOtherAudio
         self.audioInputDeviceUID = config.audioInputDeviceUID
@@ -452,6 +460,8 @@ final class SettingsModel: ObservableObject {
         }
         c.overlayShowDelayMs = clampedDelay
         c.acousticFeedback = acousticFeedback
+        c.startSound = startSound
+        c.endSound = endSound
         c.recordingPulse = recordingPulse
         c.continueOtherAudio = continueOtherAudio
         c.audioInputDeviceUID = audioInputDeviceUID.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -543,6 +553,7 @@ final class SettingsModel: ObservableObject {
         }
         // Apply live the changes that don't need a restart.
         Sounds.enabled = acousticFeedback
+        Sounds.configure(startSound: startSound, endSound: endSound)
     }
 
     private static func parseBundleIDs(_ text: String) -> [String] {
@@ -1116,8 +1127,32 @@ struct SettingsView: View {
             SettingsCaption("Only applies when Microphone is set to System Default. Forces input to the built-in mic when the system default is Bluetooth, so BT headphones stay in A2DP. Restart to apply.")
         }
         SettingsCard {
-            Toggle("Acoustic feedback (Tink/Pop)", isOn: bind(\.acousticFeedback))
-            SettingsCaption("Subtle sound cues when a dictation starts and ends.")
+            Toggle("Acoustic feedback", isOn: bind(\.acousticFeedback))
+            SettingsCaption("Subtle sound cues when a dictation starts and ends. Choose a sound for each, or set either to Off.")
+            HStack {
+                Text("Start cue")
+                    .frame(minWidth: 120, alignment: .leading)
+                Picker("", selection: bind(\.startSound)) {
+                    ForEach(Sounds.availableNames, id: \.self) { name in
+                        Text(name).tag(name)
+                    }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 200)
+                Spacer()
+            }
+            HStack {
+                Text("End cue")
+                    .frame(minWidth: 120, alignment: .leading)
+                Picker("", selection: bind(\.endSound)) {
+                    ForEach(Sounds.availableNames, id: \.self) { name in
+                        Text(name).tag(name)
+                    }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 200)
+                Spacer()
+            }
         }
     }
 
@@ -1173,7 +1208,7 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
                 Spacer()
             }
-            SettingsCaption("How long to hold the hotkey before the dictation overlay appears (0–2000 ms; default 200). This is also when the hold-hotkey + P \u{201C}Show Parleq\u{201D} gesture engages — a quicker tap of Option-P still types π.")
+            SettingsCaption("How long to hold the hotkey before the dictation overlay appears (0–2000 ms; default 200). This is also when the hold-hotkey + P \u{201C}Show Parleq\u{201D} gesture engages — a quicker P tap without the hold still passes through as its normal keystroke (with the default Option hotkey, \u{2325}P types π).")
         }
         SettingsCard {
             Toggle("Show a recording pulse during quick dictation", isOn: bind(\.recordingPulse))

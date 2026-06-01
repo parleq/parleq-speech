@@ -140,6 +140,10 @@ public final class HotkeyListener {
     /// Option-P taps that don't engage the dictation hold path
     /// fall through unchanged and still produce π.
     private static let pKeyCode: Int64 = 0x23
+    /// C key (US layout). "hold-hotkey + C" attaches the CURRENT
+    /// front window as a reference. Same hold-threshold treatment as
+    /// P so a brief Option-C still types ç.
+    private static let cKeyCode: Int64 = 0x08
 
     private let binding: HotkeyBinding
     private let onKeyDown: (HotkeyDownEvent) -> Void
@@ -160,6 +164,11 @@ public final class HotkeyListener {
     /// gesture is "instead of dictating, show me the app", not
     /// "after dictating".
     private let onPPressed: (() -> Void)?
+    /// Fires the FIRST time C is pressed during a single hotkey hold.
+    /// "hold-hotkey + C" attaches the current front window as a
+    /// reference without opening the picker — the shortcut for "use
+    /// what I'm looking at as context."
+    private let onCPressed: (() -> Void)?
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     // Press-state tracking: CGEventTap delivers a flagsChanged event
@@ -213,6 +222,8 @@ public final class HotkeyListener {
     /// hotkey is released), but tracked anyway for symmetry +
     /// to make the edge-trigger guard in handleKeyDown simple.
     private var pPressedThisHold = false
+    /// Mirror of pPressedThisHold for the "hold-hotkey + C" gesture.
+    private var cPressedThisHold = false
     /// Cross-cutting flag tracking a Space keyDown we consumed.
     /// Set when the keyDown is swallowed; checked when the
     /// matching keyUp arrives so we also consume it. Without this,
@@ -232,19 +243,23 @@ public final class HotkeyListener {
     /// consume the matching keyUp so the focused app doesn't see
     /// a dangling release.
     private var pendingPKeyUpToSwallow = false
+    /// C-key counterpart of pendingPKeyUpToSwallow.
+    private var pendingCKeyUpToSwallow = false
 
     public init(
         binding: HotkeyBinding = .defaultBinding,
         onKeyDown: @escaping (HotkeyDownEvent) -> Void,
         onKeyUp: @escaping (HotkeyUpEvent) -> Void,
         onSpacePressed: (() -> Void)? = nil,
-        onPPressed: (() -> Void)? = nil
+        onPPressed: (() -> Void)? = nil,
+        onCPressed: (() -> Void)? = nil
     ) {
         self.binding = binding
         self.onKeyDown = onKeyDown
         self.onKeyUp = onKeyUp
         self.onSpacePressed = onSpacePressed
         self.onPPressed = onPPressed
+        self.onCPressed = onCPressed
     }
 
     public func start() throws {
@@ -312,6 +327,7 @@ public final class HotkeyListener {
             // doesn't leak into this one.
             spacePressedThisHold = false
             pPressedThisHold = false
+            cPressedThisHold = false
             // Record the hold-start time for the P-gesture's
             // hold-threshold gate (see pHoldThreshold).
             keyDownAt = now
@@ -340,6 +356,15 @@ public final class HotkeyListener {
     /// Other keyDowns pass through unchanged.
     private func handleKeyDown(event: CGEvent) -> Bool {
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
+        // macOS sets this on auto-repeat keyDowns of a held key. The
+        // pending-swallow branches below are ONLY meant to swallow such
+        // repeats of a key we already consumed; a fresh (non-repeat)
+        // press while a pending flag is still set means the matching
+        // keyUp was never seen (a window activation during a during-hold
+        // attach — the picker for Space, ScreenCaptureKit for C — can
+        // briefly disable the tap and drop that keyUp), leaving the flag
+        // stale. See each branch.
+        let isAutorepeat = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
         // Space-during-hold path (Reference Windows v2 picker gesture).
         if keyCode == HotkeyListener.spaceKeyCode {
             if keyDown {
@@ -352,7 +377,15 @@ public final class HotkeyListener {
                 return true
             }
             if pendingSpaceKeyUpToSwallow {
-                return true
+                // Swallow only the auto-repeat of a still-held Space we
+                // already consumed. A fresh press means the matching
+                // keyUp was missed and the flag is stale — clear it and
+                // let the press through, so a Space used in the review
+                // overlay right after a during-hold attach reaches the
+                // overlay instead of being silently eaten here.
+                if isAutorepeat { return true }
+                pendingSpaceKeyUpToSwallow = false
+                return false
             }
             return false
         }
@@ -386,7 +419,40 @@ public final class HotkeyListener {
                 return true
             }
             if pendingPKeyUpToSwallow {
+                // See the Space branch: only swallow auto-repeat; a
+                // fresh press means the keyUp was missed, so clear the
+                // stale flag and pass through.
+                if isAutorepeat { return true }
+                pendingPKeyUpToSwallow = false
+                return false
+            }
+            return false
+        }
+        // C-during-hold path (attach current window as a reference).
+        // Same shape and hold-threshold as the P path, so a brief
+        // Option-C still types ç; only a deliberate hold engages it.
+        if keyCode == HotkeyListener.cKeyCode {
+            if keyDown {
+                let elapsed = Date().timeIntervalSinceReferenceDate - keyDownAt
+                if elapsed < pHoldThreshold {
+                    return false
+                }
+                let firstPressThisHold = !cPressedThisHold
+                cPressedThisHold = true
+                pendingCKeyUpToSwallow = true
+                if firstPressThisHold {
+                    onCPressed?()
+                }
                 return true
+            }
+            if pendingCKeyUpToSwallow {
+                // See the Space branch: only swallow auto-repeat; a
+                // fresh press means the keyUp was missed (e.g. a window
+                // activation briefly disabled the tap), so clear the
+                // stale flag and pass through rather than eating it.
+                if isAutorepeat { return true }
+                pendingCKeyUpToSwallow = false
+                return false
             }
             return false
         }
@@ -409,6 +475,10 @@ public final class HotkeyListener {
         }
         if keyCode == HotkeyListener.pKeyCode, pendingPKeyUpToSwallow {
             pendingPKeyUpToSwallow = false
+            return true
+        }
+        if keyCode == HotkeyListener.cKeyCode, pendingCKeyUpToSwallow {
+            pendingCKeyUpToSwallow = false
             return true
         }
         return false

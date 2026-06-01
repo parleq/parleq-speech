@@ -142,6 +142,13 @@ public struct Config: Sendable {
     /// the visual analog of the start sound for audio-off users.
     /// Default true.
     public var recordingPulse: Bool
+    /// Per-cue sound choices for acoustic feedback. Each is a macOS
+    /// system-sound name (e.g. "Tink", "Bottle") or "Off" to silence
+    /// just that cue. Both are gated together by `acousticFeedback`.
+    /// Inline defaults so the explicit init / Config.default need no
+    /// change; only load/save plumbing is added.
+    public var startSound: String = "Tink"
+    public var endSound: String = "Bottle"
     public var asrMode: String
     public var llmMode: String
     public var llmModel: String
@@ -444,6 +451,12 @@ public struct Config: Sendable {
                 }
                 if let recordingPulse = ui["recording_pulse"] as? Bool {
                     c.recordingPulse = recordingPulse
+                }
+                if let startSound = ui["start_sound"] as? String, !startSound.isEmpty {
+                    c.startSound = startSound
+                }
+                if let endSound = ui["end_sound"] as? String, !endSound.isEmpty {
+                    c.endSound = endSound
                 }
             }
             if let asr = dict["asr"] as? [String: Any] {
@@ -1373,6 +1386,8 @@ public struct Config: Sendable {
                 "overlay_show_delay_ms": config.overlayShowDelayMs,
                 "acoustic_feedback": config.acousticFeedback,
                 "recording_pulse": config.recordingPulse,
+                "start_sound": config.startSound,
+                "end_sound": config.endSound,
             ],
             "audio": [
                 "continue_other_audio": config.continueOtherAudio,

@@ -1,45 +1,79 @@
 // Sounds — small acoustic feedback for hotkey events.
 //
-// Two cues, both standard macOS system sounds:
-//   - "Tink" on hotkey-down: a short, dry tick. Tells the user
-//     "capture started" without them needing to look at the overlay.
-//   - "Pop" on hotkey-up: a soft pop. Tells the user "capture
-//     ended; processing now."
+// Two cues, both standard macOS system sounds, each independently
+// configurable (or "Off") via Settings and gated together by the
+// `acoustic_feedback` master toggle:
+//   - start cue on hotkey-down: tells the user "capture started"
+//     without them needing to look at the overlay. Default "Tink"
+//     (a short, dry tick).
+//   - end cue on hotkey-up: tells the user "capture ended; processing
+//     now." Default "Bottle" (a short, clean pop — chosen over "Pop",
+//     whose resonant tail read as an echoey double pop, badly so over
+//     Bluetooth).
 //
-// Sounds are loaded once at startup and reused; NSSound caches the
-// underlying audio file. Playback is fire-and-forget (no completion
-// handler), and silently no-ops if the sound files are unavailable
-// (which would be surprising on macOS — system sounds are
-// guaranteed to be present).
-//
-// M5+ will add a config knob to disable these via
-// ~/.parleq/config.toml `[ui]` section; for now they're always on.
+// Sounds are loaded at startup (and on settings change) and reused;
+// NSSound caches the underlying audio file. Playback is fire-and-forget
+// and silently no-ops if a sound is unavailable or set to "Off".
 
 import AppKit
 
 @MainActor
 public enum Sounds {
-    private static let down = NSSound(named: NSSound.Name("Tink"))
-    private static let up = NSSound(named: NSSound.Name("Pop"))
-    /// Set false (via Config.acousticFeedback) to silence both cues.
-    /// The whole module no-ops when this is off.
+    /// Sentinel cue name meaning "no sound for this cue."
+    public static let offName = "Off"
+
+    /// Names offered in the Settings pickers: "Off" plus the built-in
+    /// macOS system sounds (the same set the system Sound Effects picker
+    /// exposes). Short/dry sounds (Tink, Bottle, Frog, Morse, Purr) suit
+    /// a frequent UI cue best, but all are offered so users can choose.
+    public static let availableNames: [String] = [
+        offName,
+        "Tink", "Bottle", "Frog", "Morse", "Purr",
+        "Pop", "Blow", "Hero", "Ping",
+        "Basso", "Funk", "Glass", "Sosumi", "Submarine",
+    ]
+
+    private static var down: NSSound? = NSSound(named: NSSound.Name("Tink"))
+    private static var up: NSSound? = NSSound(named: NSSound.Name("Bottle"))
+    /// Set false (via Config.acousticFeedback) to silence BOTH cues.
+    /// The whole module no-ops when this is off, regardless of the
+    /// per-cue sound choices.
     public static var enabled: Bool = true
+
+    /// Resolve a configured cue-sound by name. "Off" / empty / unknown
+    /// → nil (that cue stays silent).
+    private static func resolve(_ name: String) -> NSSound? {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty,
+              trimmed.caseInsensitiveCompare(offName) != .orderedSame else { return nil }
+        return NSSound(named: NSSound.Name(trimmed))
+    }
+
+    /// Apply the user's per-cue sound choices. Call at launch and
+    /// whenever the Settings sound pickers change.
+    public static func configure(startSound: String, endSound: String) {
+        down = resolve(startSound)
+        up = resolve(endSound)
+    }
 
     /// Play the capture-start cue. Safe to call repeatedly — NSSound
     /// rewinds and restarts if a previous play is still finishing.
     public static func playCaptureStart() {
-        guard enabled else { return }
-        logSound("capture-start Tink")
-        down?.stop()
-        down?.play()
+        guard enabled, let down else { return }
+        logSound("capture-start")
+        down.stop()
+        down.play()
     }
 
-    /// Play the capture-end cue.
+    /// Play the capture-end cue immediately. (No teardown-deferral: the
+    /// default end cue is now a short, dry sound (Bottle) without the
+    /// resonant tail that made "Pop" glitch through the engine teardown,
+    /// so immediate playback feels more responsive.)
     public static func playCaptureEnd() {
-        guard enabled else { return }
-        logSound("capture-end Pop")
-        up?.stop()
-        up?.play()
+        guard enabled, let up else { return }
+        logSound("capture-end")
+        up.stop()
+        up.play()
     }
 
     private static func logSound(_ msg: String) {

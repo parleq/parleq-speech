@@ -79,6 +79,7 @@ struct ParleqApp {
         // Plumb config knobs to the modules that consume them.
         MainActor.assumeIsolated {
             Sounds.enabled = config.acousticFeedback
+            Sounds.configure(startSound: config.startSound, endSound: config.endSound)
         }
 
         let recorder = AudioRecorder()
@@ -723,6 +724,17 @@ struct ParleqApp {
                 // the in-flight capture and summons the app window.
                 Task { @MainActor in
                     stateBox.value?.pPressedDuringHold()
+                }
+            },
+            onCPressed: {
+                // "hold-hotkey + C = attach current window as a
+                // reference" gesture. Edge-triggered the first time C
+                // lands during a dictation-hotkey hold; the listener
+                // has already consumed the C keyDown + matching keyUp
+                // so the focused app doesn't see a stray ç. AppState
+                // captures the frontmost window as a reference.
+                Task { @MainActor in
+                    stateBox.value?.cPressedDuringHold()
                 }
             }
         )

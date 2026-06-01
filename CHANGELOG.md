@@ -4,6 +4,28 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-06-01
+
+This release makes the moment of dictation richer and far more discoverable. Quick keyboard gestures let you pull a window in as context or send your cleaned text to a different app without leaving the overlay; a built-in help card lists every gesture so you don't have to remember them; the start and end sounds are now yours to pick or silence individually; and cleanup got smarter about two very human things — correcting yourself mid-sentence and spelling a word out loud.
+
+### Added
+
+- **Self-correction and spelled-out-word cleanup.** Cleanup now follows two natural speech habits. When you audibly correct yourself mid-dictation — "scratch that", "no wait", "I mean Rob", "make that Thursday" — Parleq drops the retracted words and keeps your final intent, conservatively (when it's genuinely ambiguous whether you're correcting or listing both, it keeps your words). And when you spell a word out letter by letter — "K A R E N", "K-A-R-E-N", or phonetically — it assembles the letters into the single intended word and capitalizes it correctly: a proper noun gets an initial capital, a known acronym stays all-caps (URL, JWT), an ordinary word is lowercased — no more accidental ALL-CAPS just because you spelled it aloud. Spelling is most often used to fix a misheard name, so a spelled-out word right after a similar-sounding one replaces it.
+
+- **Attach a window as context with a keystroke.** While holding the hotkey, press **C** to attach the window you're looking at as a reference, or **Space** to pick any on-screen window — its content becomes context for cleanup. Both gestures now also work *while you're reviewing* the result, so you can pull in context after seeing the draft and then refine with it. (Honors the Privacy & Features / MDM reference-windows switch, like every other window-capture path.)
+
+- **Send your cleaned text to a different window.** During review, press **V** to choose a destination window and route the cleaned text straight there instead of the app you started in — handy for dictating into one place while reading from another.
+
+- **A built-in help card.** Press **?** (or **/**) any time during dictation or review to bring up a card listing every gesture, with a short glossary of the concepts (dictate, review, refine, reference window) and your actual hotkey shown up top. It pauses the dictation while it's open and resumes the moment you dismiss it (Esc, ?, or press the hotkey to pick up where you left off).
+
+- **Show the Parleq window during review.** The hold-hotkey + **P** "Show Parleq" gesture now also works while reviewing a result (press **P** in the overlay), not just during a hold.
+
+- **Configurable start and end sounds.** The acoustic-feedback cues are now two independent choices — pick any macOS system sound for the start cue and the end cue separately, or set either to **Off**. Both are still gated by the master Acoustic feedback toggle. Configure them in **Settings → Audio**. Defaults: Tink (start) and Bottle (end).
+
+### Changed
+
+- **Hotkey hints adapt to your binding.** The dictation overlay's footer hints and the menu-bar status label now show your actual configured hotkey instead of a hardcoded "⌥", so they read correctly if you've rebound the dictation hotkey. The help card states your binding once at the top and refers to "the hotkey" throughout.
+
 ## [0.16.0] - 2026-05-29
 
 A small but lovely bit of feedback for quick dictation. Quick mode — double-tap-and-hold to fire off a dictation without the preview overlay — used to give you nothing visual: just the start sound, and nothing at all if you run with acoustic feedback off. Now Parleq's brand mark appears as a near-transparent floating indicator near the bottom of the screen while you speak, so you always know you're being recorded.
