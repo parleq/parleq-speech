@@ -1524,6 +1524,17 @@ extension Config {
         override: ModelIdentifier? = nil
     ) -> ModelIdentifier {
         if let override { return override }
+        // Cleanup disabled ("none") is a GLOBAL off switch. The Context
+        // tier is a sub-feature of cleanup, so when the user has opted
+        // out of cleanup entirely, reference-aware turns must NOT route
+        // to a (possibly still-configured) context_model — otherwise
+        // "skip cleanup, paste raw" would silently keep sending the
+        // transcript + reference content to the context provider.
+        // Returning the cleanup identifier makes the call path resolve
+        // to the nil cleanup provider and paste the raw ASR transcript.
+        if llmProvider == "none" {
+            return ModelIdentifier(provider: llmProvider, model: llmModel)
+        }
         if hasReferences, let context = contextModel { return context }
         return ModelIdentifier(provider: llmProvider, model: llmModel)
     }

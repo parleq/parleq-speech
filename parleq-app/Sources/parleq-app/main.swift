@@ -338,6 +338,13 @@ struct ParleqApp {
         // pairs (e.g. Gemini cleanup + Bedrock context) just work —
         // each provider's credentials are resolved independently.
         let contextLLM: (any LLMProvider)? = {
+            // When cleanup is disabled ("none") the whole LLM path is
+            // off — don't build a context provider either, or it would
+            // keep servicing reference-aware turns and defeat the
+            // "skip cleanup, paste raw" privacy guarantee. (The routing
+            // in Config.modelForInvocation won't select it either; this
+            // also avoids instantiating a live cloud provider.)
+            guard config.llmProvider != "none" else { return nil }
             guard let ctxId = config.contextModel, ctxId != cleanupId else {
                 return nil   // nil → AppState falls back to llm for context turns
             }
