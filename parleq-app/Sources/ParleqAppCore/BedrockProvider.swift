@@ -227,10 +227,17 @@ public final class BedrockProvider: LLMProvider, @unchecked Sendable {
             )
         case .sso:
             if let p = effectiveProfile {
+                // The user's SSO session / named profile takes
+                // precedence; `.environment` is demoted to a last-resort
+                // fallback so a stray ambient AWS_ACCESS_KEY_ID can't
+                // silently override the configured SSO session in this
+                // mode. (Env creds still authenticate when no SSO/profile
+                // credential resolves — the chosen posture is "SSO wins,
+                // env stays as a fallback".)
                 credentialProvider = .selector(
-                    .environment,
                     .configFile(profile: p),
                     .sso(profileName: p),
+                    .environment,
                 )
             } else {
                 credentialProvider = .default
