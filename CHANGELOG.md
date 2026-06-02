@@ -4,6 +4,15 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.17.1] - 2026-06-02
+
+A small follow-up to 0.17.0 with two privacy/security fixes surfaced during a security-review pass.
+
+### Fixed
+
+- **"Skip cleanup" now reliably keeps your dictation on-device.** Choosing the **None** cleanup provider (skip cleanup, paste raw ASR) now disables the optional Context tier too — so even *reference-aware* dictations (where you've attached a window, file, or the clipboard) paste the raw on-device transcript and make **no** network call. Previously, a still-configured context model could keep sending reference-aware turns to the cloud even when cleanup was off, which was a surprising privacy gap. (You no longer need to separately clear the context model.)
+- **AWS Bedrock SSO uses your SSO session, not stray environment credentials.** In the Bedrock SSO auth mode, your configured profile / SSO session now takes precedence over any ambient `AWS_ACCESS_KEY_ID` environment variables, which previously could silently override it. Environment credentials still authenticate as a last-resort fallback when no profile/SSO credential is present.
+
 ## [0.17.0] - 2026-06-01
 
 This release makes the moment of dictation richer and far more discoverable. Quick keyboard gestures let you pull a window in as context or send your cleaned text to a different app without leaving the overlay; a built-in help card lists every gesture so you don't have to remember them; the start and end sounds are now yours to pick or silence individually; and cleanup got smarter about two very human things — correcting yourself mid-sentence and spelling a word out loud.
