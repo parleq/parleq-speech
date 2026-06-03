@@ -4,7 +4,7 @@ This document is the starting point for an enterprise security / cloudops review
 
 The intended audience is a security reviewer who needs to decide whether deploying Parleq on a managed workstation meets the organization's policy. We've tried to make every claim grep-able to a specific file in the source tree, so anything here can be verified independently.
 
-**Last reviewed:** 2026-06-01 (v0.17.0 — refreshed to cover all five LLM providers and their auth modes, Reference Windows screen capture, persistent text-free metrics, and the expanded managed-configuration surface)
+**Last reviewed:** 2026-06-02 (v0.18.0 — added coverage for the opt-in "learn from corrections" in-memory journal surface; all prior v0.17.0 content unchanged)
 **Source:** [github.com/parleq/parleq-speech](https://github.com/parleq/parleq-speech) at v0.17.0 or later
 **Review trigger / context:** [docs/SETUP.md](SETUP.md) covers end-user installation; this document covers the security model.
 
@@ -19,7 +19,7 @@ Parleq is an open-source macOS dictation utility. The user holds a global hotkey
 
 There is no server-side storage of audio or transcripts. Parleq's only persistent local state is under `~/.parleq/`: user configuration (settings + custom dictionary), a metadata-only LLM-call ledger, and a metadata-only per-dictation metrics file — none contain transcript text. Provider secrets live in the macOS Keychain.
 
-**What changed since this packet was last reviewed (v0.9.0).** Four LLM providers were added beyond Gemini (OpenAI, Vertex AI, Bedrock, Azure OpenAI), each with its own authentication; the **Reference Windows** feature lets the user optionally attach a window's content (captured via ScreenCaptureKit) as cleanup context, which introduces a Screen Recording permission and a new outbound data class; a persistent **text-free** metrics file was added; and the managed-configuration (MDM) surface grew substantially. Each is covered below.
+**What changed since this packet was last reviewed (v0.9.0).** Four LLM providers were added beyond Gemini (OpenAI, Vertex AI, Bedrock, Azure OpenAI), each with its own authentication; the **Reference Windows** feature lets the user optionally attach a window's content (captured via ScreenCaptureKit) as cleanup context, which introduces a Screen Recording permission and a new outbound data class; a persistent **text-free** metrics file was added; the managed-configuration (MDM) surface grew substantially; and the opt-in **"learn from corrections"** feature (v0.18.0) introduces a bounded in-memory correction journal covered in §5.2 and §9.8. Each is covered below.
 
 ---
 
@@ -79,9 +79,11 @@ There is no server-side storage of audio or transcripts. Parleq's only persisten
 | Reference-window captures (PNG + OCR'd text) | Process memory only | Captured via ScreenCaptureKit when the user attaches a window; sent to the LLM as part of the cleanup payload; released at end of dictation (accept/cancel). Never written to disk. |
 | Provider secrets (key-based auth modes) | macOS Keychain (service `com.parleq.app`) | Persistent until user removes. Gemini / OpenAI / Azure API keys, the scoped Bedrock API key, static AWS IAM credentials, and the Vertex service-account JSON — whichever the configured provider/mode uses. |
 | CLI-session credentials (SSO / ADC / Entra modes) | AWS/gcloud/az CLI caches (e.g. `~/.aws/sso/cache/`) | Per the user's existing CLI session — Parleq stores nothing and delegates refresh to the CLI. |
-| User dictionary + settings | `~/.parleq/config.json` | User-authored, local-only |
+| User dictionary + settings | `~/.parleq/config.json` | User-authored config. No transcripts. |
 | LLM-call ledger | `~/.parleq/usage.jsonl` | Token counts + provider/model + target-app bundle ID. **No transcript content.** |
 | Per-dictation metrics | `~/.parleq/metrics.jsonl` | id, timestamp, audio duration, ASR/LLM latency, `hadReference` + `cleanupFailed` booleans. **No transcript text, no window labels.** Bounded retention (§5). |
+| Correction journal (opt-in, off by default) | Process memory only | Refine-event records (instruction + the edit's before/after text) and spell-out candidates (assembled term + the cleaned text it appeared in). Captures correction *events* only, not a log of every dictation — but a refine record's before/after can be that dictation's full cleaned text (same data class the provider already saw during cleanup). Held in memory only when `learnFromCorrectionsEnabled = true`; count + age caps bound the ring; cleared on quit (§5.2). **Never written to disk.** |
+| Learned-changes store (opt-in, off by default) | Process memory only | Pending suggestions and applied-changes log for revert. Provenance only — no extra transcript content. Held in memory only when "learn from corrections" is enabled; cleared on quit (§5.2). **Never written to disk.** |
 
 ### Trust boundaries
 
@@ -176,7 +178,7 @@ Parleq writes the following files. Audited against the enterprise rule "no input
 | `~/.parleq/usage.jsonl` | One JSON line per LLM call: timestamp, kind (cleanup/refine), provider, model, input/output token counts, latency, target-app bundle ID. | **Metadata only.** No transcript or cleanup-output content. |
 | `~/.parleq/metrics.jsonl` | One JSON line per dictation (`MetricsRecord`): id, timestamp, audio duration, ASR latency, LLM latency, `hadReference` boolean, `cleanupFailed` boolean. Feeds the cross-session Stats dashboard. | **Metadata only — no transcript text, no window labels, no app names.** The on-disk file is **hard-bounded to a fixed 30-day horizon regardless of config** (`persistedRetentionDays = 30`; the Stats view renders only 7 days). `transcriptHistoryRetentionHours` additionally age-prunes persisted records when set; `transcriptHistoryMaxEntries` caps only the in-memory *text* history, **not** these metrics. Setting **either** key to 0 disables history entirely — metrics are cleared and not persisted (the zero-retention lever for compliance fleets). Default: unlimited in memory, 30 days on disk. |
 | `~/.parleq/pricing-cache.json` | LiteLLM JSON snapshot (public reference data). | Not user data. Disable-able via `PARLEQ_DISABLE_LIVE_PRICING=1`. |
-| `~/.parleq/app.log` | Stderr-redirected diagnostics: phase transitions, ASR latency + length, LLM token counts, model-load progress, error stack traces. Capped at 10 MB; truncates to last 5 MB on launch when over the cap. | **No transcript content, no audio, no auth values.** Same redaction discipline as the rest of the codebase. Skipped in dev mode (when stderr is a TTY). |
+| `~/.parleq/app.log` | Stderr-redirected diagnostics: phase transitions, ASR latency + length, LLM token counts, model-load progress, error stack traces. Capped at 10 MB; truncates to last 5 MB on launch when over the cap. | **No transcript content, no audio, no auth values.** Same redaction discipline as the rest of the codebase. Learning-analysis log output is count-only (records analyzed, proposals produced) — no correction snippet content. Skipped in dev mode (when stderr is a TTY). |
 | `~/Library/Application Support/FluidAudio/Models/` | Downloaded Parakeet TDT v3 + CTC vocab encoder model weights. | Public model artifacts, not user data. |
 
 **Explicitly NOT written to disk:**
@@ -184,12 +186,13 @@ Parleq writes the following files. Audited against the enterprise rule "no input
 - Transcript text. `AppState`'s ASR diagnostic logs `(N chars / W words)` — length only.
 - Cleanup output text **on disk**. Held in process memory only — first in the overlay during cleanup, then in the `TranscriptHistory` ring buffer (see § 5.1 below) for the rest of the session, then gone on app quit. Never serialized to a file.
 - Reference-window captures. PNG screenshots + OCR'd text from Reference Windows (and any attached file/clipboard content) live in process memory for the duration of one dictation and are released on accept/cancel — never written to disk, never cached between sessions.
+- Correction journal and learned-changes store (§5.2). Even when "learn from corrections" is enabled, the correction ring and the learned-changes store are held entirely in process memory — **never written to disk**. Cleared on app quit, like Recent Dictations text. The only durable output is the learned dictionary terms, which are written to the existing `~/.parleq/config.json` — the same file that holds hand-added dictionary terms.
 
 This was explicitly verified after a full source sweep on 2026-05-06 (see git history for commits `631f6e0` and `6d64646`).
 
 ### 5.1 In-memory transcript history (Recent Dictations)
 
-The Parleq window's **Recent Dictations** section surfaces recent accepted transcripts so the user can grab one back if a paste lands somewhere unexpected (focus changed mid-flight, target app rejected the paste, etc.). Implementation: `TranscriptHistory.swift`, an `@MainActor` ring of `TranscriptEntry` structs (UUID, timestamp, transcript text, original target-app name, reference labels, and a `wasCleanupSuccessful` boolean). Entries whose cleanup failed carry the raw ASR transcript that Parleq actually pasted — the same text the user accepted — with the boolean false so the list can mark them ` · raw`. Successful entries carry the cleaned text with the boolean true. From a compliance standpoint the data classification is identical either way (in-memory transcript text the user just dictated); the boolean is a display hint, not a security boundary.
+The Parleq window's **Recent Dictations** section surfaces recent dictations so the user can grab one back if a paste lands somewhere unexpected (focus changed mid-flight, target app rejected the paste, etc.). A dictation is recorded when the user **accepts** (pastes) it **or clicks Copy** in the overlay — so a result that was copied and then dismissed is still retrievable. Recording is **one entry per dictation session, updated in place** (`TranscriptHistory.upsert`, keyed by a per-session id): copying, refining, and accepting the same dictation update a single entry rather than appending duplicates. This adds no new data class — copied text is the same in-memory transcript text the user just dictated, under the identical retention controls (and `0` still disables the ring entirely). Implementation: `TranscriptHistory.swift`, an `@MainActor` ring of `TranscriptEntry` structs (UUID, timestamp, transcript text, original target-app name, reference labels, and a `wasCleanupSuccessful` boolean). Entries whose cleanup failed carry the raw ASR transcript that Parleq actually pasted — the same text the user accepted — with the boolean false so the list can mark them ` · raw`. Successful entries carry the cleaned text with the boolean true. From a compliance standpoint the data classification is identical either way (in-memory transcript text the user just dictated); the boolean is a display hint, not a security boundary.
 
 **Compliance posture:**
 - **Process memory only.** The buffer is held in a singleton `@MainActor` class; never serialized to disk, never sent over the network. Deleted when the process exits — a `Quit Parleq` from the menu bar wipes the entire history.
@@ -202,6 +205,37 @@ The Parleq window's **Recent Dictations** section surfaces recent accepted trans
 **Threat model.** Memory dumps of a running Parleq process would surface the buffer; this is the same exposure as any in-flight cleaned text (the overlay's `currentText`, the LLM's response stream buffer, etc.). Anyone with the privilege to dump Parleq's memory already has the privilege to dump any process running as the same user, so this is not a new attack surface — it's the existing one with a slightly larger value at risk (the session's retained dictations — default unlimited, bounded/disable-able via the retention keys — vs. just the current one).
 
 **Verification:** `grep -rn "TranscriptHistory" parleq-app/Sources/` shows the singleton exists at `TranscriptHistory.swift`, is read by `RecentDictationsView.swift` (the Parleq window's Recent Dictations list — the old menu-bar submenu is gone), and is written once per accepted dictation via the shared `appendTranscriptHistory` helper — on both accept paths: `AppState.accept()` (normal review) and the quick-mode auto-paste path in `applyResult`. The text-bearing `TranscriptEntry` is **not** `Codable` and has no `write(to:)` path — the transcript text cannot reach disk through the type. The *only* persisted state is the separate, **text-free** `MetricsRecord` → `metrics.jsonl` (§5), which carries no transcript or labels. The `wasCleanupSuccessful` boolean is set from a `lastCleanupFailed` flag that AppState tracks across the `applyResult → accept` handoff, and is reset by `startFreshCapture` and `closeAndReset` so a prior dictation's failure never leaks into a later entry.
+
+### 5.2 Opt-in correction journal (learn from corrections)
+
+"Learn from corrections" is **off by default** (`learnFromCorrectionsEnabled = false`). Enabling it in Settings (or via MDM) consents to two things:
+
+1. **In-memory correction ring** — `CorrectionJournal.swift` appends records to an in-memory ring buffer each time a correction signal is observed: a **voice-refine event** (the instruction the user spoke + the before/after text of the edit) or a **spell-out candidate** (the assembled term + the cleaned text it appeared in). The journal captures only **correction events the user explicitly triggered** — not a running log of every dictation — but a single refine record holds that edit's full before/after cleaned text, which for a long dictation can be that dictation's entire cleaned output (so these are not "snippets"). The text is the same class as cleaned-transcript text. Analysis always goes to the configured **cleanup** provider — no new provider, service, or network destination. Note one nuance: a dictation cleaned by a different tier (a context-model or picker-override turn) was processed by a different configured model, so for those dictations the cleanup provider receives the correction text during analysis without having originally cleaned it — but it remains a provider the user configured and authorized. The ring is **never written to disk** and is cleared when Parleq quits, exactly like Recent Dictations text (`TranscriptHistory`).
+2. **Periodic off-hot-path analysis** — `LearningAnalyzer.swift` wakes on a threshold-plus-idle trigger, reads the in-memory ring, and calls the **already-configured cleanup LLM** to propose dictionary changes. This is **not a new network boundary**: the same provider that already receives cleanup payloads also receives these snippets during analysis. Analysis is always off the dictation hot path — it never delays a dictation or blocks the overlay.
+
+**Durable output.** The only on-disk artifact produced by this feature is **learned dictionary terms**, written into the existing `~/.parleq/config.json` — the same file that holds hand-added dictionary terms. No raw correction snippet text ever reaches `config.json`; the file receives structured term entries (word + context + aliases), identical in format to user-authored terms. This is **enforced at the parse boundary**, not left to the model's good behavior: `LearningAnalyzer.validate` bounds every durable field to a short, word-level value (`maxDurableFieldChars`/`maxDurableFieldWords`) and **drops any proposal whose term — or any alias — reads like a sentence**, so a dictation-derived phrase can never survive into a dictionary entry. The freeform `context` label is additionally collapsed to a single short line (`maxDurableContextChars`), and **auto-applied (unreviewed) entries persist no context at all** (`LearnedStore.applyTermProposal` writes `context: nil`) — only the canonical term and its bounded aliases. A context label persists only when the user **explicitly accepts** a suggestion, having seen the operation and the exact fields in the Learned view first. The in-memory learned-changes store (pending suggestions + applied-changes log for revert) is likewise process-memory only and cleared on quit.
+
+**Retention and compliance posture:**
+
+- Count and age caps are configurable (`learnedCorrectionsMaxEntries` and `learnedCorrectionsRetentionHours`) and enforced as the ring fills. Either cap set to `0` disables the ring entirely — nothing is recorded, analysis never runs. Setting both to `null` (the default) means uncapped on count and age within the session: the in-memory ring grows with the number of corrections until Parleq quits (when it is dropped). Set a count or age cap to bound it. Since no data reaches disk, there is no file to purge.
+- When the feature is disabled via Settings, Parleq **offers to clear** the in-memory ring immediately (a confirmation with Clear / Keep). Either way the ring is dropped when Parleq quits.
+
+**MDM control.** Three MDM keys let a fleet administrator pin the feature off and set retention limits:
+
+| MDM key | Type | Effect |
+|---|---|---|
+| `learnFromCorrectionsEnabled` | Bool | Set to `false` to force the feature off fleet-wide. When pinned, the Settings toggle is grayed out and the user cannot enable it. |
+| `learnedCorrectionsMaxEntries` | Integer | Count cap on the in-memory ring. Set to `0` to disable entirely (nothing recorded, analysis never runs). |
+| `learnedCorrectionsRetentionHours` | Integer | Age cap (hours) on ring records. Set to `0` to disable entirely. |
+
+**Upheld invariants.** Enabling "learn from corrections" does not change any existing invariants:
+- No audio is written to disk.
+- No dictation-derived text is written to disk — the correction ring is process memory only, consistent with Parleq's hard invariant.
+- Analysis log output is count-only (e.g. "analyzed N records, produced M proposals") — no correction snippet content in `app.log`.
+- Analysis never runs on the dictation hot path.
+- No new network boundary is introduced — snippets go to the already-configured cleanup LLM.
+
+**Verification:** `grep -rn "CorrectionJournal\|LearnedStore\|LearningAnalyzer" parleq-app/Sources/` shows the journal's `record(_:enabled:)` gate checks `enabled` before any append to the in-memory ring; `LearningAnalyzer.runIfDue(...)` is invoked only from a detached `Task` in `AppState.finalizeCapture` (after the cleanup/refine result has been applied — off the dictation latency path) and from a low-frequency idle-flush timer; both call sites gate on `learnFromCorrectionsEnabled`, and `runIfDue` is rate-capped so analysis never runs on the hot path.
 
 ---
 
@@ -343,7 +377,17 @@ When the user attaches a window (or file / clipboard) as context, that content �
 
 ### 9.7 Destination pinning on managed Macs
 
-Beyond enabling/disabling features, managed configuration can pin *where data goes* so a user can't redirect it to a personal account: cleanup/context provider, allowed providers + models (`cleanupProvider`, `cleanupAllowedProviders`, `cleanupModel`, `contextProvider`, …), auth mode (`bedrockAuthMode`, `azureAuthMode`, `staticApiKeysAllowed`), the Sparkle update feed URL, logging mode, transcript-history retention, and the **ASR endpoint** (pinning it closes the "point dictation audio at an arbitrary server" gap within an otherwise-allowed config). The authoritative key set lives in `ManagedConfig.swift`; the public reference is [parleq.app/docs/managed-configuration](https://parleq.app/docs/managed-configuration/).
+Beyond enabling/disabling features, managed configuration can pin *where data goes* so a user can't redirect it to a personal account: cleanup/context provider, allowed providers + models (`cleanupProvider`, `cleanupAllowedProviders`, `cleanupModel`, `contextProvider`, …), auth mode (`bedrockAuthMode`, `azureAuthMode`, `staticApiKeysAllowed`), the Sparkle update feed URL, logging mode, transcript-history retention, the **ASR endpoint** (pinning it closes the "point dictation audio at an arbitrary server" gap within an otherwise-allowed config), and the **correction-journal feature + retention** (`learnFromCorrectionsEnabled`, `learnedCorrectionsMaxEntries`, `learnedCorrectionsRetentionHours` — see §5.2 and §9.8). The authoritative key set lives in `ManagedConfig.swift`; the public reference is [parleq.app/docs/managed-configuration](https://parleq.app/docs/managed-configuration/).
+
+### 9.8 Opt-in correction journal (learn from corrections)
+
+When a user enables "Learn from corrections," correction snippets (refine instructions + before/after edits; assembled spell-out terms + cleaned lines) are held **in process memory only** and periodically sent to the **already-configured** cleanup LLM for analysis. They are **never written to disk** and are cleared when Parleq quits. This is not a new egress boundary — analysis always goes to the user's configured **cleanup** provider, the same one that receives cleanup payloads. (A dictation cleaned by a context-model or picker-override tier was processed by a different configured model; its correction text still reaches the cleanup provider during analysis — a provider the user configured and authorized, with no new destination introduced.) The data class is the same as cleaned-transcript text — a refine record's before/after can be a full cleaned dictation; the journal captures only correction *events*, not every dictation — and unlike a file-backed journal there is no on-device persistence of dictation-derived text.
+
+**Risk and mitigation:**
+- A user with `learnFromCorrectionsEnabled = true` accumulates correction snippets in memory for the session (bounded by the retention caps) and sends them to the cleanup LLM during periodic off-path analysis. Both actions are fully visible in Settings.
+- For compliance fleets where no dictation-derived text should reach the cleanup LLM even via periodic analysis, pin `learnFromCorrectionsEnabled = false` (or `learnedCorrectionsMaxEntries = 0`) via MDM. The feature is off by default, so no action is required if the fleet is managed and the default config is deployed.
+- For fleets where the feature is allowed but the in-session ring should be bounded, pin `learnedCorrectionsMaxEntries` and `learnedCorrectionsRetentionHours` via MDM (§5.2).
+- The feature can be disabled at any time from Settings → Privacy & Features; disabling offers to clear the in-memory ring immediately (a Clear All / Keep Data confirmation), and it is cleared on quit either way. No restart required.
 
 ---
 
@@ -368,6 +412,10 @@ For reviewers who want to verify the claims above against code:
 | `Package.resolved` (pinned versions) | `parleq-app/Package.resolved` |
 | LiteLLM disable knob | `parleq-app/Sources/ParleqAppCore/PricingCache.swift` (search "PARLEQ_DISABLE_LIVE_PRICING") |
 | Code-signing flow | `parleq-app/scripts/make-app.sh` |
+| Correction ring (opt-in; in-memory only; count + age caps) | `parleq-app/Sources/ParleqAppCore/CorrectionJournal.swift` |
+| Learning analysis (off-hot-path; count-only logging) | `parleq-app/Sources/ParleqAppCore/LearningAnalyzer.swift` |
+| Learned-changes store (auto-apply / suggest / revert; in-memory only) | `parleq-app/Sources/ParleqAppCore/LearnedStore.swift` |
+| MDM keys for correction ring (3 keys) | `parleq-app/Sources/ParleqAppCore/ManagedConfig.swift` (search "learnFromCorrections") |
 
 ---
 
@@ -414,6 +462,7 @@ For the operational side (AWS account configuration, Identity Center, Bedrock mo
 
 ## Appendix: change log relevant to security posture
 
+- **2026-06-02** (v0.18.0): documented the opt-in "learn from corrections" in-memory correction ring, the off-hot-path `LearningAnalyzer`, the in-memory `LearnedStore`, and the three new MDM keys. No new egress boundary (snippets go to the already-configured cleanup LLM); no audio on disk; no dictation-derived text on disk (ring is process-memory only, cleared on quit); analysis logging is count-only; feature is off by default. Compliance note updated: §5.2 clarifies that the only durable output is learned dictionary terms written to `config.json`.
 - **2026-06-01** (v0.17.0): security-review refresh — documented all five LLM providers + their auth modes, Reference Windows screen capture, the text-free `metrics.jsonl`, and the expanded MDM surface. (0.17.0's own feature changes — dictation/review gestures, configurable sounds, self-correction/spelled-out-word cleanup rules — stay within existing trust boundaries.)
 - **v0.10.0–v0.16.0** (rolled up): multi-provider LLM auth added — OpenAI direct, Vertex AI (gcloud ADC / service-account JSON), Azure OpenAI (resource key / Entra), and Bedrock `static` + scoped-`bedrockApiKey` modes — with all key-based secrets confined to the Keychain; **Reference Windows** (ScreenCaptureKit capture + Vision OCR; Screen Recording TCC; memory-only); persistent **text-free** `metrics.jsonl` (0.15.0; bounded retention, zero-retention-able); and a much larger **managed-configuration** surface (provider/model/auth pins, `asrEndpoint` pin, `staticApiKeysAllowed`, `livePricingEnabled`, transcript-history retention keys).
 - **2026-05-06** (`6d64646`): bearer-token sidecar auth, Keychain Gemini key, Soto pin tightening, LiteLLM disable knob.

@@ -35,6 +35,10 @@ const highlights = [
     body: 'Tap Space while holding the dictation hotkey to pause audio and pick a window — or C to grab the one you\'re already looking at — then keep dictating; your spoken words land with the right specificity because the LLM sees what you\'re pointing at. Attach a file or clipboard snapshot too. Window captures are PNG-in-memory only: never written to disk, released when the session ends, sent only to your configured LLM endpoint.',
   },
   {
+    title: 'Learns from your corrections',
+    body: 'When you repeatedly fix the same name or phrase, Parleq notices. The opt-in "Learn from corrections" feature keeps short correction snippets in memory (never written to disk) and occasionally asks your already-configured cleanup model to suggest dictionary improvements — no new service, no new network destination. High-confidence spelling fixes apply automatically (and are revertible); the rest appear as suggestions to accept or dismiss.',
+  },
+  {
     title: 'Compliance-friendly by default',
     body: 'Audio is never written to disk — it lives in memory only, for the few seconds a dictation takes. Logs record metrics (latency, token counts) but never the text itself. Provider API keys live in the macOS Keychain. Cloud sign-in modes (AWS SSO, gcloud, az login) delegate to your existing CLI session, so Parleq never stores long-lived AWS, GCP, or Azure session tokens directly.',
   },

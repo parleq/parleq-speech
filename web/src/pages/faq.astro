@@ -28,6 +28,10 @@ const sections = [
         q: 'Where are my API keys stored?',
         a: `In the macOS Keychain — \`KeychainStore\` writes them to the user's login keychain via SecItem APIs. Never in \`~/.parleq/config.json\` or any other plaintext file on disk. This applies to every provider's secrets: Gemini API key, Bedrock API key, AWS static IAM credentials, Vertex service-account JSON (the whole JSON is one Keychain item), and the Azure resource API key.`,
       },
+      {
+        q: 'Does Parleq learn from my corrections? What gets stored?',
+        a: `Only if you opt in — the feature is **off by default**. When you enable **Settings → Privacy & Features → Learn from my corrections**, Parleq keeps short correction snippets **in memory only — never written to disk, cleared when you quit Parleq**. Occasionally — off the dictation path, so it never adds latency — it sends those in-memory snippets to the **same cleanup model you already have configured** and asks it to suggest custom-dictionary improvements. No new service is introduced and no new network destination is used; the request goes to whatever LLM endpoint you already authorized. High-confidence spelling fixes auto-apply to your dictionary (revertibly); lower-confidence suggestions appear in a **Learned** section for you to accept or dismiss. The only thing that persists on disk is the learned dictionary terms — written to your config file just like hand-added terms, not as raw dictation snippets. You can cap the in-session ring by entry count or retention window in Settings, or clear it entirely. IT administrators can pin the feature off fleet-wide via the \`learnFromCorrectionsEnabled\` MDM key, or disable the ring entirely with \`learnedCorrectionsMaxEntries: 0\` or \`learnedCorrectionsRetentionHours: 0\`.`,
+      },
     ],
   },
   {

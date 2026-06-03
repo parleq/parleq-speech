@@ -98,6 +98,16 @@ public enum DictionaryBiasing: String, Sendable, Equatable, Codable {
     case llmOnly
 }
 
+/// Provenance of a dictionary entry. `user` = hand-authored in
+/// Settings (the only kind before "learn from corrections"). `learned`
+/// = auto-applied by the learning analyzer; visibly distinguishable in
+/// the dictionary UI, revertible, and never silently overwritten by a
+/// later learned proposal touching the same term.
+public enum DictionarySource: String, Sendable, Equatable, Codable {
+    case user
+    case learned
+}
+
 /// One entry in the user's custom dictionary. `term` is the canonical
 /// spelling Parleq biases toward. `context` is an optional one-line
 /// blurb describing what the term is, so the LLM cleanup pass can
@@ -112,17 +122,20 @@ public struct DictionaryEntry: Sendable, Equatable {
     public var context: String?
     public var aliases: [String]
     public var biasing: DictionaryBiasing
+    public var source: DictionarySource
 
     public init(
         term: String,
         context: String? = nil,
         aliases: [String] = [],
-        biasing: DictionaryBiasing = .asrAndLLM
+        biasing: DictionaryBiasing = .asrAndLLM,
+        source: DictionarySource = .user
     ) {
         self.term = term
         self.context = context
         self.aliases = aliases
         self.biasing = biasing
+        self.source = source
     }
 }
 
@@ -349,6 +362,21 @@ public struct Config: Sendable {
     /// sweep. nil = unlimited. 0 = disable history entirely.
     public var transcriptHistoryRetentionHours: Int?
 
+    /// Opt-in master switch for "learn from corrections" (#TBD). Off by
+    /// default: enabling consents to holding correction snippets in memory
+    /// (in-session only, never written to disk) AND sending them to the
+    /// configured cleanup LLM during periodic off-path analysis. Re-read
+    /// per utterance at the capture site.
+    public var learnFromCorrectionsEnabled: Bool
+    /// Count cap on the correction journal. nil = unlimited (default).
+    /// 0 = disable journal entirely (compliance lever; nothing written,
+    /// existing file removed) — same semantics as the transcript-history
+    /// retention knobs.
+    public var learnedCorrectionsMaxEntries: Int?
+    /// Age cap (hours) on the correction journal. nil = unlimited. 0 =
+    /// disable entirely.
+    public var learnedCorrectionsRetentionHours: Int?
+
     /// Keys whose effective values were sourced from MDM
     /// (/Library/Managed Preferences) rather than from the user's
     /// config file. Populated by Config.load(); never persisted to disk.
@@ -409,6 +437,9 @@ public struct Config: Sendable {
         customModelEntryEnabled: true,
         transcriptHistoryMaxEntries: nil,
         transcriptHistoryRetentionHours: nil,
+        learnFromCorrectionsEnabled: false,
+        learnedCorrectionsMaxEntries: nil,
+        learnedCorrectionsRetentionHours: nil,
         managedKeys: []
     )
 
@@ -585,11 +616,18 @@ public struct Config: Sendable {
                             else { return .asrAndLLM }
                             return parsed
                         }()
+                        let source: DictionarySource = {
+                            guard let raw = obj["source"] as? String,
+                                  let parsed = DictionarySource(rawValue: raw)
+                            else { return .user }
+                            return parsed
+                        }()
                         return DictionaryEntry(
                             term: trimmedTerm,
                             context: (ctx?.isEmpty ?? true) ? nil : ctx,
                             aliases: aliases,
-                            biasing: biasing
+                            biasing: biasing,
+                            source: source
                         )
                     }
                     return nil
@@ -641,6 +679,15 @@ public struct Config: Sendable {
                 }
                 if let v = features["transcript_history_retention_hours"] as? Int, v >= 0 {
                     c.transcriptHistoryRetentionHours = v
+                }
+                if let v = features["learn_from_corrections_enabled"] as? Bool {
+                    c.learnFromCorrectionsEnabled = v
+                }
+                if let v = features["learned_corrections_max_entries"] as? Int, v >= 0 {
+                    c.learnedCorrectionsMaxEntries = v
+                }
+                if let v = features["learned_corrections_retention_hours"] as? Int, v >= 0 {
+                    c.learnedCorrectionsRetentionHours = v
                 }
             }
             // MDM overlay: check the seven managed-eligible Bool keys.
@@ -707,6 +754,18 @@ public struct Config: Sendable {
         if let v = ManagedConfig.managedInt(forKey: "transcriptHistoryRetentionHours") {
             c.transcriptHistoryRetentionHours = v
             managedKeys.insert("transcriptHistoryRetentionHours")
+        }
+        if let v = ManagedConfig.managedBool(forKey: "learnFromCorrectionsEnabled") {
+            c.learnFromCorrectionsEnabled = v
+            managedKeys.insert("learnFromCorrectionsEnabled")
+        }
+        if let v = ManagedConfig.managedInt(forKey: "learnedCorrectionsMaxEntries") {
+            c.learnedCorrectionsMaxEntries = v
+            managedKeys.insert("learnedCorrectionsMaxEntries")
+        }
+        if let v = ManagedConfig.managedInt(forKey: "learnedCorrectionsRetentionHours") {
+            c.learnedCorrectionsRetentionHours = v
+            managedKeys.insert("learnedCorrectionsRetentionHours")
         }
         // autoUpdateEnabled is Sparkle-side only; we still record managedKeys
         // so UpdatesView can show the lock indicator.
@@ -1336,6 +1395,29 @@ public struct Config: Sendable {
         } else if let existing = existingFeatures["transcript_history_retention_hours"] {
             featuresDict["transcript_history_retention_hours"] = existing
         }
+        if !config.managedKeys.contains("learnFromCorrectionsEnabled") {
+            featuresDict["learn_from_corrections_enabled"] = config.learnFromCorrectionsEnabled
+        } else if let existing = existingFeatures["learn_from_corrections_enabled"] {
+            featuresDict["learn_from_corrections_enabled"] = existing
+        }
+        if !config.managedKeys.contains("learnedCorrectionsMaxEntries") {
+            if let v = config.learnedCorrectionsMaxEntries {
+                featuresDict["learned_corrections_max_entries"] = v
+            } else {
+                featuresDict.removeValue(forKey: "learned_corrections_max_entries")
+            }
+        } else if let existing = existingFeatures["learned_corrections_max_entries"] {
+            featuresDict["learned_corrections_max_entries"] = existing
+        }
+        if !config.managedKeys.contains("learnedCorrectionsRetentionHours") {
+            if let v = config.learnedCorrectionsRetentionHours {
+                featuresDict["learned_corrections_retention_hours"] = v
+            } else {
+                featuresDict.removeValue(forKey: "learned_corrections_retention_hours")
+            }
+        } else if let existing = existingFeatures["learned_corrections_retention_hours"] {
+            featuresDict["learned_corrections_retention_hours"] = existing
+        }
 
         // Phase 7 destination-pin preservation. When a destination
         // pin is active, the user can't change the field in
@@ -1451,6 +1533,12 @@ public struct Config: Sendable {
                         // unchanged for users who never touch the
                         // biasing toggle.
                         obj["biasing"] = entry.biasing.rawValue
+                    }
+                    if entry.source != .user {
+                        // Skip the field for ordinary user entries so
+                        // existing on-disk configs stay byte-identical;
+                        // only learned entries carry the provenance tag.
+                        obj["source"] = entry.source.rawValue
                     }
                     return obj
                 },

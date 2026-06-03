@@ -4,6 +4,18 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-06-02
+
+This release teaches Parleq to learn from the way you correct it, and makes the Copy button remember your dictations.
+
+### Added
+
+- **Learn from your corrections (opt-in, off by default).** When you fix the same things repeatedly — spelling a name out loud, or refining cleaned text by voice — Parleq can notice the pattern and, occasionally and entirely off the dictation path, ask your cleanup model to suggest improvements to your custom dictionary. High-confidence spelling fixes apply automatically and are always revertible; anything less certain is offered as a suggestion you can Accept or Dismiss in a new **Learned** section of the Parleq window. Turning it on keeps your recent corrections in memory only — never written to disk, cleared when you quit Parleq — and includes them in the occasional analysis request to the cleanup model you already use (no new service and no new network destination). It captures only your corrections, not a log of everything you dictate. The only thing that persists is the learned dictionary terms, stored in your config alongside any hand-added terms. You can cap how much is kept in the session, clear it any time, and disabling the feature offers to clear it immediately. A one-time nudge — in the Parleq window and on the review overlay — introduces the feature with a one-click toggle to turn it on. IT admins can pin it off via managed configuration.
+
+### Changed
+
+- **Copy now remembers your dictation.** Clicking **Copy** in the overlay records the dictation in Recent Dictations, so a result you copied and then dismissed is no longer lost. Copying, refining, and accepting the same dictation update a single history entry instead of creating duplicates.
+
 ## [0.17.1] - 2026-06-02
 
 A small follow-up to 0.17.0 with two privacy/security fixes surfaced during a security-review pass.

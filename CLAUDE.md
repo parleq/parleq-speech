@@ -108,6 +108,11 @@ parleq-speech/
 | `KeychainStore.swift` | Wraps SecItem APIs for every provider secret: Gemini API key, Bedrock API key, AWS static credentials, Vertex service-account JSON, Azure resource API key. Service `com.parleq.app`. Settings UI is the canonical writer; never displayed in plaintext after save. |
 | `LogFile.swift` | At launch, `dup2`s stderr to `~/.parleq/app.log` (10 MB cap, truncates on launch when over). Skipped when stderr is a TTY (developer mode). |
 | `TranscriptHistory.swift` | In-memory ring buffer (cap 20) of recent cleaned transcripts. **Process memory only — never written to disk.** Surfaced via the menu bar's Recent Dictations submenu; clicking copies text to the pasteboard. Wiped on app quit. |
+| `SpellOutDetector.swift` | Detects spelled-out word candidates (e.g. "A-P-I") in the raw ASR transcript and surfaces the assembled term + context as a correction signal for the learning journal. |
+| `CorrectionJournal.swift` | Opt-in, bounded, **in-memory-only** ring buffer of correction signals — voice-refine events (instruction + the edit's before/after text) and spell-out candidates (assembled term + the cleaned text it appeared in). Captures correction *events* only, not a log of every dictation (a refine record holds that edit's full before/after text). Count + age caps bound the ring; **never written to disk**; wiped on app quit; off by default. |
+| `LearningAnalyzer.swift` | Periodic off-hot-path actor that reads the in-memory correction ring, asks the configured cleanup LLM to propose dictionary additions/modifications, then hands high-confidence non-colliding proposals to `LearnedStore` for auto-apply and the rest as pending suggestions. Analysis logging is count-only (no transcript content). |
+| `LearnedStore.swift` | Apply / suggest / revert surface. Auto-applies high-confidence term proposals into the custom dictionary (tagged `source: learned`, revertibly); everything else becomes a pending suggestion. **In-memory only** (pending suggestions + applied-changes log are process memory, wiped on quit); the only durable output is the learned dictionary terms written to `config.json`. |
+| `LearnedView.swift` | SwiftUI "Learned" sidebar section in Settings. Surfaces pending suggestions (Accept / Dismiss) and the applied-changes log (Revert). Toggle to enable/disable the feature with an offer to purge the journal. |
 
 ## Hard invariants — preserve through refactors
 
@@ -119,6 +124,7 @@ These are non-obvious and worth flagging to anyone editing the codebase:
 4. **`additionalModelRequestFields = {"reasoning_effort": "low"}`** on every Bedrock `openai.gpt-oss-*` call (`BedrockProvider.swift`). Drops the 220-token hidden reasoning channel to ~30 tokens.
 5. **Fresh stateless LLM call per refinement turn.** No server-side conversation history.
 6. **Audio never leaves the device.** In-process FluidAudio is the only ASR path by default; no local listening socket, no IPC. Cleanup payloads (transcript text) go to the configured LLM provider; that's the only network boundary input data crosses. The optional user-configured `asr.endpoint` (Sherpa-ONNX / faster-whisper running locally) is also a localhost endpoint by convention but the user owns its lifecycle.
+7. **"Learn from corrections" is opt-in, off by default, and never writes dictation-derived text to disk.** When enabled, `CorrectionJournal` holds correction snippets in an **in-memory ring only** (never written to `~/.parleq/` or anywhere else); `LearningAnalyzer` sends those snippets to the **already-configured** cleanup LLM during periodic off-hot-path analysis (no new network boundary). Analysis log output is count-only — no transcript content in logs. The ring has count + age caps (`learnedCorrectionsMaxEntries` / `learnedCorrectionsRetentionHours`); setting either to `0` disables entirely. Disabling the feature from Settings offers to clear the in-memory ring (and it's cleared on quit regardless). The only on-disk artifact is the learned dictionary terms in `config.json`.
 
 ## Active gotchas (will trip new contributors)
 
@@ -129,6 +135,7 @@ These are non-obvious and worth flagging to anyone editing the codebase:
 - **Restart-required settings** show an orange banner with a "Restart Now" button. Settings the runtime reads at launch (provider, model, region, profile, hotkey, audio routing) need a relaunch; settings re-read per-utterance (custom dictionary) don't.
 - **`asr.endpoint`'s default value is a magic sentinel, not a real URL.** The string `http://127.0.0.1:8767/inference` was the retired sidecar's listen address and is kept verbatim so config files written by 0.7.x / 0.8.x builds keep working — but in 0.9.0+ matching this exact value triggers the in-process `LocalASR` path. Any other value routes through `ASRClient`'s HTTP code (Sherpa-ONNX, faster-whisper, etc.).
 - **Window centering bug class.** Setting `setContentSize(...)` BEFORE `center()` matters: SwiftUI hosts measure async, so calling `center()` before the content size is set centers a tiny default frame, after which SwiftUI grows the window from its bottom-left origin into the upper-right of the screen.
+- **`NavigationSplitView` detail panes must pin to the viewport height.** A detail pane whose root is a `VStack` of a fixed header + fixed-height content cards (e.g. `RecentDictationsView`) must be pinned to the host's height — wrap it in `GeometryReader { geo in … .frame(width: geo.size.width, height: geo.size.height, alignment: .top) }`. Letting it resolve to its ideal height via `.frame(maxHeight: .infinity)` makes a tall pane overflow off the **top** of a short window, dragging *both* split columns (sidebar included) above the visible area. Panes that are already a single top-level `ScrollView` (e.g. `StatsView`) don't hit this. Adding/removing a banner row changes the ideal height, so this stays latent until a banner is toggled.
 
 ## Configuration shape
 
@@ -147,6 +154,9 @@ These are non-obvious and worth flagging to anyone editing the codebase:
   "wizard":     { "completed": false },
   "paste":      { "trailing_space": true, "no_trailing_space_apps": [] },
   "dictionary": { "terms": [{ "term": "Parleq", "context": "voice dictation app", "aliases": ["parlay", "parlez"], "biasing": "asrAndLLM" }] },
+  "features":   { "learn_from_corrections_enabled": false,
+                  "learned_corrections_max_entries": null,
+                  "learned_corrections_retention_hours": null },
   "telemetry":  { "enabled": false }
 }
 ```

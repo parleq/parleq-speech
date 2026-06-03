@@ -68,6 +68,13 @@ extension Notification.Name {
     /// threshold stays in lockstep with the overlay delay without an
     /// app restart. userInfo["ms"] carries the new delay as an Int.
     public static let parleqOverlayDelayChanged = Notification.Name("ParleqOverlayDelayChanged")
+
+    /// Posted when "learn from corrections" is enabled OUTSIDE the Settings
+    /// window — i.e. via the overlay's inline toggle (`LearnBanner`). An open
+    /// `SettingsModel` loaded the old value at init and would otherwise write
+    /// the stale `false` back on its next save, silently re-disabling the
+    /// feature. The app view observes this and syncs the single field.
+    public static let parleqLearnFeatureEnabledExternally = Notification.Name("ParleqLearnFeatureEnabledExternally")
 }
 
 /// Controller that owns the wizard NSWindow + SwiftUI hosting.

@@ -49,19 +49,63 @@ struct RecentDictationsView: View {
 
     @AppStorage("parleq.appShell.upgradeBannerDismissed") private var bannerDismissed = false
 
+    /// Shared dismissed flag for the "Learn from corrections" new-feature
+    /// nudge (also read by the overlay line). Key matches LearnBanner.
+    @AppStorage("parleq.learnBanner.dismissed") private var learnBannerDismissed = false
+
+    /// Config-derived gating for the learn banner, cached so `body` doesn't
+    /// call Config.load() (a disk read) on every render — the view re-renders
+    /// whenever TranscriptHistory publishes. Refreshed on appear and when the
+    /// entry count changes.
+    @State private var learnBannerFeatureEnabled = false
+    @State private var learnBannerManaged = false
+
+    /// Whether to show the learn-feature banner (off + not dismissed + not
+    /// MDM-pinned), from the cached flags.
+    private var showLearnBanner: Bool {
+        LearnBanner.shouldShowInApp(
+            dismissed: learnBannerDismissed,
+            featureEnabled: learnBannerFeatureEnabled,
+            managed: learnBannerManaged
+        )
+    }
+
+    /// Read the learn-feature gating from Config once and cache it.
+    private func refreshLearnBannerFlags() {
+        let cfg = Config.load().config
+        learnBannerFeatureEnabled = cfg.learnFromCorrectionsEnabled
+        learnBannerManaged = cfg.managedKeys.contains("learnFromCorrectionsEnabled")
+    }
+
     var body: some View {
-        VStack(spacing: 0) {
-            if !bannerDismissed {
-                upgradeBanner
+        // Impose the ACTUAL viewport height (not maxHeight: .infinity).
+        // With a fixed banner + header above the scrolling entry list,
+        // `.frame(maxHeight: .infinity)` only *allows* up to infinity, so
+        // the VStack resolved to its ideal height (banner + header + all
+        // cards) and overflowed a short window off the top. Pinning to the
+        // GeometryReader's height forces the VStack to the viewport so the
+        // inner ScrollView absorbs any overflow instead. (StatsView avoids
+        // this by being a single top-level ScrollView; Recent keeps a
+        // fixed header, so it needs the explicit height.)
+        GeometryReader { geo in
+            VStack(spacing: 0) {
+                if showLearnBanner {
+                    learnBanner
+                }
+                if !bannerDismissed {
+                    upgradeBanner
+                }
+                sectionHeader
+                if history.entries.isEmpty {
+                    emptyState
+                } else {
+                    entryList
+                }
             }
-            sectionHeader
-            if history.entries.isEmpty {
-                emptyState
-            } else {
-                entryList
-            }
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear { refreshLearnBannerFlags() }
+        .onChange(of: history.entries.count) { _, _ in refreshLearnBannerFlags() }
     }
 
     /// Section header for the Recent landing: title + trailing
@@ -91,6 +135,53 @@ struct RecentDictationsView: View {
     }
 
     // MARK: - Sub-views
+
+    /// One-time nudge introducing "Learn from corrections" (shown only
+    /// while the feature is off and not dismissed — see LearnBanner). The
+    /// link jumps straight to the toggle in Privacy & Features.
+    private var learnBanner: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "sparkles")
+                .foregroundStyle(SettingsView.brandAccent)
+                .font(.system(size: 14))
+            VStack(alignment: .leading, spacing: 4) {
+                Text("New: Parleq can learn from your corrections.")
+                    .font(.callout.weight(.semibold))
+                Text("Turn on Learn from corrections and Parleq will suggest dictionary improvements from the words you spell out and the edits you make by voice.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button(action: {
+                    ParleqAppWindowController.shared.show(settingsPane: .privacyFeatures)
+                }) {
+                    Text("Open Privacy & Features →")
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(SettingsView.brandAccent)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 2)
+            }
+            Spacer(minLength: 8)
+            Button(action: { learnBannerDismissed = true }) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .padding(6)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss")
+        }
+        .padding(12)
+        .background(SettingsView.brandAccent.opacity(0.08))
+        .overlay(
+            Rectangle()
+                .fill(SettingsView.brandAccent.opacity(0.30))
+                .frame(height: 0.5),
+            alignment: .bottom
+        )
+    }
 
     /// One-time dismissible callout shown after upgrading from 0.13.x.
     private var upgradeBanner: some View {

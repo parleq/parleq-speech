@@ -41,19 +41,25 @@ struct DictionaryEntryRow: Identifiable, Equatable {
     var context: String
     var aliases: String
     var biasing: DictionaryBiasing
+    /// Provenance of this row: `.user` for hand-authored entries,
+    /// `.learned` for entries auto-added by the learning analyzer.
+    /// Shown as a badge in the UI and used to gate silent overwrites.
+    var source: DictionarySource
 
     init(
         id: UUID = UUID(),
         term: String = "",
         context: String = "",
         aliases: String = "",
-        biasing: DictionaryBiasing = .asrAndLLM
+        biasing: DictionaryBiasing = .asrAndLLM,
+        source: DictionarySource = .user
     ) {
         self.id = id
         self.term = term
         self.context = context
         self.aliases = aliases
         self.biasing = biasing
+        self.source = source
     }
 }
 
@@ -137,6 +143,21 @@ final class SettingsModel: ObservableObject {
     /// on each load.
     @Published var dictionaryEntries: [DictionaryEntryRow]
 
+    /// Lowercased terms present in the dictionary when this model last
+    /// loaded from disk. Used by `save()` to tell a learned term that was
+    /// auto-applied *while this window was open* (must be preserved on
+    /// save) apart from a term the user deliberately removed in the editor
+    /// (must stay removed). Set in `init` and `reload`.
+    private var loadedDictionaryTerms: Set<String> = []
+
+    /// Snapshot of the dictionary entries (keyed by lowercased term) when
+    /// this model last loaded. `save()` uses it to detect rows the user
+    /// hasn't touched: if such a row's term was modified on disk by an
+    /// automatic learned apply *while this window was open*, the newer
+    /// on-disk version is kept rather than letting the stale editor row
+    /// clobber it. A row the user edited always wins. Set in `init`/`reload`.
+    private var loadedDictionaryByTerm: [String: DictionaryEntry] = [:]
+
     /// Context model for reference-aware dictations. When nil,
     /// inherits from the cleanup model. Users can pick "Same as cleanup"
     /// or a specific configured model. Mirrors Config.contextModel.
@@ -164,6 +185,17 @@ final class SettingsModel: ObservableObject {
     /// Mirror of Config.transcriptHistoryRetentionHours. 0.14.0
     /// PR 6 (#221). nil = unlimited; 0 = disable history entirely.
     @Published var transcriptHistoryRetentionHours: Int?
+    /// Mirror of Config.learnFromCorrectionsEnabled. Off by default;
+    /// enabling consents to holding correction snippets in memory
+    /// (in-session only, never written to disk) AND sending them to the
+    /// configured cleanup LLM during periodic off-path analysis.
+    @Published var learnFromCorrectionsEnabled: Bool
+    /// Mirror of Config.learnedCorrectionsMaxEntries. nil = unlimited;
+    /// 0 = disable correction journal entirely.
+    @Published var learnedCorrectionsMaxEntries: Int?
+    /// Mirror of Config.learnedCorrectionsRetentionHours. nil =
+    /// unlimited; 0 = disable correction journal entirely.
+    @Published var learnedCorrectionsRetentionHours: Int?
     /// Set of Config keys currently managed by MDM. Rows for managed
     /// keys render as `.disabled(true)` with the ManagedIndicator badge.
     @Published var managedKeys: Set<String>
@@ -279,9 +311,14 @@ final class SettingsModel: ObservableObject {
                 term: entry.term,
                 context: entry.context ?? "",
                 aliases: entry.aliases.joined(separator: ", "),
-                biasing: entry.biasing
+                biasing: entry.biasing,
+                source: entry.source
             )
         }
+        self.loadedDictionaryTerms = Set(config.customDictionary.map { $0.term.lowercased() })
+        self.loadedDictionaryByTerm = Dictionary(
+            config.customDictionary.map { ($0.term.lowercased(), $0) },
+            uniquingKeysWith: { first, _ in first })
         self.geminiKeyIsSet = KeychainStore.hasGeminiAPIKey
         self.contextModel = config.contextModel
         // Tier fields — derived from the flat config fields.
@@ -298,6 +335,9 @@ final class SettingsModel: ObservableObject {
         self.customModelEntryEnabled = config.customModelEntryEnabled
         self.transcriptHistoryMaxEntries = config.transcriptHistoryMaxEntries
         self.transcriptHistoryRetentionHours = config.transcriptHistoryRetentionHours
+        self.learnFromCorrectionsEnabled = config.learnFromCorrectionsEnabled
+        self.learnedCorrectionsMaxEntries = config.learnedCorrectionsMaxEntries
+        self.learnedCorrectionsRetentionHours = config.learnedCorrectionsRetentionHours
         self.managedKeys = config.managedKeys
         self.initialHotkeyBinding = config.hotkeyBinding
         self.initialLlmModel = config.llmModel
@@ -377,9 +417,14 @@ final class SettingsModel: ObservableObject {
                 term: entry.term,
                 context: entry.context ?? "",
                 aliases: entry.aliases.joined(separator: ", "),
-                biasing: entry.biasing
+                biasing: entry.biasing,
+                source: entry.source
             )
         }
+        self.loadedDictionaryTerms = Set(config.customDictionary.map { $0.term.lowercased() })
+        self.loadedDictionaryByTerm = Dictionary(
+            config.customDictionary.map { ($0.term.lowercased(), $0) },
+            uniquingKeysWith: { first, _ in first })
         self.geminiKeyIsSet = KeychainStore.hasGeminiAPIKey
         self.contextModel = config.contextModel
         // Re-derive tier fields from the reloaded config.
@@ -396,6 +441,9 @@ final class SettingsModel: ObservableObject {
         self.customModelEntryEnabled = config.customModelEntryEnabled
         self.transcriptHistoryMaxEntries = config.transcriptHistoryMaxEntries
         self.transcriptHistoryRetentionHours = config.transcriptHistoryRetentionHours
+        self.learnFromCorrectionsEnabled = config.learnFromCorrectionsEnabled
+        self.learnedCorrectionsMaxEntries = config.learnedCorrectionsMaxEntries
+        self.learnedCorrectionsRetentionHours = config.learnedCorrectionsRetentionHours
         self.managedKeys = config.managedKeys
         refreshUsage()
     }
@@ -501,13 +549,43 @@ final class SettingsModel: ObservableObject {
                 .split(separator: ",", omittingEmptySubsequences: true)
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .filter { !$0.isEmpty }
-            return DictionaryEntry(
+            let built = DictionaryEntry(
                 term: term,
                 context: ctx.isEmpty ? nil : ctx,
                 aliases: aliases,
-                biasing: row.biasing
+                biasing: row.biasing,
+                source: row.source
             )
+            // If the user hasn't touched this row (it still equals what we
+            // loaded), defer to whatever the learn feature wrote on disk while
+            // the window was open — the only other writer of the dictionary:
+            //   • modified on disk (learned auto-apply or accepted suggestion)
+            //     → keep the newer on-disk version, not the stale row;
+            //   • absent from disk (retired/reverted via the Learned view)
+            //     → honor the deletion by dropping the row (return nil).
+            // An edited row always wins (the user is actively changing it).
+            let key = term.lowercased()
+            if let loaded = loadedDictionaryByTerm[key], built == loaded {
+                if let onDisk = existing.customDictionary.first(where: { $0.term.lowercased() == key }) {
+                    return onDisk != loaded ? onDisk : built
+                }
+                return nil  // externally deleted while open — stay deleted
+            }
+            return built
         }
+        // Preserve terms written to config.json by the learn feature *while
+        // this window was open* — auto-applied learned terms AND suggestions
+        // the user accepted (source .user). They're not in the editor's rows,
+        // so the rebuild above would silently drop them. We re-add an on-disk
+        // entry only when it's absent from the current rows AND wasn't present
+        // when this model loaded (so a term the user deliberately deleted in
+        // the editor stays deleted).
+        let editorTerms = Set(c.customDictionary.map { $0.term.lowercased() })
+        let externallyAddedEntries = existing.customDictionary.filter { entry in
+            !editorTerms.contains(entry.term.lowercased())
+                && !loadedDictionaryTerms.contains(entry.term.lowercased())
+        }
+        c.customDictionary.append(contentsOf: externallyAddedEntries)
         // Context tier: nil when context == cleanup so the resolver
         // short-circuits cleanly (nil means "same as cleanup" in Config).
         let contextId = ModelIdentifier(provider: contextProvider, model: contextModelName.trimmingCharacters(in: .whitespaces))
@@ -527,6 +605,9 @@ final class SettingsModel: ObservableObject {
         c.customModelEntryEnabled = customModelEntryEnabled
         c.transcriptHistoryMaxEntries = transcriptHistoryMaxEntries
         c.transcriptHistoryRetentionHours = transcriptHistoryRetentionHours
+        c.learnFromCorrectionsEnabled = learnFromCorrectionsEnabled
+        c.learnedCorrectionsMaxEntries = learnedCorrectionsMaxEntries
+        c.learnedCorrectionsRetentionHours = learnedCorrectionsRetentionHours
         c.managedKeys = managedKeys
         do {
             try Config.save(c)
@@ -535,6 +616,7 @@ final class SettingsModel: ObservableObject {
             // Settings → Privacy & Features takes effect without
             // waiting for the next dictation or an app restart.
             TranscriptHistory.shared.applyRetentionLimits(from: c)
+            CorrectionJournal.shared.applyRetentionLimits(from: c)
             // Keep the hold-hotkey+P gesture threshold in lockstep
             // with the overlay-show delay without a restart (#56).
             // main.swift observes this and calls
@@ -2562,6 +2644,17 @@ private struct DictionaryRowView: View {
     let onChange: () -> Void
     let onRemove: () -> Void
 
+    /// Promote a learned entry to user-authored then save.
+    /// A user edit promotes a learned entry to user-authored so the
+    /// analyzer never silently overwrites it (LearnedStore.route never
+    /// auto-applies onto a .user entry).
+    private func promoteIfLearnedThenSave() {
+        if row.source == .learned {
+            row.source = .user
+        }
+        onChange()
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .center, spacing: 8) {
@@ -2569,12 +2662,12 @@ private struct DictionaryRowView: View {
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 140)
                     .labelsHidden()
-                    .onChange(of: row.term) { _, _ in onChange() }
+                    .onChange(of: row.term) { _, _ in promoteIfLearnedThenSave() }
                 TextField("Aliases (optional, comma-separated)", text: $row.aliases)
                     .textFieldStyle(.roundedBorder)
                     .frame(minWidth: 220, maxWidth: .infinity)
                     .labelsHidden()
-                    .onChange(of: row.aliases) { _, _ in onChange() }
+                    .onChange(of: row.aliases) { _, _ in promoteIfLearnedThenSave() }
                 Picker("", selection: $row.biasing) {
                     Text("ASR + LLM").tag(DictionaryBiasing.asrAndLLM)
                     Text("LLM only").tag(DictionaryBiasing.llmOnly)
@@ -2583,7 +2676,17 @@ private struct DictionaryRowView: View {
                 .labelsHidden()
                 .fixedSize()
                 .help("ASR + LLM: bias the speech recognizer toward this spelling and let the LLM cleanup pass nudge it too. LLM only: skip the speech-recognizer bias (use this if a term causes false positives at the STT layer); the LLM cleanup pass still applies it from the smart-vocab hint.")
-                .onChange(of: row.biasing) { _, _ in onChange() }
+                .onChange(of: row.biasing) { _, _ in promoteIfLearnedThenSave() }
+                if row.source == .learned {
+                    Text("Learned")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.secondary.opacity(0.12))
+                        .clipShape(Capsule())
+                        .help("This entry was added automatically by the learning analyzer. Editing it will mark it as user-authored so it won't be overwritten by future learning.")
+                }
                 Button(action: onRemove) {
                     Image(systemName: "trash")
                         .foregroundColor(.secondary)
@@ -2595,7 +2698,7 @@ private struct DictionaryRowView: View {
                 .textFieldStyle(.roundedBorder)
                 .frame(minWidth: 280, maxWidth: .infinity)
                 .labelsHidden()
-                .onChange(of: row.context) { _, _ in onChange() }
+                .onChange(of: row.context) { _, _ in promoteIfLearnedThenSave() }
         }
         .padding(.vertical, 2)
     }

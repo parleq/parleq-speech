@@ -261,6 +261,45 @@ final class TranscriptHistory: ObservableObject {
         enforceLimits()
     }
 
+    /// Insert or update an entry keyed by its `id`.
+    ///
+    /// - If an entry with the same `id` already exists, it is
+    ///   **replaced in place with the new entry AND moved to the
+    ///   front** (newest). The matching `MetricsRecord` is also
+    ///   replaced so a copy→refine→accept sequence does not
+    ///   accumulate duplicate metric rows for the same session id.
+    /// - If the `id` is absent, the entry is inserted at the front
+    ///   (same as `append`).
+    ///
+    /// The `0 = disable` short-circuit is honored: when either
+    /// retention cap is zero the call is a no-op (same guarantee
+    /// as `append`). `enforceLimits()` is called afterward to
+    /// apply count + age caps.
+    func upsert(_ entry: TranscriptEntry) {
+        // Zero-retention short-circuit — same as append().
+        if maxEntriesLimit == 0 || retentionHoursLimit == 0 {
+            return
+        }
+        // Remove any existing entry with the same id, then insert
+        // at front so the upserted entry is always newest.
+        entries.removeAll { $0.id == entry.id }
+        entries.insert(entry, at: 0)
+        // Replace the matching MetricsRecord so the same session id
+        // never accumulates duplicate rows. If none exists yet,
+        // append a fresh one (first-time insert path).
+        metricsRecords.removeAll { $0.id == entry.id }
+        metricsRecords.append(MetricsRecord(
+            id: entry.id,
+            timestamp: entry.timestamp,
+            audioDurationMs: entry.audioDurationMs,
+            asrLatencyMs: entry.asrLatencyMs,
+            llmLatencyMs: entry.llmLatencyMs,
+            hadReference: entry.referenceCount > 0,
+            cleanupFailed: !entry.wasCleanupSuccessful
+        ))
+        enforceLimits()
+    }
+
     /// Periodic sweep — drops entries older than the
     /// retentionHoursLimit cutoff. No-op when the limit is nil
     /// or 0 (the timer doesn't run in either case, so this is
