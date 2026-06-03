@@ -944,6 +944,69 @@ private struct OverlayContent: View {
     /// Drives the brand-orange border tint affordance.
     @State private var isDragOver = false
 
+    // "Learn from corrections" new-feature line (review state only).
+    // Shared dismissed flag + first-shown timestamp with the in-app
+    // banner (keys match LearnBanner). `learnJustEnabled` hides the line
+    // immediately after the user flips its toggle on.
+    @AppStorage("parleq.learnBanner.dismissed") private var learnBannerDismissed = false
+    @AppStorage("parleq.learnBanner.overlayFirstShownAt") private var learnOverlayFirstShown: Double = 0
+    @State private var learnJustEnabled = false
+    // Config-derived gating for the learn nudge, cached so the per-render
+    // `learnLine` builder doesn't hit disk (Config.load) on the latency-
+    // sensitive overlay. Refreshed on appear and on state transitions.
+    @State private var learnFeatureEnabled = false
+    @State private var learnFeatureManaged = false
+
+    /// The "Learn from corrections" nudge line shown on the review state
+    /// while the feature is off and not dismissed (24h window). Its toggle
+    /// turns the feature on in place; the ✕ dismisses (shared with the
+    /// in-app banner). Empty once enabled/dismissed/expired.
+    @ViewBuilder
+    private var learnLine: some View {
+        let firstShown: Double? = learnOverlayFirstShown == 0 ? nil : learnOverlayFirstShown
+        if !learnJustEnabled,
+           LearnBanner.shouldShowInOverlay(
+               dismissed: learnBannerDismissed,
+               featureEnabled: learnFeatureEnabled,
+               firstShownAt: firstShown,
+               now: Date().timeIntervalSinceReferenceDate,
+               managed: learnFeatureManaged
+           ) {
+            HStack(spacing: 8) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                Text("Learn from your corrections")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                Toggle("", isOn: Binding(
+                    get: { false },
+                    set: { isOn in
+                        // Only hide the line if the feature actually turned
+                        // on (enableFeature returns false if MDM-pinned off
+                        // or the save failed — don't pretend it's enabled).
+                        if isOn, LearnBanner.enableFeature() {
+                            learnJustEnabled = true
+                        }
+                    }
+                ))
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+                Spacer(minLength: 4)
+                Button(action: { learnBannerDismissed = true }) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundColor(.secondary)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Dismiss")
+            }
+            .onAppear { LearnBanner.recordOverlayShownIfNeeded() }
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             // Single header strip combining paste-target chip + reference
@@ -1059,6 +1122,12 @@ private struct OverlayContent: View {
                 referenceWindowsEnabled: model.referenceWindowsEnabled,
                 spaceArmedDuringHold: model.spaceArmedDuringHold
             )
+
+            // One-time "Learn from corrections" nudge with an inline
+            // toggle — review state only, below the hint strip.
+            if model.state == .awaitingAccept {
+                learnLine
+            }
         }
         .padding(16)
         // Background surface: Liquid Glass on macOS 26+, translucent
@@ -1110,6 +1179,21 @@ private struct OverlayContent: View {
                     .allowsHitTesting(false)
             }
         }
+        // Refresh the cached learn-feature flags off the per-render path:
+        // once on appear, and again whenever the dictation state changes
+        // (the nudge only shows in .awaitingAccept, so this is current by
+        // the time it could render).
+        .onAppear { refreshLearnFeatureFlags() }
+        .onChange(of: model.state) { _, _ in refreshLearnFeatureFlags() }
+    }
+
+    /// Read the learn-feature gating from Config once and cache it, so the
+    /// `learnLine` builder doesn't call Config.load() (a disk read) on every
+    /// body evaluation during the accept countdown.
+    private func refreshLearnFeatureFlags() {
+        let cfg = Config.load().config
+        learnFeatureEnabled = cfg.learnFromCorrectionsEnabled
+        learnFeatureManaged = cfg.managedKeys.contains("learnFromCorrectionsEnabled")
     }
 
     /// The content's intrinsic height threshold above which the

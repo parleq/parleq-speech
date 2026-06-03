@@ -498,16 +498,26 @@ final class ManagedConfigTests: XCTestCase {
 
     // MARK: - 13. ManagedConfig.allKeys — single source of truth
 
-    func test_allKeys_count_is_thirtytwo() {
-        // Phase 1 (8 Bool: 7 original + livePricingEnabled, 0.15.0)
-        // + Phase 2 (8 String/[String]) + Phase 3 (2 operational)
-        // + Phase 4 (3 auth-mode restriction) + Phase 7 (8 destination pins
-        // + vertexAuthMode) + Phase 8 (2 transcript-history retention,
-        // 0.14.0 PR 6 / #221) = 32.
+    func test_allKeys_count_is_thirtyfive() {
+        // Phase 1 (8) + Phase 2 (8) + Phase 3 (2) + Phase 4 (3)
+        // + Phase 7 (9 incl. vertexAuthMode) + Phase 8 (2 transcript-history)
+        // + Phase 9 (3 learn-from-corrections) = 35.
         // Bumping this count requires a coordinated change in
         // ManagedConfig.allKeys + the audit-row resolution + the docs page.
-        XCTAssertEqual(ManagedConfig.allKeys.count, 32,
-                       "ManagedConfig.allKeys must contain exactly 32 managed-eligible keys (Phase 1 + 2 + 3 + 4 + 7 + 8)")
+        XCTAssertEqual(ManagedConfig.allKeys.count, 35,
+                       "ManagedConfig.allKeys must contain exactly 35 managed-eligible keys")
+    }
+
+    func test_allKeys_contains_phase9_learn_keys() {
+        let phase9Keys = [
+            "learnFromCorrectionsEnabled",
+            "learnedCorrectionsMaxEntries",
+            "learnedCorrectionsRetentionHours",
+        ]
+        for key in phase9Keys {
+            XCTAssertTrue(ManagedConfig.allKeys.contains(key),
+                          "allKeys should contain Phase 9 key '\(key)'")
+        }
     }
 
     func test_allKeys_contains_all_phase7_destination_pin_keys() {

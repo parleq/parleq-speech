@@ -125,6 +125,13 @@ struct ParleqAppView: View {
                 settingsExpanded = true
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .parleqLearnFeatureEnabledExternally)) { _ in
+            // The overlay toggle enabled the feature behind an already-open
+            // Settings window. Sync just that field (not a full reload, which
+            // would clobber any in-progress edits) so the next save doesn't
+            // write the stale `false` back, and the toggle reflects reality.
+            settingsModel.learnFromCorrectionsEnabled = true
+        }
     }
 
     /// Auto-hide the sidebar when the window narrows below
@@ -172,6 +179,8 @@ struct ParleqAppView: View {
                 .tag(ParleqAppSelection.recent)
             Label(ParleqAppSection.stats.title, systemImage: ParleqAppSection.stats.systemImage)
                 .tag(ParleqAppSelection.stats)
+            Label(ParleqAppSection.learned.title, systemImage: ParleqAppSection.learned.systemImage)
+                .tag(ParleqAppSelection.learned)
             Label("Usage", systemImage: "dollarsign.circle")
                 .tag(ParleqAppSelection.usage)
             DisclosureGroup(isExpanded: $settingsExpanded) {
@@ -216,6 +225,7 @@ struct ParleqAppView: View {
             switch selectedSection.value {
             case .recent:            recentSection
             case .stats:             statsSection
+            case .learned:           learnedSection
             case .usage:             usageSection
             case .settings(let s):   settingsSection(s)
             case .about:             aboutSection
@@ -258,6 +268,12 @@ struct ParleqAppView: View {
     /// sparklines. PR 5 (#220).
     private var statsSection: some View {
         StatsView(history: TranscriptHistory.shared)
+    }
+
+    /// Learned — pending suggestions (Accept/Dismiss) + auto-applied
+    /// changes (Revert) from "learn from corrections".
+    private var learnedSection: some View {
+        LearnedView(store: LearnedStore.shared, clearJournal: { CorrectionJournal.shared.clear() })
     }
 
     /// Usage — token + cost ledger. A top-level section in 0.15.0

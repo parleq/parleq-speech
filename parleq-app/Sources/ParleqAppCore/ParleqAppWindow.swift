@@ -32,6 +32,7 @@ import SwiftUI
 public enum ParleqAppSection: String, Hashable, Identifiable, CaseIterable {
     case recent
     case stats
+    case learned
     case settings
     case about
 
@@ -42,6 +43,7 @@ public enum ParleqAppSection: String, Hashable, Identifiable, CaseIterable {
         switch self {
         case .recent:   return "Recent"
         case .stats:    return "Stats"
+        case .learned:  return "Learned"
         case .settings: return "Settings"
         case .about:    return "About"
         }
@@ -52,6 +54,7 @@ public enum ParleqAppSection: String, Hashable, Identifiable, CaseIterable {
         switch self {
         case .recent:   return "clock.arrow.circlepath"
         case .stats:    return "chart.bar.fill"
+        case .learned:  return "lightbulb"
         case .settings: return "gearshape"
         case .about:    return "info.circle"
         }
@@ -67,6 +70,7 @@ public enum ParleqAppSection: String, Hashable, Identifiable, CaseIterable {
 enum ParleqAppSelection: Hashable {
     case recent
     case stats
+    case learned
     /// Usage (token + cost ledger) is a top-level section in 0.15.0,
     /// promoted out of the Settings sub-sections; it still renders via
     /// SettingsView(section: .usage) but is selected from the primary
@@ -92,6 +96,7 @@ enum ParleqAppSelection: Hashable {
         switch section {
         case .recent:   return .recent
         case .stats:    return .stats
+        case .learned:  return .learned
         case .settings: return .settings(settingsSection)
         case .about:    return .about
         }
@@ -140,6 +145,15 @@ public final class ParleqAppWindowController: NSObject {
     /// future "Open Settings" affordance can pass .settings); nil
     /// preserves whatever section was last visible (or defaults to
     /// .recent on first creation).
+    /// Bring the window forward on a specific Settings pane (used by the
+    /// learn-feature banner's "Open Privacy & Features" link). Reuses
+    /// `show(section:)` for window activation + prior-target capture, then
+    /// overrides the selection to the requested pane.
+    func show(settingsPane: SettingsView.SettingsSection) {
+        show(section: .settings)
+        selectedSection.value = .settings(settingsPane)
+    }
+
     public func show(section: ParleqAppSection? = nil) {
         // Snapshot the user's prior context BEFORE we yank focus.
         // NSWorkspace.frontmostApplication still reports the user's

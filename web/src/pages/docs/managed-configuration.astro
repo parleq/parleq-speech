@@ -375,6 +375,45 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
       </p>
     </div>
 
+    <!-- Learned-corrections retention keys -->
+    <h3 class="mt-10 font-display text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Learn from corrections</h3>
+    <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      These keys govern the opt-in &ldquo;Learn from your corrections&rdquo; feature (off by default). When enabled, Parleq keeps short correction snippets <strong>in memory only (never written to disk)</strong> and occasionally asks the user&rsquo;s already-configured cleanup model to suggest custom-dictionary improvements. No new network destination is introduced &mdash; analysis uses the same cleanup model the user already has configured. IT can pin this feature off entirely or bound the in-session correction ring by entry count and retention window. The semantics are the same as for the <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">transcriptHistory*</code> keys: either Int key set to <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">0</code> disables the ring entirely.
+    </p>
+
+    <div class="mt-6 overflow-x-auto rounded-xl border border-[color:var(--color-border)]">
+      <table class="w-full text-[14px] text-[color:var(--color-text-muted)]">
+        <thead class="border-b border-[color:var(--color-border)] bg-[color:var(--color-surface)]">
+          <tr>
+            <th class="px-4 py-3 text-left font-semibold text-[color:var(--color-text)]">Key</th>
+            <th class="px-4 py-3 text-left font-semibold text-[color:var(--color-text)]">Type</th>
+            <th class="px-4 py-3 text-left font-semibold text-[color:var(--color-text)]">Default</th>
+            <th class="px-4 py-3 text-left font-semibold text-[color:var(--color-text)]">Behavior</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-[color:var(--color-border)]">
+          <tr class="bg-[color:var(--color-bg)]">
+            <td class="px-4 py-3 font-mono text-[13px] text-[color:var(--color-text)]">learnFromCorrectionsEnabled</td>
+            <td class="px-4 py-3">Boolean</td>
+            <td class="px-4 py-3">false</td>
+            <td class="px-4 py-3">Master switch for the learn-from-corrections feature. Default is <code class="font-mono text-[12px]">false</code> (opt-in). Setting this to <code class="font-mono text-[12px]">false</code> via MDM pins the feature off and disables the toggle in Settings &mdash; users cannot enable it. When <code class="font-mono text-[12px]">true</code> is managed, the feature is force-enabled and the toggle is locked on. When the key is absent, users control the setting themselves.</td>
+          </tr>
+          <tr class="bg-[color:var(--color-surface)]">
+            <td class="px-4 py-3 font-mono text-[13px] text-[color:var(--color-text)]">learnedCorrectionsMaxEntries</td>
+            <td class="px-4 py-3 font-mono text-[13px]">Int</td>
+            <td class="px-4 py-3">&mdash;</td>
+            <td class="px-4 py-3">Maximum number of correction snippets retained in the in-session correction ring. Older entries are dropped as new ones arrive. <code class="font-mono text-[12px]">0</code> disables the ring entirely &mdash; no snippets are recorded and the learn-from-corrections analysis never runs, regardless of <code class="font-mono text-[12px]">learnFromCorrectionsEnabled</code>. Same semantics as <code class="font-mono text-[12px]">transcriptHistoryMaxEntries</code>.</td>
+          </tr>
+          <tr class="bg-[color:var(--color-bg)]">
+            <td class="px-4 py-3 font-mono text-[13px] text-[color:var(--color-text)]">learnedCorrectionsRetentionHours</td>
+            <td class="px-4 py-3 font-mono text-[13px]">Int</td>
+            <td class="px-4 py-3">&mdash;</td>
+            <td class="px-4 py-3">Age-prune correction snippets older than this many hours from the in-session ring. <code class="font-mono text-[12px]">0</code> disables the ring entirely &mdash; same zero-retention sentinel as <code class="font-mono text-[12px]">transcriptHistoryRetentionHours</code>. Both Int keys can be set together; whichever limit is hit first drops entries.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
     <h3 class="mt-12 font-display text-xl font-semibold tracking-tight text-[color:var(--color-text)]">
       Known limitation &mdash; customDictionary entry content
     </h3>

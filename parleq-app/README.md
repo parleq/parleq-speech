@@ -49,6 +49,11 @@ make notarize            # build + Apple notarize + staple (requires keychain pr
 | `KeychainStore.swift` | Wraps SecItem APIs for the Gemini API key. Service `com.parleq.app`, account `gemini-api-key`, accessibility `kSecAttrAccessibleAfterFirstUnlock`. Settings UI is the canonical writer; never displayed in plaintext after save. |
 | `LogFile.swift` | At launch, `dup2`s stderr to `~/.parleq/app.log` (10 MB cap, truncates on launch when over). Skipped when stderr is a TTY so `swift run` from a terminal still shows live output. |
 | `TranscriptHistory.swift` | In-memory ring buffer (cap 20) of recent cleaned transcripts. **Process memory only — never written to disk.** Surfaced via the menu bar's Recent Dictations submenu. |
+| `SpellOutDetector.swift` | Detects spelled-out word candidates (e.g. "A-P-I") in the raw ASR transcript; assembles the term and feeds it as a correction signal when "learn from corrections" is enabled. |
+| `CorrectionJournal.swift` | Opt-in, bounded **in-memory-only** ring buffer. Records voice-refine events (instruction + the edit's before/after text) and spell-out candidates (assembled term + the cleaned text it appeared in) — correction *events* only, not a log of every dictation (a refine record does hold that edit's full before/after text). Count + age caps; off by default; **never written to disk**; wiped on quit. |
+| `LearningAnalyzer.swift` | Periodic off-hot-path actor. Reads the in-memory correction ring, calls the configured cleanup LLM to propose dictionary changes, auto-applies high-confidence non-colliding term additions (via `LearnedStore`), and surfaces the rest as pending suggestions. |
+| `LearnedStore.swift` | Apply / suggest / revert surface for learned dictionary changes. High-confidence proposals auto-apply into the custom dictionary tagged `source=learned`; others become pending suggestions. **In-memory only** — pending suggestions and the applied-changes log are process memory, wiped on quit; the only durable output is the learned terms in `config.json`. |
+| `LearnedView.swift` | SwiftUI "Learned" sidebar section in Settings. Shows pending suggestions (Accept / Dismiss), the applied-changes log (Revert), and the feature on/off toggle. Disabling offers to clear the in-memory correction data immediately (cleared on quit regardless). |
 
 ## Per-utterance pipeline
 

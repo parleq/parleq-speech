@@ -33,6 +33,12 @@ import SwiftUI
 struct PrivacyFeaturesSectionContent: View {
     @ObservedObject var model: SettingsModel
 
+    /// Drives the "purge correction journal?" confirmation alert that
+    /// appears when the user flips the "Learn from corrections" toggle
+    /// from ON to OFF. Mirrors the showClearAllConfirm pattern used in
+    /// RecentDictationsView.
+    @State private var showPurgeCorrectionsConfirm = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             // Intro paragraph.
@@ -79,6 +85,12 @@ struct PrivacyFeaturesSectionContent: View {
             // fleets. ManagedIndicator + disabled handled by
             // the existing pattern via managedKeys.
             historyRetentionCard
+
+            // Learn from corrections — opt-in feature toggle + journal
+            // retention caps. Off by default (feature holds correction
+            // snippets in memory and sends them to the LLM).
+            // MDM-manageable via the three learnFromCorrections* keys.
+            learnFromCorrectionsCard
 
             // Managed Configuration audit (#213). Moved here from the
             // menu bar's "View Managed Configuration…" item in 0.13.0
@@ -258,6 +270,98 @@ struct PrivacyFeaturesSectionContent: View {
                 ManagedCaption(isManaged: retentionHoursManaged)
             }
         }
+    }
+
+    // MARK: - Learn from corrections card
+
+    /// Opt-in toggle for the "learn from corrections" feature, plus
+    /// journal retention caps shown only when the feature is on.
+    ///
+    /// When the user turns the toggle OFF, a confirmation alert offers
+    /// to clear the in-memory correction journal and learned store —
+    /// mirroring the "Clear all dictation history" pattern in
+    /// RecentDictationsView. On confirm, both are wiped; the toggle
+    /// flip has already been committed to Config by the binding.
+    @ViewBuilder
+    private var learnFromCorrectionsCard: some View {
+        let isManagedToggle = model.managedKeys.contains("learnFromCorrectionsEnabled")
+        let maxEntriesManaged = model.managedKeys.contains("learnedCorrectionsMaxEntries")
+        let retentionHoursManaged = model.managedKeys.contains("learnedCorrectionsRetentionHours")
+
+        SettingsCard {
+            VStack(alignment: .leading, spacing: 12) {
+                featureToggleRow(
+                    title: "Learn from my corrections",
+                    description: "When on, Parleq remembers the words you spell out and the edits you make by voice, and occasionally asks your cleanup model to suggest improvements to your custom dictionary. Correction snippets are kept in memory and never written to disk (cleared when you quit Parleq); they are sent to your configured cleanup provider during analysis. Off by default.",
+                    isOn: learnFromCorrectionsBinding,
+                    mdmKey: "learnFromCorrectionsEnabled"
+                )
+                .disabled(isManagedToggle)
+                .alert("Clear correction data?",
+                       isPresented: $showPurgeCorrectionsConfirm) {
+                    Button("Clear All", role: .destructive) {
+                        CorrectionJournal.shared.clear()
+                        LearnedStore.shared.clearAll()
+                    }
+                    Button("Keep Data", role: .cancel) {}
+                } message: {
+                    Text("Parleq is holding correction snippets and learned suggestions in memory. Clear them now? Cannot be undone.")
+                }
+
+                if model.learnFromCorrectionsEnabled {
+                    Divider().opacity(0.4)
+
+                    SettingsCaption("Bound the in-memory correction journal. Leave blank for unlimited. Set either to 0 to disable capture entirely. Changes apply when you press Return or click out of the field.")
+
+                    RetentionIntField(
+                        label: "Keep at most N corrections",
+                        value: $model.learnedCorrectionsMaxEntries,
+                        managed: maxEntriesManaged,
+                        onCommit: { model.save() }
+                    )
+                    ManagedCaption(isManaged: maxEntriesManaged)
+
+                    RetentionIntField(
+                        label: "Keep for N hours",
+                        value: $model.learnedCorrectionsRetentionHours,
+                        managed: retentionHoursManaged,
+                        onCommit: { model.save() }
+                    )
+                    ManagedCaption(isManaged: retentionHoursManaged)
+                }
+            }
+        }
+    }
+
+    /// Builds a Binding<Bool> for the "learn from corrections" toggle
+    /// that writes through to SettingsModel + saves on every flip.
+    /// When MDM-managed, the set is a no-op (defense-in-depth; the
+    /// caller also adds `.disabled(true)`). When the user turns the
+    /// feature OFF and data may exist, presents the purge-confirm
+    /// alert before committing.
+    private var learnFromCorrectionsBinding: Binding<Bool> {
+        let isManaged = model.managedKeys.contains("learnFromCorrectionsEnabled")
+        return Binding(
+            get: { model.learnFromCorrectionsEnabled },
+            set: { newValue in
+                guard !isManaged else { return }
+                model.learnFromCorrectionsEnabled = newValue
+                model.save()
+                if newValue {
+                    // Enabling = the feature is discovered; mark the
+                    // one-time banner so it never re-nags if the user
+                    // later turns the feature back off.
+                    LearnBanner.markDiscovered()
+                } else {
+                    // When turning OFF: invalidate any in-flight analysis
+                    // (so a disable→re-enable within one analysis window
+                    // doesn't apply pre-disable results), then offer to
+                    // purge the in-memory ring.
+                    CorrectionJournal.shared.noteFeatureDisabled()
+                    showPurgeCorrectionsConfirm = true
+                }
+            }
+        )
     }
 }
 

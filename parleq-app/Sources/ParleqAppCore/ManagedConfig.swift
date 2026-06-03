@@ -89,6 +89,10 @@ public enum ManagedConfig {
         // either way.
         "transcriptHistoryMaxEntries",
         "transcriptHistoryRetentionHours",
+        // Phase 9 — learn-from-corrections (opt-in feature + journal retention)
+        "learnFromCorrectionsEnabled",
+        "learnedCorrectionsMaxEntries",
+        "learnedCorrectionsRetentionHours",
     ]
 
     /// Subset of `allKeys` whose effective value is an Int.
@@ -100,6 +104,8 @@ public enum ManagedConfig {
     static let intTypedKeys: Set<String> = [
         "transcriptHistoryMaxEntries",
         "transcriptHistoryRetentionHours",
+        "learnedCorrectionsMaxEntries",
+        "learnedCorrectionsRetentionHours",
     ]
 
     /// Emit a one-line startup summary of which managed keys were

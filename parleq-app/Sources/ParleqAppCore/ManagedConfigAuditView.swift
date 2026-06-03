@@ -105,6 +105,23 @@ private func resolveAuditRow(key: String, config: Config, defaults: Config) -> (
             managed: isManaged,
             defaultVal: defaults.transcriptHistoryRetentionHours
         )
+    // Phase 9 — learn-from-corrections (opt-in feature + journal retention).
+    case "learnFromCorrectionsEnabled":
+        return formatBool(config.learnFromCorrectionsEnabled, managed: isManaged, defaultVal: defaults.learnFromCorrectionsEnabled)
+    case "learnedCorrectionsMaxEntries":
+        return formatOptionalRetentionInt(
+            config.learnedCorrectionsMaxEntries,
+            managed: isManaged,
+            defaultVal: defaults.learnedCorrectionsMaxEntries,
+            disabledLabel: "Disabled (no corrections)"
+        )
+    case "learnedCorrectionsRetentionHours":
+        return formatOptionalRetentionInt(
+            config.learnedCorrectionsRetentionHours,
+            managed: isManaged,
+            defaultVal: defaults.learnedCorrectionsRetentionHours,
+            disabledLabel: "Disabled (no corrections)"
+        )
     case "autoUpdateEnabled":
         // autoUpdateEnabled is Sparkle-side only — read managed value directly since
         // it isn't mirrored into Config fields.
@@ -326,11 +343,11 @@ private func formatBool(_ value: Bool, managed: Bool, defaultVal: Bool) -> (Stri
 /// Compliance Audit dialog. nil → "Unlimited"; 0 → "Disabled (no
 /// history)"; positive → the number. Source classification matches
 /// the standard formatBool/formatString helpers.
-private func formatOptionalRetentionInt(_ value: Int?, managed: Bool, defaultVal: Int?) -> (String, AuditSource) {
+private func formatOptionalRetentionInt(_ value: Int?, managed: Bool, defaultVal: Int?, disabledLabel: String = "Disabled (no history)") -> (String, AuditSource) {
     let display: String
     switch value {
     case nil: display = "Unlimited"
-    case 0: display = "Disabled (no history)"
+    case 0: display = disabledLabel
     case let .some(n): display = "\(n)"
     }
     if managed { return (display, .managed) }

@@ -140,4 +140,50 @@ enum SystemPrompts {
 
         Output ONLY the resulting text — no explanation, no preamble, no markdown formatting.
         """
+
+    /// System prompt for the off-path "learn from corrections" analysis
+    /// pass. The model receives a batch of the user's recent corrections
+    /// (voice-refine edits + spelled-out-word candidates) plus their
+    /// CURRENT custom dictionary, and proposes dictionary-term changes.
+    /// Context-aware: it's asked to add / modify / merge / retire against
+    /// the existing set, not blindly append. Output is a strict JSON
+    /// object so the app can parse it tolerantly (bad proposals dropped).
+    /// (Style-preference proposals are a future slice; this prompt asks
+    /// only for term proposals so it doesn't advertise an unimplemented
+    /// path — `LearningProposal.style` / `route` keep the plumbing ready.)
+    static func learningAnalysis(currentDictionary: [DictionaryEntry]) -> String {
+        let dictLines: String
+        if currentDictionary.isEmpty {
+            dictLines = "(empty)"
+        } else {
+            dictLines = currentDictionary.map { entry -> String in
+                var line = "- \"\(entry.term)\" [\(entry.source.rawValue)]"
+                if !entry.aliases.isEmpty {
+                    line += " (also: \(entry.aliases.map { "\"\($0)\"" }.joined(separator: ", ")))"
+                }
+                if let ctx = entry.context, !ctx.isEmpty { line += " — \(ctx)" }
+                return line
+            }.joined(separator: "\n")
+        }
+        return """
+            You analyze a user's recent dictation corrections and propose updates to their personal cleanup configuration. You are NOT cleaning text here — you are spotting recurring patterns worth remembering.
+
+            You receive two things:
+            1. A batch of recent corrections. Each is either a REFINE (the user re-recorded an edit instruction against cleaned text: you get the instruction + the before/after text) or a SPELLOUT (the user spelled a word out letter-by-letter: you get the assembled candidate term + the cleaned line it appeared in).
+            2. The user's CURRENT custom dictionary (canonical spelling, provenance [user|learned], optional aliases + context).
+
+            Propose changes ONLY when a pattern recurs or is clearly intentional. Be conservative — a one-off is not a pattern. Prefer tweaking/merging an existing entry over adding a near-duplicate. Never propose retiring or modifying a [user] entry's term spelling; you may propose merging an alias into one.
+
+            Propose "term" changes only — a dictionary spelling/alias the cleanup pass should bias toward (from SPELLOUT candidates or repeated misrecognitions visible in refines). Fields: term (canonical spelling), optional context, optional aliases (array).
+
+            Each proposal has: kind ("term"), op ("add"|"modify"|"merge"|"retire"), confidence (0.0–1.0; how sure you are this is a real recurring preference), rationale (one short sentence).
+
+            Current dictionary:
+            \(dictLines)
+
+            Output ONLY a JSON object, optionally inside a ```json fence, of exactly this shape — no prose before or after:
+            {"proposals":[{"kind":"term","op":"add","confidence":0.0,"rationale":"...","term":"...","context":"...","aliases":["..."]}]}
+            If there is nothing worth proposing, output {"proposals":[]}.
+            """
+    }
 }

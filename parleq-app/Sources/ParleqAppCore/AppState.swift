@@ -210,6 +210,10 @@ public final class AppState {
     /// short-circuited, or the user cancels.
     private var pendingOverlayShowTimer: Timer?
     private var inFlightTask: Task<Void, Never>?  // cleanup or refine task — cancel on abort
+    /// Low-frequency timer that flushes a small correction-journal
+    /// backlog (below the per-capture threshold) to the analyzer when
+    /// the user is idle. Rate-capped inside LearningAnalyzer.
+    private var learningIdleTimer: Timer?
     /// Raw ASR transcript from the most-recent utterance. Retained so
     /// switchModelAndRecleanup(_:) can re-run cleanup with a different
     /// provider against the original spoken words rather than the
@@ -247,6 +251,18 @@ public final class AppState {
     /// so accepting after a model switch records the LATENCY OF
     /// THE ACCEPTED CLEANUP, not the originally-rendered one.
     private var lastLLMLatencyMs: Int?
+
+    /// Stable identity for the active dictation session. Minted once
+    /// per fresh dictation (in `startFreshCapture`) and **reused**
+    /// across all refine turns within the same overlay session so
+    /// copy → refine → accept all land on a single history entry.
+    /// Cleared by `resetPerDictationOverlayState()` when the session
+    /// ends. `appendTranscriptHistory` and `copy()` both build their
+    /// `TranscriptEntry` with this id and route through
+    /// `TranscriptHistory.upsert(_:)` so duplicate rows are never
+    /// created for the same session.
+    private var currentSessionEntryID: UUID?
+
     // ConversationState is intentionally NOT stored here. Phase 1 is
     // single-turn-per-dispatch: streamCleanupOrRefine builds messages
     // directly from overlay.model.references each call, so the dispatch
@@ -598,6 +614,29 @@ public final class AppState {
                 }
                 self.previousReferenceCount = refs.count
             }
+
+        // One-time launch cleanup: delete any legacy on-disk correction
+        // files written by an earlier disk-backed build of "learn from
+        // corrections". Runs here (AppState is built unconditionally at
+        // launch) rather than in the stores' lazy init, so it fires even
+        // when the feature is off (the default) and the stores are never
+        // touched — otherwise an upgraded machine could retain
+        // dictation-derived data on disk for the whole session.
+        CorrectionJournal.purgeLegacyOnDiskFile()
+        LearnedStore.purgeLegacyOnDiskFile()
+
+        // Idle flush for "learn from corrections": every 5 min, if there
+        // are any unanalyzed corrections and the rate cap has elapsed,
+        // run analysis with threshold=1 to catch a small backlog.
+        learningIdleTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                let (cfg, _) = Config.load()
+                guard cfg.learnFromCorrectionsEnabled,
+                      let provider = self.resolveLearningProvider() else { return }
+                await LearningAnalyzer.shared.runIfDue(provider: provider, threshold: 1)
+            }
+        }
     }
 
     /// Apply the trailing-space rule for this paste:
@@ -612,6 +651,13 @@ public final class AppState {
         }
         if let last = raw.last, last.isWhitespace { return raw }
         return raw + " "
+    }
+
+    /// The cleanup-tier provider for off-path learning analysis — the
+    /// same one built at launch from config. nil when no usable provider
+    /// is configured (e.g. provider=none); analysis then simply doesn't run.
+    private func resolveLearningProvider() -> (any LLMProvider)? {
+        return llm
     }
 
     // MARK: - External inputs
@@ -1911,6 +1957,12 @@ public final class AppState {
         lastAudioDurationMs = 0
         lastASRLatencyMs = nil
         lastLLMLatencyMs = nil
+        // Mint a fresh session id for this dictation. Every fresh
+        // capture starts a new history entry; refine turns reuse
+        // the same id (they never call startFreshCapture). The id
+        // is cleared by resetPerDictationOverlayState() when the
+        // session ends (accept / cancel / dismiss).
+        currentSessionEntryID = UUID()
         guard openRecorder() else { return }
         // Advance the latched-compose state machine so a subsequent
         // hotkeyUp(spaceWasPressedDuringHold: true) can transition
@@ -2319,6 +2371,22 @@ public final class AppState {
                 // LLM ran (no-LLM-configured / empty-transcript).
                 self?.lastLLMLatencyMs = outcome.llmLatencyMs
                 self?.applyResult(outcome.text, cleanupFailureMessage: outcome.failureMessage)
+                let learnEnabled = self?.captureCorrectionSignals(
+                    asRefine: asRefine,
+                    rawInstruction: asrResult.text,
+                    before: priorText,
+                    outcome: outcome
+                ) ?? false
+                // Only spawn the off-path analysis trigger when the
+                // feature is on — otherwise we'd allocate a detached
+                // Task on every dictation that immediately no-ops.
+                // Use the cleanup-tier provider (`llm`), not the
+                // per-invocation `resolvedLLM` (which may be the context
+                // or picker-override model) — analysis reuses the
+                // configured cleanup model, matching the idle path.
+                if learnEnabled, let provider = self?.llm {
+                    Task { await LearningAnalyzer.shared.runIfDue(provider: provider, threshold: LearningAnalyzer.triggerThreshold) }
+                }
             } catch {
                 // Render log-safely: ASRError.badStatus and LLMError can
                 // carry response bodies a custom endpoint controls, which
@@ -2337,6 +2405,44 @@ public final class AppState {
                 self?.overlay.hide()
             }
         }
+    }
+
+    /// Capture the two observable correction signals into the opt-in
+    /// CorrectionJournal. Refine -> {instruction, before, after}.
+    /// Cleanup -> run the spell-out detector on the raw transcript and
+    /// record any assembled candidate term + the cleaned line. No-op
+    /// when cleanup failed (a fallback isn't a real correction).
+    /// Re-reads the flag per utterance for live toggle. Returns whether
+    /// the feature is enabled, so the caller can decide whether to spawn
+    /// the off-path analysis trigger (no point allocating a Task when
+    /// the feature is off).
+    @discardableResult
+    private func captureCorrectionSignals(
+        asRefine: Bool,
+        rawInstruction: String,
+        before: String,
+        outcome: CleanupOutcome
+    ) -> Bool {
+        let enabled = Config.load().config.learnFromCorrectionsEnabled
+        guard enabled else { return false }
+        // Feature is on but this cleanup failed — nothing new to capture
+        // this turn, but the caller may still flush a prior backlog.
+        guard outcome.failureMessage == nil else { return true }
+        let journal = CorrectionJournal.shared
+        if asRefine {
+            let instruction = rawInstruction.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !instruction.isEmpty, !before.isEmpty else { return true }
+            journal.record(CorrectionRecord(
+                kind: .refine, instruction: instruction, before: before, after: outcome.text
+            ), enabled: enabled)
+        } else {
+            for term in SpellOutDetector.candidates(in: rawInstruction) {
+                journal.record(CorrectionRecord(
+                    kind: .spellout, after: outcome.text, term: term
+                ), enabled: enabled)
+            }
+        }
+        return true
     }
 
     private func applyResult(_ text: String, cleanupFailureMessage: String? = nil) {
@@ -2484,6 +2590,11 @@ public final class AppState {
         // Clearing on every exit to .idle handles both paths.
         overlay.model.errorMessage = nil
         overlay.model.permissionPrompt = nil
+        // Clear the session id so the next fresh dictation mints a
+        // new one. Refine turns don't call resetPerDictationOverlayState
+        // so the id survives across the full copy → refine → accept
+        // sequence within one overlay session.
+        currentSessionEntryID = nil
     }
 
     // MARK: - Timer
@@ -2887,7 +2998,13 @@ public final class AppState {
     ) {
         guard !text.isEmpty else { return }
         let refs = overlay.model.references
-        TranscriptHistory.shared.append(TranscriptEntry(
+        // Use the stable session id so accept() after copy() upserts
+        // (updates) the same entry rather than appending a duplicate.
+        // Defensive UUID() mint handles any unexpected nil path (should
+        // not occur in normal flow because startFreshCapture mints one).
+        let entryID = currentSessionEntryID ?? UUID()
+        TranscriptHistory.shared.upsert(TranscriptEntry(
+            id: entryID,
             text: text,
             targetAppName: target?.name,
             wasCleanupSuccessful: wasCleanupSuccessful,
@@ -2904,6 +3021,24 @@ public final class AppState {
         let text = currentText
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
+        // Record to history so a copy-then-close sequence leaves an
+        // entry in Recent Dictations. Uses the session id so a
+        // subsequent refine or accept upserts (updates) this same
+        // entry rather than appending a duplicate.
+        guard !text.isEmpty else { return }
+        let refs = overlay.model.references
+        let entryID = currentSessionEntryID ?? UUID()
+        TranscriptHistory.shared.upsert(TranscriptEntry(
+            id: entryID,
+            text: text,
+            targetAppName: nil,  // nothing pasted yet; accept() fills this in via upsert
+            wasCleanupSuccessful: !lastCleanupFailed,
+            referenceCount: refs.count,
+            referenceLabels: refs.map(\.label),
+            audioDurationMs: lastAudioDurationMs,
+            asrLatencyMs: lastASRLatencyMs,
+            llmLatencyMs: lastLLMLatencyMs
+        ))
     }
 
     private func logPhase(from old: Phase, to new: Phase) {
