@@ -1,3 +1,8 @@
+# Claude Code — personal in-session review automation (not part of the codebase).
+# review-guidelines.md is intentionally NOT ignored; it's shareable project context.
+.claude/settings.local.json
+.claude/hooks/
+
 # Go
 bin/
 *.exe
