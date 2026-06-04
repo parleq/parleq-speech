@@ -334,15 +334,19 @@ public final class OverlayWindow {
     /// measure a half-initialized view (TEMP-DIAG: cntH=0, stale
     /// composeState) at an arbitrary height (152 or 218 observed). The
     /// frame is already pre-sized to the remembered capture height, so
-    /// measurements arriving within 80ms of show() are coalesced — only
+    /// measurements arriving within 150ms of show() are coalesced — only
     /// the last one is applied when the window closes. In steady state
     /// (nothing changed) the deferred apply is a no-op; when the layout
     /// legitimately changed (e.g. presets added between dictations) the
-    /// correct new height lands ≤80ms after show.
+    /// correct new height lands ≤150ms after show.
     private func resizePanelToHeight(_ measurement: OverlayBodyMeasurement) {
         // Settle window: coalesce measurements from the brief post-show
         // initialisation phase and apply only the last one.
-        let settleWindow: TimeInterval = 0.08
+        // 0.15s: audio spin-up (AVAudioEngine warm-up + first mic level
+        // callback) can delay the settled layout by ~100-120ms on first
+        // dictation; the coalesced apply is a no-op when nothing changed,
+        // so widening from 0.08 is safe.
+        let settleWindow: TimeInterval = 0.15
         let sinceShow = Date().timeIntervalSinceReferenceDate - lastShownAt
         if sinceShow < settleWindow {
             OverlayWindow.logStderr(
@@ -489,6 +493,33 @@ public final class OverlayWindow {
         // etc.) are unaffected: isFreshShow is false for those calls, so
         // the standard animation path runs unchanged.
         if isFreshShow {
+            // Fix 1 — clear stale text IN-TRANSACTION before any layout pass.
+            //
+            // withTransaction(disablesAnimations:) mutates the model
+            // synchronously (the @Published stored values update
+            // immediately) but SwiftUI batches view-body re-evaluation
+            // and may not flush it before layoutSubtreeIfNeeded() runs
+            // below. The TEMP-DIAG proved that the first layout pass
+            // after the show still sees txt=71 (the previous dictation's
+            // text) and mic=false (microphoneName not yet propagated).
+            //
+            // Direct @Published assignments here are synchronous — they
+            // are immediately visible to layoutSubtreeIfNeeded() /
+            // sizeThatFits() because those calls flush any pending
+            // SwiftUI render that reads the properties. This is scoped
+            // to the two fields that dominate layout height on a fresh
+            // capture show: the text content and the cleanup-failure
+            // banner. Other fields (appliedPresetName, activeTransformName,
+            // etc.) are already cleared by startFreshCapture() in AppState
+            // before show() is called, so they need no explicit reset here.
+            //
+            // Refine-capture shows (state == .refining) deliberately keep
+            // the prior-turn text visible — don't clear text for those.
+            if state == .capturing {
+                model.text = ""
+                model.cleanupFailureMessage = nil
+            }
+
             var tx = Transaction()
             tx.disablesAnimations = true
             withTransaction(tx) {
@@ -524,6 +555,26 @@ public final class OverlayWindow {
             settleApplyTask?.cancel()
             settleApplyTask = nil
             pendingSettleMeasurement = nil
+
+            // Fix 2 — arm the settle window HERE, before any layout pass.
+            //
+            // The original code stamped lastShownAt after the pre-size
+            // resizePanelToHeight call (line ~594), intending to exclude
+            // the pre-size from the settle guard. But layoutSubtreeIfNeeded()
+            // and sizeThatFits() below can themselves trigger
+            // onPreferenceChange callbacks on the hidden-but-laid-out
+            // view; those callbacks call resizePanelToHeight with the
+            // OLD lastShownAt value (seconds-old from the previous cycle),
+            // so sinceShow is large and the settle guard is bypassed —
+            // measurements from the half-initialized view are applied
+            // directly instead of being coalesced.
+            //
+            // By stamping now (before any layout call) every measurement
+            // from this point is within the window. The pre-size call
+            // below goes directly to applyResize() (bypassing the settle
+            // guard) so it still applies immediately regardless of when
+            // lastShownAt was set.
+            lastShownAt = Date().timeIntervalSinceReferenceDate
 
             // Pre-size the panel to the SwiftUI intrinsic content
             // height BEFORE making it visible. Without this, the
@@ -574,24 +625,15 @@ public final class OverlayWindow {
                 (model.state == .capturing && lastSettledCaptureHeight > 0)
                     ? lastSettledCaptureHeight
                     : fitting.height
-            // Tag the pre-size measurement with the current state so it
-            // passes the staleness guard in resizePanelToHeight (this is
-            // a first-show call, so the state is already set by the
-            // model.update(state:…) call above).
-            resizePanelToHeight(OverlayBodyMeasurement(height: presizeHeight, state: model.state))
+            // Pre-size goes directly to applyResize (bypassing the settle
+            // guard) because this measurement is intentional and must
+            // apply immediately to frame the panel before it appears.
+            // The settle guard (lastShownAt) is already armed above —
+            // post-show measurements from the live window are still
+            // coalesced correctly.
+            applyResize(OverlayBodyMeasurement(height: presizeHeight, state: model.state))
 
             positionAtScreenBottom()
-
-            // Arm the settle window. Set lastShownAt HERE — after the
-            // pre-size resizePanelToHeight call above (which must apply
-            // immediately to size the frame before the panel appears)
-            // and just before orderFrontRegardless (which triggers the
-            // first SwiftUI layout pass against the now-visible panel).
-            // Measurements that arrive after this point and within the
-            // 80ms window are from a half-initialized layout and are
-            // coalesced; only the last one is applied when the window
-            // closes.
-            lastShownAt = Date().timeIntervalSinceReferenceDate
 
             // Instant appearance. An earlier polish pass faded the
             // panel in over ~160ms via NSAnimationContext, but the
