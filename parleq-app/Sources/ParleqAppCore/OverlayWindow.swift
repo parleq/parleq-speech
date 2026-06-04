@@ -1272,6 +1272,22 @@ private struct OverlayContent: View {
         }
     }
 
+    /// Minimum height of the center content well, shared by the capture
+    /// state's icon block and the cleaning/review text area. The frame
+    /// floor keeps the WINDOW steady, but the rendered content collapses
+    /// inside it at hotkey release (capture → cleaning) because the two
+    /// sub-views have different intrinsic heights — which reads as the
+    /// same dip. Giving both states the same minimum height by
+    /// construction eliminates the collapse without hardcoding separate
+    /// magic numbers.
+    ///
+    /// Derivation (must stay in sync with listeningIndicator):
+    ///   ParleqListeningIndicator at scale 1.5:
+    ///     peak bar height = (idleMax 14 + levelBoost 14) × 1.5 = 42pt
+    ///   listeningIndicator vertical padding: 2pt each side = 4pt
+    ///   Total icon block height: 42 + 4 = 46pt
+    static let contentWellMinHeight: CGFloat = 46
+
     /// Warm "AI" gradient for the transform strip — anchored on the brand
     /// amber so the sizzle stays on-brand instead of introducing a foreign
     /// accent. Used by the sparkle glyph and chip borders.
@@ -2252,6 +2268,7 @@ private struct OverlayContent: View {
                 : "say what to do with these references…"
             VStack(spacing: 0) {
                 listeningIndicator(label: captureLabel)
+                    .frame(minHeight: OverlayContent.contentWellMinHeight)
                 if !presetChips.isEmpty {
                     // Reservation = chip capsule height + the VStack spacing
                     // (8pt) that will appear above the presetRow at review.
@@ -2262,6 +2279,12 @@ private struct OverlayContent: View {
                 }
             }
         case .cleaning:
+            // minHeight = contentWellMinHeight so the text well occupies
+            // the same vertical space as the capture icon block while
+            // streaming tokens arrive. The frame floor keeps the window
+            // steady; this keeps the CONTENT steady inside it — without
+            // this the rendered material collapses to the top of a
+            // partly-empty panel, which reads as the same dip.
             VStack(alignment: .leading, spacing: 6) {
                 if !model.text.isEmpty {
                     Text(model.text)
@@ -2276,7 +2299,10 @@ private struct OverlayContent: View {
                         .foregroundColor(.secondary)
                 }
             }
+            .frame(minHeight: OverlayContent.contentWellMinHeight, alignment: .topLeading)
         case .awaitingAccept:
+            // Same minHeight as .cleaning so single-line review text
+            // doesn't abruptly shrink the well below the capture icon height.
             VStack(alignment: .leading, spacing: 8) {
                 Text(model.text)
                     .font(.system(size: 17))
@@ -2303,6 +2329,7 @@ private struct OverlayContent: View {
                     }
                 }
             }
+            .frame(minHeight: OverlayContent.contentWellMinHeight, alignment: .topLeading)
         case .refining:
             VStack(alignment: .leading, spacing: 12) {
                 Text(model.text)
@@ -2322,11 +2349,14 @@ private struct OverlayContent: View {
     /// driven by `model.level` — so it's the static Parleq logo at
     /// rest and an audio-reactive waveform when audio is coming in.
     ///
-    /// Sizing: scale 1.8 (down from 2.5) + tight vertical padding
-    /// keeps the listening state compact so it doesn't tower over a
-    /// short review overlay. peakHeight at scale 1.8: (14+14)×1.8
-    /// ≈ 50pt vs the old 70pt at scale 2.5. The bars are still
-    /// clearly the Parleq brand mark at this size.
+    /// Sizing: scale 1.5 + 2pt vertical padding keeps the listening
+    /// state compact so it doesn't tower over a short review overlay.
+    /// peakHeight at scale 1.5: (14+14)×1.5 = 42pt. Total block
+    /// height (bars + 2×2 padding) = 46pt, which is exactly
+    /// `contentWellMinHeight` — the shared constant that makes the
+    /// cleaning/review text well occupy the same vertical footprint
+    /// as the capture icon block so the panel doesn't visually
+    /// collapse at hotkey release.
     ///
     /// `label` is optional. Pass nil for .capturing (the header strip
     /// already shows "Listening on <mic>" — a second label below the
@@ -2336,7 +2366,7 @@ private struct OverlayContent: View {
     @ViewBuilder
     private func listeningIndicator(label: String?) -> some View {
         VStack(spacing: 6) {
-            ParleqListeningIndicator(level: model.level, scale: 1.8)
+            ParleqListeningIndicator(level: model.level, scale: 1.5)
             if let label {
                 Text(label)
                     // SF Rounded gives the label a touch of warmth that
@@ -2350,7 +2380,7 @@ private struct OverlayContent: View {
                     .truncationMode(.tail)
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 2)
         .frame(maxWidth: .infinity, alignment: .center)
     }
 
