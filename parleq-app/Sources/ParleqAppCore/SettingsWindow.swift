@@ -722,6 +722,12 @@ final class SettingsModel: ObservableObject {
                 biasing: row.biasing,
                 source: row.source
             )
+            // Deliberately BEFORE the defer branch below: editorEntries must
+            // include the built value even for rows the defer branch drops
+            // (externally deleted). The row is still in the UI, and keeping
+            // its term in the refreshed snapshot is what makes the next
+            // save's loadedTerms guard suppress re-resurrection — don't
+            // "optimize" this to only-written rows.
             editorEntries.append(built)
             // If the user hasn't touched this row (it still equals what we
             // loaded), defer to whatever the learn feature wrote on disk while
