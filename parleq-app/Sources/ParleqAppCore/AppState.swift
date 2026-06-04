@@ -227,6 +227,17 @@ public final class AppState {
     /// is cleared per dictation and by the style-undo action (wired in a later task).
     private var appliedPreset: TransformPreset?
 
+    /// The per-app default preset resolved for the CURRENT dictation,
+    /// independent of whether the cleanup that would have applied it
+    /// succeeded. `appliedPreset` tracks what the on-screen text actually
+    /// reflects (cleared on every fallback render); this tracks what the
+    /// user configured for the target app, so a model-switch re-run after
+    /// a failed first cleanup (e.g. image refs on a non-vision model)
+    /// still applies the intended styling. Cleared per dictation and
+    /// whenever a successful refine / manual transform / style-undo
+    /// supersedes the default's claim on this dictation.
+    private var intendedDefaultPreset: TransformPreset?
+
     /// Raw ASR transcript of the dictation that `appliedPreset` styled.
     /// `undoStyle()` replays plain cleanup from THIS snapshot — never
     /// from `lastRawTranscript`, which every refine turn overwrites with
@@ -1966,6 +1977,7 @@ public final class AppState {
         currentText = ""
         lastRawTranscript = ""
         appliedPreset = nil
+        intendedDefaultPreset = nil
         styledRawTranscript = ""
         overlay.model.appliedPresetName = nil
         overlay.model.activeTransformName = nil
@@ -2413,6 +2425,10 @@ public final class AppState {
                     // undoStyle() can replay plain cleanup of THIS text even
                     // after later refine turns overwrite lastRawTranscript.
                     self?.styledRawTranscript = applied != nil ? asrResult.text : ""
+                    // The INTENDED default survives a failed run, so the
+                    // model-switch re-run (e.g. after an image-refs-on-
+                    // non-vision-model failure) can still apply it.
+                    self?.intendedDefaultPreset = defaultPreset
                 } else if outcome.usedLLMOutput {
                     // A voice refine supersedes the styled provenance, same
                     // rule as a manual chip tap (see runPreset): the text is
@@ -2422,6 +2438,7 @@ public final class AppState {
                     // undoStyle replays from styledRawTranscript, not the
                     // lastRawTranscript this refine turn overwrote.
                     self?.appliedPreset = nil
+                    self?.intendedDefaultPreset = nil
                     self?.styledRawTranscript = ""
                     self?.overlay.model.appliedPresetName = nil
                 }
@@ -2595,6 +2612,7 @@ public final class AppState {
         currentText = ""
         lastRawTranscript = ""
         appliedPreset = nil
+        intendedDefaultPreset = nil
         styledRawTranscript = ""
         overlay.model.appliedPresetName = nil
         overlay.model.activeTransformName = nil
@@ -3008,6 +3026,12 @@ public final class AppState {
                 return degraded
             }
         }
+        // Use the INTENDED per-app default, not appliedPreset: when the
+        // first cleanup fell back (e.g. image refs on a non-vision model
+        // — exactly the case the Switch button exists for), appliedPreset
+        // was cleared with the fallback render, but the user's configured
+        // default should still style the re-run.
+        let intendedPreset = intendedDefaultPreset
         inFlightTask = Task { @MainActor [weak self] in
             let outcome = await streamCleanupOrRefine(
                 llm: resolvedLLM,
@@ -3025,7 +3049,7 @@ public final class AppState {
                     }
                     return dest.appName
                 },
-                transform: self?.appliedPreset?.prompt
+                transform: intendedPreset?.prompt
             )
             if Task.isCancelled { return }
             // 0.14.0 PR 4 (#219): the model-switch path runs its
@@ -3034,11 +3058,22 @@ public final class AppState {
             // actually accepted, not the original pre-switch run.
             self?.lastLLMLatencyMs = outcome.llmLatencyMs
             self?.applyResult(outcome.text, cleanupFailureMessage: outcome.failureMessage)
-            if !outcome.usedLLMOutput {
+            if outcome.usedLLMOutput {
+                // Same rule as the primary cleanup path: a successful
+                // styled run sets the chip + the snapshot Undo replays
+                // from (the transcript THIS run cleaned). With no
+                // intended default both resolve to nil/empty — clearing
+                // any stale claim.
+                self?.appliedPreset = intendedPreset
+                self?.overlay.model.appliedPresetName = intendedPreset?.name
+                self?.styledRawTranscript = intendedPreset != nil ? rawTranscript : ""
+            } else {
                 // The fallback render isn't styled — don't leave a stale
                 // "Styled with X" claim on it. Mirrors the main path: only
                 // a successful non-empty LLM output sets usedLLMOutput=true,
                 // so every error/empty-stream/no-LLM path clears the chip.
+                // intendedDefaultPreset is deliberately KEPT — another
+                // switch attempt should still try to style.
                 self?.appliedPreset = nil
                 self?.styledRawTranscript = ""
                 self?.overlay.model.appliedPresetName = nil
@@ -3103,6 +3138,7 @@ public final class AppState {
                 // so the chip (and its Undo, replayed from the
                 // styledRawTranscript snapshot) stays truthful and kept.
                 self.appliedPreset = nil
+                self.intendedDefaultPreset = nil
                 self.styledRawTranscript = ""
                 self.overlay.model.appliedPresetName = nil
             }
@@ -3125,6 +3161,7 @@ public final class AppState {
         guard phase == .awaitingAccept, appliedPreset != nil else { return }
         let raw = styledRawTranscript
         appliedPreset = nil
+        intendedDefaultPreset = nil
         styledRawTranscript = ""
         overlay.model.appliedPresetName = nil
         guard !raw.isEmpty else { return }
