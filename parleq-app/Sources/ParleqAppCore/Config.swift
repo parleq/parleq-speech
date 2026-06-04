@@ -512,7 +512,7 @@ public struct Config: Sendable {
             // Delegate all field parsing to the single-source-of-truth
             // seam. load() owns only file I/O, error/fallback handling,
             // and the MDM managed-overlay block that runs after parsing.
-            var c = Config.parseForTesting(dict)
+            var c = Config.parse(fromDictionary: dict)
             // MDM overlay: check the seven managed-eligible Bool keys.
             // If MDM has forced a value, it overrides the user-stored
             // value and the key is added to managedKeys so Settings
@@ -1095,8 +1095,9 @@ public struct Config: Sendable {
 
     /// Parse a Config from a raw JSON dictionary (the same logic used
     /// by `load()`, but without filesystem I/O or MDM overlay).
+    /// Production `load()` delegates here; tests call it directly as a seam.
     /// Internal so tests can call it via `@testable import`.
-    static func parseForTesting(_ parsed: [String: Any]) -> Config {
+    static func parse(fromDictionary parsed: [String: Any]) -> Config {
         var c = Config.default
         if let hotkey = parsed["hotkey"] as? [String: Any],
            let binding = hotkey["binding"] as? String {
@@ -1281,8 +1282,9 @@ public struct Config: Sendable {
 
     /// Serialize a Config to a JSON dictionary (the same structure that
     /// `save()` writes, minus filesystem I/O and MDM preservation).
+    /// Production `save()` delegates here; tests call it directly as a seam.
     /// Internal so tests can call it via `@testable import`.
-    static func serializeForTesting(_ config: Config) -> [String: Any] {
+    static func serializeToDictionary(_ config: Config) -> [String: Any] {
         var featuresDict: [String: Any] = [
             "reference_windows_enabled": config.referenceWindowsEnabled,
             "clipboard_reference_enabled": config.clipboardReferenceEnabled,
@@ -1562,11 +1564,11 @@ public struct Config: Sendable {
         // Start from the single-source-of-truth base serialization, then
         // apply save()'s extra semantics on top: MDM managed-key
         // preservation and the context_model CTX-pinning logic.
-        var dict = Config.serializeForTesting(config)
+        var dict = Config.serializeToDictionary(config)
 
         // Patch ASR, LLM, AWS, Vertex, Azure sections with the
         // managed-override values computed above. These overwrite the
-        // naive per-field values that serializeForTesting put in.
+        // naive per-field values that serializeToDictionary put in.
         dict["asr"] = [
             "mode": config.asrMode,
             "endpoint": asrEndpointToWrite,
@@ -1635,7 +1637,7 @@ public struct Config: Sendable {
                 dict.removeValue(forKey: "context_model")
             }
         } else if config.contextModel == nil {
-            // serializeForTesting omits context_model when nil; keep
+            // serializeToDictionary omits context_model when nil; keep
             // it absent (remove in case it was set by a prior code path).
             dict.removeValue(forKey: "context_model")
         }

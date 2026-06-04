@@ -39,14 +39,14 @@ final class TransformPresetsTests: XCTestCase {
                 "bad": 7,
             ] as [String: Any],
         ]
-        let c = Config.parseForTesting(input)
+        let c = Config.parse(fromDictionary:input)
         XCTAssertEqual(c.transformPresets.map { $0.id }, ["p1"])
         XCTAssertEqual(c.presetAppDefaults, ["com.tinyspeck.slackmacgap": "p1"])
     }
 
     func test_config_without_preset_keys_loads_empty() throws {
         // "{}" → transformPresets empty, presetAppDefaults empty, transformPresetsEnabled true
-        let c = Config.parseForTesting([:])
+        let c = Config.parse(fromDictionary:[:])
         XCTAssertTrue(c.transformPresets.isEmpty)
         XCTAssertTrue(c.presetAppDefaults.isEmpty)
         XCTAssertTrue(c.transformPresetsEnabled)
@@ -58,7 +58,7 @@ final class TransformPresetsTests: XCTestCase {
         var c = Config.default
         c.transformPresets = [TransformPreset(id: "p1", name: "Concise", prompt: "Rewrite concisely.")]
         c.presetAppDefaults = ["com.apple.mail": "p1"]
-        let dict = Config.serializeForTesting(c)
+        let dict = Config.serializeToDictionary(c)
         let presets = dict["presets"] as? [[String: Any]]
         XCTAssertEqual(presets?.count, 1)
         XCTAssertEqual(presets?.first?["id"] as? String, "p1")
@@ -70,7 +70,7 @@ final class TransformPresetsTests: XCTestCase {
     func test_save_omits_empty_preset_sections() throws {
         // Config.default serialized → dict has NO "presets" key and NO "preset_app_defaults" key
         // (existing configs stay byte-stable when the feature is unused)
-        let dict = Config.serializeForTesting(Config.default)
+        let dict = Config.serializeToDictionary(Config.default)
         XCTAssertNil(dict["presets"], "No presets → key must be absent for byte-stability")
         XCTAssertNil(dict["preset_app_defaults"], "No app defaults → key must be absent for byte-stability")
     }
@@ -139,7 +139,7 @@ final class TransformPresetsTests: XCTestCase {
                 " com.apple.mail ": " p1 ",
             ] as [String: Any],
         ]
-        let c = Config.parseForTesting(input)
+        let c = Config.parse(fromDictionary:input)
         XCTAssertEqual(c.presetAppDefaults, ["com.apple.mail": "p1"],
                        "Bundle-ID key and preset-ID value must be trimmed at parse time")
     }
