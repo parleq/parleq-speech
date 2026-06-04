@@ -103,6 +103,13 @@ public final class OverlayWindow {
     /// itself owns the entry-pick callback chain; the overlay just
     /// requests the picker be shown.
     public var onShowWindowPicker: (() -> Void)?
+    /// AppState wires this to run a transform preset (by id) as a refine
+    /// pass on the current review text. Triggered by the preset chips in
+    /// the .awaitingAccept footer.
+    public var onRunPreset: ((String) -> Void)?
+    /// AppState wires this to undo a per-app default style: re-runs plain
+    /// cleanup (no transform addendum) from the retained raw transcript.
+    public var onUndoStyle: (() -> Void)?
     /// M2 fix: wired to AppState.switchModelAndRecleanup(_:) so the
     /// Switch-to-vision-model button re-runs cleanup with the new
     /// provider rather than only flipping the badge. Distinct from the

@@ -502,6 +502,8 @@ public final class AppState {
         overlay.onSwitchToVisionModelAndRecleanup = { [weak self] id in
             self?.switchModelAndRecleanup(id)
         }
+        overlay.onRunPreset = { [weak self] id in self?.runPreset(id: id) }
+        overlay.onUndoStyle = { [weak self] in self?.undoStyle() }
         // Wire the overlay's async file-pick into AppState's pending-
         // capture bookkeeping. Submit (hotkeyUp) and accept() both
         // wait on / cancel pendingCaptureTasks; without this, an
@@ -3009,6 +3011,70 @@ public final class AppState {
                 self?.appliedPreset = nil
                 self?.overlay.model.appliedPresetName = nil
             }
+        }
+    }
+
+    /// Run a transform preset against the current review text — the
+    /// preset's stored prompt occupies the same instruction slot a spoken
+    /// refine uses, through the same pipeline. Deliberately does NOT call
+    /// captureCorrectionSignals: a canned preset instruction is not a
+    /// correction signal and would pollute term-learning analysis.
+    @MainActor
+    func runPreset(id: String) {
+        guard phase == .awaitingAccept else { return }
+        let (config, _) = Config.load()
+        guard config.transformPresetsEnabled,
+              let preset = config.transformPresets.first(where: { $0.id == id })
+        else { return }
+        let current = overlay.model.text
+        guard !current.isEmpty else { return }
+        let dictionary = config.customDictionaryEnabled ? config.customDictionary : []
+        let resolvedLLM = llmForInvocation()
+        inFlightTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            let outcome = await streamCleanupOrRefine(
+                llm: resolvedLLM,
+                overlay: self.overlay,
+                useOverlay: true,
+                asRefine: true,
+                rawTranscript: preset.prompt,
+                priorText: current,
+                customDictionary: dictionary
+            )
+            if Task.isCancelled { return }
+            self.lastLLMLatencyMs = outcome.llmLatencyMs
+            self.applyResult(outcome.text, cleanupFailureMessage: outcome.failureMessage)
+        }
+    }
+
+    /// Undo a per-app default style: clear the stash + chip immediately,
+    /// then re-run PLAIN cleanup (no transform) from the retained raw
+    /// transcript. v1 note: the redo runs without the original references
+    /// attached (documented spec limitation).
+    @MainActor
+    func undoStyle() {
+        guard phase == .awaitingAccept, appliedPreset != nil else { return }
+        appliedPreset = nil
+        overlay.model.appliedPresetName = nil
+        let raw = lastRawTranscript
+        guard !raw.isEmpty else { return }
+        let (config, _) = Config.load()
+        let dictionary = config.customDictionaryEnabled ? config.customDictionary : []
+        let resolvedLLM = llmForInvocation()
+        inFlightTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            let outcome = await streamCleanupOrRefine(
+                llm: resolvedLLM,
+                overlay: self.overlay,
+                useOverlay: true,
+                asRefine: false,
+                rawTranscript: raw,
+                priorText: "",
+                customDictionary: dictionary
+            )
+            if Task.isCancelled { return }
+            self.lastLLMLatencyMs = outcome.llmLatencyMs
+            self.applyResult(outcome.text, cleanupFailureMessage: outcome.failureMessage)
         }
     }
 
