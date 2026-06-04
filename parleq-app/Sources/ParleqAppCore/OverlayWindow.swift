@@ -193,7 +193,7 @@ public final class OverlayWindow {
                 onSwitchToVisionModelAndRecleanup: { _ in },
                 onRunPreset: { _ in },
                 onUndoStyle: {},
-                onBodyHeightChange: { _ in }
+                onBodyHeightChange: { (_: OverlayBodyMeasurement) in }
             )
         )
         hc.sizingOptions = [.preferredContentSize]
@@ -282,8 +282,8 @@ public final class OverlayWindow {
             },
             onRunPreset: { [weak self] id in self?.onRunPreset?(id) },
             onUndoStyle: { [weak self] in self?.onUndoStyle?() },
-            onBodyHeightChange: { [weak self] newHeight in
-                self?.resizePanelToHeight(newHeight)
+            onBodyHeightChange: { [weak self] measurement in
+                self?.resizePanelToHeight(measurement)
             }
         )
     }
@@ -307,7 +307,23 @@ public final class OverlayWindow {
     ///     → awaitingAccept, etc.) where the panel is already visible
     ///     AND the delta is non-trivial (> 2pt): animate ~160ms easeInOut
     ///     so state changes feel intentional rather than jarring.
-    private func resizePanelToHeight(_ measuredHeight: CGFloat) {
+    ///
+    /// Cross-state staleness guard: the measurement carries the
+    /// OverlayState that produced the layout. If it doesn't match the
+    /// model's current state we drop it — the current state's own layout
+    /// always reports next, so skipping the mismatched report prevents
+    /// the one-beat bounce to a superseded height (e.g. the prior review
+    /// layout's measurement arriving right after a fresh capture show).
+    private func resizePanelToHeight(_ measurement: OverlayBodyMeasurement) {
+        guard measurement.state == model.state else {
+            // A layout report from a superseded state (e.g. the previous
+            // review layout arriving right after a fresh capture show).
+            // Applying it would bounce the frame to the old state's
+            // height for one beat — drop it; the current state's own
+            // layout always reports next.
+            return
+        }
+        let measuredHeight = measurement.height
         let visible = NSScreen.main?.visibleFrame.height ?? 800
         let maxPanelHeight = OverlayWindow.computeMaxPanelHeight(visibleHeight: visible)
         let target = max(
@@ -458,7 +474,11 @@ public final class OverlayWindow {
                 (model.state == .capturing && lastSettledCaptureHeight > 0)
                     ? lastSettledCaptureHeight
                     : fitting.height
-            resizePanelToHeight(presizeHeight)
+            // Tag the pre-size measurement with the current state so it
+            // passes the staleness guard in resizePanelToHeight (this is
+            // a first-show call, so the state is already set by the
+            // model.update(state:…) call above).
+            resizePanelToHeight(OverlayBodyMeasurement(height: presizeHeight, state: model.state))
 
             positionAtScreenBottom()
 
@@ -982,6 +1002,16 @@ private struct OverlayContentHeightKey: PreferenceKey {
     }
 }
 
+/// Carries the outermost body height measurement together with the
+/// overlay state that produced the layout. The state tag lets the
+/// consumer drop reports that arrived from a superseded layout (e.g.
+/// the previous review layout's measurement firing right after a fresh
+/// capture show) without applying them to the current frame.
+private struct OverlayBodyMeasurement: Equatable {
+    var height: CGFloat
+    var state: OverlayState
+}
+
 /// PreferenceKey for the OverlayContent's outermost measured height —
 /// the value we want the panel itself to take. Used to drive panel
 /// resize directly from SwiftUI, bypassing NSHostingController's
@@ -989,10 +1019,18 @@ private struct OverlayContentHeightKey: PreferenceKey {
 /// controller is installed as panel.contentViewController; we install
 /// its view as a subview via FirstMouseAcceptingView instead, so the
 /// auto-track is dead in this app).
+///
+/// The value carries the OverlayState that produced the layout so that
+/// cross-state stale reports (a prior state's measurement arriving after
+/// a state transition) can be identified and dropped by the consumer.
 private struct OverlayBodyHeightKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = max(value, nextValue())
+    static let defaultValue = OverlayBodyMeasurement(height: 0, state: .capturing)
+    static func reduce(value: inout OverlayBodyMeasurement, nextValue: () -> OverlayBodyMeasurement) {
+        // Prefer the largest height among concurrent reports, consistent
+        // with the prior CGFloat behaviour.
+        if nextValue().height > value.height {
+            value = nextValue()
+        }
     }
 }
 
@@ -1216,7 +1254,10 @@ private struct OverlayContent: View {
     /// (the controller's view is added as a subview rather than as
     /// the panel's contentViewController, so the controller's
     /// viewDidLayout never fires).
-    let onBodyHeightChange: (CGFloat) -> Void
+    ///
+    /// The measurement carries the OverlayState that produced the
+    /// layout so the consumer can drop cross-state stale reports.
+    let onBodyHeightChange: (OverlayBodyMeasurement) -> Void
 
     /// Measured intrinsic height of the transcript content, updated
     /// every time the content's layout changes. Drives the ScrollView
@@ -1624,17 +1665,25 @@ private struct OverlayContent: View {
         // to OverlayWindow so the panel can resize to match. This
         // replaces NSHostingController's preferredContentSize auto-
         // track (dead in our setup — see onBodyHeightChange doc).
+        //
+        // The measurement is tagged with the OverlayState that was
+        // current when the GeometryReader ran, so the consumer can
+        // drop reports from superseded layouts (e.g. the previous
+        // review layout firing right after a fresh capture show).
         .background(
             GeometryReader { geom in
                 Color.clear
                     .preference(
                         key: OverlayBodyHeightKey.self,
-                        value: geom.size.height
+                        value: OverlayBodyMeasurement(
+                            height: geom.size.height,
+                            state: model.state
+                        )
                     )
             }
         )
-        .onPreferenceChange(OverlayBodyHeightKey.self) { newHeight in
-            onBodyHeightChange(newHeight)
+        .onPreferenceChange(OverlayBodyHeightKey.self) { measurement in
+            onBodyHeightChange(measurement)
         }
         // Drag-and-drop: accept file URLs, images, and text onto the
         // overlay surface. Drops are forwarded through the same factory
