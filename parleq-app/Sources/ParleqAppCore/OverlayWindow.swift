@@ -1541,6 +1541,25 @@ private struct OverlayContent: View {
         }
     }
 
+    /// The gesture-hints line's slot, constant-height in every dictation
+    /// state so capture isn't taller than cleaning/review (the source of
+    /// the release-time card dip). Color.clear backstop: OverlayHintStrip
+    /// renders EmptyView outside the latched flow and a frame on
+    /// EmptyView is zero.
+    private var hintSlot: some View {
+        ZStack(alignment: .leading) {
+            Color.clear.frame(height: 26)
+            OverlayHintStrip(
+                state: model.composeState,
+                hotkeyDisplayName: model.hotkeyDisplayName,
+                referenceWindowsEnabled: model.referenceWindowsEnabled,
+                spaceArmedDuringHold: model.spaceArmedDuringHold
+            )
+        }
+        .frame(height: 26)
+        .clipped()
+    }
+
     /// Warm "AI" gradient for the transform strip — anchored on the brand
     /// amber so the sizzle stays on-brand instead of introducing a foreign
     /// accent. Used by the sparkle glyph and chip borders.
@@ -1784,15 +1803,13 @@ private struct OverlayContent: View {
                 }
             }
 
-            // Reference Windows v2 latched-compose hint strip. Renders
-            // empty (EmptyView) when composeState is .idle so users
-            // who never enter the latched flow see no UI change.
-            OverlayHintStrip(
-                state: model.composeState,
-                hotkeyDisplayName: model.hotkeyDisplayName,
-                referenceWindowsEnabled: model.referenceWindowsEnabled,
-                spaceArmedDuringHold: model.spaceArmedDuringHold
-            )
+            // Reference Windows v2 latched-compose hint strip. Constant-
+            // height slot (26 pt) across all dictation states — see
+            // hintSlot. Renders empty (EmptyView) when composeState is
+            // .idle so users who never enter the latched flow see no UI
+            // change, but the slot always occupies its height so capture
+            // isn't taller than cleaning/review.
+            hintSlot
 
             // Eloquent-style status title: name the transform while it
             // streams, instead of the anonymous cleaning state.
