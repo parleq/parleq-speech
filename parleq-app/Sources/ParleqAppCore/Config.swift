@@ -477,10 +477,6 @@ public struct Config: Sendable {
         managedKeys: []
     )
 
-    /// Alias for `Config.default`. Provided so new code can use the
-    /// more natural name without colliding with the Swift keyword.
-    public static var defaults: Config { Config.default }
-
     public static func load() -> (config: Config, source: String) {
         let path = (NSHomeDirectory() as NSString).appendingPathComponent(".parleq/config.json")
         // Fresh-install / missing-file path: there is no JSON to parse, but

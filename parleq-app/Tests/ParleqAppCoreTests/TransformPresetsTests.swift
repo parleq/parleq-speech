@@ -13,7 +13,7 @@ final class TransformPresetsTests: XCTestCase {
     }
 
     func test_config_defaults_have_no_presets_and_feature_enabled() {
-        let c = Config.defaults
+        let c = Config.default
         XCTAssertTrue(c.transformPresets.isEmpty, "Zero-config users must see no presets")
         XCTAssertTrue(c.presetAppDefaults.isEmpty)
         XCTAssertTrue(c.transformPresetsEnabled, "Feature is on by default; only MDM disables it")
