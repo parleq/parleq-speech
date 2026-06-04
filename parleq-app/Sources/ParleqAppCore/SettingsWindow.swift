@@ -599,17 +599,20 @@ final class SettingsModel: ObservableObject {
             !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 && !$0.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
-        // Drop mappings whose preset was truly deleted (not just transiently
-        // blank mid-retype). Key off the FULL in-memory list so a preset
-        // whose name field is temporarily empty during typing does not lose
-        // its per-app mapping — only presets that are no longer in the list
-        // at all (i.e. the user deleted the row) prune their mappings.
-        let ids = Set(transformPresets.map { $0.id })
-        c.presetAppDefaults = presetAppDefaults.filter { ids.contains($0.value) }
-        // Self-heal the published dict so the UI never shows mappings the
-        // dangling filter just dropped from the write.
-        if presetAppDefaults != c.presetAppDefaults {
-            presetAppDefaults = c.presetAppDefaults
+        // Two-tier mapping filter:
+        // — DISK (c.presetAppDefaults): only keep mappings whose preset was
+        //   persisted in c.transformPresets — guarantees no dangling refs on
+        //   next load.
+        // — PUBLISHED (presetAppDefaults): keep mappings for ALL in-memory
+        //   presets, including ones transiently blank mid-retype, so clearing
+        //   a preset's name field temporarily doesn't lose its per-app default
+        //   in the UI; the mapping re-persists once the preset is valid again.
+        let persistedIDs = Set(c.transformPresets.map { $0.id })
+        let inMemoryIDs = Set(transformPresets.map { $0.id })
+        c.presetAppDefaults = presetAppDefaults.filter { persistedIDs.contains($0.value) }
+        let published = presetAppDefaults.filter { inMemoryIDs.contains($0.value) }
+        if presetAppDefaults != published {
+            presetAppDefaults = published
         }
         // Context tier: nil when context == cleanup so the resolver
         // short-circuits cleanly (nil means "same as cleanup" in Config).

@@ -124,6 +124,18 @@ final class TransformPresetsTests: XCTestCase {
         XCTAssertEqual(SystemPrompts.transformHint("   "), "")
     }
 
+    // MARK: - SettingsModel.save() filtering — testability note
+    //
+    // The two-tier dangling-mapping fix (persistedIDs vs inMemoryIDs) lives
+    // inline in SettingsModel.save() in SettingsWindow.swift. SettingsModel
+    // cannot be constructed in unit tests: its init() calls Config.load()
+    // (reads ~/.parleq/config.json) and KeychainStore (reads the Keychain),
+    // with no injection seam.  The filter logic is covered indirectly by
+    // test_presets_parse_from_top_level_array (dangling mapping stripped at
+    // load) and test_presets_round_trip_through_save (valid mapping preserved).
+    // A dedicated test would require extracting the filter into a pure
+    // free function — deferred until SettingsModel gets a testable init.
+
     // MARK: - Mapping parse: whitespace trimming
 
     func test_preset_app_defaults_keys_and_values_are_trimmed() {
