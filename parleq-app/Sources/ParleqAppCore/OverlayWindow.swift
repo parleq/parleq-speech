@@ -1530,15 +1530,14 @@ private struct OverlayContent: View {
     /// presets are configured so there is no overhead for users without
     /// presets.
     ///
-    /// The reservation now sits at the SAME template position as the real
-    /// `presetRow` (the shared `chipsSlot`), so it reserves exactly one
-    /// chip-row height — the VStack spacing on either side is identical to
-    /// what presetRow gets in review, so no extra spacing compensation is
-    /// needed.
+    /// The height mirrors the capture-state reservation formula:
+    ///   chipCapsuleHeight  — one chip row height (font-metric derived)
+    ///   + 8pt              — the VStack spacing that will appear above
+    ///                        presetRow in the body VStack at review
     @ViewBuilder
     private var chipStripReservation: some View {
         if !presetChips.isEmpty {
-            Color.clear.frame(height: PresetChipMetrics.chipCapsuleHeight)
+            Color.clear.frame(height: PresetChipMetrics.chipCapsuleHeight + 8)
         }
     }
 
@@ -1672,227 +1671,6 @@ private struct OverlayContent: View {
         }
     }
 
-    /// Minimum height of footer row 1 — the action/hint row. The review
-    /// state's row 1 is OverlayButtons (a row of `.small` bordered
-    /// buttons, ~22pt tall); the active states' row 1 is a single line of
-    /// 11pt text (PASTING-TO eyebrow + hint, ~16pt tall). Flooring BOTH
-    /// branches to this height makes the footer block the same height in
-    /// every dictation state, so row 1's baseline — and therefore the
-    /// divider directly above it — lands at the identical Y across
-    /// capturing / cleaning / awaitingAccept. 24pt comfortably clears the
-    /// small-button intrinsic height with a hair of breathing room.
-    static let footerRow1MinHeight: CGFloat = 24
-
-    /// Constant height of the utility slot (footer row 2). Derived from
-    /// the gesture-hints line's natural rendered height so the slot is
-    /// exactly sized for its tallest intended occupant.
-    ///
-    /// Derivation:
-    ///   font = SF Pro size 11 (system font)
-    ///   fontLineHeight = ceil(ascender − descender + leading)
-    ///                  ≈ ceil(10.73 − (−2.73) + 0) = ceil(13.46) = 14 pt
-    ///   verticalPadding = 6 pt per side (matching OverlayHintStrip's
-    ///                     .padding(.vertical, 6))
-    ///   utilitySlotHeight = fontLineHeight + 2 × verticalPadding
-    ///                     = 14 + 12 = 26 pt
-    ///
-    /// learnLine at 11 pt with no explicit padding renders at ~16 pt
-    /// (max of text line-height and the mini toggle control height) —
-    /// shorter than the slot, so it centres inside it safely.
-    static var utilitySlotHeight: CGFloat {
-        let font = NSFont.systemFont(ofSize: 11)
-        let fontLineHeight = ceil(font.ascender - font.descender + font.leading)
-        let verticalPadding: CGFloat = 6
-        return fontLineHeight + verticalPadding * 2
-    }
-
-    /// Floor for the shared center well — the SINGLE source of vertical
-    /// flex in the template. It must be tall enough to hold the TALLEST
-    /// single-line interior any state renders so the divider directly
-    /// below the well lands at the same Y in every state. The tallest is
-    /// the empty-cleaning interior: the listening icon
-    /// (contentWellMinHeight) + the VStack(spacing: 6) gap + the status
-    /// line (BlinkingDots / 12pt text). Capture (icon only) and review
-    /// (single-line text) both reserve up to this height, so the well is
-    /// a constant-height slot for single-line dictation and only its
-    /// interior swaps.
-    ///
-    /// Derived from font metrics (not hardcoded) so it tracks the status
-    /// line's real rendered height if the system font metrics shift.
-    static var wellMinHeight: CGFloat {
-        let statusFont = NSFont.systemFont(ofSize: 12)
-        let statusLineHeight = ceil(statusFont.ascender - statusFont.descender + statusFont.leading)
-        let vstackSpacing: CGFloat = 6
-        return contentWellMinHeight + vstackSpacing + statusLineHeight
-    }
-
-    /// The single flexible center element of the shared template. Wraps
-    /// the existing `contentArea` (which owns the scroll-threshold switch
-    /// and the content-height measurement). Flooring it to `wellMinHeight`
-    /// gives every dictation state a constant-height well for single-line
-    /// content, so the divider beneath it never moves; the per-state
-    /// `content` interior (capture icon / dimmed icon + "cleaning…" status
-    /// / review text) swaps inside this fixed slot. The cleaning status
-    /// line lives INSIDE the well, never as a separate footer row.
-    private var centerWell: some View {
-        // .center vertical alignment: when a state's interior is shorter
-        // than wellMinHeight (capture icon, single-line review text) it
-        // sits centered in the slot, which looks balanced and — crucially
-        // — is the SAME slot height in every state, so the divider below
-        // never moves. Multi-line content exceeds the floor and grows
-        // top-anchored naturally (alignment is moot once content > floor).
-        contentArea
-            .frame(minHeight: OverlayContent.wellMinHeight, alignment: .center)
-    }
-
-    /// The chips slot — ONE template position shared by all dictation
-    /// states (previously the reservation lived inside the content well,
-    /// above the divider, while the real presetRow lived below it, which
-    /// put the divider at different Ys). In review it renders the real
-    /// `presetRow`; in the active states it renders `chipStripReservation`
-    /// (an invisible spacer of the same height) so the divider below it
-    /// never moves. Both are EmptyView when no presets are configured.
-    @ViewBuilder
-    private var chipsSlot: some View {
-        if model.state == .awaitingAccept {
-            presetRow
-        } else {
-            chipStripReservation
-        }
-    }
-
-    /// Constant-height utility slot — footer row 2.
-    ///
-    /// ONE template position shared by all dictation states, always
-    /// occupying exactly `utilitySlotHeight` points:
-    ///
-    ///   .capturing / latched compose — OverlayHintStrip (gesture hints:
-    ///       "Space: attach a window · C: current window · P: open Parleq"
-    ///       or the latched / armed variants). This is the tallest occupant
-    ///       and establishes the slot constant.
-    ///   .cleaning / .refining       — Color.clear reservation (same height,
-    ///       no visible content; preserves the card's bottom edge position).
-    ///   .awaitingAccept             — learnLine when the nudge is eligible;
-    ///       Color.clear reservation otherwise. learnLine fits within the
-    ///       slot height (mini toggle ≈ 16 pt < 26 pt slot) and centres
-    ///       vertically via the .center alignment.
-    ///
-    /// Net effect: every dictation state renders the same total footer
-    /// height for single-line dictations, so the card's top and bottom
-    /// edges are pixel-identical from .capturing through .awaitingAccept.
-    @ViewBuilder
-    private var utilitySlot: some View {
-        switch model.state {
-        case .capturing, .staging, .initializing, .refining:
-            // Gesture-hint strip — naturally fills the slot for the
-            // non-idle composeStates that show hints; Color.clear in
-            // .idle (empty OverlayHintStrip output is wrapped by the
-            // fixed-height frame below, so it still occupies the slot).
-            OverlayHintStrip(
-                state: model.composeState,
-                hotkeyDisplayName: model.hotkeyDisplayName,
-                referenceWindowsEnabled: model.referenceWindowsEnabled,
-                spaceArmedDuringHold: model.spaceArmedDuringHold
-            )
-        case .cleaning:
-            // No visible content — empty reservation keeps the card
-            // height constant so the card doesn't collapse at the
-            // capturing→cleaning transition.
-            Color.clear
-        case .awaitingAccept:
-            // Learn nudge when eligible; empty reservation otherwise.
-            // learnLine is @ViewBuilder and may produce EmptyView — the
-            // outer .frame(height: utilitySlotHeight) applied in
-            // footerBlock ensures the slot always occupies the full slot
-            // height regardless of learnLine's output.
-            learnLine
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-
-    /// Constant two-row, bottom-pinned footer block shared by every
-    /// dictation state.
-    ///
-    ///   Row 1 — the action/hint row, floored to footerRow1MinHeight so
-    ///           its (and the divider's) Y is identical across states:
-    ///             • .awaitingAccept → OverlayButtons (Copy/Cancel/Accept
-    ///               + inline paste target + V-send hint).
-    ///             • active states   → PASTING-TO label + contextual hint.
-    ///   Row 2 — utilitySlot: a CONSTANT-HEIGHT slot (utilitySlotHeight)
-    ///           shared by all dictation states. The slot's occupant varies
-    ///           per state (gesture hints / empty reservation / learn nudge)
-    ///           but the HEIGHT is identical in every state for a single-line
-    ///           dictation — eliminating the ~42 pt card-height delta that was
-    ///           visible between capturing (hints line present) and
-    ///           cleaning/review (EmptyView, zero height).
-    @ViewBuilder
-    private var footerBlock: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // Row 1 — action / hint.
-            Group {
-                if model.state == .awaitingAccept {
-                    // Single-line footer: paste-target inline (so Accept is
-                    // visually paired with its destination), Copy / Cancel /
-                    // Accept. The "hold ⌥ to refine" affordance is documented
-                    // on the staging hint + naturally discoverable; we keep
-                    // the row to one line.
-                    OverlayButtons(
-                        isKey: model.isKey,
-                        // Mirror sendToPressed()'s gate so the V hint is
-                        // hidden when reference windows (hence the window
-                        // picker) are disabled.
-                        sendToEnabled: model.referenceWindowsEnabled,
-                        pasteTarget: model.pasteTarget,
-                        conflict: headerBadgeState.conflict,
-                        visionFallbackOption: firstConfiguredVisionModel(in: headerBadgeState.pickerEntries),
-                        onCopy: onCopy,
-                        onCancel: onCancel,
-                        onAccept: onAccept,
-                        // M2 fix: Switch button triggers re-cleanup with the
-                        // new provider, not just a badge flip. AppState retains
-                        // lastRawTranscript so re-cleanup works on the original
-                        // spoken words.
-                        onSwitchToVisionModel: onSwitchToVisionModelAndRecleanup,
-                        onDowngrade: { model.userDowngradedConflict = true }
-                    )
-                } else {
-                    // Active-state row: paste-target on the left (same
-                    // "PASTING TO" treatment as the review footer — see
-                    // PastingToLabel) + contextual hint on the right. The
-                    // chip surfaces earlier than streamed text so
-                    // latched-compose flows that shift focus make the
-                    // change visible immediately.
-                    //
-                    // Suppress the legacy "Release ⌥ when done" hint while
-                    // in a latched-compose state — OverlayHintStrip (row 2)
-                    // renders the correct contextual hint instead.
-                    HStack(spacing: 8) {
-                        if showsActiveFooterPasteTarget,
-                           let target = model.pasteTarget {
-                            PastingToLabel(target: target)
-                        }
-                        Spacer(minLength: 8)
-                        if model.composeState == .idle || model.composeState == .recording {
-                            footer
-                                .font(.system(size: 11))
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                }
-            }
-            // Floor row 1 to a constant height so the divider above it
-            // sits at the same Y in every dictation state.
-            .frame(minHeight: OverlayContent.footerRow1MinHeight, alignment: .center)
-
-            // Row 2 — constant-height utility slot. Gesture hints while
-            // capturing; empty reservation through cleaning/refining; the
-            // learn nudge (or empty reservation) in review. Always
-            // exactly utilitySlotHeight pt tall.
-            utilitySlot
-                .frame(height: OverlayContent.utilitySlotHeight, alignment: .center)
-        }
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             // Single header strip combining paste-target chip + reference
@@ -1928,62 +1706,114 @@ private struct OverlayContent: View {
             // even inside the ScrollView (the content is sized to its
             // intrinsic and the ScrollView scrolls it), so the
             // measurement stays consistent across mode switches.
-            // ── Shared vertical template ──────────────────────────────
-            //
-            // Frame-by-frame window captures (v0.17.x) showed the rows
-            // REDISTRIBUTING inside the constant panel frame at every
-            // state swap: header dropped ~10pt capturing→cleaning, the
-            // divider+footer slid ~10-25pt, and the chip slot jumped
-            // across the divider (reservation lived ABOVE it in capture,
-            // the real presetRow lived BELOW it in review). The window
-            // never moved — but the furniture did, which read as a size
-            // change.
-            //
-            // Every dictation state (.capturing / .cleaning / .refining /
-            // .awaitingAccept) now renders the SAME skeleton at the SAME
-            // positions:
-            //
-            //   headerStrip      ← top-pinned, fixed-height (already above)
-            //   errorBanner      ← conditional (above)
-            //   centerWell       ← THE single flexible element. Its floor
-            //                       is contentWellMinHeight; its interior
-            //                       swaps per state (icon / dimmed-icon +
-            //                       "cleaning…" status MOVED INSIDE it /
-            //                       review text). The status line is no
-            //                       longer its own row that shifts the
-            //                       footer.
-            //   chipsSlot        ← presetRow (review) OR chipStripReservation
-            //                       (others), at ONE template position for
-            //                       all states (was split across the divider).
-            //   Divider          ← lands at the same Y in every state.
-            //   footerBlock      ← constant TWO-row, bottom-pinned block:
-            //                       row 1 = OverlayButtons (review) /
-            //                       PASTING-TO + hint (active), both floored
-            //                       to footerRow1MinHeight so row 1's Y is
-            //                       identical; row 2 = utilitySlot — a
-            //                       CONSTANT-HEIGHT (utilitySlotHeight) slot
-            //                       whose occupant varies per state: gesture
-            //                       hints (.capturing / latched), empty
-            //                       reservation (.cleaning / .refining), or
-            //                       the learn nudge (.awaitingAccept).
-            //
-            // NOTE on "well absorbs flex": this view's intrinsic height
-            // DRIVES the panel frame (the measured-height preference key
-            // plumbing — untouched here), rather than the panel frame
-            // driving this view. So an unbounded `maxHeight: .infinity`
-            // on the well would report infinity to the measurement and is
-            // wrong for THIS architecture. The equivalent guarantee is
-            // achieved by making the fixed parts (chips slot + divider +
-            // footer block) the SAME height across states and flooring the
-            // well — the intrinsic layout is then identical for a single-
-            // line dictation, so every shared row lands at the same Y.
-            centerWell
-
-            chipsSlot
+            contentArea
 
             Divider().opacity(0.3)
 
-            footerBlock
+            // Bottom area: full button row in awaitingAccept; text
+            // hint in every other state. The buttons surface Copy /
+            // Cancel / Accept; the trailing [hold ⌥] refine hint
+            // preserves the third affordance (which is a hotkey
+            // gesture, not a clickable control) so users know it's
+            // still available alongside the buttons.
+            if model.state == .awaitingAccept {
+                // Transform-preset strip — quiet capsule chips with a warm
+                // amber-anchored gradient, between the dictation text and
+                // the commit row (text → transform → accept). Fixed chrome
+                // (never inside the scrolling text area). Hover transitions
+                // only; no ambient animation.
+                presetRow
+
+                // Single-line footer: Copy on left, then Cancel, the
+                // paste-target inline (so Accept is visually paired
+                // with its destination), then Accept on the right.
+                // The "hold ⌥ to refine" affordance is documented on
+                // the staging-state hint + naturally discoverable;
+                // we drop the explicit footer hint here to keep the
+                // row to one line.
+                OverlayButtons(
+                    isKey: model.isKey,
+                    // Mirror sendToPressed()'s gate so the V hint is
+                    // hidden when reference windows (hence the window
+                    // picker) are disabled.
+                    sendToEnabled: model.referenceWindowsEnabled,
+                    pasteTarget: model.pasteTarget,
+                    conflict: headerBadgeState.conflict,
+                    visionFallbackOption: firstConfiguredVisionModel(in: headerBadgeState.pickerEntries),
+                    onCopy: onCopy,
+                    onCancel: onCancel,
+                    onAccept: onAccept,
+                    // M2 fix: Switch button triggers re-cleanup with the
+                    // new provider, not just a badge flip. AppState retains
+                    // lastRawTranscript so re-cleanup works on the original
+                    // spoken words.
+                    onSwitchToVisionModel: onSwitchToVisionModelAndRecleanup,
+                    onDowngrade: { model.userDowngradedConflict = true }
+                )
+            } else {
+                // Active-state footer row: paste-target on the left
+                // (same "PASTING TO" treatment as the .awaitingAccept
+                // footer next to Accept — see PastingToLabel) +
+                // contextual hint on the right. The chip surfaces
+                // earlier than streamed text, so latched-compose
+                // flows that inadvertently shift focus (e.g. clicking
+                // an Add-from-clipboard button that activates a
+                // different app) make the change visible immediately
+                // instead of waiting for the LLM output to appear.
+                //
+                // Suppress the legacy "Release ⌥ when done" hint
+                // whenever we're in a latched-compose state — the
+                // OverlayHintStrip below renders the correct
+                // contextual hint instead. Without this guard the
+                // hint ("Release ⌥ when done") would show ALONGSIDE
+                // the latched hint ("Hold ⌥-Right or release to send
+                // …"), which contradicts itself (the user has
+                // already released, "release" isn't the next
+                // action).
+                HStack(spacing: 8) {
+                    if showsActiveFooterPasteTarget,
+                       let target = model.pasteTarget {
+                        PastingToLabel(target: target)
+                    }
+                    Spacer(minLength: 8)
+                    if model.composeState == .idle || model.composeState == .recording {
+                        footer
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+
+            // Reference Windows v2 latched-compose hint strip. Renders
+            // empty (EmptyView) when composeState is .idle so users
+            // who never enter the latched flow see no UI change.
+            OverlayHintStrip(
+                state: model.composeState,
+                hotkeyDisplayName: model.hotkeyDisplayName,
+                referenceWindowsEnabled: model.referenceWindowsEnabled,
+                spaceArmedDuringHold: model.spaceArmedDuringHold
+            )
+
+            // Eloquent-style status title: name the transform while it
+            // streams, instead of the anonymous cleaning state.
+            if model.state == .cleaning, let transform = model.activeTransformName {
+                HStack(spacing: 6) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(OverlayContent.aiGradient)
+                    Text("Applying \(transform)…")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                }
+            }
+
+            // One-time "Learn from corrections" nudge with an inline
+            // toggle — review state only, below the hint strip.
+            if model.state == .awaitingAccept {
+                learnLine
+            }
         }
         .padding(16)
         // Background surface: Liquid Glass on macOS 26+, translucent
@@ -2715,11 +2545,11 @@ private struct OverlayContent: View {
             let captureLabel: String? = model.references.isEmpty
                 ? nil
                 : "say what to do with these references…"
-            // The chip slot lives OUTSIDE the well now (shared template
-            // position), so the capture content is just the listening
-            // indicator at the well floor.
-            listeningIndicator(label: captureLabel)
-                .frame(minHeight: OverlayContent.contentWellMinHeight)
+            VStack(spacing: 0) {
+                listeningIndicator(label: captureLabel)
+                    .frame(minHeight: OverlayContent.contentWellMinHeight)
+                chipStripReservation
+            }
         case .cleaning:
             // Perceptual-continuity fix: while no LLM chunks have
             // arrived yet (model.text.isEmpty — the ASR+TTFT gap,
@@ -2743,17 +2573,18 @@ private struct OverlayContent: View {
             // minHeight = contentWellMinHeight keeps the WINDOW frame
             // steady (cycle floor already does this, but matching the
             // capture block's intrinsic height is belt-and-suspenders).
-            // Status line copy: when a named transform is being applied
-            // (a preset-chip tap), name it ("Applying <name>…") instead
-            // of the anonymous "cleaning…"/"refining…". The status line
-            // lives INSIDE the well so it never shifts the footer.
-            let cleaningStatus = model.activeTransformName.map { "Applying \($0)…" }
             if model.text.isEmpty {
-                VStack(spacing: 6) {
+                VStack(spacing: 0) {
                     listeningIndicator(label: nil)
                         .frame(minHeight: OverlayContent.contentWellMinHeight)
                         .opacity(0.6)
-                    cleaningStatusLine(cleaningStatus ?? "cleaning…")
+                    HStack(spacing: 8) {
+                        BlinkingDots()
+                        Text("cleaning…")
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+                    }
+                    chipStripReservation
                 }
             } else {
                 VStack(alignment: .leading, spacing: 6) {
@@ -2761,7 +2592,13 @@ private struct OverlayContent: View {
                         .font(.system(size: 17))
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                    cleaningStatusLine(cleaningStatus ?? "refining…")
+                    HStack(spacing: 8) {
+                        BlinkingDots()
+                        Text("refining…")
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+                    }
+                    chipStripReservation
                 }
                 .frame(minHeight: OverlayContent.contentWellMinHeight, alignment: .topLeading)
             }
@@ -2804,30 +2641,8 @@ private struct OverlayContent: View {
                     .opacity(0.55)
                 let refineHint = model.microphoneName.map { "listening for refinement on \($0)…" } ?? "listening for refinement…"
                 listeningIndicator(label: refineHint)
+                chipStripReservation
             }
-        }
-    }
-
-    /// Processing status line shown INSIDE the center well during
-    /// .cleaning (blinking dots + a label). Lives in the well — not as a
-    /// separate footer row — so naming the active transform
-    /// ("Applying <name>…") or showing the anonymous "cleaning…" never
-    /// shifts the divider or footer. When a named transform is active the
-    /// label is prefixed with the warm sparkle glyph to echo the preset
-    /// chips that triggered it.
-    @ViewBuilder
-    private func cleaningStatusLine(_ label: String) -> some View {
-        HStack(spacing: 8) {
-            BlinkingDots()
-            if model.activeTransformName != nil {
-                Image(systemName: "sparkles")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(OverlayContent.aiGradient)
-            }
-            Text(label)
-                .font(.system(size: 12))
-                .foregroundColor(.secondary)
-                .lineLimit(1)
         }
     }
 
