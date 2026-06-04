@@ -915,7 +915,7 @@ private struct PresetChip: View {
                 .font(.system(size: 11, weight: .medium))
                 .lineLimit(1)
                 .truncationMode(.tail)
-                .frame(maxWidth: 120)
+                .frame(maxWidth: title.count > 16 ? 120 : nil)
                 .foregroundColor(hovered ? .white : .secondary)
                 .padding(.horizontal, 9)
                 .padding(.vertical, 3)
@@ -1094,7 +1094,7 @@ private struct OverlayContent: View {
                             .foregroundColor(.secondary)
                             .lineLimit(1)
                             .truncationMode(.tail)
-                            .frame(maxWidth: 160)
+                            .frame(maxWidth: name.count > 22 ? 160 : nil)
                         Button("Undo") { onUndoStyle() }
                             .buttonStyle(.plain)
                             .font(.system(size: 11, weight: .medium))
