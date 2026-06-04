@@ -3038,9 +3038,8 @@ public final class AppState {
         phase = .cleaning
         inFlightTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            // v1 note: like undoStyle, a preset run does not re-attach the
-            // dictation's references — the transform applies to the shown
-            // text only (documented spec limitation).
+            // A manual preset tap is a refine pass on the SHOWN text, so
+            // references aren't needed — the text already reflects them.
             let outcome = await streamCleanupOrRefine(
                 llm: resolvedLLM,
                 overlay: self.overlay,
@@ -3067,8 +3066,11 @@ public final class AppState {
 
     /// Undo a per-app default style: clear the stash + chip immediately,
     /// then re-run PLAIN cleanup (no transform) from the retained raw
-    /// transcript. v1 note: the redo runs without the original references
-    /// attached (documented spec limitation).
+    /// transcript. Mirrors switchModelAndRecleanup's reference handling
+    /// (same refs, same imageReferenceEnabled degradation, same destination
+    /// label) so reference-aware dictations undo faithfully — the result is
+    /// the un-styled version of the SAME dictation, not a plain re-run that
+    /// drops context.
     @MainActor
     func undoStyle() {
         guard phase == .awaitingAccept, appliedPreset != nil else { return }
@@ -3080,6 +3082,27 @@ public final class AppState {
         let dictionary = config.customDictionaryEnabled ? config.customDictionary : []
         let resolvedLLM = llmForInvocation()
         let targetBundleID = pasteTarget?.bundleID
+        // Apply the same image-reference degradation as switchModelAndRecleanup
+        // and the primary capture path: when imageReferenceEnabled is false,
+        // downgrade image-mode references to text for prompt-building.
+        let rawRefs = overlay.model.references
+        let effectiveRefs: [Reference]
+        if config.imageReferenceEnabled {
+            effectiveRefs = rawRefs
+        } else {
+            effectiveRefs = rawRefs.map { ref in
+                guard ref.captureMode == .image else { return ref }
+                var degraded = ref
+                degraded.captureMode = .text
+                return degraded
+            }
+        }
+        let pasteDestLabel = overlay.model.pasteTarget.map { dest in
+            if let title = dest.windowTitle, !title.isEmpty {
+                return "\(dest.appName) — \(title)"
+            }
+            return dest.appName
+        }
         // Cancel any lingering auto-accept timer so it doesn't fire
         // mid-re-cleanup.
         cancelAutoAcceptTimer()
@@ -3094,7 +3117,9 @@ public final class AppState {
                 rawTranscript: raw,
                 priorText: "",
                 targetBundleID: targetBundleID,
-                customDictionary: dictionary
+                customDictionary: dictionary,
+                references: effectiveRefs,
+                pasteDestinationLabel: pasteDestLabel
             )
             if Task.isCancelled { return }
             self.lastLLMLatencyMs = outcome.llmLatencyMs
