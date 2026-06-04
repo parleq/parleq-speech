@@ -1015,10 +1015,10 @@ private struct PresetChip: View {
                 // Cap long labels at labelMaxWidth, matching the AppKit
                 // measurement in PresetChipMetrics.chipWidth(for:).
                 .frame(maxWidth: PresetChipMetrics.labelMaxWidth)
-                .foregroundColor(hovered ? .white : .secondary)
+                .foregroundColor(hovered ? .primary : .secondary)
                 .padding(.horizontal, PresetChipMetrics.horizontalPadding)
                 .padding(.vertical, 3)
-                .background(Capsule().fill(Color.white.opacity(hovered ? 0.10 : 0.05)))
+                .background(Capsule().fill(Color.primary.opacity(hovered ? 0.08 : 0.04)))
                 .overlay(
                     Capsule()
                         .strokeBorder(OverlayContent.aiGradient, lineWidth: 1)
