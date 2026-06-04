@@ -1780,14 +1780,30 @@ private struct OverlayContent: View {
     /// Net effect: every dictation state renders the same total footer
     /// height for single-line dictations, so the card's top and bottom
     /// edges are pixel-identical from .capturing through .awaitingAccept.
+    ///
+    /// The Color.clear backstop guarantees the slot's height even when
+    /// the content view renders EmptyView (OverlayHintStrip does this by
+    /// design outside the latched flow) — a .frame on EmptyView is zero.
     @ViewBuilder
     private var utilitySlot: some View {
+        ZStack(alignment: .leading) {
+            Color.clear.frame(height: OverlayContent.utilitySlotHeight)
+            utilitySlotContent
+        }
+        .frame(height: OverlayContent.utilitySlotHeight)
+        .clipped()
+    }
+
+    /// Per-state content for the utility slot. The surrounding ZStack
+    /// backstop in `utilitySlot` guarantees the slot's height regardless
+    /// of whether this view produces EmptyView or a real view.
+    @ViewBuilder
+    private var utilitySlotContent: some View {
         switch model.state {
         case .capturing, .staging, .initializing, .refining:
             // Gesture-hint strip — naturally fills the slot for the
-            // non-idle composeStates that show hints; Color.clear in
-            // .idle (empty OverlayHintStrip output is wrapped by the
-            // fixed-height frame below, so it still occupies the slot).
+            // non-idle composeStates that show hints; EmptyView in
+            // .idle (the ZStack backstop holds the height regardless).
             OverlayHintStrip(
                 state: model.composeState,
                 hotkeyDisplayName: model.hotkeyDisplayName,
@@ -1795,16 +1811,14 @@ private struct OverlayContent: View {
                 spaceArmedDuringHold: model.spaceArmedDuringHold
             )
         case .cleaning:
-            // No visible content — empty reservation keeps the card
+            // No visible content — ZStack backstop keeps the slot
             // height constant so the card doesn't collapse at the
             // capturing→cleaning transition.
-            Color.clear
+            EmptyView()
         case .awaitingAccept:
-            // Learn nudge when eligible; empty reservation otherwise.
-            // learnLine is @ViewBuilder and may produce EmptyView — the
-            // outer .frame(height: utilitySlotHeight) applied in
-            // footerBlock ensures the slot always occupies the full slot
-            // height regardless of learnLine's output.
+            // Learn nudge when eligible; EmptyView otherwise.
+            // The ZStack backstop holds the slot height regardless
+            // of learnLine's output.
             learnLine
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -1887,9 +1901,10 @@ private struct OverlayContent: View {
             // Row 2 — constant-height utility slot. Gesture hints while
             // capturing; empty reservation through cleaning/refining; the
             // learn nudge (or empty reservation) in review. Always
-            // exactly utilitySlotHeight pt tall.
+            // exactly utilitySlotHeight pt tall. The slot owns its own
+            // fixed frame (ZStack backstop inside utilitySlot); no
+            // outer frame modifier needed here.
             utilitySlot
-                .frame(height: OverlayContent.utilitySlotHeight, alignment: .center)
         }
     }
 
