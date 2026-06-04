@@ -326,13 +326,18 @@ public final class OverlayWindow {
         let shouldAnimate = panel.isVisible && !isStreamingState && delta > 2
 
         if shouldAnimate {
-            NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = 0.16
-                ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-                panel.animator().setFrame(frame, display: true)
-            }
+            panel.setFrame(frame, display: true, animate: true)
         } else {
             panel.setFrame(frame, display: true, animate: false)
+        }
+
+        // Diagnostic for the disappearing-panel field bug; remove or demote once root-caused.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak panel] in
+            guard let panel else { return }
+            let alphaStr = String(format: "%.2f", panel.alphaValue)
+            let onScreen = panel.occlusionState.contains(.visible)
+            let msg = "[parleq] overlay post-resize: visible=\(panel.isVisible) alpha=\(alphaStr) h=\(Int(panel.frame.height)) onScreen=\(onScreen)"
+            OverlayWindow.logStderr(msg)
         }
     }
 
@@ -603,6 +608,8 @@ private final class OverlayPanel: NSPanel {
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+
+    override func animationResizeTime(_ newFrame: NSRect) -> TimeInterval { 0.16 }
 
     override func setFrame(_ frameRect: NSRect, display flag: Bool) {
         super.setFrame(applyAnchor(frameRect), display: flag)
