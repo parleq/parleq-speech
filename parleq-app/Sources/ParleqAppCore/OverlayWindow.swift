@@ -73,6 +73,13 @@ public final class OverlayWindow {
     public let model: OverlayModel
     private let hostingController: NSHostingController<OverlayContent>
     private var sizeObservation: NSKeyValueObservation?
+    /// Monotonic height floor for the current dictation cycle. Once set,
+    /// the panel never shrinks below this value within the same visible
+    /// session — prevents the dip-and-regrow pattern (capture ~219 →
+    /// cleaning ~140 → regrow as text streams). Reset to 0 whenever the
+    /// panel transitions from hidden to visible so each new dictation
+    /// cycle starts clean.
+    private var cycleFloorHeight: CGFloat = 0
     public var onAccept: (() -> Void)?
     public var onCancel: (() -> Void)?
     public var onCopy: (() -> Void)?
@@ -302,14 +309,22 @@ public final class OverlayWindow {
             OverlayWindow.minHeight,
             min(maxPanelHeight, measuredHeight)
         )
+        // Cycle floor: within a single visible session the panel never
+        // shrinks below the tallest height it has reached. This prevents
+        // the dip at hotkey-release (capture → cleaning) and the
+        // subsequent regrow as streaming text fills in. Multi-line output
+        // still grows past the floor; the floor is monotonic, not a cap.
+        let floored = max(target, cycleFloorHeight)
+        cycleFloorHeight = max(cycleFloorHeight, floored)
         var frame = panel.frame
-        let delta = abs(frame.size.height - target)
+        let delta = abs(frame.size.height - floored)
         if delta < 0.5 { return }
         OverlayWindow.logStderr(
             "[parleq] overlay body-height resize: measured=\(Int(measuredHeight)) " +
-            "maxPanel=\(Int(maxPanelHeight)) → target=\(Int(target))"
+            "maxPanel=\(Int(maxPanelHeight)) target=\(Int(target)) " +
+            "floor=\(Int(cycleFloorHeight)) → floored=\(Int(floored))"
         )
-        frame.size.height = target
+        frame.size.height = floored
 
         // Animate only when:
         //   (a) the panel is already visible (never animate the first show),
@@ -374,6 +389,13 @@ public final class OverlayWindow {
             cleanupFailureMessage: cleanupFailureMessage
         )
         if !panel.isVisible {
+            // Fresh dictation cycle — reset the height floor so this
+            // cycle starts clean. A short dictation following a long
+            // one must NOT inherit the previous cycle's tall floor;
+            // the reset here (at the transition from hidden → visible)
+            // is the single source of truth for cycle boundaries.
+            cycleFloorHeight = 0
+
             // Pre-size the panel to the SwiftUI intrinsic content
             // height BEFORE making it visible. Without this, the
             // panel appears at its 140pt minHeight (or whatever
@@ -962,6 +984,19 @@ enum PresetChipMetrics {
     /// Horizontal padding applied on each side of the chip label
     /// (matches `.padding(.horizontal, 9)` in PresetChip).
     static let horizontalPadding: CGFloat = 9
+    /// Vertical padding applied on each side of the chip label
+    /// (matches `.padding(.vertical, 3)` in PresetChip).
+    static let verticalPadding: CGFloat = 3
+    /// Rendered height of one chip capsule: font line height + 2×verticalPadding.
+    /// Measured at runtime using AppKit font metrics so the estimate stays
+    /// accurate if the font metrics ever shift. Used to derive the capture-
+    /// state chip-strip reservation height.
+    static var chipCapsuleHeight: CGFloat {
+        let font = NSFont.systemFont(ofSize: 11, weight: .medium)
+        // NSFont lineHeight = ascender - descender + leading (all signed as AppKit provides).
+        let lineHeight = ceil(font.ascender - font.descender + font.leading)
+        return lineHeight + verticalPadding * 2
+    }
     /// HStack inter-chip spacing (matches the `spacing: 6` on the
     /// HStack in `presetRow`).
     static let interChipSpacing: CGFloat = 6
@@ -1674,20 +1709,41 @@ private struct OverlayContent: View {
                 // unfinished UI. Show a tertiary-color affordance hint
                 // instead so the area has visible purpose.
                 if model.references.isEmpty {
-                    HStack(spacing: 5) {
-                        Image(systemName: "rectangle.on.rectangle.angled")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.tertiary)
-                        Text("Add a reference window for context")
-                            // SF Rounded for consistency with the
-                            // listening-state hint — same family of
-                            // secondary descriptive text.
-                            .font(.system(size: 11, design: .rounded))
-                            .foregroundStyle(.tertiary)
-                            .lineLimit(1)
+                    if model.state == .capturing {
+                        // During active capture, replace the "Add a
+                        // reference window" affordance with the live
+                        // microphone label — more useful feedback when
+                        // the user is actually speaking. Same font /
+                        // styling / position as the hint it replaces.
+                        let listenLabel = model.microphoneName.map { "Listening on \($0)" } ?? "Listening…"
+                        HStack(spacing: 5) {
+                            Image(systemName: "mic.fill")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                            Text(listenLabel)
+                                .font(.system(size: 11, design: .rounded))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                        }
+                        .accessibilityLabel(listenLabel)
+                        Spacer()
+                    } else {
+                        HStack(spacing: 5) {
+                            Image(systemName: "rectangle.on.rectangle.angled")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.tertiary)
+                            Text("Add a reference window for context")
+                                // SF Rounded for consistency with the
+                                // listening-state hint — same family of
+                                // secondary descriptive text.
+                                .font(.system(size: 11, design: .rounded))
+                                .foregroundStyle(.tertiary)
+                                .lineLimit(1)
+                        }
+                        .accessibilityHidden(true)
+                        Spacer()
                     }
-                    .accessibilityHidden(true)
-                    Spacer()
                 } else {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 6) {
@@ -2170,14 +2226,30 @@ private struct OverlayContent: View {
                 }
             }
         case .capturing:
-            // Centered, system-stock listening indicator. Replaces
-            // the prior left-aligned SoundWaveBars (which were
-            // mic-level driven and stopped animating during refine).
-            // SF Symbol "waveform" with the .variableColor.iterative
-            // .symbolEffect is the Tahoe-native animated treatment —
-            // continuous animation, no dependency on per-buffer mic
-            // levels, identical behavior in capture and refine.
-            listeningIndicator(label: capturingHintText)
+            // Centered listening indicator, icon only — the header
+            // strip already shows "Listening on <mic>" so the label
+            // below the icon is redundant here. Removing it keeps the
+            // capture state compact and avoids the double label.
+            //
+            // Chip-aware height reservation: when presets exist, the
+            // review state will include the presetRow strip (chipCapsuleHeight
+            // tall) at the same VStack level as this content, separated
+            // by the VStack's 8pt spacing. Pre-reserving that height here
+            // prevents the panel from growing when transitioning from
+            // capture to review for single-line dictations — the cycle
+            // floor keeps the panel at this size, so review entry is smooth.
+            // When no presets exist, reserve nothing (smaller is fine).
+            VStack(spacing: 0) {
+                listeningIndicator(label: nil)
+                if !presetChips.isEmpty {
+                    // Reservation = chip capsule height + the VStack spacing
+                    // (8pt) that will appear above the presetRow at review.
+                    // Derived from PresetChipMetrics so it stays in sync with
+                    // the chip's actual rendered dimensions.
+                    let reservationHeight = PresetChipMetrics.chipCapsuleHeight + 8
+                    Color.clear.frame(height: reservationHeight)
+                }
+            }
         case .cleaning:
             VStack(alignment: .leading, spacing: 6) {
                 if !model.text.isEmpty {
@@ -2244,20 +2316,28 @@ private struct OverlayContent: View {
     /// short review overlay. peakHeight at scale 1.8: (14+14)×1.8
     /// ≈ 50pt vs the old 70pt at scale 2.5. The bars are still
     /// clearly the Parleq brand mark at this size.
+    ///
+    /// `label` is optional. Pass nil for .capturing (the header strip
+    /// already shows "Listening on <mic>" — a second label below the
+    /// icon would be redundant and inflate the capture-state height).
+    /// Pass a string for .refining, where the header is occupied by
+    /// the reference chips and there is no other listening cue.
     @ViewBuilder
-    private func listeningIndicator(label: String) -> some View {
+    private func listeningIndicator(label: String?) -> some View {
         VStack(spacing: 6) {
             ParleqListeningIndicator(level: model.level, scale: 1.8)
-            Text(label)
-                // SF Rounded gives the label a touch of warmth that
-                // pairs well with the rounded-rect listening bars,
-                // without going whimsical. Body text + transcript
-                // stay on SF Pro so the casual treatment is
-                // localized to the listening hint.
-                .font(.system(size: 12, design: .rounded))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.tail)
+            if let label {
+                Text(label)
+                    // SF Rounded gives the label a touch of warmth that
+                    // pairs well with the rounded-rect listening bars,
+                    // without going whimsical. Body text + transcript
+                    // stay on SF Pro so the casual treatment is
+                    // localized to the listening hint.
+                    .font(.system(size: 12, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
         }
         .padding(.vertical, 4)
         .frame(maxWidth: .infinity, alignment: .center)
