@@ -73,33 +73,6 @@ public final class OverlayWindow {
     public let model: OverlayModel
     private let hostingController: NSHostingController<OverlayContent>
     private var sizeObservation: NSKeyValueObservation?
-    /// Monotonic height floor for the current dictation cycle. Once set,
-    /// the panel never shrinks below this value within the same visible
-    /// session — prevents the dip-and-regrow pattern (capture ~219 →
-    /// cleaning ~140 → regrow as text streams). Reset to 0 whenever the
-    /// panel transitions from hidden to visible so each new dictation
-    /// cycle starts clean.
-    private var cycleFloorHeight: CGFloat = 0
-    /// Height the overlay settled at during the most recent capturing phase
-    /// (once fully visible). Used to pre-size the panel on the next fresh
-    /// capture show so it appears directly at the right height instead of
-    /// appearing at the previous cycle's review height and shrinking.
-    private var lastSettledCaptureHeight: CGFloat = 0
-    /// Timestamp (CFAbsoluteTime / Date.timeIntervalSinceReferenceDate)
-    /// set to now whenever the panel transitions from hidden → visible.
-    /// Used by the settle-window guard in resizePanelToHeight to identify
-    /// measurements that arrive during the brief post-show layout
-    /// initialisation phase (TEMP-DIAG ground truth: first pass measures
-    /// a half-initialized view with cntH=0 / stale composeState).
-    private var lastShownAt: TimeInterval = 0
-    /// Last measurement received inside the settle window but not yet
-    /// applied. Only the final (most recent) measurement is kept — earlier
-    /// ones are superseded by later ones within the same window.
-    private var pendingSettleMeasurement: OverlayBodyMeasurement?
-    /// Task that waits for the settle window to close and then applies
-    /// `pendingSettleMeasurement`. Cancelled and replaced whenever a new
-    /// measurement arrives inside the window (so only the last one fires).
-    private var settleApplyTask: Task<Void, Never>?
     public var onAccept: (() -> Void)?
     public var onCancel: (() -> Void)?
     public var onCopy: (() -> Void)?
@@ -208,7 +181,7 @@ public final class OverlayWindow {
                 onSwitchToVisionModelAndRecleanup: { _ in },
                 onRunPreset: { _ in },
                 onUndoStyle: {},
-                onBodyHeightChange: { (_: OverlayBodyMeasurement) in }
+                onBodyHeightChange: { _ in }
             )
         )
         hc.sizingOptions = [.preferredContentSize]
@@ -297,8 +270,8 @@ public final class OverlayWindow {
             },
             onRunPreset: { [weak self] id in self?.onRunPreset?(id) },
             onUndoStyle: { [weak self] in self?.onUndoStyle?() },
-            onBodyHeightChange: { [weak self] measurement in
-                self?.resizePanelToHeight(measurement)
+            onBodyHeightChange: { [weak self] newHeight in
+                self?.resizePanelToHeight(newHeight)
             }
         )
     }
@@ -310,144 +283,21 @@ public final class OverlayWindow {
     /// fires in our setup because we attach hc.view as a subview
     /// rather than installing hc as the panel's contentViewController,
     /// so the controller's viewDidLayout is never called).
-    ///
-    /// Animation policy:
-    ///   • Initial show (panel not yet visible): always instant — the
-    ///     panel must be correctly sized BEFORE it appears.
-    ///   • Streaming states (.capturing, .cleaning, .refining): always
-    ///     instant — animating per-chunk resizes causes visible wobble/
-    ///     lag as the panel oscillates between frames on every new token.
-    ///     This is the load-bearing constraint; do not animate these.
-    ///   • All other state transitions (staging → capturing → cleaning
-    ///     → awaitingAccept, etc.) where the panel is already visible
-    ///     AND the delta is non-trivial (> 2pt): animate ~160ms easeInOut
-    ///     so state changes feel intentional rather than jarring.
-    ///
-    /// Cross-state staleness guard: the measurement carries the
-    /// OverlayState that produced the layout. If it doesn't match the
-    /// model's current state we drop it — the current state's own layout
-    /// always reports next, so skipping the mismatched report prevents
-    /// the one-beat bounce to a superseded height (e.g. the prior review
-    /// layout's measurement arriving right after a fresh capture show).
-    ///
-    /// Settle-window guard: the first layout pass(es) after a fresh show
-    /// measure a half-initialized view (TEMP-DIAG: cntH=0, stale
-    /// composeState) at an arbitrary height (152 or 218 observed). The
-    /// frame is already pre-sized to the remembered capture height, so
-    /// measurements arriving within 150ms of show() are coalesced — only
-    /// the last one is applied when the window closes. In steady state
-    /// (nothing changed) the deferred apply is a no-op; when the layout
-    /// legitimately changed (e.g. presets added between dictations) the
-    /// correct new height lands ≤150ms after show.
-    private func resizePanelToHeight(_ measurement: OverlayBodyMeasurement) {
-        // A hidden panel's layout is irrelevant to the frame: pre-show
-        // model resets re-lay-out the OLD tree (stale text) and were
-        // being applied to the frame before show() ran. show()'s
-        // pre-size owns the entry size (it routes through applyResize
-        // directly); live measurements only matter once visible.
-        guard panel.isVisible else { return }
-
-        // Settle window: coalesce measurements from the brief post-show
-        // initialisation phase and apply only the last one.
-        // 0.15s: audio spin-up (AVAudioEngine warm-up + first mic level
-        // callback) can delay the settled layout by ~100-120ms on first
-        // dictation; the coalesced apply is a no-op when nothing changed,
-        // so widening from 0.08 is safe.
-        let settleWindow: TimeInterval = 0.15
-        let sinceShow = Date().timeIntervalSinceReferenceDate - lastShownAt
-        if sinceShow < settleWindow {
-            OverlayWindow.logStderr(
-                "[parleq] overlay settle-window: deferring measurement " +
-                "h=\(Int(measurement.height)) state=\(measurement.state) " +
-                "sinceShow=\(String(format: "%.3f", sinceShow))s | \(measurement.debug)"
-            )
-            pendingSettleMeasurement = measurement
-            settleApplyTask?.cancel()
-            settleApplyTask = Task { @MainActor [weak self] in
-                try? await Task.sleep(nanoseconds: UInt64(settleWindow * 1_000_000_000))
-                guard let self, !Task.isCancelled,
-                      let m = self.pendingSettleMeasurement else { return }
-                self.pendingSettleMeasurement = nil
-                self.applyResize(m)
-            }
-            return
-        }
-        applyResize(measurement)
-    }
-
-    /// Apply a body-height measurement to the panel frame.
-    ///
-    /// Contains the logic previously inlined in resizePanelToHeight
-    /// (everything after the settle-window guard): cross-state staleness
-    /// check, floor accounting, logging, and the animate-or-not setFrame
-    /// call. Extracted so the settle-window deferred path can call it
-    /// after the window closes without duplicating the logic.
-    private func applyResize(_ measurement: OverlayBodyMeasurement) {
-        // Re-check the state match here (not in resizePanelToHeight)
-        // because the deferred settle-window apply happens after a Task
-        // sleep — by then the model may have transitioned to a different
-        // state, making the measurement stale.
-        guard measurement.state == model.state else {
-            // A layout report from a superseded state (e.g. the previous
-            // review layout arriving right after a fresh capture show).
-            // Applying it would bounce the frame to the old state's
-            // height for one beat — drop it; the current state's own
-            // layout always reports next.
-            return
-        }
-        let measuredHeight = measurement.height
+    private func resizePanelToHeight(_ measuredHeight: CGFloat) {
         let visible = NSScreen.main?.visibleFrame.height ?? 800
         let maxPanelHeight = OverlayWindow.computeMaxPanelHeight(visibleHeight: visible)
         let target = max(
             OverlayWindow.minHeight,
             min(maxPanelHeight, measuredHeight)
         )
-        // Cycle floor: within a single visible session the panel never
-        // shrinks below the tallest height it has reached. This prevents
-        // the dip at hotkey-release (capture → cleaning) and the
-        // subsequent regrow as streaming text fills in. Multi-line output
-        // still grows past the floor; the floor is monotonic, not a cap.
-        let floored = max(target, cycleFloorHeight)
-        cycleFloorHeight = max(cycleFloorHeight, floored)
-        // Remember the settled capture height so the NEXT cycle's pre-size
-        // can skip the stale-measurement artifact. Only record when the
-        // panel is already visible (first-show pre-size is excluded) and
-        // we are in the capturing state. Config changes (e.g. adding
-        // presets) self-correct on the following cycle.
-        if panel.isVisible && model.state == .capturing {
-            lastSettledCaptureHeight = floored
-        }
         var frame = panel.frame
-        let delta = abs(frame.size.height - floored)
-        if delta < 0.5 { return }
+        if abs(frame.size.height - target) < 0.5 { return }
         OverlayWindow.logStderr(
             "[parleq] overlay body-height resize: measured=\(Int(measuredHeight)) " +
-            "maxPanel=\(Int(maxPanelHeight)) target=\(Int(target)) " +
-            "floor=\(Int(cycleFloorHeight)) → floored=\(Int(floored))" +
-            // TEMP-DIAG: append layout-driving state snapshot (counts/flags only, no content)
-            " | \(measurement.debug)"
+            "maxPanel=\(Int(maxPanelHeight)) → target=\(Int(target))"
         )
-        frame.size.height = floored
-
-        // Animate only when:
-        //   (a) the panel is already visible (never animate the first show),
-        //   (b) we are NOT in a live-streaming state (capturing/cleaning/
-        //       refining — animating every chunk resize produces wobble),
-        //   (c) the height delta is non-trivial (> 2pt).
-        let isStreamingState: Bool
-        switch model.state {
-        case .capturing, .cleaning, .refining:
-            isStreamingState = true
-        default:
-            isStreamingState = false
-        }
-        let shouldAnimate = panel.isVisible && !isStreamingState && delta > 2
-
-        if shouldAnimate {
-            panel.setFrame(frame, display: true, animate: true)
-        } else {
-            panel.setFrame(frame, display: true, animate: false)
-        }
+        frame.size.height = target
+        panel.setFrame(frame, display: true, animate: false)
     }
 
     /// Show / update the overlay. Called on every state transition;
@@ -484,105 +334,14 @@ public final class OverlayWindow {
         microphoneName: String? = nil,
         cleanupFailureMessage: String? = nil
     ) {
-        let isFreshShow = !panel.isVisible
-        // Fresh shows (hidden → visible) must NOT crossfade. The SwiftUI
-        // tree still holds the PREVIOUS dictation's content at the moment
-        // the model mutates; the .animation(.easeInOut, value: model.state)
-        // modifier in contentArea would otherwise overlap the outgoing and
-        // incoming layouts during the fade, and the height measurement taken
-        // during that overlap reports the taller outgoing content — tagged
-        // with the current state, so the staleness guard passes — before
-        // settling to the correct height. Running the mutations in a
-        // no-animation transaction removes the stale content instantly so
-        // only the new layout is ever measured.
-        //
-        // While-visible transitions (capturing → cleaning → awaitingAccept,
-        // etc.) are unaffected: isFreshShow is false for those calls, so
-        // the standard animation path runs unchanged.
-        if isFreshShow {
-            // Fix 1 — clear stale text IN-TRANSACTION before any layout pass.
-            //
-            // withTransaction(disablesAnimations:) mutates the model
-            // synchronously (the @Published stored values update
-            // immediately) but SwiftUI batches view-body re-evaluation
-            // and may not flush it before layoutSubtreeIfNeeded() runs
-            // below. The TEMP-DIAG proved that the first layout pass
-            // after the show still sees txt=71 (the previous dictation's
-            // text) and mic=false (microphoneName not yet propagated).
-            //
-            // Direct @Published assignments here are synchronous — they
-            // are immediately visible to layoutSubtreeIfNeeded() /
-            // sizeThatFits() because those calls flush any pending
-            // SwiftUI render that reads the properties. This is scoped
-            // to the two fields that dominate layout height on a fresh
-            // capture show: the text content and the cleanup-failure
-            // banner. Other fields (appliedPresetName, activeTransformName,
-            // etc.) are already cleared by startFreshCapture() in AppState
-            // before show() is called, so they need no explicit reset here.
-            //
-            // Refine-capture shows (state == .refining) deliberately keep
-            // the prior-turn text visible — don't clear text for those.
-            if state == .capturing {
-                model.text = ""
-                model.cleanupFailureMessage = nil
-            }
-
-            var tx = Transaction()
-            tx.disablesAnimations = true
-            withTransaction(tx) {
-                model.update(
-                    state: state,
-                    text: text,
-                    downloadProgress: downloadProgress,
-                    microphoneName: microphoneName,
-                    cleanupFailureMessage: cleanupFailureMessage
-                )
-            }
-        } else {
-            model.update(
-                state: state,
-                text: text,
-                downloadProgress: downloadProgress,
-                microphoneName: microphoneName,
-                cleanupFailureMessage: cleanupFailureMessage
-            )
-        }
-        if isFreshShow {
-            // Fresh dictation cycle — reset the height floor so this
-            // cycle starts clean. A short dictation following a long
-            // one must NOT inherit the previous cycle's tall floor;
-            // the reset here (at the transition from hidden → visible)
-            // is the single source of truth for cycle boundaries.
-            cycleFloorHeight = 0
-
-            // Cancel any in-flight settle task from the PREVIOUS show
-            // (a new show supersedes it) and clear the pending
-            // measurement so a stale deferred apply never reaches the
-            // frame of this new cycle.
-            settleApplyTask?.cancel()
-            settleApplyTask = nil
-            pendingSettleMeasurement = nil
-
-            // Fix 2 — arm the settle window HERE, before any layout pass.
-            //
-            // The original code stamped lastShownAt after the pre-size
-            // resizePanelToHeight call (line ~594), intending to exclude
-            // the pre-size from the settle guard. But layoutSubtreeIfNeeded()
-            // and sizeThatFits() below can themselves trigger
-            // onPreferenceChange callbacks on the hidden-but-laid-out
-            // view; those callbacks call resizePanelToHeight with the
-            // OLD lastShownAt value (seconds-old from the previous cycle),
-            // so sinceShow is large and the settle guard is bypassed —
-            // measurements from the half-initialized view are applied
-            // directly instead of being coalesced.
-            //
-            // By stamping now (before any layout call) every measurement
-            // from this point is within the window. The pre-size call
-            // below goes directly to applyResize() (bypassing the settle
-            // guard) so it still applies immediately regardless of when
-            // lastShownAt was set.
-            lastShownAt = Date().timeIntervalSinceReferenceDate
-
+        model.update(
+            state: state,
+            text: text,
+            downloadProgress: downloadProgress,
+            microphoneName: microphoneName,
+            cleanupFailureMessage: cleanupFailureMessage
+        )
+        if !panel.isVisible {
             // Pre-size the panel to the SwiftUI intrinsic content
             // height BEFORE making it visible. Without this, the
             // panel appears at its 140pt minHeight (or whatever
@@ -617,28 +376,7 @@ public final class OverlayWindow {
             // it so positionAtScreenBottom (called next) can re-arm
             // the anchor with the freshly computed origin.
             panel.anchoredBottomY = nil
-            // For a fresh capture show, prefer the remembered settled
-            // capture height over the stale sizeThatFits measurement
-            // (which still reflects the PREVIOUS cycle's review layout).
-            // This eliminates the one-time shrink from the review height
-            // down to the capture height that was visible right as the
-            // overlay appeared. The live preference-change measurement
-            // still flows through resizePanelToHeight normally and will
-            // be a no-op once the panel reaches the remembered size.
-            // On the very first show (no remembered value) or for non-
-            // capture shows, fall through to the stale measurement as
-            // before.
-            let presizeHeight: CGFloat =
-                (model.state == .capturing && lastSettledCaptureHeight > 0)
-                    ? lastSettledCaptureHeight
-                    : fitting.height
-            // Pre-size goes directly to applyResize (bypassing the settle
-            // guard) because this measurement is intentional and must
-            // apply immediately to frame the panel before it appears.
-            // The settle guard (lastShownAt) is already armed above —
-            // post-show measurements from the live window are still
-            // coalesced correctly.
-            applyResize(OverlayBodyMeasurement(height: presizeHeight, state: model.state))
+            resizePanelToHeight(fitting.height)
 
             positionAtScreenBottom()
 
@@ -829,8 +567,6 @@ private final class OverlayPanel: NSPanel {
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
-
-    override func animationResizeTime(_ newFrame: NSRect) -> TimeInterval { 0.16 }
 
     override func setFrame(_ frameRect: NSRect, display flag: Bool) {
         super.setFrame(applyAnchor(frameRect), display: flag)
@@ -1162,19 +898,6 @@ private struct OverlayContentHeightKey: PreferenceKey {
     }
 }
 
-/// Carries the outermost body height measurement together with the
-/// overlay state that produced the layout. The state tag lets the
-/// consumer drop reports that arrived from a superseded layout (e.g.
-/// the previous review layout's measurement firing right after a fresh
-/// capture show) without applying them to the current frame.
-private struct OverlayBodyMeasurement: Equatable {
-    var height: CGFloat
-    var state: OverlayState
-    // TEMP-DIAG: counts/flags-only snapshot of every layout-driving
-    // input, to ground-truth the 218→186 capture settle. No content.
-    var debug: String = ""
-}
-
 /// PreferenceKey for the OverlayContent's outermost measured height —
 /// the value we want the panel itself to take. Used to drive panel
 /// resize directly from SwiftUI, bypassing NSHostingController's
@@ -1182,18 +905,10 @@ private struct OverlayBodyMeasurement: Equatable {
 /// controller is installed as panel.contentViewController; we install
 /// its view as a subview via FirstMouseAcceptingView instead, so the
 /// auto-track is dead in this app).
-///
-/// The value carries the OverlayState that produced the layout so that
-/// cross-state stale reports (a prior state's measurement arriving after
-/// a state transition) can be identified and dropped by the consumer.
 private struct OverlayBodyHeightKey: PreferenceKey {
-    static let defaultValue = OverlayBodyMeasurement(height: 0, state: .capturing)
-    static func reduce(value: inout OverlayBodyMeasurement, nextValue: () -> OverlayBodyMeasurement) {
-        // Prefer the largest height among concurrent reports, consistent
-        // with the prior CGFloat behaviour.
-        if nextValue().height > value.height {
-            value = nextValue()
-        }
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }
 
@@ -1213,19 +928,6 @@ enum PresetChipMetrics {
     /// Horizontal padding applied on each side of the chip label
     /// (matches `.padding(.horizontal, 9)` in PresetChip).
     static let horizontalPadding: CGFloat = 9
-    /// Vertical padding applied on each side of the chip label
-    /// (matches `.padding(.vertical, 3)` in PresetChip).
-    static let verticalPadding: CGFloat = 3
-    /// Rendered height of one chip capsule: font line height + 2×verticalPadding.
-    /// Measured at runtime using AppKit font metrics so the estimate stays
-    /// accurate if the font metrics ever shift. Used to derive the capture-
-    /// state chip-strip reservation height.
-    static var chipCapsuleHeight: CGFloat {
-        let font = NSFont.systemFont(ofSize: 11, weight: .medium)
-        // NSFont lineHeight = ascender - descender + leading (all signed as AppKit provides).
-        let lineHeight = ceil(font.ascender - font.descender + font.leading)
-        return lineHeight + verticalPadding * 2
-    }
     /// HStack inter-chip spacing (matches the `spacing: 6` on the
     /// HStack in `presetRow`).
     static let interChipSpacing: CGFloat = 6
@@ -1233,14 +935,6 @@ enum PresetChipMetrics {
     /// value (matches `.frame(maxWidth: 120)` in PresetChip — see
     /// chipWidth(for:) which caps at this value before adding padding).
     static let labelMaxWidth: CGFloat = 120
-    /// Maximum width for the "Styled with <name>" label in the preset
-    /// row (matches `.frame(maxWidth: 160)` in the styled-label view
-    /// — see styledBlockWidth in presetRow, which mirrors this).
-    static let styledLabelMaxWidth: CGFloat = 160
-    /// Character-count threshold above which the "Styled with <name>"
-    /// label gets a `.frame(maxWidth: styledLabelMaxWidth)` cap applied.
-    /// Must match the `name.count > 22` guard in the presetRow view.
-    static let styledCapCharCount: Int = 22
     /// Footprint reserved for the "⋯" overflow menu when at least
     /// one chip overflows. Must cover the real rendered width of the
     /// ⋯ button: `.menuStyle(.borderlessButton)` renders a dropdown
@@ -1256,16 +950,14 @@ enum PresetChipMetrics {
 
     /// Rendered width of one chip for `title`: AppKit-measures the
     /// string with the chip font (size 11, weight .medium), caps at
-    /// `labelMaxWidth` when the measured pixel width exceeds it
-    /// (matching the view's pixel-width `isLongTitle` guard), then
-    /// adds the capsule horizontal padding on both sides plus a 2pt
-    /// per-chip slack so rounding never clips the last inline chip.
+    /// `labelMaxWidth` (matching the view's `.frame(maxWidth:)` guard),
+    /// then adds the capsule horizontal padding on both sides plus
+    /// a 2pt per-chip slack so rounding never clips the last inline chip.
     static func chipWidth(for title: String) -> CGFloat {
         let chipFont = NSFont.systemFont(ofSize: 11, weight: .medium)
         let measured = (title as NSString)
             .size(withAttributes: [.font: chipFont]).width
-        let capped = measured > labelMaxWidth ? min(measured, labelMaxWidth) : measured
-        return capped + horizontalPadding * 2 + 2
+        return min(measured, labelMaxWidth) + horizontalPadding * 2 + 2
     }
 
     /// AppKit-measures `string` with `nsFont` and returns the raw
@@ -1417,10 +1109,7 @@ private struct OverlayContent: View {
     /// (the controller's view is added as a subview rather than as
     /// the panel's contentViewController, so the controller's
     /// viewDidLayout never fires).
-    ///
-    /// The measurement carries the OverlayState that produced the
-    /// layout so the consumer can drop cross-state stale reports.
-    let onBodyHeightChange: (OverlayBodyMeasurement) -> Void
+    let onBodyHeightChange: (CGFloat) -> Void
 
     /// Measured intrinsic height of the transcript content, updated
     /// every time the content's layout changes. Drives the ScrollView
@@ -1504,62 +1193,6 @@ private struct OverlayContent: View {
         }
     }
 
-    /// Minimum height of the center content well, shared by the capture
-    /// state's icon block and the cleaning/review text area. The frame
-    /// floor keeps the WINDOW steady, but the rendered content collapses
-    /// inside it at hotkey release (capture → cleaning) because the two
-    /// sub-views have different intrinsic heights — which reads as the
-    /// same dip. Giving both states the same minimum height by
-    /// construction eliminates the collapse without hardcoding separate
-    /// magic numbers.
-    ///
-    /// Derivation (must stay in sync with listeningIndicator):
-    ///   ParleqListeningIndicator at scale 1.5:
-    ///     peak bar height = (idleMax 14 + levelBoost 14) × 1.5 = 42pt
-    ///   listeningIndicator vertical padding: 2pt each side = 4pt
-    ///   Total icon block height: 42 + 4 = 46pt
-    static let contentWellMinHeight: CGFloat = 46
-
-    /// Invisible spacer that reserves the same vertical footprint the
-    /// real presetRow strip occupies in `.awaitingAccept`. Rendered at
-    /// the bottom of the content view in `.capturing`, `.cleaning`, and
-    /// `.refining` so the fixed-footer region contributes identical
-    /// height throughout the whole dictation cycle when presets are
-    /// defined — eliminating the visible jump as the overlay transitions
-    /// into and out of the review state. Produces `EmptyView` when no
-    /// presets are configured so there is no overhead for users without
-    /// presets.
-    ///
-    /// The height mirrors the capture-state reservation formula:
-    ///   chipCapsuleHeight  — one chip row height (font-metric derived)
-    ///   + 8pt              — the VStack spacing that will appear above
-    ///                        presetRow in the body VStack at review
-    @ViewBuilder
-    private var chipStripReservation: some View {
-        if !presetChips.isEmpty {
-            Color.clear.frame(height: PresetChipMetrics.chipCapsuleHeight + 8)
-        }
-    }
-
-    /// The gesture-hints line's slot, constant-height in every dictation
-    /// state so capture isn't taller than cleaning/review (the source of
-    /// the release-time card dip). Color.clear backstop: OverlayHintStrip
-    /// renders EmptyView outside the latched flow and a frame on
-    /// EmptyView is zero.
-    private var hintSlot: some View {
-        ZStack(alignment: .leading) {
-            Color.clear.frame(height: 26)
-            OverlayHintStrip(
-                state: model.composeState,
-                hotkeyDisplayName: model.hotkeyDisplayName,
-                referenceWindowsEnabled: model.referenceWindowsEnabled,
-                spaceArmedDuringHold: model.spaceArmedDuringHold
-            )
-        }
-        .frame(height: 26)
-        .clipped()
-    }
-
     /// Warm "AI" gradient for the transform strip — anchored on the brand
     /// amber so the sizzle stays on-brand instead of introducing a foreign
     /// accent. Used by the sparkle glyph and chip borders.
@@ -1613,14 +1246,7 @@ private struct OverlayContent: View {
                 let styledText = "Styled with \(name)"
                 let rawStyledWidth = PresetChipMetrics.textWidth(
                     for: styledText, nsFont: labelFont)
-                // Mirror the view's conditional cap: `.frame(maxWidth: styledLabelMaxWidth)`
-                // is only applied when `name.count > styledCapCharCount`, so a short-but-wide
-                // name must be measured uncapped here too — otherwise the fitter overfills
-                // the row for names whose pixel width exceeds styledLabelMaxWidth but whose
-                // character count is at or below the threshold.
-                let styledWidth = name.count > PresetChipMetrics.styledCapCharCount
-                    ? min(rawStyledWidth, PresetChipMetrics.styledLabelMaxWidth)
-                    : rawStyledWidth
+                let styledWidth = min(rawStyledWidth, 160)   // cap matches the .frame(maxWidth:160) in the view
                 let undoFont = NSFont.systemFont(ofSize: 11, weight: .medium)
                 let undoWidth = PresetChipMetrics.textWidth(for: "Undo", nsFont: undoFont)
                 // Inner HStack spacing (4) + outer HStack spacing to the
@@ -1654,8 +1280,7 @@ private struct OverlayContent: View {
                             .foregroundColor(.secondary)
                             .lineLimit(1)
                             .truncationMode(.tail)
-                            .frame(maxWidth: name.count > PresetChipMetrics.styledCapCharCount
-                                   ? PresetChipMetrics.styledLabelMaxWidth : nil)
+                            .frame(maxWidth: name.count > 22 ? 160 : nil)
                         Button("Undo") { onUndoStyle() }
                             .buttonStyle(.plain)
                             .font(.system(size: 11, weight: .medium))
@@ -1803,13 +1428,15 @@ private struct OverlayContent: View {
                 }
             }
 
-            // Reference Windows v2 latched-compose hint strip. Constant-
-            // height slot (26 pt) across all dictation states — see
-            // hintSlot. Renders empty (EmptyView) when composeState is
-            // .idle so users who never enter the latched flow see no UI
-            // change, but the slot always occupies its height so capture
-            // isn't taller than cleaning/review.
-            hintSlot
+            // Reference Windows v2 latched-compose hint strip. Renders
+            // empty (EmptyView) when composeState is .idle so users
+            // who never enter the latched flow see no UI change.
+            OverlayHintStrip(
+                state: model.composeState,
+                hotkeyDisplayName: model.hotkeyDisplayName,
+                referenceWindowsEnabled: model.referenceWindowsEnabled,
+                spaceArmedDuringHold: model.spaceArmedDuringHold
+            )
 
             // Eloquent-style status title: name the transform while it
             // streams, instead of the anonymous cleaning state.
@@ -1845,43 +1472,17 @@ private struct OverlayContent: View {
         // to OverlayWindow so the panel can resize to match. This
         // replaces NSHostingController's preferredContentSize auto-
         // track (dead in our setup — see onBodyHeightChange doc).
-        //
-        // The measurement is tagged with the OverlayState that was
-        // current when the GeometryReader ran, so the consumer can
-        // drop reports from superseded layouts (e.g. the previous
-        // review layout firing right after a fresh capture show).
         .background(
             GeometryReader { geom in
-                // TEMP-DIAG: build a counts/flags-only snapshot of every
-                // layout-driving input alongside this measurement so we
-                // can ground-truth the 218→186 capture settle. No content.
-                let diagDebug: String = {
-                    let banner = model.errorMessage ?? model.permissionPrompt
-                    return "txt=\(model.text.count) refs=\(model.references.count) " +
-                        "compose=\(model.composeState) chips=\(presetChips.count) " +
-                        "applied=\(model.appliedPresetName != nil) transform=\(model.activeTransformName != nil) " +
-                        "cntH=\(Int(measuredContentHeight)) fail=\(model.cleanupFailureMessage != nil) " +
-                        "dl=\(model.downloadProgress != nil) mic=\(model.microphoneName != nil) " +
-                        "target=\(model.pasteTarget != nil) learnOn=\(learnFeatureEnabled) " +
-                        "learnJust=\(learnJustEnabled) dismissed=\(learnBannerDismissed) " +
-                        "banner=\(banner != nil) isKey=\(model.isKey) " +
-                        "picker=\(model.pickedModelOverride != nil) " +
-                        "spaceArmed=\(model.spaceArmedDuringHold) " +
-                        "refWin=\(model.referenceWindowsEnabled)"
-                }()
                 Color.clear
                     .preference(
                         key: OverlayBodyHeightKey.self,
-                        value: OverlayBodyMeasurement(
-                            height: geom.size.height,
-                            state: model.state,
-                            debug: diagDebug
-                        )
+                        value: geom.size.height
                     )
             }
         )
-        .onPreferenceChange(OverlayBodyHeightKey.self) { measurement in
-            onBodyHeightChange(measurement)
+        .onPreferenceChange(OverlayBodyHeightKey.self) { newHeight in
+            onBodyHeightChange(newHeight)
         }
         // Drag-and-drop: accept file URLs, images, and text onto the
         // overlay surface. Drops are forwarded through the same factory
@@ -1978,14 +1579,6 @@ private struct OverlayContent: View {
                 }
             }
         }
-        // Crossfade the content on state transitions. Scoped to
-        // model.state (NOT model.text) so streaming growth stays
-        // instant — only the sub-view swap fades. The GeometryReader
-        // in measuredContent reports the LAID-OUT height, which is
-        // unaffected by the opacity animation (layout and rendering
-        // are decoupled in SwiftUI), so there is no feedback loop
-        // between the fade and the height-measurement preference key.
-        .animation(.easeInOut(duration: 0.15), value: model.state)
         .onPreferenceChange(OverlayContentHeightKey.self) { newHeight in
             if abs(measuredContentHeight - newHeight) > 0.5 {
                 measuredContentHeight = newHeight
@@ -2538,90 +2131,30 @@ private struct OverlayContent: View {
                 }
             }
         case .capturing:
-            // Centered listening indicator.
-            //
-            // Label logic:
-            //   - References attached: show the teaching hint
-            //     ("say what to do with these references…") directly
-            //     below the waveform — this is the moment the user
-            //     needs it, right when they start speaking with context
-            //     attached. The header strip shows the reference chips,
-            //     not a mic label, so without this the hint is gone.
-            //   - No references: pass nil — the header strip already
-            //     shows "Listening on <mic>" so a second label would
-            //     duplicate it.
-            //
-            // Chip-aware height reservation: when presets exist, the
-            // review state will include the presetRow strip (chipCapsuleHeight
-            // tall) at the same VStack level as this content, separated
-            // by the VStack's 8pt spacing. Pre-reserving that height here
-            // prevents the panel from growing when transitioning from
-            // capture to review for single-line dictations — the cycle
-            // floor keeps the panel at this size, so review entry is smooth.
-            // When no presets exist, reserve nothing (smaller is fine).
-            let captureLabel: String? = model.references.isEmpty
-                ? nil
-                : "say what to do with these references…"
-            VStack(spacing: 0) {
-                listeningIndicator(label: captureLabel)
-                    .frame(minHeight: OverlayContent.contentWellMinHeight)
-                chipStripReservation
-            }
+            // Centered listening indicator, icon only — the header
+            // strip already shows "Listening on <mic>" so the label
+            // below the icon is redundant here. Removing it keeps the
+            // capture state compact and avoids the double label.
+            // When references are attached the header shows the reference
+            // chips; pass the teaching hint in that case so there's still
+            // a listening cue.
+            listeningIndicator(label: model.references.isEmpty ? nil : "say what to do with these references…")
         case .cleaning:
-            // Perceptual-continuity fix: while no LLM chunks have
-            // arrived yet (model.text.isEmpty — the ASR+TTFT gap,
-            // ~1–1.5 s), hold the same icon block the capture state
-            // shows (listeningIndicator, dimmed to 0.6 so it reads as
-            // "processing" rather than "still listening"). Once the
-            // first token lands, the normal streamed-text rendering
-            // takes over — the icon swaps out exactly like the refining
-            // state already does.
-            //
-            // Identity note: listeningIndicator is called from two
-            // separate switch branches (.capturing and .cleaning-empty),
-            // so SwiftUI treats them as DIFFERENT view identities and
-            // the .animation(value: model.state) crossfade fires on
-            // the capturing→cleaning transition. The two resulting
-            // icon trees are visually identical (same subtree shape,
-            // same scale, level=0 in .cleaning), so the 150 ms fade
-            // between them is imperceptible — the card's visual mass
-            // holds through the transition.
-            //
-            // minHeight = contentWellMinHeight keeps the WINDOW frame
-            // steady (cycle floor already does this, but matching the
-            // capture block's intrinsic height is belt-and-suspenders).
-            if model.text.isEmpty {
-                VStack(spacing: 0) {
-                    listeningIndicator(label: nil)
-                        .frame(minHeight: OverlayContent.contentWellMinHeight)
-                        .opacity(0.6)
-                    HStack(spacing: 8) {
-                        BlinkingDots()
-                        Text("cleaning…")
-                            .font(.system(size: 12))
-                            .foregroundColor(.secondary)
-                    }
-                    chipStripReservation
-                }
-            } else {
-                VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 6) {
+                if !model.text.isEmpty {
                     Text(model.text)
                         .font(.system(size: 17))
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                    HStack(spacing: 8) {
-                        BlinkingDots()
-                        Text("refining…")
-                            .font(.system(size: 12))
-                            .foregroundColor(.secondary)
-                    }
-                    chipStripReservation
                 }
-                .frame(minHeight: OverlayContent.contentWellMinHeight, alignment: .topLeading)
+                HStack(spacing: 8) {
+                    BlinkingDots()
+                    Text(model.text.isEmpty ? "cleaning…" : "refining…")
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                }
             }
         case .awaitingAccept:
-            // Same minHeight as .cleaning so single-line review text
-            // doesn't abruptly shrink the well below the capture icon height.
             VStack(alignment: .leading, spacing: 8) {
                 Text(model.text)
                     .font(.system(size: 17))
@@ -2648,7 +2181,6 @@ private struct OverlayContent: View {
                     }
                 }
             }
-            .frame(minHeight: OverlayContent.contentWellMinHeight, alignment: .topLeading)
         case .refining:
             VStack(alignment: .leading, spacing: 12) {
                 Text(model.text)
@@ -2658,7 +2190,6 @@ private struct OverlayContent: View {
                     .opacity(0.55)
                 let refineHint = model.microphoneName.map { "listening for refinement on \($0)…" } ?? "listening for refinement…"
                 listeningIndicator(label: refineHint)
-                chipStripReservation
             }
         }
     }
@@ -2669,23 +2200,15 @@ private struct OverlayContent: View {
     /// driven by `model.level` — so it's the static Parleq logo at
     /// rest and an audio-reactive waveform when audio is coming in.
     ///
-    /// Sizing: scale 1.5 + 2pt vertical padding keeps the listening
-    /// state compact so it doesn't tower over a short review overlay.
-    /// peakHeight at scale 1.5: (14+14)×1.5 = 42pt. Total block
-    /// height (bars + 2×2 padding) = 46pt, which is exactly
-    /// `contentWellMinHeight` — the shared constant that makes the
-    /// cleaning/review text well occupy the same vertical footprint
-    /// as the capture icon block so the panel doesn't visually
-    /// collapse at hotkey release.
-    ///
-    /// `label` is optional. Pass nil for .capturing (the header strip
-    /// already shows "Listening on <mic>" — a second label below the
-    /// icon would be redundant and inflate the capture-state height).
-    /// Pass a string for .refining, where the header is occupied by
-    /// the reference chips and there is no other listening cue.
+    /// `label` is optional. Pass nil for .capturing when no references
+    /// are attached (the header strip already shows "Listening on <mic>"
+    /// — a second label below the icon would duplicate it and inflate
+    /// the capture-state height). Pass a string for .refining, and for
+    /// .capturing when references are attached (the header is then
+    /// occupied by reference chips, so the teaching hint must appear here).
     @ViewBuilder
     private func listeningIndicator(label: String?) -> some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 10) {
             ParleqListeningIndicator(level: model.level, scale: 1.5)
             if let label {
                 Text(label)
