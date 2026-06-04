@@ -902,6 +902,103 @@ private struct OverlayBodyHeightKey: PreferenceKey {
     }
 }
 
+// MARK: - PresetChipMetrics
+
+/// Geometry constants shared by PresetChip's view code and the
+/// width-fitting math — keep these in lockstep so the AppKit
+/// estimate matches what SwiftUI renders.
+///
+/// All values are in points (pre-scale, density-independent).
+///
+/// NSFont is not Sendable under Swift 6, so fonts are created
+/// on-the-fly inside the measurement helpers rather than stored
+/// as static properties — the allocation cost is negligible
+/// compared to the text-measurement call itself.
+enum PresetChipMetrics {
+    /// Horizontal padding applied on each side of the chip label
+    /// (matches `.padding(.horizontal, 9)` in PresetChip).
+    static let horizontalPadding: CGFloat = 9
+    /// HStack inter-chip spacing (matches the `spacing: 6` on the
+    /// HStack in `presetRow`).
+    static let interChipSpacing: CGFloat = 6
+    /// Maximum label width applied when the rendered text exceeds this
+    /// value (matches `.frame(maxWidth: 120)` in PresetChip — see
+    /// chipWidth(for:) which caps at this value before adding padding).
+    static let labelMaxWidth: CGFloat = 120
+    /// Footprint reserved for the "⋯" overflow menu when at least
+    /// one chip overflows. Wide enough for the glyph + internal
+    /// button padding; does not need to be exact — a few extra points
+    /// are absorbed by the trailing Spacer(minLength:0).
+    static let overflowMenuReserve: CGFloat = 28
+    /// Horizontal safety margin subtracted from the computed available
+    /// width before fitting. Absorbs sub-pixel rounding, HStack
+    /// justification slack, and any un-modelled padding so we don't
+    /// accidentally spill one chip past the edge.
+    static let safetyMargin: CGFloat = 8
+
+    /// Rendered width of one chip for `title`: AppKit-measures the
+    /// string with the chip font (size 11, weight .medium), caps at
+    /// `labelMaxWidth` (matching the view's `.frame(maxWidth:)` guard),
+    /// then adds the capsule horizontal padding on both sides.
+    static func chipWidth(for title: String) -> CGFloat {
+        let chipFont = NSFont.systemFont(ofSize: 11, weight: .medium)
+        let measured = (title as NSString)
+            .size(withAttributes: [.font: chipFont]).width
+        return min(measured, labelMaxWidth) + horizontalPadding * 2
+    }
+
+    /// AppKit-measures `string` with `nsFont` and returns the raw
+    /// pixel width (uncapped). Use chipWidth(for:) for chip titles;
+    /// use this for arbitrary strings such as "Undo".
+    static func textWidth(for string: String, nsFont: NSFont) -> CGFloat {
+        (string as NSString)
+            .size(withAttributes: [.font: nsFont]).width
+    }
+}
+
+// MARK: - Width-aware chip fitting
+
+/// Returns how many leading chips from `widths` fit in `available`
+/// points.
+///
+/// - If ALL chips fit (no overflow), returns `widths.count` — no
+///   overflow-reserve is held back because no ⋯ menu will appear.
+/// - Otherwise returns the largest *k* such that the first *k* chips
+///   (widths + inter-chip spacing) PLUS the overflow-menu reserve fit
+///   within `available`.  k == 0 means even a single chip won't fit
+///   after accounting for the reserve; all chips go into the ⋯ menu.
+///
+/// Pure function — no AppKit / SwiftUI calls; unit-testable from the
+/// test target without a host application.
+nonisolated func fittingChipCount(
+    widths: [CGFloat],
+    available: CGFloat,
+    spacing: CGFloat,
+    overflowReserve: CGFloat
+) -> Int {
+    guard !widths.isEmpty else { return 0 }
+
+    // Try the all-fit case first (no overflow reserve needed).
+    var total: CGFloat = 0
+    for (i, w) in widths.enumerated() {
+        total += (i > 0 ? spacing : 0) + w
+    }
+    if total <= available { return widths.count }
+
+    // Overflow: greedy fit with the ⋯ reserve held back.
+    var used: CGFloat = 0
+    var count = 0
+    for w in widths {
+        let next = used + (count > 0 ? spacing : 0) + w
+        if next + spacing + overflowReserve > available { break }
+        used = next
+        count += 1
+    }
+    return count
+}
+
+// MARK: - PresetChip view
+
 /// One transform-preset capsule for the review strip. Dim at rest; the
 /// gradient border + text brighten on hover (no ambient animation).
 private struct PresetChip: View {
@@ -915,9 +1012,11 @@ private struct PresetChip: View {
                 .font(.system(size: 11, weight: .medium))
                 .lineLimit(1)
                 .truncationMode(.tail)
-                .frame(maxWidth: title.count > 16 ? 120 : nil)
+                // Cap long labels at labelMaxWidth, matching the AppKit
+                // measurement in PresetChipMetrics.chipWidth(for:).
+                .frame(maxWidth: PresetChipMetrics.labelMaxWidth)
                 .foregroundColor(hovered ? .white : .secondary)
-                .padding(.horizontal, 9)
+                .padding(.horizontal, PresetChipMetrics.horizontalPadding)
                 .padding(.vertical, 3)
                 .background(Capsule().fill(Color.white.opacity(hovered ? 0.10 : 0.05)))
                 .overlay(
@@ -1078,12 +1177,67 @@ private struct OverlayContent: View {
     /// the scrolling text) so reference-heavy overlays can't push it
     /// around. Mini capsule chips with a warm amber-anchored gradient
     /// border + sparkle glyph; hover transitions only, no ambient animation.
-    /// Count-based overflow: first 4 chips inline, rest in a ⋯ menu
-    /// (deterministic; no width measurement).
+    ///
+    /// Width-aware overflow: chip labels are measured deterministically
+    /// with AppKit (PresetChipMetrics.chipWidth) against the FIXED
+    /// overlay width (`width`). The greedy fittingChipCount() function
+    /// decides how many chips render inline; the remainder, if any,
+    /// overflow into a ⋯ menu. No GeometryReader — the overlay's
+    /// height-plumbing uses that path and adding another one here
+    /// risks fighting for the same preference keys.
+    ///
+    /// Available width formula (verified against the view hierarchy):
+    ///   width
+    ///   - 16 * 2  (body .padding(16) on each side)
+    ///   - sparkleReserve  (~12pt glyph + 6pt HStack spacing)
+    ///   - styledBlockWidth (when appliedPresetName != nil:
+    ///       min(measuredStyledText, 160) + 4 spacing + measuredUndoText
+    ///       + interChipSpacing after the block)
+    ///   - safetyMargin
     @ViewBuilder
     private var presetRow: some View {
         if !presetChips.isEmpty || model.appliedPresetName != nil {
-            HStack(spacing: 6) {
+            // ── width-aware fitting ─────────────────────────────────
+            // The overlay width is fixed (OverlayWindow.fixedWidth),
+            // so we measure the chip titles with AppKit and greedily
+            // fit as many as possible into the remaining horizontal
+            // space.  No GeometryReader — deterministic at body-eval time.
+            let contentPadding: CGFloat = 16 * 2    // .padding(16) on each side
+            // Sparkle SF Symbol (~12pt at size-11 semibold) + HStack
+            // spacing to the next element.
+            let sparkleReserve: CGFloat = 12 + PresetChipMetrics.interChipSpacing
+
+            // If a per-app style was applied, its "Styled with X · Undo"
+            // block consumes some horizontal space before the chips start.
+            let styledBlockWidth: CGFloat = {
+                guard let name = model.appliedPresetName else { return 0 }
+                let labelFont = NSFont.systemFont(ofSize: 11)
+                let styledText = "Styled with \(name)"
+                let rawStyledWidth = PresetChipMetrics.textWidth(
+                    for: styledText, nsFont: labelFont)
+                let styledWidth = min(rawStyledWidth, 160)   // cap matches the .frame(maxWidth:160) in the view
+                let undoFont = NSFont.systemFont(ofSize: 11, weight: .medium)
+                let undoWidth = PresetChipMetrics.textWidth(for: "Undo", nsFont: undoFont)
+                // Inner HStack spacing (4) + outer HStack spacing to the
+                // first chip (interChipSpacing = 6).
+                return styledWidth + 4 + undoWidth + PresetChipMetrics.interChipSpacing
+            }()
+
+            let availableWidth = width
+                - contentPadding
+                - sparkleReserve
+                - styledBlockWidth
+                - PresetChipMetrics.safetyMargin
+
+            let widths = presetChips.map { PresetChipMetrics.chipWidth(for: $0.name) }
+            let visibleCount = fittingChipCount(
+                widths: widths,
+                available: availableWidth,
+                spacing: PresetChipMetrics.interChipSpacing,
+                overflowReserve: PresetChipMetrics.overflowMenuReserve
+            )
+            // ── render ──────────────────────────────────────────────
+            HStack(spacing: PresetChipMetrics.interChipSpacing) {
                 Image(systemName: "sparkles")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(OverlayContent.aiGradient)
@@ -1102,12 +1256,12 @@ private struct OverlayContent: View {
                             .accessibilityLabel("Undo style: \(name)")
                     }
                 }
-                ForEach(presetChips.prefix(4)) { preset in
+                ForEach(presetChips.prefix(visibleCount)) { preset in
                     PresetChip(title: preset.name) { onRunPreset(preset.id) }
                 }
-                if presetChips.count > 4 {
+                if visibleCount < presetChips.count {
                     Menu {
-                        ForEach(presetChips.dropFirst(4)) { preset in
+                        ForEach(presetChips.dropFirst(visibleCount)) { preset in
                             Button(preset.name) { onRunPreset(preset.id) }
                                 .accessibilityHint("Apply this transform to the dictation")
                         }

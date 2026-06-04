@@ -136,6 +136,106 @@ final class TransformPresetsTests: XCTestCase {
     // A dedicated test would require extracting the filter into a pure
     // free function — deferred until SettingsModel gets a testable init.
 
+    // MARK: - fittingChipCount — width-aware chip fitting
+
+    func test_fittingChipCount_all_fit_exactly_no_reserve() {
+        // Three chips that sum to exactly `available`. All fit →
+        // returns widths.count (no overflow reserve consumed).
+        let widths: [CGFloat] = [40, 50, 60]
+        let spacing: CGFloat = 6
+        // total = 40 + 6 + 50 + 6 + 60 = 162
+        let available: CGFloat = 162
+        XCTAssertEqual(
+            fittingChipCount(widths: widths, available: available,
+                             spacing: spacing, overflowReserve: 28),
+            3,
+            "All chips fit exactly — must return widths.count (no reserve penalty)"
+        )
+    }
+
+    func test_fittingChipCount_overflow_holds_reserve() {
+        // Four chips: first two fit, third pushes total past available
+        // when the overflow reserve is held back.
+        // chip widths: [50, 50, 50, 50], spacing: 6, reserve: 28
+        // w/o reserve: 50 + 56 + 56 + 56 = 218
+        // available = 170
+        // Fit k=2: used = 50+6+50 = 106; try k=3: 106+6+50=162; 162+6+28=196 > 170 → break at k=2
+        let widths: [CGFloat] = [50, 50, 50, 50]
+        XCTAssertEqual(
+            fittingChipCount(widths: widths, available: 170,
+                             spacing: 6, overflowReserve: 28),
+            2,
+            "Third chip won't fit once overflow reserve is held back"
+        )
+    }
+
+    func test_fittingChipCount_zero_available_returns_zero() {
+        let widths: [CGFloat] = [40, 50, 60]
+        XCTAssertEqual(
+            fittingChipCount(widths: widths, available: 0,
+                             spacing: 6, overflowReserve: 28),
+            0,
+            "Zero available width → nothing fits"
+        )
+    }
+
+    func test_fittingChipCount_empty_widths_returns_zero() {
+        XCTAssertEqual(
+            fittingChipCount(widths: [], available: 400,
+                             spacing: 6, overflowReserve: 28),
+            0,
+            "No chips → 0"
+        )
+    }
+
+    func test_fittingChipCount_single_chip_fits_no_overflow() {
+        // A single chip fits without needing an overflow reserve — no ⋯ menu.
+        // available=50, single chip width=40: 40 ≤ 50 → 1 (no reserve needed)
+        let widths: [CGFloat] = [40]
+        XCTAssertEqual(
+            fittingChipCount(widths: widths, available: 50,
+                             spacing: 6, overflowReserve: 28),
+            1,
+            "Single chip fits — returns 1, no overflow reserve consumed"
+        )
+    }
+
+    func test_fittingChipCount_first_chip_overwide_goes_to_menu() {
+        // Two chips where the first is over-wide: even the first chip plus
+        // the overflow reserve exceeds available, so nothing renders inline.
+        // widths=[80, 30], available=100, reserve=28:
+        // all-fit total = 80+6+30 = 116 > 100 → overflow path.
+        // try k=1: next=80; 80+6+28=114 > 100 → break; count=0.
+        let widths: [CGFloat] = [80, 30]
+        XCTAssertEqual(
+            fittingChipCount(widths: widths, available: 100,
+                             spacing: 6, overflowReserve: 28),
+            0,
+            "First chip + reserve exceed available — nothing fits inline"
+        )
+    }
+
+    func test_fittingChipCount_spacing_makes_the_difference() {
+        // Construct widths where spacing is the deciding factor.
+        // Two chips at 50 each, spacing 6, reserve 28, available 134.
+        // Without spacing between them: 50+50 = 100 ≤ 134 → all-fit check: total = 50+6+50 = 106 ≤ 134 → 2.
+        // Reduce available to 105: 106 > 105 → overflow path.
+        // k=1: used=50; try k=2: 50+6+50=106; 106+6+28=140 > 105 → break. count=1.
+        let widths: [CGFloat] = [50, 50]
+        XCTAssertEqual(
+            fittingChipCount(widths: widths, available: 106,
+                             spacing: 6, overflowReserve: 28),
+            2,
+            "Both chips fit at exactly 106pt available (50+6+50)"
+        )
+        XCTAssertEqual(
+            fittingChipCount(widths: widths, available: 105,
+                             spacing: 6, overflowReserve: 28),
+            1,
+            "Spacing tips total past 105pt — only first chip fits inline"
+        )
+    }
+
     // MARK: - Mapping parse: whitespace trimming
 
     func test_preset_app_defaults_keys_and_values_are_trimmed() {
