@@ -103,4 +103,24 @@ final class TransformPresetsTests: XCTestCase {
         XCTAssertNil(c.presetForApp("com.apple.mail"),
                      "MDM-disabled feature must not apply defaults")
     }
+
+    // MARK: - Prompt assembly
+
+    func test_cleanup_with_nil_transform_is_byte_identical_to_today() {
+        XCTAssertEqual(SystemPrompts.cleanup(dictionary: []),
+                       SystemPrompts.cleanup(dictionary: [], transform: nil),
+                       "No-preset users must get the EXACT prompt the benchmarks measured")
+    }
+
+    func test_cleanup_with_transform_appends_instruction() {
+        let p = SystemPrompts.cleanup(dictionary: [], transform: "Rewrite concisely.")
+        XCTAssertTrue(p.hasPrefix(SystemPrompts.cleanup(dictionary: [])),
+                      "Transform is a trailing addendum; the base prompt is unchanged")
+        XCTAssertTrue(p.contains("Rewrite concisely."))
+    }
+
+    func test_transformHint_empty_for_nil_or_blank() {
+        XCTAssertEqual(SystemPrompts.transformHint(nil), "")
+        XCTAssertEqual(SystemPrompts.transformHint("   "), "")
+    }
 }

@@ -32,10 +32,17 @@ enum SystemPrompts {
     /// word was intended. Empty dictionary returns the base prompt
     /// unchanged so users who don't use the feature get the exact
     /// prompt the in-house benchmarks measured against.
-    static func cleanup(dictionary: [DictionaryEntry] = []) -> String {
+    ///
+    /// Pass `transform` to append a per-app transform-preset addendum
+    /// (see `transformHint(_:)`). With `transform: nil` (the default)
+    /// the output is byte-identical to the zero-dictionary baseline
+    /// the in-house benchmarks measured against.
+    static func cleanup(dictionary: [DictionaryEntry] = [], transform: String? = nil) -> String {
         let base = baseCleanup
         let hint = vocabularyHint(dictionary: dictionary)
-        return hint.isEmpty ? base : base + "\n\n" + hint
+        let withHint = hint.isEmpty ? base : base + "\n\n" + hint
+        let t = transformHint(transform)
+        return t.isEmpty ? withHint : withHint + "\n\n" + t
     }
 
     private static let baseCleanup = """
@@ -77,6 +84,20 @@ enum SystemPrompts {
     /// can no-op without checking.
     public static func dictionaryHint(dictionary: [DictionaryEntry]) -> String {
         vocabularyHint(dictionary: dictionary)
+    }
+
+    /// The transform-preset addendum for a per-app default: appended to
+    /// the cleanup prompt so the output arrives pre-styled in the SAME
+    /// LLM call (no second pass). Empty string for nil/blank so callers
+    /// can append unconditionally. The cleanup rules still run first —
+    /// the transform applies to the cleaned text.
+    static func transformHint(_ transform: String?) -> String {
+        guard let t = transform?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !t.isEmpty else { return "" }
+        return """
+            After applying the cleanup rules above, apply this transformation to the cleaned text, and output only the transformed result:
+            \(t)
+            """
     }
 
     /// Build the smart-vocabulary addendum. Empty string when the
