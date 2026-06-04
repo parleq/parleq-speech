@@ -4,6 +4,21 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-06-04
+
+This release puts your favorite rewrites one tap away. Define your own transform presets — Concise, Formal, Bulletize, anything you can phrase — and they appear as chips on the review overlay, restyle a dictation before it's pasted, and can even run automatically for chosen apps.
+
+### Added
+
+- **Transform presets — your own one-tap rewrites.** In the new **Presets** section of Settings, define any number of named transforms, each a short instruction in your own words ("Rewrite as a tight bulleted list", "Make this formal", "Translate to Spanish"). While reviewing a dictation, your presets appear as a quiet row of chips — tap one and the text is restyled in place before anything is pasted; tap another to chain transforms. Hover a chip to see its full instruction; as many chips as fit are shown inline and the rest tuck into a ⋯ menu. A preset runs as one extra request to the cleanup model you already use — no new service, nothing stored beyond the presets you wrote.
+- **Per-app default presets.** Assign a preset to an app and dictations into that app arrive already styled — the preset folds into the normal cleanup pass, so there's no extra request and no flash of un-styled text. The overlay shows *Styled with \<name\>* and a one-tap **Undo** that re-runs plain cleanup if this particular dictation shouldn't have been transformed. IT admins can pin the whole feature off via managed configuration (`transformPresetsEnabled`).
+- **The overlay tells you where it's listening.** During capture the header now reads *Listening on \<your microphone\>*, and the capture state is more compact — just the animated Parleq mark, no redundant label.
+
+### Fixed
+
+- **Phantom double-tap no longer triggers quick mode.** Some keyboards emit a near-instant phantom press-release ("chatter") when a modifier hotkey is released, which Parleq could read as a double-tap — auto-pasting your next dictation without review. Releases shorter than a human tap, and release-to-press gaps shorter than a human can produce, are now ignored when detecting double-taps.
+- **A content-full overlay no longer balloons after a focus round-trip.** Switching screens or clicking away from a long, scrolling dictation and back could resize the overlay to the transcript's full unscrolled height — a giant panel with no scrolling. The overlay now snaps back to its proper capped size the moment anything oversizes it, regardless of what triggered the resize.
+
 ## [0.18.0] - 2026-06-02
 
 This release teaches Parleq to learn from the way you correct it, and makes the Copy button remember your dictations.
