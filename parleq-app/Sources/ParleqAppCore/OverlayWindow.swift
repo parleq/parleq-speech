@@ -351,7 +351,9 @@ public final class OverlayWindow {
         OverlayWindow.logStderr(
             "[parleq] overlay body-height resize: measured=\(Int(measuredHeight)) " +
             "maxPanel=\(Int(maxPanelHeight)) target=\(Int(target)) " +
-            "floor=\(Int(cycleFloorHeight)) → floored=\(Int(floored))"
+            "floor=\(Int(cycleFloorHeight)) → floored=\(Int(floored))" +
+            // TEMP-DIAG: append layout-driving state snapshot (counts/flags only, no content)
+            " | \(measurement.debug)"
         )
         frame.size.height = floored
 
@@ -1039,6 +1041,9 @@ private struct OverlayContentHeightKey: PreferenceKey {
 private struct OverlayBodyMeasurement: Equatable {
     var height: CGFloat
     var state: OverlayState
+    // TEMP-DIAG: counts/flags-only snapshot of every layout-driving
+    // input, to ground-truth the 218→186 capture settle. No content.
+    var debug: String = ""
 }
 
 /// PreferenceKey for the OverlayContent's outermost measured height —
@@ -1701,12 +1706,30 @@ private struct OverlayContent: View {
         // review layout firing right after a fresh capture show).
         .background(
             GeometryReader { geom in
+                // TEMP-DIAG: build a counts/flags-only snapshot of every
+                // layout-driving input alongside this measurement so we
+                // can ground-truth the 218→186 capture settle. No content.
+                let diagDebug: String = {
+                    let banner = model.errorMessage ?? model.permissionPrompt
+                    return "txt=\(model.text.count) refs=\(model.references.count) " +
+                        "compose=\(model.composeState) chips=\(presetChips.count) " +
+                        "applied=\(model.appliedPresetName != nil) transform=\(model.activeTransformName != nil) " +
+                        "cntH=\(Int(measuredContentHeight)) fail=\(model.cleanupFailureMessage != nil) " +
+                        "dl=\(model.downloadProgress != nil) mic=\(model.microphoneName != nil) " +
+                        "target=\(model.pasteTarget != nil) learnOn=\(learnFeatureEnabled) " +
+                        "learnJust=\(learnJustEnabled) dismissed=\(learnBannerDismissed) " +
+                        "banner=\(banner != nil) isKey=\(model.isKey) " +
+                        "picker=\(model.pickedModelOverride != nil) " +
+                        "spaceArmed=\(model.spaceArmedDuringHold) " +
+                        "refWin=\(model.referenceWindowsEnabled)"
+                }()
                 Color.clear
                     .preference(
                         key: OverlayBodyHeightKey.self,
                         value: OverlayBodyMeasurement(
                             height: geom.size.height,
-                            state: model.state
+                            state: model.state,
+                            debug: diagDebug
                         )
                     )
             }
