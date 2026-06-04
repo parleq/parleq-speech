@@ -602,6 +602,11 @@ final class SettingsModel: ObservableObject {
         // Drop mappings whose preset no longer exists (deleted in the editor).
         let ids = Set(c.transformPresets.map { $0.id })
         c.presetAppDefaults = presetAppDefaults.filter { ids.contains($0.value) }
+        // Self-heal the published dict so the UI never shows mappings the
+        // dangling filter just dropped from the write.
+        if presetAppDefaults != c.presetAppDefaults {
+            presetAppDefaults = c.presetAppDefaults
+        }
         // Context tier: nil when context == cleanup so the resolver
         // short-circuits cleanly (nil means "same as cleanup" in Config).
         let contextId = ModelIdentifier(provider: contextProvider, model: contextModelName.trimmingCharacters(in: .whitespaces))

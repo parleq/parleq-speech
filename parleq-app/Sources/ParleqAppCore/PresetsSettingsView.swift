@@ -45,6 +45,7 @@ struct PresetsSettingsView: View {
                         Spacer()
                         Button(role: .destructive) {
                             model.transformPresets.removeAll { $0.id == preset.id }
+                            if newPresetID == preset.id { newPresetID = "" }
                             model.save()
                         } label: {
                             Image(systemName: "trash")
