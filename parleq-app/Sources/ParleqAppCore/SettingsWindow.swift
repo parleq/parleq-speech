@@ -143,6 +143,11 @@ final class SettingsModel: ObservableObject {
     /// on each load.
     @Published var dictionaryEntries: [DictionaryEntryRow]
 
+    /// Editable copy of Config.transformPresets.
+    @Published var transformPresets: [TransformPreset]
+    /// Editable copy of Config.presetAppDefaults (bundleID → preset id).
+    @Published var presetAppDefaults: [String: String]
+
     /// Lowercased terms present in the dictionary when this model last
     /// loaded from disk. Used by `save()` to tell a learned term that was
     /// auto-applied *while this window was open* (must be preserved on
@@ -319,6 +324,8 @@ final class SettingsModel: ObservableObject {
         self.loadedDictionaryByTerm = Dictionary(
             config.customDictionary.map { ($0.term.lowercased(), $0) },
             uniquingKeysWith: { first, _ in first })
+        self.transformPresets = config.transformPresets
+        self.presetAppDefaults = config.presetAppDefaults
         self.geminiKeyIsSet = KeychainStore.hasGeminiAPIKey
         self.contextModel = config.contextModel
         // Tier fields — derived from the flat config fields.
@@ -425,6 +432,8 @@ final class SettingsModel: ObservableObject {
         self.loadedDictionaryByTerm = Dictionary(
             config.customDictionary.map { ($0.term.lowercased(), $0) },
             uniquingKeysWith: { first, _ in first })
+        self.transformPresets = config.transformPresets
+        self.presetAppDefaults = config.presetAppDefaults
         self.geminiKeyIsSet = KeychainStore.hasGeminiAPIKey
         self.contextModel = config.contextModel
         // Re-derive tier fields from the reloaded config.
@@ -586,6 +595,13 @@ final class SettingsModel: ObservableObject {
                 && !loadedDictionaryTerms.contains(entry.term.lowercased())
         }
         c.customDictionary.append(contentsOf: externallyAddedEntries)
+        c.transformPresets = transformPresets.filter {
+            !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && !$0.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        // Drop mappings whose preset no longer exists (deleted in the editor).
+        let ids = Set(c.transformPresets.map { $0.id })
+        c.presetAppDefaults = presetAppDefaults.filter { ids.contains($0.value) }
         // Context tier: nil when context == cleanup so the resolver
         // short-circuits cleanly (nil means "same as cleanup" in Config).
         let contextId = ModelIdentifier(provider: contextProvider, model: contextModelName.trimmingCharacters(in: .whitespaces))
@@ -993,7 +1009,7 @@ struct SettingsView: View {
     // longer owns a sidebar; it renders the pane for whichever section
     // the app-shell selection points at.
     enum SettingsSection: String, Hashable, CaseIterable, Identifiable {
-        case hotkey, audio, behavior, paste, cleanup, dictionary, usage, permissions, privacyFeatures, updates, advanced
+        case hotkey, audio, behavior, paste, cleanup, dictionary, presets, usage, permissions, privacyFeatures, updates, advanced
         var id: String { rawValue }
         var label: String {
             switch self {
@@ -1003,6 +1019,7 @@ struct SettingsView: View {
             case .paste:           return "Paste"
             case .cleanup:         return "Cleanup"
             case .dictionary:      return "Dictionary"
+            case .presets:         return "Presets"
             case .usage:           return "Usage"
             case .permissions:     return "Permissions"
             case .privacyFeatures: return "Privacy & Features"
@@ -1018,6 +1035,7 @@ struct SettingsView: View {
             case .paste:           return "doc.on.clipboard"
             case .cleanup:         return "wand.and.sparkles"
             case .dictionary:      return "character.book.closed"
+            case .presets:         return "wand.and.rays"
             case .usage:           return "chart.bar"
             case .permissions:     return "lock.shield"
             case .privacyFeatures: return "person.badge.shield.checkmark"
@@ -1118,6 +1136,7 @@ struct SettingsView: View {
                 case .paste:           pasteSection
                 case .cleanup:         cleanupSection
                 case .dictionary:      dictionarySection
+                case .presets:         PresetsSettingsView(model: model)
                 case .usage:           usageSection
                 case .permissions:     permissionsSection
                 case .privacyFeatures: privacyFeaturesSection

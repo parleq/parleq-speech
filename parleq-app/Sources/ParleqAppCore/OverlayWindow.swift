@@ -1054,6 +1054,7 @@ private struct OverlayContent: View {
                             .buttonStyle(.plain)
                             .font(.system(size: 11, weight: .medium))
                             .foregroundColor(SettingsView.brandAccent)
+                            .accessibilityLabel("Undo style: \(name)")
                     }
                 }
                 ForEach(presetChips.prefix(4)) { preset in
@@ -1061,11 +1062,13 @@ private struct OverlayContent: View {
                         .buttonStyle(.bordered)
                         .controlSize(.small)
                         .font(.system(size: 11))
+                        .accessibilityHint("Apply this transform to the dictation")
                 }
                 if presetChips.count > 4 {
                     Menu {
                         ForEach(presetChips.dropFirst(4)) { preset in
                             Button(preset.name) { onRunPreset(preset.id) }
+                                .accessibilityHint("Apply this transform to the dictation")
                         }
                     } label: {
                         Text("⋯").font(.system(size: 11, weight: .semibold))
