@@ -2551,28 +2551,57 @@ private struct OverlayContent: View {
                 chipStripReservation
             }
         case .cleaning:
-            // minHeight = contentWellMinHeight so the text well occupies
-            // the same vertical space as the capture icon block while
-            // streaming tokens arrive. The frame floor keeps the window
-            // steady; this keeps the CONTENT steady inside it — without
-            // this the rendered material collapses to the top of a
-            // partly-empty panel, which reads as the same dip.
-            VStack(alignment: .leading, spacing: 6) {
-                if !model.text.isEmpty {
+            // Perceptual-continuity fix: while no LLM chunks have
+            // arrived yet (model.text.isEmpty — the ASR+TTFT gap,
+            // ~1–1.5 s), hold the same icon block the capture state
+            // shows (listeningIndicator, dimmed to 0.6 so it reads as
+            // "processing" rather than "still listening"). Once the
+            // first token lands, the normal streamed-text rendering
+            // takes over — the icon swaps out exactly like the refining
+            // state already does.
+            //
+            // Identity note: listeningIndicator is called from two
+            // separate switch branches (.capturing and .cleaning-empty),
+            // so SwiftUI treats them as DIFFERENT view identities and
+            // the .animation(value: model.state) crossfade fires on
+            // the capturing→cleaning transition. The two resulting
+            // icon trees are visually identical (same subtree shape,
+            // same scale, level=0 in .cleaning), so the 150 ms fade
+            // between them is imperceptible — the card's visual mass
+            // holds through the transition.
+            //
+            // minHeight = contentWellMinHeight keeps the WINDOW frame
+            // steady (cycle floor already does this, but matching the
+            // capture block's intrinsic height is belt-and-suspenders).
+            if model.text.isEmpty {
+                VStack(spacing: 0) {
+                    listeningIndicator(label: nil)
+                        .frame(minHeight: OverlayContent.contentWellMinHeight)
+                        .opacity(0.6)
+                    HStack(spacing: 8) {
+                        BlinkingDots()
+                        Text("cleaning…")
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+                    }
+                    chipStripReservation
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 6) {
                     Text(model.text)
                         .font(.system(size: 17))
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, alignment: .leading)
+                    HStack(spacing: 8) {
+                        BlinkingDots()
+                        Text("refining…")
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+                    }
+                    chipStripReservation
                 }
-                HStack(spacing: 8) {
-                    BlinkingDots()
-                    Text(model.text.isEmpty ? "cleaning…" : "refining…")
-                        .font(.system(size: 12))
-                        .foregroundColor(.secondary)
-                }
-                chipStripReservation
+                .frame(minHeight: OverlayContent.contentWellMinHeight, alignment: .topLeading)
             }
-            .frame(minHeight: OverlayContent.contentWellMinHeight, alignment: .topLeading)
         case .awaitingAccept:
             // Same minHeight as .cleaning so single-line review text
             // doesn't abruptly shrink the well below the capture icon height.
