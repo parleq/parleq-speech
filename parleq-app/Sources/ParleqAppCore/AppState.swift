@@ -3175,6 +3175,10 @@ public final class AppState {
     func undoStyle() {
         guard phase == .awaitingAccept, appliedPreset != nil else { return }
         let raw = styledRawTranscript
+        // Re-align lastRawTranscript with the dictation this undo
+        // restores: a failed refine may have left it holding the spoken
+        // refine instruction, and a later model-switch re-clean reads it.
+        lastRawTranscript = raw
         appliedPreset = nil
         intendedDefaultPreset = nil
         styledRawTranscript = ""

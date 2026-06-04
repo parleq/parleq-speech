@@ -1316,8 +1316,10 @@ private struct OverlayContent: View {
                 let undoFont = NSFont.systemFont(ofSize: 11, weight: .medium)
                 let undoWidth = PresetChipMetrics.textWidth(for: "Undo", nsFont: undoFont)
                 // Inner HStack spacing (4) + outer HStack spacing to the
-                // first chip (interChipSpacing = 6).
-                return styledLabelWidth + 4 + undoWidth + PresetChipMetrics.interChipSpacing
+                // first chip (interChipSpacing = 6) — the latter only
+                // when there IS a chip after the block.
+                return styledLabelWidth + 4 + undoWidth
+                    + (presetChips.isEmpty ? 0 : PresetChipMetrics.interChipSpacing)
             }()
 
             let availableWidth = width

@@ -125,6 +125,18 @@ final class TransformPresetsTests: XCTestCase {
         XCTAssertEqual(SystemPrompts.transformHint("   "), "")
     }
 
+    func test_transformHint_carries_instruction_for_valid_transform() {
+        // The reference-aware cleanup path in streamCleanupOrRefine
+        // builds its transform addendum from this same helper (it
+        // appends transformHint to the reference system prompt rather
+        // than going through cleanup(dictionary:transform:)), so this
+        // pins the building block both paths rely on: a valid transform
+        // yields a non-empty hint containing the instruction verbatim.
+        let hint = SystemPrompts.transformHint("Rewrite as a tight bulleted list.")
+        XCTAssertFalse(hint.isEmpty)
+        XCTAssertTrue(hint.contains("Rewrite as a tight bulleted list."))
+    }
+
     // MARK: - SettingsModel.save() filtering — testability note
     //
     // The two-tier dangling-mapping fix (persistedIDs vs inMemoryIDs) lives
