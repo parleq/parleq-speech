@@ -74,4 +74,32 @@ final class TransformPresetsTests: XCTestCase {
         XCTAssertNil(dict["presets"], "No presets → key must be absent for byte-stability")
         XCTAssertNil(dict["preset_app_defaults"], "No app defaults → key must be absent for byte-stability")
     }
+
+    // MARK: - Per-app default resolution
+
+    private func configWithPreset() -> Config {
+        var c = Config.default
+        c.transformPresets = [TransformPreset(id: "p1", name: "Concise", prompt: "Rewrite concisely.")]
+        c.presetAppDefaults = ["com.apple.mail": "p1", "com.dangling.app": "ghost"]
+        return c
+    }
+
+    func test_presetForApp_resolves_mapped_bundle() {
+        XCTAssertEqual(configWithPreset().presetForApp("com.apple.mail")?.id, "p1")
+    }
+
+    func test_presetForApp_nil_for_unmapped_nil_or_dangling() {
+        let c = configWithPreset()
+        XCTAssertNil(c.presetForApp("com.unmapped.app"))
+        XCTAssertNil(c.presetForApp(nil))
+        XCTAssertNil(c.presetForApp("com.dangling.app"),
+                     "A mapping whose preset was deleted resolves to nil, not a crash")
+    }
+
+    func test_presetForApp_nil_when_feature_disabled() {
+        var c = configWithPreset()
+        c.transformPresetsEnabled = false
+        XCTAssertNil(c.presetForApp("com.apple.mail"),
+                     "MDM-disabled feature must not apply defaults")
+    }
 }

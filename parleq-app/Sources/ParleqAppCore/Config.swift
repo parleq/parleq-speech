@@ -316,6 +316,19 @@ public struct Config: Sendable {
     /// is folded into the cleanup pass (one LLM call) and the overlay
     /// shows "Styled with <name> · Undo".
     public var presetAppDefaults: [String: String]
+
+    /// Resolve the per-app default preset for a paste target. nil when
+    /// the feature is disabled (MDM), the bundle is unmapped, or the
+    /// mapped preset id no longer exists (deleted preset → dangling map
+    /// entry resolves safely to nil).
+    public func presetForApp(_ bundleID: String?) -> TransformPreset? {
+        guard transformPresetsEnabled,
+              let bundleID, !bundleID.isEmpty,
+              let presetID = presetAppDefaults[bundleID]
+        else { return nil }
+        return transformPresets.first { $0.id == presetID }
+    }
+
     /// Model to use when references are attached to a dictation.
     /// nil means "fall back to the cleanup model" — that's the setup
     /// wizard's "Same as cleanup" default and the legacy behavior for
