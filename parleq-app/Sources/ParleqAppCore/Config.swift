@@ -1243,7 +1243,7 @@ public struct Config: Sendable {
                       let prompt = (obj["prompt"] as? String)?
                           .trimmingCharacters(in: .whitespacesAndNewlines), !prompt.isEmpty
                 else { return nil }
-                return TransformPreset(id: id, name: name, prompt: prompt)
+                return TransformPreset(id: id.trimmingCharacters(in: .whitespacesAndNewlines), name: name, prompt: prompt)
             }
         }
         // Per-app default mapping — top-level "preset_app_defaults".
