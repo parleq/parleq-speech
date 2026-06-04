@@ -173,6 +173,7 @@ Schema is documented in source comments at the top of `Config.swift`. The Settin
 | `GEMINI_API_KEY` | Google AI key for Gemini provider. Resolved at app launch; Keychain takes precedence in Settings UI. |
 | `AWS_PROFILE` / `AWS_REGION` | Fallbacks when Settings AWS profile/region are empty. Won't work for Finder launches (sparse launchd env). |
 | `PARLEQ_VOCAB_TRACE=1` | Opt-in: restores per-replacement detail in the `LocalASR` `[vocab]` log lines (`replaced 'X' → 'Y' [reason]`). Off by default for compliance. |
+| `PARLEQ_HOTKEY_TRACE=1` | Opt-in: hotkey gesture-classifier timing trace (gap/held ms) to stderr. Off by default. |
 | `PARLEQ_BEDROCK_TRACE=1` | Opt-in: enables Soto's debug logger to stderr. Off by default. |
 
 ## Commit conventions

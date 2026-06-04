@@ -155,6 +155,11 @@ public final class HotkeyListener {
     /// P so a brief Option-C still types ç.
     private static let cKeyCode: Int64 = 0x08
 
+    /// Timing-only gesture-classifier trace; opt-in like PARLEQ_VOCAB_TRACE —
+    /// see the chatter/double-tap field bug. Env is launch-stable; read once.
+    private static let hotkeyTrace: Bool =
+        ProcessInfo.processInfo.environment["PARLEQ_HOTKEY_TRACE"] == "1"
+
     private let binding: HotkeyBinding
     private let onKeyDown: (HotkeyDownEvent) -> Void
     private let onKeyUp: (HotkeyUpEvent) -> Void
@@ -343,11 +348,13 @@ public final class HotkeyListener {
             // Record the hold-start time for the P-gesture's
             // hold-threshold gate (see pHoldThreshold).
             keyDownAt = now
-            let gapMs = Int(gap * 1000)
-            FileHandle.standardError.write(
-                "[parleq] hotkey down (gap=\(gapMs)ms, doubleTap=\(isDoubleTap))\n"
-                    .data(using: .utf8) ?? Data()
-            )
+            if HotkeyListener.hotkeyTrace {
+                let gapText = lastKeyUpAt == 0 ? "first" : "\(Int(gap * 1000))ms"
+                FileHandle.standardError.write(
+                    "[parleq] hotkey down (gap=\(gapText), doubleTap=\(isDoubleTap))\n"
+                        .data(using: .utf8) ?? Data()
+                )
+            }
             onKeyDown(HotkeyDownEvent(isDoubleTapHold: isDoubleTap, isShiftHeld: isShiftHeld))
         } else {
             let upNow = Date().timeIntervalSinceReferenceDate
@@ -366,11 +373,13 @@ public final class HotkeyListener {
             if armsDoubleTap {
                 lastKeyUpAt = upNow
             }
-            let heldMs = Int(holdDuration * 1000)
-            FileHandle.standardError.write(
-                "[parleq] hotkey up (held=\(heldMs)ms, armsDoubleTap=\(armsDoubleTap))\n"
-                    .data(using: .utf8) ?? Data()
-            )
+            if HotkeyListener.hotkeyTrace {
+                let heldMs = Int(holdDuration * 1000)
+                FileHandle.standardError.write(
+                    "[parleq] hotkey up (held=\(heldMs)ms, armsDoubleTap=\(armsDoubleTap))\n"
+                        .data(using: .utf8) ?? Data()
+                )
+            }
             let upEvent = HotkeyUpEvent(spaceWasPressedDuringHold: spacePressedThisHold)
             // Defensive reset on emit — anything that happens after
             // this point belongs to a new hold cycle.
