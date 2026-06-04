@@ -3121,6 +3121,11 @@ public final class AppState {
         // anonymous indicator.
         overlay.model.activeTransformName = preset.name
         phase = .cleaning
+        // Defensive: the awaitingAccept guard means any prior task has
+        // completed, but cancel before reassigning anyway — matching
+        // the main capture path — so a dropped reference can never
+        // keep streaming.
+        inFlightTask?.cancel()
         inFlightTask = Task { @MainActor [weak self] in
             guard let self else { return }
             // A manual preset tap is a refine pass on the SHOWN text, so
@@ -3221,6 +3226,9 @@ public final class AppState {
         // mid-re-cleanup.
         cancelAutoAcceptTimer()
         phase = .cleaning
+        // Defensive: cancel before reassigning (matching the main
+        // capture path) so a dropped reference can never keep streaming.
+        inFlightTask?.cancel()
         inFlightTask = Task { @MainActor [weak self] in
             guard let self else { return }
             let outcome = await streamCleanupOrRefine(

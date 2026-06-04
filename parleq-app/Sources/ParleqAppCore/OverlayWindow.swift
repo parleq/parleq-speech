@@ -300,6 +300,10 @@ public final class OverlayWindow {
             "(cap \(Int(maxPanelHeight))) — snapping back"
         )
         frame.size.height = maxPanelHeight
+        // Origin needs no correction here even if the external resize
+        // displaced it: this setFrame goes through OverlayPanel's
+        // applyAnchor override, which re-pins origin.y to the armed
+        // anchoredBottomY on every call.
         panel.setFrame(frame, display: true, animate: false)
     }
 
@@ -1598,6 +1602,14 @@ private struct OverlayContent: View {
         learnFeatureEnabled = cfg.learnFromCorrectionsEnabled
         learnFeatureManaged = cfg.managedKeys.contains("learnFromCorrectionsEnabled")
         presetChips = cfg.transformPresetsEnabled ? cfg.transformPresets : []
+        // If MDM (or a config edit) disabled presets mid-session, also
+        // retire an in-flight "Styled with X · Undo" chip — its Undo
+        // action belongs to the now-disabled feature. New dictations
+        // already honor the gate per-utterance via presetForApp; this
+        // covers a review that was on screen when the flag flipped.
+        if !cfg.transformPresetsEnabled {
+            model.appliedPresetName = nil
+        }
     }
 
     /// The content's intrinsic height threshold above which the
