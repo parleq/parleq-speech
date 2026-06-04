@@ -227,6 +227,16 @@ public final class AppState {
     /// is cleared per dictation and by the style-undo action (wired in a later task).
     private var appliedPreset: TransformPreset?
 
+    /// Raw ASR transcript of the dictation that `appliedPreset` styled.
+    /// `undoStyle()` replays plain cleanup from THIS snapshot — never
+    /// from `lastRawTranscript`, which every refine turn overwrites with
+    /// the refine utterance. Without the snapshot, an Undo after any
+    /// refine attempt (even a failed one, which keeps the chip) would
+    /// "clean" the spoken edit instruction and replace the reviewed
+    /// text with the wrong content. Set/cleared in lockstep with
+    /// `appliedPreset`.
+    private var styledRawTranscript: String = ""
+
     // 0.14.0 PR 4 (#219): per-dictation timing capture for the Stats
     // section in PR 5. All three reset on every fresh capture; ASR
     // / LLM latencies are populated by the cleanup pipeline as it
@@ -1956,6 +1966,7 @@ public final class AppState {
         currentText = ""
         lastRawTranscript = ""
         appliedPreset = nil
+        styledRawTranscript = ""
         overlay.model.appliedPresetName = nil
         overlay.model.activeTransformName = nil
         lastCleanupFailed = false
@@ -2398,18 +2409,20 @@ public final class AppState {
                     let applied = outcome.usedLLMOutput ? defaultPreset : nil
                     self?.appliedPreset = applied
                     self?.overlay.model.appliedPresetName = applied?.name
+                    // Snapshot the dictation the style was applied to, so
+                    // undoStyle() can replay plain cleanup of THIS text even
+                    // after later refine turns overwrite lastRawTranscript.
+                    self?.styledRawTranscript = applied != nil ? asrResult.text : ""
                 } else if outcome.usedLLMOutput {
                     // A voice refine supersedes the styled provenance, same
                     // rule as a manual chip tap (see runPreset): the text is
-                    // no longer just "Styled with X", and — critically — the
-                    // refine turn overwrote lastRawTranscript with the refine
-                    // utterance, so the chip's Undo could no longer replay
-                    // plain cleanup of the ORIGINAL dictation (it would
-                    // "clean" the spoken edit instruction instead, replacing
-                    // the reviewed text with garbage). Clear the stash + chip.
-                    // On refine failure the prior (still-styled) text is kept,
-                    // so the chip stays truthful and stays shown.
+                    // no longer just "Styled with X". Clear the stash + chip.
+                    // On refine FAILURE the prior (still-styled) text is kept,
+                    // so the chip stays — and its Undo stays faithful, because
+                    // undoStyle replays from styledRawTranscript, not the
+                    // lastRawTranscript this refine turn overwrote.
                     self?.appliedPreset = nil
+                    self?.styledRawTranscript = ""
                     self?.overlay.model.appliedPresetName = nil
                 }
                 let learnEnabled = self?.captureCorrectionSignals(
@@ -2582,6 +2595,7 @@ public final class AppState {
         currentText = ""
         lastRawTranscript = ""
         appliedPreset = nil
+        styledRawTranscript = ""
         overlay.model.appliedPresetName = nil
         overlay.model.activeTransformName = nil
         lastCleanupFailed = false
@@ -3026,6 +3040,7 @@ public final class AppState {
                 // a successful non-empty LLM output sets usedLLMOutput=true,
                 // so every error/empty-stream/no-LLM path clears the chip.
                 self?.appliedPreset = nil
+                self?.styledRawTranscript = ""
                 self?.overlay.model.appliedPresetName = nil
             }
         }
@@ -3085,16 +3100,22 @@ public final class AppState {
                 // A manual transform supersedes the auto-applied default's
                 // provenance — the text is no longer just "Styled with X".
                 // On failure the fallback IS the still-styled prior text,
-                // so the chip (and its Undo) stays truthful and kept.
+                // so the chip (and its Undo, replayed from the
+                // styledRawTranscript snapshot) stays truthful and kept.
                 self.appliedPreset = nil
+                self.styledRawTranscript = ""
                 self.overlay.model.appliedPresetName = nil
             }
         }
     }
 
     /// Undo a per-app default style: clear the stash + chip immediately,
-    /// then re-run PLAIN cleanup (no transform) from the retained raw
-    /// transcript. Mirrors switchModelAndRecleanup's reference handling
+    /// then re-run PLAIN cleanup (no transform) from the styledRawTranscript
+    /// snapshot — the dictation the style was applied to. NOT from
+    /// lastRawTranscript: refine turns overwrite that with the refine
+    /// utterance, so it can hold the wrong text by the time Undo is
+    /// clicked (e.g. after a failed refine, which keeps the chip).
+    /// Mirrors switchModelAndRecleanup's reference handling
     /// (same refs, same imageReferenceEnabled degradation, same destination
     /// label) so reference-aware dictations undo faithfully — the result is
     /// the un-styled version of the SAME dictation, not a plain re-run that
@@ -3102,9 +3123,10 @@ public final class AppState {
     @MainActor
     func undoStyle() {
         guard phase == .awaitingAccept, appliedPreset != nil else { return }
+        let raw = styledRawTranscript
         appliedPreset = nil
+        styledRawTranscript = ""
         overlay.model.appliedPresetName = nil
-        let raw = lastRawTranscript
         guard !raw.isEmpty else { return }
         let (config, _) = Config.load()
         let dictionary = config.customDictionaryEnabled ? config.customDictionary : []
