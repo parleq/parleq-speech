@@ -340,6 +340,13 @@ public final class OverlayWindow {
     /// legitimately changed (e.g. presets added between dictations) the
     /// correct new height lands ≤150ms after show.
     private func resizePanelToHeight(_ measurement: OverlayBodyMeasurement) {
+        // A hidden panel's layout is irrelevant to the frame: pre-show
+        // model resets re-lay-out the OLD tree (stale text) and were
+        // being applied to the frame before show() ran. show()'s
+        // pre-size owns the entry size (it routes through applyResize
+        // directly); live measurements only matter once visible.
+        guard panel.isVisible else { return }
+
         // Settle window: coalesce measurements from the brief post-show
         // initialisation phase and apply only the last one.
         // 0.15s: audio spin-up (AVAudioEngine warm-up + first mic level
