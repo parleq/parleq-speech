@@ -36,6 +36,16 @@ struct PresetsSettingsView: View {
     private var presetList: some View {
         VStack(alignment: .leading, spacing: 10) {
             ForEach($model.transformPresets) { $preset in
+                // Resolve the id at row-BUILD time, not tap time. A
+                // ForEach($...) element binding is positional; reading it
+                // inside a button action crashes when the row is stale
+                // (array already shrunk — e.g. a second delete clicked
+                // before SwiftUI rebuilds after the first; verified twice
+                // via crash report: Array._checkSubscript via
+                // Binding.getter). A plain `let` here is evaluated while
+                // the row is valid, so the action closure captures a
+                // String and never touches the binding.
+                let presetID = preset.id
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
                         TextField("Name (chip label)", text: $preset.name)
@@ -44,15 +54,8 @@ struct PresetsSettingsView: View {
                             .onChange(of: preset.name) { _, _ in model.save() }
                         Spacer()
                         Button(role: .destructive) {
-                            // Read the binding ONCE before mutating — a
-                            // ForEach($...) element binding is positional,
-                            // and reading it after removeAll shrinks the
-                            // array crashes on trailing elements (verified
-                            // via crash report: Array._checkSubscript via
-                            // Binding.getter).
-                            let deletedID = preset.id
-                            if newPresetID == deletedID { newPresetID = "" }
-                            model.transformPresets.removeAll { $0.id == deletedID }
+                            if newPresetID == presetID { newPresetID = "" }
+                            model.transformPresets.removeAll { $0.id == presetID }
                             model.save()
                         } label: {
                             Image(systemName: "trash")

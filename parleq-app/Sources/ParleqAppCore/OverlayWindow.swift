@@ -244,6 +244,56 @@ public final class OverlayWindow {
                 self?.model.isKey = false
             }
         }
+
+        // Reactive height backstop. AppKit can resize the panel through
+        // private paths that bypass both our preference-key sizing chain
+        // and the public setFrame overrides (observed: a focus cycle on a
+        // content-full overlay ballooned the panel to the transcript's
+        // unscrolled height with no setFrame log). Whatever the initiator,
+        // didResize fires afterward — if the height exceeds the live
+        // screen cap, snap back to the clamped frame.
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.didResizeNotification,
+            object: panel,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.enforceHeightCapAfterExternalResize()
+            }
+        }
+        // TEMP-DIAG: trace screen migration — NSScreen.main follows
+        // keyboard focus, so "switch to another screen" changes which
+        // visibleFrame the caps compute from.
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.didChangeScreenNotification,
+            object: panel,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                let h = self.panel.screen?.visibleFrame.height ?? -1
+                let mainH = NSScreen.main?.visibleFrame.height ?? -1
+                OverlayWindow.logStderr(
+                    "[parleq] overlay panel changed screen: panelScreenH=\(Int(h)) mainScreenH=\(Int(mainH)) frameH=\(Int(self.panel.frame.height))"
+                )
+            }
+        }
+    }
+
+    /// Backstop invoked from NSWindow.didResizeNotification: if some
+    /// path outside resizePanelToHeight grew the panel past the live
+    /// screen cap, clamp it back. No-op for in-cap resizes.
+    private func enforceHeightCapAfterExternalResize() {
+        let visible = NSScreen.main?.visibleFrame.height ?? 800
+        let maxPanelHeight = OverlayWindow.computeMaxPanelHeight(visibleHeight: visible)
+        var frame = panel.frame
+        guard frame.size.height > maxPanelHeight + 0.5 else { return }
+        OverlayWindow.logStderr(
+            "[parleq] overlay panel ballooned externally to \(Int(frame.size.height)) " +
+            "(cap \(Int(maxPanelHeight))) — snapping back"
+        )
+        frame.size.height = maxPanelHeight
+        panel.setFrame(frame, display: true, animate: false)
     }
 
     /// Replace the hosting controller's rootView so that the SwiftUI
@@ -1581,6 +1631,18 @@ private struct OverlayContent: View {
         }
         .onPreferenceChange(OverlayContentHeightKey.self) { newHeight in
             if abs(measuredContentHeight - newHeight) > 0.5 {
+                // TEMP-DIAG: log scroll-mode branch flips (count-only —
+                // no transcript content). A flip back to direct-render
+                // on a content-full overlay means measuredContentHeight
+                // was reset (SwiftUI @State loss), which is the suspected
+                // trigger for the focus-cycle balloon.
+                let wasScroll = measuredContentHeight > scrollThreshold
+                let isScroll = newHeight > scrollThreshold
+                if wasScroll != isScroll {
+                    FileHandle.standardError.write(
+                        "[parleq] overlay content mode: \(wasScroll ? "scroll" : "direct") → \(isScroll ? "scroll" : "direct") (cntH=\(Int(measuredContentHeight))→\(Int(newHeight)) thresh=\(Int(scrollThreshold)))\n"
+                            .data(using: .utf8) ?? Data())
+                }
                 measuredContentHeight = newHeight
             }
         }
