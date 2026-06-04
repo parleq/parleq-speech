@@ -80,6 +80,11 @@ public final class OverlayWindow {
     /// panel transitions from hidden to visible so each new dictation
     /// cycle starts clean.
     private var cycleFloorHeight: CGFloat = 0
+    /// Height the overlay settled at during the most recent capturing phase
+    /// (once fully visible). Used to pre-size the panel on the next fresh
+    /// capture show so it appears directly at the right height instead of
+    /// appearing at the previous cycle's review height and shrinking.
+    private var lastSettledCaptureHeight: CGFloat = 0
     public var onAccept: (() -> Void)?
     public var onCancel: (() -> Void)?
     public var onCopy: (() -> Void)?
@@ -316,6 +321,14 @@ public final class OverlayWindow {
         // still grows past the floor; the floor is monotonic, not a cap.
         let floored = max(target, cycleFloorHeight)
         cycleFloorHeight = max(cycleFloorHeight, floored)
+        // Remember the settled capture height so the NEXT cycle's pre-size
+        // can skip the stale-measurement artifact. Only record when the
+        // panel is already visible (first-show pre-size is excluded) and
+        // we are in the capturing state. Config changes (e.g. adding
+        // presets) self-correct on the following cycle.
+        if panel.isVisible && model.state == .capturing {
+            lastSettledCaptureHeight = floored
+        }
         var frame = panel.frame
         let delta = abs(frame.size.height - floored)
         if delta < 0.5 { return }
@@ -430,7 +443,22 @@ public final class OverlayWindow {
             // it so positionAtScreenBottom (called next) can re-arm
             // the anchor with the freshly computed origin.
             panel.anchoredBottomY = nil
-            resizePanelToHeight(fitting.height)
+            // For a fresh capture show, prefer the remembered settled
+            // capture height over the stale sizeThatFits measurement
+            // (which still reflects the PREVIOUS cycle's review layout).
+            // This eliminates the one-time shrink from the review height
+            // down to the capture height that was visible right as the
+            // overlay appeared. The live preference-change measurement
+            // still flows through resizePanelToHeight normally and will
+            // be a no-op once the panel reaches the remembered size.
+            // On the very first show (no remembered value) or for non-
+            // capture shows, fall through to the stale measurement as
+            // before.
+            let presizeHeight: CGFloat =
+                (model.state == .capturing && lastSettledCaptureHeight > 0)
+                    ? lastSettledCaptureHeight
+                    : fitting.height
+            resizePanelToHeight(presizeHeight)
 
             positionAtScreenBottom()
 
