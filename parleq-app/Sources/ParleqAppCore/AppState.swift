@@ -3036,6 +3036,9 @@ public final class AppState {
         phase = .cleaning
         inFlightTask = Task { @MainActor [weak self] in
             guard let self else { return }
+            // v1 note: like undoStyle, a preset run does not re-attach the
+            // dictation's references — the transform applies to the shown
+            // text only (documented spec limitation).
             let outcome = await streamCleanupOrRefine(
                 llm: resolvedLLM,
                 overlay: self.overlay,

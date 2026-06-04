@@ -179,6 +179,8 @@ public final class OverlayWindow {
                 onAccept: {},
                 onShowWindowPicker: {},
                 onSwitchToVisionModelAndRecleanup: { _ in },
+                onRunPreset: { _ in },
+                onUndoStyle: {},
                 onBodyHeightChange: { _ in }
             )
         )
@@ -266,6 +268,8 @@ public final class OverlayWindow {
             onSwitchToVisionModelAndRecleanup: { [weak self] id in
                 self?.onSwitchToVisionModelAndRecleanup?(id)
             },
+            onRunPreset: { [weak self] id in self?.onRunPreset?(id) },
+            onUndoStyle: { [weak self] in self?.onUndoStyle?() },
             onBodyHeightChange: { [weak self] newHeight in
                 self?.resizePanelToHeight(newHeight)
             }
@@ -932,6 +936,12 @@ private struct OverlayContent: View {
     /// conflict warning row, triggering AppState to re-run cleanup
     /// with the new provider rather than only flipping the badge.
     let onSwitchToVisionModelAndRecleanup: (ModelIdentifier) -> Void
+    /// Fires when the user taps a preset chip in the review footer.
+    /// AppState's `runPreset(id:)` receives the preset's stable id.
+    let onRunPreset: (String) -> Void
+    /// Fires when the user taps "Undo" on the "Styled with X" chip.
+    /// AppState's `undoStyle()` re-runs plain cleanup from the raw transcript.
+    let onUndoStyle: () -> Void
 
     /// Fires whenever the body's outermost measured height changes.
     /// OverlayWindow uses this to drive panel resize directly, since
@@ -968,6 +978,10 @@ private struct OverlayContent: View {
     // sensitive overlay. Refreshed on appear and on state transitions.
     @State private var learnFeatureEnabled = false
     @State private var learnFeatureManaged = false
+
+    // Preset chips for the review footer, cached so the per-render body
+    // doesn't hit disk (Config.load) — same pattern as the learn flags.
+    @State private var presetChips: [TransformPreset] = []
 
     /// The "Learn from corrections" nudge line shown on the review state
     /// while the feature is off and not dismissed (24h window). Its toggle
@@ -1016,6 +1030,51 @@ private struct OverlayContent: View {
                 .accessibilityLabel("Dismiss")
             }
             .onAppear { LearnBanner.recordOverlayShownIfNeeded() }
+        }
+    }
+
+    /// Preset chips + the per-app-default styled chip, review state only.
+    /// Lives in the FIXED footer (never the scrolling text) so reference-
+    /// heavy overlays can't be pushed around — see the 0.18.0 layout
+    /// lessons. Count-based overflow: first 4 chips inline, rest in a ⋯
+    /// menu (deterministic; no width measurement).
+    @ViewBuilder
+    private var presetRow: some View {
+        if !presetChips.isEmpty || model.appliedPresetName != nil {
+            HStack(spacing: 6) {
+                if let name = model.appliedPresetName {
+                    HStack(spacing: 4) {
+                        Image(systemName: "wand.and.stars")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                        Text("Styled with \(name)")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                        Button("Undo") { onUndoStyle() }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(SettingsView.brandAccent)
+                    }
+                }
+                ForEach(presetChips.prefix(4)) { preset in
+                    Button(preset.name) { onRunPreset(preset.id) }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .font(.system(size: 11))
+                }
+                if presetChips.count > 4 {
+                    Menu {
+                        ForEach(presetChips.dropFirst(4)) { preset in
+                            Button(preset.name) { onRunPreset(preset.id) }
+                        }
+                    } label: {
+                        Text("⋯").font(.system(size: 11, weight: .semibold))
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                }
+                Spacer(minLength: 0)
+            }
         }
     }
 
@@ -1140,6 +1199,12 @@ private struct OverlayContent: View {
             if model.state == .awaitingAccept {
                 learnLine
             }
+
+            // Transform-preset chips + per-app-default styled chip —
+            // review state only, fixed footer.
+            if model.state == .awaitingAccept {
+                presetRow
+            }
         }
         .padding(16)
         // Background surface: Liquid Glass on macOS 26+, translucent
@@ -1201,11 +1266,13 @@ private struct OverlayContent: View {
 
     /// Read the learn-feature gating from Config once and cache it, so the
     /// `learnLine` builder doesn't call Config.load() (a disk read) on every
-    /// body evaluation during the accept countdown.
+    /// body evaluation during the accept countdown. Also refreshes the cached
+    /// preset chips for the review footer (same single Config.load call).
     private func refreshLearnFeatureFlags() {
         let cfg = Config.load().config
         learnFeatureEnabled = cfg.learnFromCorrectionsEnabled
         learnFeatureManaged = cfg.managedKeys.contains("learnFromCorrectionsEnabled")
+        presetChips = cfg.transformPresetsEnabled ? cfg.transformPresets : []
     }
 
     /// The content's intrinsic height threshold above which the
