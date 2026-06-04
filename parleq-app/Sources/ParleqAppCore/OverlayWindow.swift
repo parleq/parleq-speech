@@ -1272,8 +1272,9 @@ private struct OverlayContent: View {
     ///   - (16 + 8) * 2  (.padding(16) content + .padding(8) shadow room, each side)
     ///   - sparkleReserve  (~12pt glyph + 6pt HStack spacing)
     ///   - styledBlockWidth (when appliedPresetName != nil:
-    ///       min(measuredStyledText, 160) + 4 spacing + measuredUndoText
-    ///       + interChipSpacing after the block)
+    ///       min(ceil(measuredStyledText) + 1, 160) + 4 spacing
+    ///       + measuredUndoText + interChipSpacing after the block;
+    ///       the label renders at exactly that capped width)
     ///   - safetyMargin
     @ViewBuilder
     private var presetRow: some View {
