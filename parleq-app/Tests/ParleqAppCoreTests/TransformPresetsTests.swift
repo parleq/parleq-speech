@@ -236,6 +236,31 @@ final class TransformPresetsTests: XCTestCase {
         )
     }
 
+    // MARK: - PresetChipMetrics.chipWidth — measurement mirrors view caps
+
+    func test_chipWidth_short_title_not_capped() {
+        // A title whose pixel width is below labelMaxWidth must NOT be capped by
+        // chipWidth — the view renders it at natural width (.fixedSize), so the
+        // measurement must match.  "Hi" is well under 120pt at 11pt medium.
+        let title = "Hi"
+        let chipFont = NSFont.systemFont(ofSize: 11, weight: .medium)
+        let measured = (title as NSString)
+            .size(withAttributes: [.font: chipFont]).width
+        // Guard that our test premise holds — skip if the font renders this wider
+        // than labelMaxWidth (unexpected on any system, but defensive).
+        guard measured < PresetChipMetrics.labelMaxWidth else {
+            XCTFail("Test premise broken: 'Hi' measured wider than labelMaxWidth")
+            return
+        }
+        let expectedWidth = measured + PresetChipMetrics.horizontalPadding * 2 + 2
+        XCTAssertEqual(
+            PresetChipMetrics.chipWidth(for: title),
+            expectedWidth,
+            accuracy: 0.001,
+            "Short-but-narrow title must measure uncapped (hug-don't-expand)"
+        )
+    }
+
     // MARK: - Mapping parse: whitespace trimming
 
     func test_preset_app_defaults_keys_and_values_are_trimmed() {

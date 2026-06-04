@@ -969,6 +969,14 @@ enum PresetChipMetrics {
     /// value (matches `.frame(maxWidth: 120)` in PresetChip — see
     /// chipWidth(for:) which caps at this value before adding padding).
     static let labelMaxWidth: CGFloat = 120
+    /// Maximum width for the "Styled with <name>" label in the preset
+    /// row (matches `.frame(maxWidth: 160)` in the styled-label view
+    /// — see styledBlockWidth in presetRow, which mirrors this).
+    static let styledLabelMaxWidth: CGFloat = 160
+    /// Character-count threshold above which the "Styled with <name>"
+    /// label gets a `.frame(maxWidth: styledLabelMaxWidth)` cap applied.
+    /// Must match the `name.count > 22` guard in the presetRow view.
+    static let styledCapCharCount: Int = 22
     /// Footprint reserved for the "⋯" overflow menu when at least
     /// one chip overflows. Must cover the real rendered width of the
     /// ⋯ button: `.menuStyle(.borderlessButton)` renders a dropdown
@@ -984,14 +992,16 @@ enum PresetChipMetrics {
 
     /// Rendered width of one chip for `title`: AppKit-measures the
     /// string with the chip font (size 11, weight .medium), caps at
-    /// `labelMaxWidth` (matching the view's `.frame(maxWidth:)` guard),
-    /// then adds the capsule horizontal padding on both sides plus
-    /// a 2pt per-chip slack so rounding never clips the last inline chip.
+    /// `labelMaxWidth` when the measured pixel width exceeds it
+    /// (matching the view's pixel-width `isLongTitle` guard), then
+    /// adds the capsule horizontal padding on both sides plus a 2pt
+    /// per-chip slack so rounding never clips the last inline chip.
     static func chipWidth(for title: String) -> CGFloat {
         let chipFont = NSFont.systemFont(ofSize: 11, weight: .medium)
         let measured = (title as NSString)
             .size(withAttributes: [.font: chipFont]).width
-        return min(measured, labelMaxWidth) + horizontalPadding * 2 + 2
+        let capped = measured > labelMaxWidth ? min(measured, labelMaxWidth) : measured
+        return capped + horizontalPadding * 2 + 2
     }
 
     /// AppKit-measures `string` with `nsFont` and returns the raw
@@ -1280,7 +1290,14 @@ private struct OverlayContent: View {
                 let styledText = "Styled with \(name)"
                 let rawStyledWidth = PresetChipMetrics.textWidth(
                     for: styledText, nsFont: labelFont)
-                let styledWidth = min(rawStyledWidth, 160)   // cap matches the .frame(maxWidth:160) in the view
+                // Mirror the view's conditional cap: `.frame(maxWidth: styledLabelMaxWidth)`
+                // is only applied when `name.count > styledCapCharCount`, so a short-but-wide
+                // name must be measured uncapped here too — otherwise the fitter overfills
+                // the row for names whose pixel width exceeds styledLabelMaxWidth but whose
+                // character count is at or below the threshold.
+                let styledWidth = name.count > PresetChipMetrics.styledCapCharCount
+                    ? min(rawStyledWidth, PresetChipMetrics.styledLabelMaxWidth)
+                    : rawStyledWidth
                 let undoFont = NSFont.systemFont(ofSize: 11, weight: .medium)
                 let undoWidth = PresetChipMetrics.textWidth(for: "Undo", nsFont: undoFont)
                 // Inner HStack spacing (4) + outer HStack spacing to the
@@ -1314,7 +1331,8 @@ private struct OverlayContent: View {
                             .foregroundColor(.secondary)
                             .lineLimit(1)
                             .truncationMode(.tail)
-                            .frame(maxWidth: name.count > 22 ? 160 : nil)
+                            .frame(maxWidth: name.count > PresetChipMetrics.styledCapCharCount
+                                   ? PresetChipMetrics.styledLabelMaxWidth : nil)
                         Button("Undo") { onUndoStyle() }
                             .buttonStyle(.plain)
                             .font(.system(size: 11, weight: .medium))
