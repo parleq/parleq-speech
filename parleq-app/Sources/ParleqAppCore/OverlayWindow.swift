@@ -1490,7 +1490,7 @@ private struct OverlayContent: View {
                 spaceArmedDuringHold: model.spaceArmedDuringHold
             )
 
-            // Eloquent-style status title: name the transform while it
+            // Named status title: name the transform while it
             // streams, instead of the anonymous cleaning state.
             if model.state == .cleaning, let transform = model.activeTransformName {
                 HStack(spacing: 6) {
