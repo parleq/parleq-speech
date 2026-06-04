@@ -330,15 +330,6 @@ public final class OverlayWindow {
         } else {
             panel.setFrame(frame, display: true, animate: false)
         }
-
-        // Diagnostic for the disappearing-panel field bug; remove or demote once root-caused.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak panel] in
-            guard let panel else { return }
-            let alphaStr = String(format: "%.2f", panel.alphaValue)
-            let onScreen = panel.occlusionState.contains(.visible)
-            let msg = "[parleq] overlay post-resize: visible=\(panel.isVisible) alpha=\(alphaStr) h=\(Int(panel.frame.height)) onScreen=\(onScreen)"
-            OverlayWindow.logStderr(msg)
-        }
     }
 
     /// Show / update the overlay. Called on every state transition;
