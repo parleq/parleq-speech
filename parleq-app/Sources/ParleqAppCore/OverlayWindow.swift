@@ -226,6 +226,11 @@ public final class OverlayWindow {
         // can track whether it's the focused window. The OverlayButtons
         // view uses model.isKey to show the "Parleq lost focus" message
         // when the panel isn't key.
+        //
+        // These observers (and didChangeScreen below) hop via Task —
+        // next-turn delivery is fine for state mirroring. Only the
+        // didResize backstop uses MainActor.assumeIsolated, because it
+        // needs its corrective setFrame to land in the SAME turn.
         NotificationCenter.default.addObserver(
             forName: NSWindow.didBecomeKeyNotification,
             object: panel,

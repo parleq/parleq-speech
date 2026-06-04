@@ -26,6 +26,9 @@ struct PresetsSettingsView: View {
                 // disk anyway (save() drops blank presets), so the write
                 // would be a no-op churn. The onChange handlers on the
                 // name/prompt fields persist it once the user types.
+                // Consequence (intentional): a blank row that is never
+                // filled in simply vanishes on the next Settings open —
+                // don't "fix" this by re-adding save().
                 model.transformPresets.append(
                     TransformPreset(name: "", prompt: ""))
             } label: {
