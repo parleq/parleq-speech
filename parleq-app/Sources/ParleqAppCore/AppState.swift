@@ -2358,10 +2358,11 @@ public final class AppState {
                     }
                 }
                 // Per-app default preset: resolved on fresh cleanup turns
-                // only. Refine turns keep the existing appliedPreset (the
-                // text being refined is already styled).
+                // only. Refine turns never fold a transform (the text being
+                // refined is already styled), and a successful refine CLEARS
+                // the styled provenance below — so nil here.
                 let defaultPreset: TransformPreset? = asRefine
-                    ? self?.appliedPreset
+                    ? nil
                     : loadedConfig.presetForApp(targetBundleID)
                 let outcome = await streamCleanupOrRefine(
                     llm: resolvedLLM,
@@ -2397,6 +2398,19 @@ public final class AppState {
                     let applied = outcome.usedLLMOutput ? defaultPreset : nil
                     self?.appliedPreset = applied
                     self?.overlay.model.appliedPresetName = applied?.name
+                } else if outcome.usedLLMOutput {
+                    // A voice refine supersedes the styled provenance, same
+                    // rule as a manual chip tap (see runPreset): the text is
+                    // no longer just "Styled with X", and — critically — the
+                    // refine turn overwrote lastRawTranscript with the refine
+                    // utterance, so the chip's Undo could no longer replay
+                    // plain cleanup of the ORIGINAL dictation (it would
+                    // "clean" the spoken edit instruction instead, replacing
+                    // the reviewed text with garbage). Clear the stash + chip.
+                    // On refine failure the prior (still-styled) text is kept,
+                    // so the chip stays truthful and stays shown.
+                    self?.appliedPreset = nil
+                    self?.overlay.model.appliedPresetName = nil
                 }
                 let learnEnabled = self?.captureCorrectionSignals(
                     asRefine: asRefine,
