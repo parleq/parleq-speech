@@ -70,6 +70,16 @@ struct PresetsSettingsView: View {
         }
     }
 
+    /// Presets eligible for a NEW per-app default: only ones that will
+    /// actually persist (non-blank name + prompt). Existing mappings are
+    /// preserved mid-edit elsewhere; this only gates new assignments.
+    private var mappablePresets: [TransformPreset] {
+        model.transformPresets.filter {
+            !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && !$0.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+    }
+
     private var appDefaultsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Per-app defaults")
@@ -104,7 +114,7 @@ struct PresetsSettingsView: View {
                     .textFieldStyle(.roundedBorder)
                 Picker("", selection: $newPresetID) {
                     Text("Choose preset").tag("")
-                    ForEach(model.transformPresets) { preset in
+                    ForEach(mappablePresets) { preset in
                         Text(preset.name).tag(preset.id)
                     }
                 }
@@ -112,14 +122,16 @@ struct PresetsSettingsView: View {
                 .frame(maxWidth: 160)
                 Button("Add") {
                     let bundle = newBundleID.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !bundle.isEmpty, !newPresetID.isEmpty else { return }
+                    guard !bundle.isEmpty, !newPresetID.isEmpty,
+                          mappablePresets.contains(where: { $0.id == newPresetID }) else { return }
                     model.presetAppDefaults[bundle] = newPresetID
                     model.save()
                     newBundleID = ""
                     newPresetID = ""
                 }
                 .disabled(newBundleID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                          || newPresetID.isEmpty)
+                          || newPresetID.isEmpty
+                          || !mappablePresets.contains(where: { $0.id == newPresetID }))
             }
         }
     }
