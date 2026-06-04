@@ -2446,7 +2446,11 @@ public final class AppState {
                     asRefine: asRefine,
                     rawInstruction: asrResult.text,
                     before: priorText,
-                    outcome: outcome
+                    outcome: outcome,
+                    // Same condition that set the "Styled with X" chip
+                    // above: the transform only shaped outcome.text when
+                    // a default resolved AND the LLM output was used.
+                    transformApplied: !asRefine && defaultPreset != nil && outcome.usedLLMOutput
                 ) ?? false
                 // Only spawn the off-path analysis trigger when the
                 // feature is on — otherwise we'd allocate a detached
@@ -2487,12 +2491,23 @@ public final class AppState {
     /// the feature is enabled, so the caller can decide whether to spawn
     /// the off-path analysis trigger (no point allocating a Task when
     /// the feature is off).
+    ///
+    /// `transformApplied` — true when a per-app default preset's
+    /// transform actually shaped `outcome.text`. Spell-out capture is
+    /// suppressed then: the styled line ("Translate to Spanish",
+    /// "Bulletize", …) may no longer contain the spelled term, or may
+    /// carry transform artifacts, either of which would feed the
+    /// learning analyzer bad context for dictionary proposals. Refine
+    /// records are unaffected (a refine is a faithful capture of that
+    /// edit whatever the text's styling, and refine turns never fold
+    /// a transform).
     @discardableResult
     private func captureCorrectionSignals(
         asRefine: Bool,
         rawInstruction: String,
         before: String,
-        outcome: CleanupOutcome
+        outcome: CleanupOutcome,
+        transformApplied: Bool = false
     ) -> Bool {
         let enabled = Config.load().config.learnFromCorrectionsEnabled
         guard enabled else { return false }
@@ -2506,7 +2521,7 @@ public final class AppState {
             journal.record(CorrectionRecord(
                 kind: .refine, instruction: instruction, before: before, after: outcome.text
             ), enabled: enabled)
-        } else {
+        } else if !transformApplied {
             for term in SpellOutDetector.candidates(in: rawInstruction) {
                 journal.record(CorrectionRecord(
                     kind: .spellout, after: outcome.text, term: term
