@@ -18,6 +18,7 @@ This release puts your favorite rewrites one tap away. Define your own transform
 
 - **Phantom double-tap no longer triggers quick mode.** Some keyboards emit a near-instant phantom press-release ("chatter") when a modifier hotkey is released, which Parleq could read as a double-tap — auto-pasting your next dictation without review. Releases shorter than a human tap, and release-to-press gaps shorter than a human can produce, are now ignored when detecting double-taps.
 - **A content-full overlay no longer balloons after a focus round-trip.** Switching screens or clicking away from a long, scrolling dictation and back could resize the overlay to the transcript's full unscrolled height — a giant panel with no scrolling. The overlay now snaps back to its proper capped size the moment anything oversizes it, regardless of what triggered the resize.
+- **Editing a dictionary term no longer scatters junk entries into your config.** Renaming an existing term in Settings — for example a learned term, or any hand-added one — could quietly leave behind a separate dictionary entry for each intermediate spelling the field passed through while you typed (so editing "SNYK" → "Snyk" might add stray "Sny", "Sn", "S" entries). Edits now update the single entry in place.
 
 ## [0.18.0] - 2026-06-02
 

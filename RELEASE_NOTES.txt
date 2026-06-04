@@ -42,3 +42,9 @@ before it's pasted, and can even run automatically for chosen apps.
   height — a giant panel with no scrolling. The overlay now snaps back
   to its proper capped size the moment anything oversizes it, regardless
   of what triggered the resize.
+- Editing a dictionary term no longer scatters junk entries into your
+  config. Renaming an existing term in Settings — for example a learned
+  term, or any hand-added one — could quietly leave behind a separate
+  dictionary entry for each intermediate spelling the field passed
+  through while you typed (so editing "SNYK" → "Snyk" might add stray
+  "Sny", "Sn", "S" entries). Edits now update the single entry in place.
