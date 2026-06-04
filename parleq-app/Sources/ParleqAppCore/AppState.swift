@@ -1957,6 +1957,7 @@ public final class AppState {
         lastRawTranscript = ""
         appliedPreset = nil
         overlay.model.appliedPresetName = nil
+        overlay.model.activeTransformName = nil
         lastCleanupFailed = false
         // 0.14.0 PR 4 (#219): clear last-pass timings so a previous
         // dictation's measurements don't leak into this entry if
@@ -2568,6 +2569,7 @@ public final class AppState {
         lastRawTranscript = ""
         appliedPreset = nil
         overlay.model.appliedPresetName = nil
+        overlay.model.activeTransformName = nil
         lastCleanupFailed = false
         pasteTarget = nil
         quickMode = false
@@ -3035,6 +3037,10 @@ public final class AppState {
         // Cancel any lingering auto-accept timer so it doesn't fire
         // mid-re-cleanup.
         cancelAutoAcceptTimer()
+        // Surface the transform name while it streams so the overlay's
+        // cleaning state reads "Applying <name>…" instead of the
+        // anonymous indicator.
+        overlay.model.activeTransformName = preset.name
         phase = .cleaning
         inFlightTask = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -3050,8 +3056,16 @@ public final class AppState {
                 targetBundleID: targetBundleID,
                 customDictionary: dictionary
             )
-            if Task.isCancelled { return }
+            if Task.isCancelled {
+                // Clear the transform name on early-exit so a cancelled
+                // run never leaks the label into the next dictation.
+                self.overlay.model.activeTransformName = nil
+                return
+            }
             self.lastLLMLatencyMs = outcome.llmLatencyMs
+            // Clear before applyResult so the status line disappears at
+            // the same moment the result text appears.
+            self.overlay.model.activeTransformName = nil
             self.applyResult(outcome.text, cleanupFailureMessage: outcome.failureMessage)
             if outcome.usedLLMOutput {
                 // A manual transform supersedes the auto-applied default's

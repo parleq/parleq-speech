@@ -737,6 +737,16 @@ public final class OverlayModel: ObservableObject {
     /// "Styled with <name> · Undo" chip.
     @Published var appliedPresetName: String?
 
+    /// Name of the transform preset currently being applied by a
+    /// manual chip tap; drives the cleaning-state status line
+    /// ("Applying <name>…"). Set in AppState.runPreset(id:) right
+    /// before the in-flight Task is spawned; cleared immediately
+    /// after applyResult() returns (success OR failure) AND in every
+    /// early-exit / cancel path so the label can never leak into a
+    /// subsequent dictation. Not set by undoStyle() (which is a
+    /// plain cleanup re-run, not a named transform).
+    @Published var activeTransformName: String?
+
     /// Array of Reference objects to display in the overlay. Used by
     /// the reference window feature to show context-aware references
     /// and citations.
@@ -926,25 +936,28 @@ enum PresetChipMetrics {
     /// chipWidth(for:) which caps at this value before adding padding).
     static let labelMaxWidth: CGFloat = 120
     /// Footprint reserved for the "⋯" overflow menu when at least
-    /// one chip overflows. Wide enough for the glyph + internal
-    /// button padding; does not need to be exact — a few extra points
-    /// are absorbed by the trailing Spacer(minLength:0).
-    static let overflowMenuReserve: CGFloat = 28
+    /// one chip overflows. Must cover the real rendered width of the
+    /// ⋯ button: `.menuStyle(.borderlessButton)` renders a dropdown
+    /// chevron alongside the glyph, making the actual footprint ~40pt
+    /// not ~20pt. A few extra points above the true size are fine —
+    /// they're absorbed by the trailing Spacer(minLength:0).
+    static let overflowMenuReserve: CGFloat = 44
     /// Horizontal safety margin subtracted from the computed available
     /// width before fitting. Absorbs sub-pixel rounding, HStack
     /// justification slack, and any un-modelled padding so we don't
     /// accidentally spill one chip past the edge.
-    static let safetyMargin: CGFloat = 8
+    static let safetyMargin: CGFloat = 14
 
     /// Rendered width of one chip for `title`: AppKit-measures the
     /// string with the chip font (size 11, weight .medium), caps at
     /// `labelMaxWidth` (matching the view's `.frame(maxWidth:)` guard),
-    /// then adds the capsule horizontal padding on both sides.
+    /// then adds the capsule horizontal padding on both sides plus
+    /// a 2pt per-chip slack so rounding never clips the last inline chip.
     static func chipWidth(for title: String) -> CGFloat {
         let chipFont = NSFont.systemFont(ofSize: 11, weight: .medium)
         let measured = (title as NSString)
             .size(withAttributes: [.font: chipFont]).width
-        return min(measured, labelMaxWidth) + horizontalPadding * 2
+        return min(measured, labelMaxWidth) + horizontalPadding * 2 + 2
     }
 
     /// AppKit-measures `string` with `nsFont` and returns the raw
@@ -1003,30 +1016,46 @@ nonisolated func fittingChipCount(
 /// gradient border + text brighten on hover (no ambient animation).
 private struct PresetChip: View {
     let title: String
+    let help: String
     let action: () -> Void
     @State private var hovered = false
 
     var body: some View {
         Button(action: action) {
-            Text(title)
-                .font(.system(size: 11, weight: .medium))
-                .lineLimit(1)
-                .truncationMode(.tail)
-                // Cap long labels at labelMaxWidth, matching the AppKit
-                // measurement in PresetChipMetrics.chipWidth(for:).
-                .frame(maxWidth: PresetChipMetrics.labelMaxWidth)
-                .foregroundColor(hovered ? .primary : .secondary)
-                .padding(.horizontal, PresetChipMetrics.horizontalPadding)
-                .padding(.vertical, 3)
-                .background(Capsule().fill(Color.primary.opacity(hovered ? 0.08 : 0.04)))
-                .overlay(
-                    Capsule()
-                        .strokeBorder(OverlayContent.aiGradient, lineWidth: 1)
-                        .opacity(hovered ? 0.9 : 0.45)
-                )
-                .contentShape(Capsule())
+            // Short titles (no cap applied) use .fixedSize so the HStack
+            // can NEVER compress them — they take their measured width or
+            // overflow into the ⋯ menu, never truncate mid-strip.
+            // Long titles (cap applied) truncate at labelMaxWidth as before.
+            let isLongTitle = (title as NSString)
+                .size(withAttributes: [.font: NSFont.systemFont(ofSize: 11, weight: .medium)])
+                .width > PresetChipMetrics.labelMaxWidth
+            Group {
+                if isLongTitle {
+                    Text(title)
+                        .font(.system(size: 11, weight: .medium))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .frame(maxWidth: PresetChipMetrics.labelMaxWidth)
+                } else {
+                    Text(title)
+                        .font(.system(size: 11, weight: .medium))
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                }
+            }
+            .foregroundColor(hovered ? .primary : .secondary)
+            .padding(.horizontal, PresetChipMetrics.horizontalPadding)
+            .padding(.vertical, 3)
+            .background(Capsule().fill(Color.primary.opacity(hovered ? 0.08 : 0.04)))
+            .overlay(
+                Capsule()
+                    .strokeBorder(OverlayContent.aiGradient, lineWidth: 1)
+                    .opacity(hovered ? 0.9 : 0.45)
+            )
+            .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+        .help(help)
         .onHover { hovered = $0 }
         .animation(.easeOut(duration: 0.12), value: hovered)
         .accessibilityHint("Apply this transform to the dictation")
@@ -1243,6 +1272,7 @@ private struct OverlayContent: View {
                 Image(systemName: "sparkles")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(OverlayContent.aiGradient)
+                    .help("Transform presets — applied before you insert")
                 if let name = model.appliedPresetName {
                     HStack(spacing: 4) {
                         Text("Styled with \(name)")
@@ -1255,16 +1285,20 @@ private struct OverlayContent: View {
                             .buttonStyle(.plain)
                             .font(.system(size: 11, weight: .medium))
                             .foregroundColor(SettingsView.brandAccent)
+                            .help("Undo the applied style and re-run plain cleanup")
                             .accessibilityLabel("Undo style: \(name)")
                     }
                 }
                 ForEach(presetChips.prefix(visibleCount)) { preset in
-                    PresetChip(title: preset.name) { onRunPreset(preset.id) }
+                    PresetChip(title: preset.name, help: preset.prompt) {
+                        onRunPreset(preset.id)
+                    }
                 }
                 if visibleCount < presetChips.count {
                     Menu {
                         ForEach(presetChips.dropFirst(visibleCount)) { preset in
                             Button(preset.name) { onRunPreset(preset.id) }
+                                .help(preset.prompt)
                                 .accessibilityHint("Apply this transform to the dictation")
                         }
                     } label: {
@@ -1274,6 +1308,7 @@ private struct OverlayContent: View {
                     }
                     .menuStyle(.borderlessButton)
                     .fixedSize()
+                    .help("More transforms")
                 }
                 Spacer(minLength: 0)
             }
@@ -1402,6 +1437,21 @@ private struct OverlayContent: View {
                 referenceWindowsEnabled: model.referenceWindowsEnabled,
                 spaceArmedDuringHold: model.spaceArmedDuringHold
             )
+
+            // Eloquent-style status title: name the transform while it
+            // streams, instead of the anonymous cleaning state.
+            if model.state == .cleaning, let transform = model.activeTransformName {
+                HStack(spacing: 6) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(OverlayContent.aiGradient)
+                    Text("Applying \(transform)…")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                }
+            }
 
             // One-time "Learn from corrections" nudge with an inline
             // toggle — review state only, below the hint strip.
