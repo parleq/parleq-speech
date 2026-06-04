@@ -1292,18 +1292,26 @@ private struct OverlayContent: View {
 
             // If a per-app style was applied, its "Styled with X · Undo"
             // block consumes some horizontal space before the chips start.
-            let styledBlockWidth: CGFloat = {
-                guard let name = model.appliedPresetName else { return 0 }
+            // The label renders at EXACTLY this measured-and-capped width
+            // (.frame(width:) below) so the fit math and the rendered
+            // footprint can never disagree — a character-count heuristic
+            // here once let a short-but-wide name render past its
+            // reservation and crowd the chips off the edge.
+            let styledLabelWidth: CGFloat? = model.appliedPresetName.map { name in
                 let labelFont = NSFont.systemFont(ofSize: 11)
-                let styledText = "Styled with \(name)"
-                let rawStyledWidth = PresetChipMetrics.textWidth(
-                    for: styledText, nsFont: labelFont)
-                let styledWidth = min(rawStyledWidth, 160)   // cap matches the .frame(maxWidth:160) in the view
+                // ceil + 1pt slack: an exact fractional width can trigger
+                // tail-truncation on the text it was measured from.
+                let measured = ceil(PresetChipMetrics.textWidth(
+                    for: "Styled with \(name)", nsFont: labelFont)) + 1
+                return min(measured, 160)
+            }
+            let styledBlockWidth: CGFloat = {
+                guard let styledLabelWidth else { return 0 }
                 let undoFont = NSFont.systemFont(ofSize: 11, weight: .medium)
                 let undoWidth = PresetChipMetrics.textWidth(for: "Undo", nsFont: undoFont)
                 // Inner HStack spacing (4) + outer HStack spacing to the
                 // first chip (interChipSpacing = 6).
-                return styledWidth + 4 + undoWidth + PresetChipMetrics.interChipSpacing
+                return styledLabelWidth + 4 + undoWidth + PresetChipMetrics.interChipSpacing
             }()
 
             let availableWidth = width
@@ -1325,14 +1333,17 @@ private struct OverlayContent: View {
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(OverlayContent.aiGradient)
                     .help("Transform presets — applied before you insert")
-                if let name = model.appliedPresetName {
+                if let name = model.appliedPresetName, let styledLabelWidth {
                     HStack(spacing: 4) {
                         Text("Styled with \(name)")
                             .font(.system(size: 11))
                             .foregroundColor(.secondary)
                             .lineLimit(1)
                             .truncationMode(.tail)
-                            .frame(maxWidth: name.count > 22 ? 160 : nil)
+                            // Exact measured width (capped at 160) — keeps
+                            // the rendered footprint identical to what the
+                            // chip-fit math reserved above.
+                            .frame(width: styledLabelWidth, alignment: .leading)
                         Button("Undo") { onUndoStyle() }
                             .buttonStyle(.plain)
                             .font(.system(size: 11, weight: .medium))
