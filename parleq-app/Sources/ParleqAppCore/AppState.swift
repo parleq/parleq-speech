@@ -3030,6 +3030,10 @@ public final class AppState {
         guard !current.isEmpty else { return }
         let dictionary = config.customDictionaryEnabled ? config.customDictionary : []
         let resolvedLLM = llmForInvocation()
+        // Cancel any lingering auto-accept timer so it doesn't fire
+        // mid-re-cleanup.
+        cancelAutoAcceptTimer()
+        phase = .cleaning
         inFlightTask = Task { @MainActor [weak self] in
             guard let self else { return }
             let outcome = await streamCleanupOrRefine(
@@ -3061,6 +3065,10 @@ public final class AppState {
         let (config, _) = Config.load()
         let dictionary = config.customDictionaryEnabled ? config.customDictionary : []
         let resolvedLLM = llmForInvocation()
+        // Cancel any lingering auto-accept timer so it doesn't fire
+        // mid-re-cleanup.
+        cancelAutoAcceptTimer()
+        phase = .cleaning
         inFlightTask = Task { @MainActor [weak self] in
             guard let self else { return }
             let outcome = await streamCleanupOrRefine(
