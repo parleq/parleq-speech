@@ -3031,6 +3031,7 @@ public final class AppState {
         guard !current.isEmpty else { return }
         let dictionary = config.customDictionaryEnabled ? config.customDictionary : []
         let resolvedLLM = llmForInvocation()
+        let targetBundleID = pasteTarget?.bundleID
         // Cancel any lingering auto-accept timer so it doesn't fire
         // mid-re-cleanup.
         cancelAutoAcceptTimer()
@@ -3047,6 +3048,7 @@ public final class AppState {
                 asRefine: true,
                 rawTranscript: preset.prompt,
                 priorText: current,
+                targetBundleID: targetBundleID,
                 customDictionary: dictionary
             )
             if Task.isCancelled { return }
@@ -3077,6 +3079,7 @@ public final class AppState {
         let (config, _) = Config.load()
         let dictionary = config.customDictionaryEnabled ? config.customDictionary : []
         let resolvedLLM = llmForInvocation()
+        let targetBundleID = pasteTarget?.bundleID
         // Cancel any lingering auto-accept timer so it doesn't fire
         // mid-re-cleanup.
         cancelAutoAcceptTimer()
@@ -3090,6 +3093,7 @@ public final class AppState {
                 asRefine: false,
                 rawTranscript: raw,
                 priorText: "",
+                targetBundleID: targetBundleID,
                 customDictionary: dictionary
             )
             if Task.isCancelled { return }
