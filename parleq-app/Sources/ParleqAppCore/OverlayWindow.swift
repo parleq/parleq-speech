@@ -1188,7 +1188,7 @@ private struct OverlayContent: View {
     ///
     /// Available width formula (verified against the view hierarchy):
     ///   width
-    ///   - 16 * 2  (body .padding(16) on each side)
+    ///   - (16 + 8) * 2  (.padding(16) content + .padding(8) shadow room, each side)
     ///   - sparkleReserve  (~12pt glyph + 6pt HStack spacing)
     ///   - styledBlockWidth (when appliedPresetName != nil:
     ///       min(measuredStyledText, 160) + 4 spacing + measuredUndoText
@@ -1202,7 +1202,9 @@ private struct OverlayContent: View {
             // so we measure the chip titles with AppKit and greedily
             // fit as many as possible into the remaining horizontal
             // space.  No GeometryReader — deterministic at body-eval time.
-            let contentPadding: CGFloat = 16 * 2    // .padding(16) on each side
+            // 16pt content padding + 8pt shadow breathing room, each side
+            // (the view chain is VStack.padding(16)…padding(8).frame(width:)).
+            let contentPadding: CGFloat = (16 + 8) * 2
             // Sparkle SF Symbol (~12pt at size-11 semibold) + HStack
             // spacing to the next element.
             let sparkleReserve: CGFloat = 12 + PresetChipMetrics.interChipSpacing
