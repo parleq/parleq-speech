@@ -132,6 +132,10 @@ public final class HotkeyListener {
     /// this threshold. Observed chatter is ~0 ms (down+up pair emitted
     /// by the keyboard driver within the same flagsChanged flush).
     private static let chatterDebounce: TimeInterval = 0.04
+    /// A real double-tap has a humanly-possible release→press gap; a
+    /// re-press within this window is keyboard/driver chatter re-emitting
+    /// the modifier, not a person tapping twice. See handle(event:).
+    private static let minHumanTapGap: TimeInterval = 0.04
 
     /// Virtual keycode for the Space bar on US/QWERTY. macOS
     /// dispatches Space by keyCode regardless of layout, same as
@@ -325,7 +329,9 @@ public final class HotkeyListener {
         // no dispatch needed.
         if isDown {
             let now = Date().timeIntervalSinceReferenceDate
-            let isDoubleTap = (now - lastKeyUpAt) < HotkeyListener.doubleTapWindow
+            let gap = now - lastKeyUpAt
+            let isDoubleTap = gap < HotkeyListener.doubleTapWindow
+                && gap >= HotkeyListener.minHumanTapGap
             // maskShift covers both left and right Shift.
             let isShiftHeld = event.flags.contains(.maskShift)
             // Reset the per-hold space + P flags at every fresh
@@ -337,6 +343,11 @@ public final class HotkeyListener {
             // Record the hold-start time for the P-gesture's
             // hold-threshold gate (see pHoldThreshold).
             keyDownAt = now
+            let gapMs = Int(gap * 1000)
+            FileHandle.standardError.write(
+                "[parleq] hotkey down (gap=\(gapMs)ms, doubleTap=\(isDoubleTap))\n"
+                    .data(using: .utf8) ?? Data()
+            )
             onKeyDown(HotkeyDownEvent(isDoubleTapHold: isDoubleTap, isShiftHeld: isShiftHeld))
         } else {
             let upNow = Date().timeIntervalSinceReferenceDate
@@ -350,9 +361,16 @@ public final class HotkeyListener {
             // keyDownAt is 0 on first ever event, so upNow - 0 is a large
             // positive number — the threshold is comfortably passed and
             // the window arms normally, which is the correct behaviour.
-            if upNow - keyDownAt >= HotkeyListener.chatterDebounce {
+            let holdDuration = upNow - keyDownAt
+            let armsDoubleTap = holdDuration >= HotkeyListener.chatterDebounce
+            if armsDoubleTap {
                 lastKeyUpAt = upNow
             }
+            let heldMs = Int(holdDuration * 1000)
+            FileHandle.standardError.write(
+                "[parleq] hotkey up (held=\(heldMs)ms, armsDoubleTap=\(armsDoubleTap))\n"
+                    .data(using: .utf8) ?? Data()
+            )
             let upEvent = HotkeyUpEvent(spaceWasPressedDuringHold: spacePressedThisHold)
             // Defensive reset on emit — anything that happens after
             // this point belongs to a new hold cycle.
