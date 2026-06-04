@@ -283,6 +283,18 @@ public final class OverlayWindow {
     /// fires in our setup because we attach hc.view as a subview
     /// rather than installing hc as the panel's contentViewController,
     /// so the controller's viewDidLayout is never called).
+    ///
+    /// Animation policy:
+    ///   • Initial show (panel not yet visible): always instant — the
+    ///     panel must be correctly sized BEFORE it appears.
+    ///   • Streaming states (.capturing, .cleaning, .refining): always
+    ///     instant — animating per-chunk resizes causes visible wobble/
+    ///     lag as the panel oscillates between frames on every new token.
+    ///     This is the load-bearing constraint; do not animate these.
+    ///   • All other state transitions (staging → capturing → cleaning
+    ///     → awaitingAccept, etc.) where the panel is already visible
+    ///     AND the delta is non-trivial (> 2pt): animate ~160ms easeInOut
+    ///     so state changes feel intentional rather than jarring.
     private func resizePanelToHeight(_ measuredHeight: CGFloat) {
         let visible = NSScreen.main?.visibleFrame.height ?? 800
         let maxPanelHeight = OverlayWindow.computeMaxPanelHeight(visibleHeight: visible)
@@ -291,13 +303,37 @@ public final class OverlayWindow {
             min(maxPanelHeight, measuredHeight)
         )
         var frame = panel.frame
-        if abs(frame.size.height - target) < 0.5 { return }
+        let delta = abs(frame.size.height - target)
+        if delta < 0.5 { return }
         OverlayWindow.logStderr(
             "[parleq] overlay body-height resize: measured=\(Int(measuredHeight)) " +
             "maxPanel=\(Int(maxPanelHeight)) → target=\(Int(target))"
         )
         frame.size.height = target
-        panel.setFrame(frame, display: true, animate: false)
+
+        // Animate only when:
+        //   (a) the panel is already visible (never animate the first show),
+        //   (b) we are NOT in a live-streaming state (capturing/cleaning/
+        //       refining — animating every chunk resize produces wobble),
+        //   (c) the height delta is non-trivial (> 2pt).
+        let isStreamingState: Bool
+        switch model.state {
+        case .capturing, .cleaning, .refining:
+            isStreamingState = true
+        default:
+            isStreamingState = false
+        }
+        let shouldAnimate = panel.isVisible && !isStreamingState && delta > 2
+
+        if shouldAnimate {
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.16
+                ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                panel.animator().setFrame(frame, display: true)
+            }
+        } else {
+            panel.setFrame(frame, display: true, animate: false)
+        }
     }
 
     /// Show / update the overlay. Called on every state transition;
@@ -1579,6 +1615,14 @@ private struct OverlayContent: View {
                 }
             }
         }
+        // Crossfade the content on state transitions. Scoped to
+        // model.state (NOT model.text) so streaming growth stays
+        // instant — only the sub-view swap fades. The GeometryReader
+        // in measuredContent reports the LAID-OUT height, which is
+        // unaffected by the opacity animation (layout and rendering
+        // are decoupled in SwiftUI), so there is no feedback loop
+        // between the fade and the height-measurement preference key.
+        .animation(.easeInOut(duration: 0.15), value: model.state)
         .onPreferenceChange(OverlayContentHeightKey.self) { newHeight in
             if abs(measuredContentHeight - newHeight) > 0.5 {
                 measuredContentHeight = newHeight
@@ -2178,10 +2222,16 @@ private struct OverlayContent: View {
     /// (the same shape as the menu-bar favicon), with per-bar heights
     /// driven by `model.level` — so it's the static Parleq logo at
     /// rest and an audio-reactive waveform when audio is coming in.
+    ///
+    /// Sizing: scale 1.8 (down from 2.5) + tight vertical padding
+    /// keeps the listening state compact so it doesn't tower over a
+    /// short review overlay. peakHeight at scale 1.8: (14+14)×1.8
+    /// ≈ 50pt vs the old 70pt at scale 2.5. The bars are still
+    /// clearly the Parleq brand mark at this size.
     @ViewBuilder
     private func listeningIndicator(label: String) -> some View {
-        VStack(spacing: 10) {
-            ParleqListeningIndicator(level: model.level)
+        VStack(spacing: 6) {
+            ParleqListeningIndicator(level: model.level, scale: 1.8)
             Text(label)
                 // SF Rounded gives the label a touch of warmth that
                 // pairs well with the rounded-rect listening bars,
@@ -2193,7 +2243,7 @@ private struct OverlayContent: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, 4)
         .frame(maxWidth: .infinity, alignment: .center)
     }
 
