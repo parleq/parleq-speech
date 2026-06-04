@@ -1683,6 +1683,29 @@ private struct OverlayContent: View {
     /// small-button intrinsic height with a hair of breathing room.
     static let footerRow1MinHeight: CGFloat = 24
 
+    /// Constant height of the utility slot (footer row 2). Derived from
+    /// the gesture-hints line's natural rendered height so the slot is
+    /// exactly sized for its tallest intended occupant.
+    ///
+    /// Derivation:
+    ///   font = SF Pro size 11 (system font)
+    ///   fontLineHeight = ceil(ascender − descender + leading)
+    ///                  ≈ ceil(10.73 − (−2.73) + 0) = ceil(13.46) = 14 pt
+    ///   verticalPadding = 6 pt per side (matching OverlayHintStrip's
+    ///                     .padding(.vertical, 6))
+    ///   utilitySlotHeight = fontLineHeight + 2 × verticalPadding
+    ///                     = 14 + 12 = 26 pt
+    ///
+    /// learnLine at 11 pt with no explicit padding renders at ~16 pt
+    /// (max of text line-height and the mini toggle control height) —
+    /// shorter than the slot, so it centres inside it safely.
+    static var utilitySlotHeight: CGFloat {
+        let font = NSFont.systemFont(ofSize: 11)
+        let fontLineHeight = ceil(font.ascender - font.descender + font.leading)
+        let verticalPadding: CGFloat = 6
+        return fontLineHeight + verticalPadding * 2
+    }
+
     /// Floor for the shared center well — the SINGLE source of vertical
     /// flex in the template. It must be tall enough to hold the TALLEST
     /// single-line interior any state renders so the divider directly
@@ -1738,6 +1761,55 @@ private struct OverlayContent: View {
         }
     }
 
+    /// Constant-height utility slot — footer row 2.
+    ///
+    /// ONE template position shared by all dictation states, always
+    /// occupying exactly `utilitySlotHeight` points:
+    ///
+    ///   .capturing / latched compose — OverlayHintStrip (gesture hints:
+    ///       "Space: attach a window · C: current window · P: open Parleq"
+    ///       or the latched / armed variants). This is the tallest occupant
+    ///       and establishes the slot constant.
+    ///   .cleaning / .refining       — Color.clear reservation (same height,
+    ///       no visible content; preserves the card's bottom edge position).
+    ///   .awaitingAccept             — learnLine when the nudge is eligible;
+    ///       Color.clear reservation otherwise. learnLine fits within the
+    ///       slot height (mini toggle ≈ 16 pt < 26 pt slot) and centres
+    ///       vertically via the .center alignment.
+    ///
+    /// Net effect: every dictation state renders the same total footer
+    /// height for single-line dictations, so the card's top and bottom
+    /// edges are pixel-identical from .capturing through .awaitingAccept.
+    @ViewBuilder
+    private var utilitySlot: some View {
+        switch model.state {
+        case .capturing, .staging, .initializing, .refining:
+            // Gesture-hint strip — naturally fills the slot for the
+            // non-idle composeStates that show hints; Color.clear in
+            // .idle (empty OverlayHintStrip output is wrapped by the
+            // fixed-height frame below, so it still occupies the slot).
+            OverlayHintStrip(
+                state: model.composeState,
+                hotkeyDisplayName: model.hotkeyDisplayName,
+                referenceWindowsEnabled: model.referenceWindowsEnabled,
+                spaceArmedDuringHold: model.spaceArmedDuringHold
+            )
+        case .cleaning:
+            // No visible content — empty reservation keeps the card
+            // height constant so the card doesn't collapse at the
+            // capturing→cleaning transition.
+            Color.clear
+        case .awaitingAccept:
+            // Learn nudge when eligible; empty reservation otherwise.
+            // learnLine is @ViewBuilder and may produce EmptyView — the
+            // outer .frame(height: utilitySlotHeight) applied in
+            // footerBlock ensures the slot always occupies the full slot
+            // height regardless of learnLine's output.
+            learnLine
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
     /// Constant two-row, bottom-pinned footer block shared by every
     /// dictation state.
     ///
@@ -1746,14 +1818,13 @@ private struct OverlayContent: View {
     ///             • .awaitingAccept → OverlayButtons (Copy/Cancel/Accept
     ///               + inline paste target + V-send hint).
     ///             • active states   → PASTING-TO label + contextual hint.
-    ///   Row 2 — OverlayHintStrip (latched-compose gesture hints). It is
-    ///           EmptyView in the dominant .idle compose state, so it
-    ///           contributes identical height (~0) in all states for the
-    ///           single-line acceptance case; when the latched flow is
-    ///           active it renders the same strip regardless of dictation
-    ///           state. The review-only learn nudge sits BELOW row 2 so it
-    ///           can grow the panel downward (the bottom-anchored frame
-    ///           grows upward) without disturbing rows 1/2's Y.
+    ///   Row 2 — utilitySlot: a CONSTANT-HEIGHT slot (utilitySlotHeight)
+    ///           shared by all dictation states. The slot's occupant varies
+    ///           per state (gesture hints / empty reservation / learn nudge)
+    ///           but the HEIGHT is identical in every state for a single-line
+    ///           dictation — eliminating the ~42 pt card-height delta that was
+    ///           visible between capturing (hints line present) and
+    ///           cleaning/review (EmptyView, zero height).
     @ViewBuilder
     private var footerBlock: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -1813,19 +1884,12 @@ private struct OverlayContent: View {
             // sits at the same Y in every dictation state.
             .frame(minHeight: OverlayContent.footerRow1MinHeight, alignment: .center)
 
-            // Row 2 — latched-compose gesture hints (EmptyView in .idle).
-            OverlayHintStrip(
-                state: model.composeState,
-                hotkeyDisplayName: model.hotkeyDisplayName,
-                referenceWindowsEnabled: model.referenceWindowsEnabled,
-                spaceArmedDuringHold: model.spaceArmedDuringHold
-            )
-
-            // One-time "Learn from corrections" nudge — review state only,
-            // below row 2 so enabling/expiring it never moves rows 1/2.
-            if model.state == .awaitingAccept {
-                learnLine
-            }
+            // Row 2 — constant-height utility slot. Gesture hints while
+            // capturing; empty reservation through cleaning/refining; the
+            // learn nudge (or empty reservation) in review. Always
+            // exactly utilitySlotHeight pt tall.
+            utilitySlot
+                .frame(height: OverlayContent.utilitySlotHeight, alignment: .center)
         }
     }
 
@@ -1896,12 +1960,12 @@ private struct OverlayContent: View {
             //                       row 1 = OverlayButtons (review) /
             //                       PASTING-TO + hint (active), both floored
             //                       to footerRow1MinHeight so row 1's Y is
-            //                       identical; row 2 = OverlayHintStrip
-            //                       (gesture hints; EmptyView in .idle so it
-            //                       contributes the same height in all
-            //                       states for the single-line acceptance
-            //                       case) + the learn nudge (review only,
-            //                       below row 2 so it never moves rows 1/2).
+            //                       identical; row 2 = utilitySlot — a
+            //                       CONSTANT-HEIGHT (utilitySlotHeight) slot
+            //                       whose occupant varies per state: gesture
+            //                       hints (.capturing / latched), empty
+            //                       reservation (.cleaning / .refining), or
+            //                       the learn nudge (.awaitingAccept).
             //
             // NOTE on "well absorbs flex": this view's intrinsic height
             // DRIVES the panel frame (the measured-height preference key
