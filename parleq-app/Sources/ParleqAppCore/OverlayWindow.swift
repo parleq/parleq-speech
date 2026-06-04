@@ -85,6 +85,21 @@ public final class OverlayWindow {
     /// capture show so it appears directly at the right height instead of
     /// appearing at the previous cycle's review height and shrinking.
     private var lastSettledCaptureHeight: CGFloat = 0
+    /// Timestamp (CFAbsoluteTime / Date.timeIntervalSinceReferenceDate)
+    /// set to now whenever the panel transitions from hidden → visible.
+    /// Used by the settle-window guard in resizePanelToHeight to identify
+    /// measurements that arrive during the brief post-show layout
+    /// initialisation phase (TEMP-DIAG ground truth: first pass measures
+    /// a half-initialized view with cntH=0 / stale composeState).
+    private var lastShownAt: TimeInterval = 0
+    /// Last measurement received inside the settle window but not yet
+    /// applied. Only the final (most recent) measurement is kept — earlier
+    /// ones are superseded by later ones within the same window.
+    private var pendingSettleMeasurement: OverlayBodyMeasurement?
+    /// Task that waits for the settle window to close and then applies
+    /// `pendingSettleMeasurement`. Cancelled and replaced whenever a new
+    /// measurement arrives inside the window (so only the last one fires).
+    private var settleApplyTask: Task<Void, Never>?
     public var onAccept: (() -> Void)?
     public var onCancel: (() -> Void)?
     public var onCopy: (() -> Void)?
@@ -314,7 +329,53 @@ public final class OverlayWindow {
     /// always reports next, so skipping the mismatched report prevents
     /// the one-beat bounce to a superseded height (e.g. the prior review
     /// layout's measurement arriving right after a fresh capture show).
+    ///
+    /// Settle-window guard: the first layout pass(es) after a fresh show
+    /// measure a half-initialized view (TEMP-DIAG: cntH=0, stale
+    /// composeState) at an arbitrary height (152 or 218 observed). The
+    /// frame is already pre-sized to the remembered capture height, so
+    /// measurements arriving within 80ms of show() are coalesced — only
+    /// the last one is applied when the window closes. In steady state
+    /// (nothing changed) the deferred apply is a no-op; when the layout
+    /// legitimately changed (e.g. presets added between dictations) the
+    /// correct new height lands ≤80ms after show.
     private func resizePanelToHeight(_ measurement: OverlayBodyMeasurement) {
+        // Settle window: coalesce measurements from the brief post-show
+        // initialisation phase and apply only the last one.
+        let settleWindow: TimeInterval = 0.08
+        let sinceShow = Date().timeIntervalSinceReferenceDate - lastShownAt
+        if sinceShow < settleWindow {
+            OverlayWindow.logStderr(
+                "[parleq] overlay settle-window: deferring measurement " +
+                "h=\(Int(measurement.height)) state=\(measurement.state) " +
+                "sinceShow=\(String(format: "%.3f", sinceShow))s | \(measurement.debug)"
+            )
+            pendingSettleMeasurement = measurement
+            settleApplyTask?.cancel()
+            settleApplyTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: UInt64(settleWindow * 1_000_000_000))
+                guard let self, !Task.isCancelled,
+                      let m = self.pendingSettleMeasurement else { return }
+                self.pendingSettleMeasurement = nil
+                self.applyResize(m)
+            }
+            return
+        }
+        applyResize(measurement)
+    }
+
+    /// Apply a body-height measurement to the panel frame.
+    ///
+    /// Contains the logic previously inlined in resizePanelToHeight
+    /// (everything after the settle-window guard): cross-state staleness
+    /// check, floor accounting, logging, and the animate-or-not setFrame
+    /// call. Extracted so the settle-window deferred path can call it
+    /// after the window closes without duplicating the logic.
+    private func applyResize(_ measurement: OverlayBodyMeasurement) {
+        // Re-check the state match here (not in resizePanelToHeight)
+        // because the deferred settle-window apply happens after a Task
+        // sleep — by then the model may have transitioned to a different
+        // state, making the measurement stale.
         guard measurement.state == model.state else {
             // A layout report from a superseded state (e.g. the previous
             // review layout arriving right after a fresh capture show).
@@ -456,6 +517,14 @@ public final class OverlayWindow {
             // is the single source of truth for cycle boundaries.
             cycleFloorHeight = 0
 
+            // Cancel any in-flight settle task from the PREVIOUS show
+            // (a new show supersedes it) and clear the pending
+            // measurement so a stale deferred apply never reaches the
+            // frame of this new cycle.
+            settleApplyTask?.cancel()
+            settleApplyTask = nil
+            pendingSettleMeasurement = nil
+
             // Pre-size the panel to the SwiftUI intrinsic content
             // height BEFORE making it visible. Without this, the
             // panel appears at its 140pt minHeight (or whatever
@@ -512,6 +581,17 @@ public final class OverlayWindow {
             resizePanelToHeight(OverlayBodyMeasurement(height: presizeHeight, state: model.state))
 
             positionAtScreenBottom()
+
+            // Arm the settle window. Set lastShownAt HERE — after the
+            // pre-size resizePanelToHeight call above (which must apply
+            // immediately to size the frame before the panel appears)
+            // and just before orderFrontRegardless (which triggers the
+            // first SwiftUI layout pass against the now-visible panel).
+            // Measurements that arrive after this point and within the
+            // 80ms window are from a half-initialized layout and are
+            // coalesced; only the last one is applied when the window
+            // closes.
+            lastShownAt = Date().timeIntervalSinceReferenceDate
 
             // Instant appearance. An earlier polish pass faded the
             // panel in over ~160ms via NSAnimationContext, but the
