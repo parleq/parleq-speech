@@ -721,6 +721,11 @@ public final class OverlayModel: ObservableObject {
     /// the prior turn's failure annotation.
     @Published var cleanupFailureMessage: String?
 
+    /// Name of the per-app default preset folded into the current
+    /// dictation's cleanup, nil when none. Drives the review state's
+    /// "Styled with <name> · Undo" chip.
+    @Published var appliedPresetName: String?
+
     /// Array of Reference objects to display in the overlay. Used by
     /// the reference window feature to show context-aware references
     /// and citations.

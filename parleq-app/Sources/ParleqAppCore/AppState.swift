@@ -221,6 +221,12 @@ public final class AppState {
     /// and cleared in closeAndReset().
     private var lastRawTranscript: String = ""
 
+    /// The per-app default preset folded into the CURRENT dictation's
+    /// cleanup, if any. Drives the overlay chip, is reused by the
+    /// model-switch recleanup so styling survives a provider swap, and
+    /// is cleared per dictation and by undoStyle().
+    private var appliedPreset: TransformPreset?
+
     // 0.14.0 PR 4 (#219): per-dictation timing capture for the Stats
     // section in PR 5. All three reset on every fresh capture; ASR
     // / LLM latencies are populated by the cleanup pipeline as it
@@ -1947,6 +1953,8 @@ public final class AppState {
         chosenDestination = nil
         currentText = ""
         lastRawTranscript = ""
+        appliedPreset = nil
+        overlay.model.appliedPresetName = nil
         lastCleanupFailed = false
         // 0.14.0 PR 4 (#219): clear last-pass timings so a previous
         // dictation's measurements don't leak into this entry if
@@ -2346,6 +2354,12 @@ public final class AppState {
                         self?.log("imageReferenceEnabled=false: image refs degraded to text for prompt-building")
                     }
                 }
+                // Per-app default preset: resolved on fresh cleanup turns
+                // only. Refine turns keep the existing appliedPreset (the
+                // text being refined is already styled).
+                let defaultPreset: TransformPreset? = asRefine
+                    ? self?.appliedPreset
+                    : loadedConfig.presetForApp(targetBundleID)
                 let outcome = await streamCleanupOrRefine(
                     llm: resolvedLLM,
                     overlay: overlay,
@@ -2361,7 +2375,8 @@ public final class AppState {
                             return "\(dest.appName) — \(title)"
                         }
                         return dest.appName
-                    }
+                    },
+                    transform: asRefine ? nil : defaultPreset?.prompt
                 )
                 if Task.isCancelled { return }
 
@@ -2371,6 +2386,13 @@ public final class AppState {
                 // LLM ran (no-LLM-configured / empty-transcript).
                 self?.lastLLMLatencyMs = outcome.llmLatencyMs
                 self?.applyResult(outcome.text, cleanupFailureMessage: outcome.failureMessage)
+                if !asRefine {
+                    // Publish the chip only when the styled cleanup actually
+                    // succeeded — a fallback render isn't styled.
+                    let applied = outcome.failureMessage == nil ? defaultPreset : nil
+                    self?.appliedPreset = applied
+                    self?.overlay.model.appliedPresetName = applied?.name
+                }
                 let learnEnabled = self?.captureCorrectionSignals(
                     asRefine: asRefine,
                     rawInstruction: asrResult.text,
@@ -2540,6 +2562,8 @@ public final class AppState {
         helpOverlay.hide()
         currentText = ""
         lastRawTranscript = ""
+        appliedPreset = nil
+        overlay.model.appliedPresetName = nil
         lastCleanupFailed = false
         pasteTarget = nil
         quickMode = false
@@ -2966,7 +2990,8 @@ public final class AppState {
                         return "\(dest.appName) — \(title)"
                     }
                     return dest.appName
-                }
+                },
+                transform: self?.appliedPreset?.prompt
             )
             if Task.isCancelled { return }
             // 0.14.0 PR 4 (#219): the model-switch path runs its
@@ -3104,7 +3129,8 @@ private func streamCleanupOrRefine(
     targetBundleID: String? = nil,
     customDictionary: [DictionaryEntry] = [],
     references: [Reference] = [],
-    pasteDestinationLabel: String? = nil
+    pasteDestinationLabel: String? = nil,
+    transform: String? = nil
 ) async -> CleanupOutcome {
     let fallback = asRefine ? priorText : rawTranscript
     guard let llm = llm else {
@@ -3143,9 +3169,11 @@ private func streamCleanupOrRefine(
         // the dictionary hint when non-empty so the LLM can bias toward
         // the user's preferred spellings on reference-aware turns too.
         let dictHint = SystemPrompts.dictionaryHint(dictionary: customDictionary)
-        systemPrompt = dictHint.isEmpty
-            ? PromptBuilder.referenceAwareSystem
-            : PromptBuilder.referenceAwareSystem + "\n\n" + dictHint
+        let transformAddendum = asRefine ? "" : SystemPrompts.transformHint(transform)
+        var refSystem = PromptBuilder.referenceAwareSystem
+        if !dictHint.isEmpty { refSystem += "\n\n" + dictHint }
+        if !transformAddendum.isEmpty { refSystem += "\n\n" + transformAddendum }
+        systemPrompt = refSystem
         var firstTurn = PromptBuilder.buildFirstTurnMessage(
             references: references,
             destination: pasteDestinationLabel,
@@ -3178,7 +3206,7 @@ private func streamCleanupOrRefine(
         // instead of cleaning. The structural wrapper makes the
         // user message a meta-instruction containing the data,
         // rather than being mistakable for the data itself.
-        systemPrompt = SystemPrompts.cleanup(dictionary: customDictionary)
+        systemPrompt = SystemPrompts.cleanup(dictionary: customDictionary, transform: transform)
         messages = [LLMMessage(role: "user", content: "Transcript to clean up:\n\n\(rawTranscript)")]
     }
 
