@@ -1636,11 +1636,10 @@ public struct Config: Sendable {
             } else {
                 dict.removeValue(forKey: "context_model")
             }
-        } else if config.contextModel == nil {
-            // serializeToDictionary omits context_model when nil; keep
-            // it absent (remove in case it was set by a prior code path).
-            dict.removeValue(forKey: "context_model")
         }
+        // (No else branch needed: dict comes fresh from
+        // serializeToDictionary, which omits context_model when nil —
+        // the key can't be present outside the pinned branch above.)
         let data = try JSONSerialization.data(
             withJSONObject: dict, options: [.prettyPrinted, .sortedKeys]
         )
