@@ -1264,9 +1264,17 @@ public struct Config: Sendable {
             }
         }
         // Per-app default mapping — top-level "preset_app_defaults".
+        // Trim whitespace from both keys (bundle IDs) and values (preset IDs)
+        // so hand-authored managed configs with padding still resolve correctly.
         if let raw = parsed["preset_app_defaults"] as? [String: Any] {
-            c.presetAppDefaults = raw.compactMapValues { $0 as? String }
-                .filter { !$0.key.isEmpty && !$0.value.isEmpty }
+            var mapped: [String: String] = [:]
+            for (key, value) in raw {
+                let k = key.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard let v = (value as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      !k.isEmpty, !v.isEmpty else { continue }
+                mapped[k] = v
+            }
+            c.presetAppDefaults = mapped
         }
         return c
     }

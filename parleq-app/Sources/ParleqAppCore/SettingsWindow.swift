@@ -599,8 +599,12 @@ final class SettingsModel: ObservableObject {
             !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 && !$0.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
-        // Drop mappings whose preset no longer exists (deleted in the editor).
-        let ids = Set(c.transformPresets.map { $0.id })
+        // Drop mappings whose preset was truly deleted (not just transiently
+        // blank mid-retype). Key off the FULL in-memory list so a preset
+        // whose name field is temporarily empty during typing does not lose
+        // its per-app mapping — only presets that are no longer in the list
+        // at all (i.e. the user deleted the row) prune their mappings.
+        let ids = Set(transformPresets.map { $0.id })
         c.presetAppDefaults = presetAppDefaults.filter { ids.contains($0.value) }
         // Self-heal the published dict so the UI never shows mappings the
         // dangling filter just dropped from the write.

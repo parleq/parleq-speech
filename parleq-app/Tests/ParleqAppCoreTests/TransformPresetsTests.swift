@@ -123,4 +123,24 @@ final class TransformPresetsTests: XCTestCase {
         XCTAssertEqual(SystemPrompts.transformHint(nil), "")
         XCTAssertEqual(SystemPrompts.transformHint("   "), "")
     }
+
+    // MARK: - Mapping parse: whitespace trimming
+
+    func test_preset_app_defaults_keys_and_values_are_trimmed() {
+        // A hand-authored managed config with padding on both key (bundle ID)
+        // and value (preset ID) must resolve to the trimmed forms — so " p1 "
+        // matches a preset with id "p1" and " com.apple.mail " resolves the
+        // right app.
+        let input: [String: Any] = [
+            "presets": [
+                ["id": "p1", "name": "Concise", "prompt": "Rewrite concisely."],
+            ] as [[String: Any]],
+            "preset_app_defaults": [
+                " com.apple.mail ": " p1 ",
+            ] as [String: Any],
+        ]
+        let c = Config.parseForTesting(input)
+        XCTAssertEqual(c.presetAppDefaults, ["com.apple.mail": "p1"],
+                       "Bundle-ID key and preset-ID value must be trimmed at parse time")
+    }
 }

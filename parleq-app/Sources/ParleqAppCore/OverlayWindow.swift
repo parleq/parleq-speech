@@ -1050,6 +1050,9 @@ private struct OverlayContent: View {
                         Text("Styled with \(name)")
                             .font(.system(size: 11))
                             .foregroundColor(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .frame(maxWidth: 120, alignment: .leading)
                         Button("Undo") { onUndoStyle() }
                             .buttonStyle(.plain)
                             .font(.system(size: 11, weight: .medium))
@@ -1058,11 +1061,18 @@ private struct OverlayContent: View {
                     }
                 }
                 ForEach(presetChips.prefix(4)) { preset in
-                    Button(preset.name) { onRunPreset(preset.id) }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .font(.system(size: 11))
-                        .accessibilityHint("Apply this transform to the dictation")
+                    Button {
+                        onRunPreset(preset.id)
+                    } label: {
+                        Text(preset.name)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .frame(maxWidth: 120)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .font(.system(size: 11))
+                    .accessibilityHint("Apply this transform to the dictation")
                 }
                 if presetChips.count > 4 {
                     Menu {

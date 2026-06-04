@@ -2389,10 +2389,11 @@ public final class AppState {
                 self?.lastLLMLatencyMs = outcome.llmLatencyMs
                 self?.applyResult(outcome.text, cleanupFailureMessage: outcome.failureMessage)
                 if !asRefine {
-                    // "Styled" requires the LLM to have actually run AND succeeded —
-                    // the no-LLM fallback returns failureMessage == nil with
-                    // llmLatencyMs == nil while rendering unstyled raw text.
-                    let applied = (outcome.failureMessage == nil && outcome.llmLatencyMs != nil) ? defaultPreset : nil
+                    // "Styled" requires the LLM to have actually used its output —
+                    // usedLLMOutput is false on every fallback path (no-LLM-configured,
+                    // empty-transcript, empty-stream, cancellation, error) so the chip
+                    // is never shown on unstyled raw text.
+                    let applied = outcome.usedLLMOutput ? defaultPreset : nil
                     self?.appliedPreset = applied
                     self?.overlay.model.appliedPresetName = applied?.name
                 }
@@ -3003,11 +3004,11 @@ public final class AppState {
             // actually accepted, not the original pre-switch run.
             self?.lastLLMLatencyMs = outcome.llmLatencyMs
             self?.applyResult(outcome.text, cleanupFailureMessage: outcome.failureMessage)
-            if outcome.failureMessage != nil || outcome.llmLatencyMs == nil {
+            if !outcome.usedLLMOutput {
                 // The fallback render isn't styled — don't leave a stale
-                // "Styled with X" claim on it (mirrors the main path), or
-                // when no LLM ran at all (provider=none) — the fallback render
-                // isn't styled.
+                // "Styled with X" claim on it. Mirrors the main path: only
+                // a successful non-empty LLM output sets usedLLMOutput=true,
+                // so every error/empty-stream/no-LLM path clears the chip.
                 self?.appliedPreset = nil
                 self?.overlay.model.appliedPresetName = nil
             }
@@ -3180,11 +3181,20 @@ struct CleanupOutcome {
     /// into TranscriptEntry by AppState so the Stats section can
     /// surface latency averages.
     public let llmLatencyMs: Int?
+    /// True ONLY when the assembled LLM output was actually used as
+    /// the result text (i.e. the stream ran, produced a non-empty
+    /// string, and that string is `text`). False at every fallback
+    /// return site: no-LLM-configured, empty-transcript, empty-stream,
+    /// cancellation, and error. Guards the "Styled with …" chip so an
+    /// empty-stream fallback (which still carries llmLatencyMs from the
+    /// completed-but-empty stream) does not incorrectly claim styling.
+    public let usedLLMOutput: Bool
 
-    init(text: String, failureMessage: String?, llmLatencyMs: Int? = nil) {
+    init(text: String, failureMessage: String?, llmLatencyMs: Int? = nil, usedLLMOutput: Bool = false) {
         self.text = text
         self.failureMessage = failureMessage
         self.llmLatencyMs = llmLatencyMs
+        self.usedLLMOutput = usedLLMOutput
     }
 }
 
@@ -3364,7 +3374,7 @@ private func streamCleanupOrRefine(
             }
             return CleanupOutcome(text: fallback, failureMessage: nil, llmLatencyMs: latencyBox.value)
         }
-        return CleanupOutcome(text: final, failureMessage: nil, llmLatencyMs: latencyBox.value)
+        return CleanupOutcome(text: final, failureMessage: nil, llmLatencyMs: latencyBox.value, usedLLMOutput: true)
     } catch {
         // Short-circuit on cancellation. The outer Task sees
         // Task.isCancelled === true and skips applyResult, but

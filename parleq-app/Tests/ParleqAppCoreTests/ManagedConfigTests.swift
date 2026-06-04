@@ -1229,4 +1229,22 @@ final class ManagedConfigTests: XCTestCase {
             XCTFail("Expected LLMError, got \(error)")
         }
     }
+
+    // MARK: - transformPresetsEnabled audit row
+
+    func test_auditRow_transformPresetsEnabled_does_not_render_as_unknown() {
+        // buildAuditRows() delegates to resolveAuditRow which previously
+        // fell through to the `default: "(unknown key)"` branch for this key.
+        // Confirm the dedicated case is now wired up.
+        let rows = buildAuditRows()
+        guard let row = rows.first(where: { $0.key == "transformPresetsEnabled" }) else {
+            XCTFail("transformPresetsEnabled must appear in buildAuditRows() output")
+            return
+        }
+        XCTAssertNotEqual(row.displayValue, "(unknown key)",
+                          "transformPresetsEnabled must not render as (unknown key)")
+        // The default value is true; without MDM override it should render "true".
+        XCTAssertFalse(row.displayValue.isEmpty,
+                       "transformPresetsEnabled audit row must have a non-empty display value")
+    }
 }
