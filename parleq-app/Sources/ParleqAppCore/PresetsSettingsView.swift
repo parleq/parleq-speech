@@ -12,27 +12,22 @@ struct PresetsSettingsView: View {
     @ObservedObject var model: SettingsModel
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Presets")
-                    .font(.title2).bold()
-                Text("One-tap transforms for the review overlay. Each preset is a short instruction applied to your dictation before you insert it.")
-                    .font(.callout).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: 16) {
+            Text("One-tap transforms for the review overlay. Each preset is a short instruction applied to your dictation before you insert it.")
+                .font(.callout).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
 
-                presetList
+            presetList
 
-                Button {
-                    model.transformPresets.append(
-                        TransformPreset(name: "", prompt: ""))
-                    model.save()
-                } label: {
-                    Label("Add preset", systemImage: "plus")
-                }
-
-                appDefaultsSection
+            Button {
+                model.transformPresets.append(
+                    TransformPreset(name: "", prompt: ""))
+                model.save()
+            } label: {
+                Label("Add preset", systemImage: "plus")
             }
-            .padding()
+
+            appDefaultsSection
         }
     }
 
