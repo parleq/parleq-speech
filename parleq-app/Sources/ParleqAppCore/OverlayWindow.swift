@@ -285,8 +285,13 @@ public final class OverlayWindow {
     /// Backstop invoked from NSWindow.didResizeNotification: if some
     /// path outside resizePanelToHeight grew the panel past the live
     /// screen cap, clamp it back. No-op for in-cap resizes.
+    ///
+    /// The cap derives from the PANEL's screen, not NSScreen.main:
+    /// the backstop's trigger scenario is focus moving to another
+    /// display, which is precisely when NSScreen.main (it follows
+    /// keyboard focus) stops describing the screen the panel is on.
     private func enforceHeightCapAfterExternalResize() {
-        let visible = NSScreen.main?.visibleFrame.height ?? 800
+        let visible = (panel.screen ?? NSScreen.main)?.visibleFrame.height ?? 800
         let maxPanelHeight = OverlayWindow.computeMaxPanelHeight(visibleHeight: visible)
         var frame = panel.frame
         guard frame.size.height > maxPanelHeight + 0.5 else { return }
