@@ -10,6 +10,8 @@ import SwiftUI
 @MainActor
 struct PresetsSettingsView: View {
     @ObservedObject var model: SettingsModel
+    @State private var newBundleID: String = ""
+    @State private var newPresetID: String = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -67,6 +69,57 @@ struct PresetsSettingsView: View {
         }
     }
 
-    // Per-app default mapping lands in the next task.
-    private var appDefaultsSection: some View { EmptyView() }
+    private var appDefaultsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Per-app defaults")
+                .font(.headline)
+                .padding(.top, 8)
+            Text("When you dictate into one of these apps, the chosen preset is applied automatically during cleanup — the overlay shows \"Styled with …\" and a one-tap Undo.")
+                .font(.callout).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            ForEach(model.presetAppDefaults.sorted(by: { $0.key < $1.key }), id: \.key) { bundleID, presetID in
+                HStack {
+                    Text(bundleID).font(.system(.body, design: .monospaced))
+                    Spacer()
+                    Text(model.transformPresets.first { $0.id == presetID }?.name ?? "(deleted preset)")
+                        .foregroundStyle(.secondary)
+                    Button(role: .destructive) {
+                        model.presetAppDefaults.removeValue(forKey: bundleID)
+                        model.save()
+                    } label: {
+                        Image(systemName: "xmark.circle")
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("Remove default for \(bundleID)")
+                }
+                .padding(8)
+                .background(RoundedRectangle(cornerRadius: 8).fill(SettingsView.cardBackground))
+            }
+
+            HStack {
+                TextField("App bundle ID, e.g. com.apple.mail", text: $newBundleID)
+                    .textFieldStyle(.roundedBorder)
+                Picker("", selection: $newPresetID) {
+                    Text("Choose preset").tag("")
+                    ForEach(model.transformPresets) { preset in
+                        Text(preset.name).tag(preset.id)
+                    }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 160)
+                Button("Add") {
+                    let bundle = newBundleID.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !bundle.isEmpty, !newPresetID.isEmpty else { return }
+                    model.presetAppDefaults[bundle] = newPresetID
+                    model.save()
+                    newBundleID = ""
+                    newPresetID = ""
+                }
+                .disabled(newBundleID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                          || newPresetID.isEmpty)
+            }
+        }
+    }
 }
