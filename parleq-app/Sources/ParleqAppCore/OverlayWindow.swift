@@ -902,6 +902,38 @@ private struct OverlayBodyHeightKey: PreferenceKey {
     }
 }
 
+/// One transform-preset capsule for the review strip. Dim at rest; the
+/// gradient border + text brighten on hover (no ambient animation).
+private struct PresetChip: View {
+    let title: String
+    let action: () -> Void
+    @State private var hovered = false
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 11, weight: .medium))
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: 120)
+                .foregroundColor(hovered ? .white : .secondary)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 3)
+                .background(Capsule().fill(Color.white.opacity(hovered ? 0.10 : 0.05)))
+                .overlay(
+                    Capsule()
+                        .strokeBorder(OverlayContent.aiGradient, lineWidth: 1)
+                        .opacity(hovered ? 0.9 : 0.45)
+                )
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovered = $0 }
+        .animation(.easeOut(duration: 0.12), value: hovered)
+        .accessibilityHint("Apply this transform to the dictation")
+    }
+}
+
 private struct OverlayContent: View {
     @ObservedObject var model: OverlayModel
     /// Fixed outer width passed in from OverlayWindow. We constrain
@@ -1033,26 +1065,36 @@ private struct OverlayContent: View {
         }
     }
 
-    /// Preset chips + the per-app-default styled chip, review state only.
-    /// Lives in the FIXED footer (never the scrolling text) so reference-
-    /// heavy overlays can't be pushed around — see the 0.18.0 layout
-    /// lessons. Count-based overflow: first 4 chips inline, rest in a ⋯
-    /// menu (deterministic; no width measurement).
+    /// Warm "AI" gradient for the transform strip — anchored on the brand
+    /// amber so the sizzle stays on-brand instead of introducing a foreign
+    /// accent. Used by the sparkle glyph and chip borders.
+    static let aiGradient = LinearGradient(
+        colors: [SettingsView.brandAccent, Color(red: 0.95, green: 0.45, blue: 0.50)],
+        startPoint: .topLeading, endPoint: .bottomTrailing
+    )
+
+    /// Quiet transform-preset strip between the dictation text and the
+    /// commit row — review state only. Lives in the FIXED footer (never
+    /// the scrolling text) so reference-heavy overlays can't push it
+    /// around. Mini capsule chips with a warm amber-anchored gradient
+    /// border + sparkle glyph; hover transitions only, no ambient animation.
+    /// Count-based overflow: first 4 chips inline, rest in a ⋯ menu
+    /// (deterministic; no width measurement).
     @ViewBuilder
     private var presetRow: some View {
         if !presetChips.isEmpty || model.appliedPresetName != nil {
             HStack(spacing: 6) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(OverlayContent.aiGradient)
                 if let name = model.appliedPresetName {
                     HStack(spacing: 4) {
-                        Image(systemName: "wand.and.stars")
-                            .font(.system(size: 10))
-                            .foregroundColor(.secondary)
                         Text("Styled with \(name)")
                             .font(.system(size: 11))
                             .foregroundColor(.secondary)
                             .lineLimit(1)
                             .truncationMode(.tail)
-                            .frame(maxWidth: 120, alignment: .leading)
+                            .frame(maxWidth: 160)
                         Button("Undo") { onUndoStyle() }
                             .buttonStyle(.plain)
                             .font(.system(size: 11, weight: .medium))
@@ -1061,18 +1103,7 @@ private struct OverlayContent: View {
                     }
                 }
                 ForEach(presetChips.prefix(4)) { preset in
-                    Button {
-                        onRunPreset(preset.id)
-                    } label: {
-                        Text(preset.name)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                            .frame(maxWidth: 120)
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .font(.system(size: 11))
-                    .accessibilityHint("Apply this transform to the dictation")
+                    PresetChip(title: preset.name) { onRunPreset(preset.id) }
                 }
                 if presetChips.count > 4 {
                     Menu {
@@ -1081,7 +1112,9 @@ private struct OverlayContent: View {
                                 .accessibilityHint("Apply this transform to the dictation")
                         }
                     } label: {
-                        Text("⋯").font(.system(size: 11, weight: .semibold))
+                        Text("⋯")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.secondary)
                     }
                     .menuStyle(.borderlessButton)
                     .fixedSize()
@@ -1137,6 +1170,13 @@ private struct OverlayContent: View {
             // gesture, not a clickable control) so users know it's
             // still available alongside the buttons.
             if model.state == .awaitingAccept {
+                // Transform-preset strip — quiet capsule chips with a warm
+                // amber-anchored gradient, between the dictation text and
+                // the commit row (text → transform → accept). Fixed chrome
+                // (never inside the scrolling text area). Hover transitions
+                // only; no ambient animation.
+                presetRow
+
                 // Single-line footer: Copy on left, then Cancel, the
                 // paste-target inline (so Accept is visually paired
                 // with its destination), then Accept on the right.
@@ -1211,12 +1251,6 @@ private struct OverlayContent: View {
             // toggle — review state only, below the hint strip.
             if model.state == .awaitingAccept {
                 learnLine
-            }
-
-            // Transform-preset chips + per-app-default styled chip —
-            // review state only, fixed footer.
-            if model.state == .awaitingAccept {
-                presetRow
             }
         }
         .padding(16)
