@@ -224,7 +224,7 @@ public final class AppState {
     /// The per-app default preset folded into the CURRENT dictation's
     /// cleanup, if any. Drives the overlay chip, is reused by the
     /// model-switch recleanup so styling survives a provider swap, and
-    /// is cleared per dictation and by undoStyle().
+    /// is cleared per dictation and by the style-undo action (wired in a later task).
     private var appliedPreset: TransformPreset?
 
     // 0.14.0 PR 4 (#219): per-dictation timing capture for the Stats
@@ -2387,9 +2387,10 @@ public final class AppState {
                 self?.lastLLMLatencyMs = outcome.llmLatencyMs
                 self?.applyResult(outcome.text, cleanupFailureMessage: outcome.failureMessage)
                 if !asRefine {
-                    // Publish the chip only when the styled cleanup actually
-                    // succeeded — a fallback render isn't styled.
-                    let applied = outcome.failureMessage == nil ? defaultPreset : nil
+                    // "Styled" requires the LLM to have actually run AND succeeded —
+                    // the no-LLM fallback returns failureMessage == nil with
+                    // llmLatencyMs == nil while rendering unstyled raw text.
+                    let applied = (outcome.failureMessage == nil && outcome.llmLatencyMs != nil) ? defaultPreset : nil
                     self?.appliedPreset = applied
                     self?.overlay.model.appliedPresetName = applied?.name
                 }
@@ -3000,9 +3001,11 @@ public final class AppState {
             // actually accepted, not the original pre-switch run.
             self?.lastLLMLatencyMs = outcome.llmLatencyMs
             self?.applyResult(outcome.text, cleanupFailureMessage: outcome.failureMessage)
-            if outcome.failureMessage != nil {
+            if outcome.failureMessage != nil || outcome.llmLatencyMs == nil {
                 // The fallback render isn't styled — don't leave a stale
-                // "Styled with X" claim on it (mirrors the main path).
+                // "Styled with X" claim on it (mirrors the main path), or
+                // when no LLM ran at all (provider=none) — the fallback render
+                // isn't styled.
                 self?.appliedPreset = nil
                 self?.overlay.model.appliedPresetName = nil
             }
