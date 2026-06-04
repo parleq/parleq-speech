@@ -257,7 +257,12 @@ public final class OverlayWindow {
             object: panel,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor [weak self] in
+            // queue: .main guarantees the main thread, so assume the
+            // actor synchronously rather than enqueueing a Task — the
+            // corrective setFrame then happens in the same turn, and
+            // the didResize it fires re-enters through the (no-op)
+            // guard instead of allocating a follow-up task.
+            MainActor.assumeIsolated {
                 self?.enforceHeightCapAfterExternalResize()
             }
         }

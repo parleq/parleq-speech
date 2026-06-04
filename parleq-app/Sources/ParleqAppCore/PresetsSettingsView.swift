@@ -22,9 +22,12 @@ struct PresetsSettingsView: View {
             presetList
 
             Button {
+                // No save() here: the blank row would be filtered from
+                // disk anyway (save() drops blank presets), so the write
+                // would be a no-op churn. The onChange handlers on the
+                // name/prompt fields persist it once the user types.
                 model.transformPresets.append(
                     TransformPreset(name: "", prompt: ""))
-                model.save()
             } label: {
                 Label("Add preset", systemImage: "plus")
             }

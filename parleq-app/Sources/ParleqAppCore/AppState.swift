@@ -3045,8 +3045,14 @@ public final class AppState {
         // first cleanup fell back (e.g. image refs on a non-vision model
         // — exactly the case the Switch button exists for), appliedPreset
         // was cleared with the fallback render, but the user's configured
-        // default should still style the re-run.
-        let intendedPreset = intendedDefaultPreset
+        // default should still style the re-run. Re-check the feature
+        // gate against the freshly-loaded config: intendedDefaultPreset
+        // was resolved when the dictation started, and MDM may have
+        // disabled presets since — the in-memory intent must not bypass
+        // presetForApp's transformPresetsEnabled guard.
+        let intendedPreset = recleanConfig.transformPresetsEnabled
+            ? intendedDefaultPreset
+            : nil
         inFlightTask = Task { @MainActor [weak self] in
             let outcome = await streamCleanupOrRefine(
                 llm: resolvedLLM,
