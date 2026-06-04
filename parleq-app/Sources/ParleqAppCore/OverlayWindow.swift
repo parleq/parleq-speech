@@ -261,9 +261,11 @@ public final class OverlayWindow {
                 self?.enforceHeightCapAfterExternalResize()
             }
         }
-        // TEMP-DIAG: trace screen migration — NSScreen.main follows
-        // keyboard focus, so "switch to another screen" changes which
-        // visibleFrame the caps compute from.
+        // Trace screen migration (count-only). NSScreen.main follows
+        // keyboard focus, so moving focus to another screen changes
+        // which visibleFrame the height caps compute from — logging
+        // both values pins that down if the external-resize balloon
+        // ever recurs in the field.
         NotificationCenter.default.addObserver(
             forName: NSWindow.didChangeScreenNotification,
             object: panel,
@@ -1631,11 +1633,13 @@ private struct OverlayContent: View {
         }
         .onPreferenceChange(OverlayContentHeightKey.self) { newHeight in
             if abs(measuredContentHeight - newHeight) > 0.5 {
-                // TEMP-DIAG: log scroll-mode branch flips (count-only —
-                // no transcript content). A flip back to direct-render
-                // on a content-full overlay means measuredContentHeight
-                // was reset (SwiftUI @State loss), which is the suspected
-                // trigger for the focus-cycle balloon.
+                // Log scroll-mode branch flips (count-only — no
+                // transcript content). Flips are rare (a couple per
+                // long dictation), and a flip back to direct-render on
+                // a content-full overlay would mean measuredContentHeight
+                // was reset (SwiftUI @State loss) — the suspected trigger
+                // for the external-resize balloon the didResize backstop
+                // defends against.
                 let wasScroll = measuredContentHeight > scrollThreshold
                 let isScroll = newHeight > scrollThreshold
                 if wasScroll != isScroll {
