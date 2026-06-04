@@ -3083,19 +3083,27 @@ public final class AppState {
         let resolvedLLM = llmForInvocation()
         let targetBundleID = pasteTarget?.bundleID
         // Apply the same image-reference degradation as switchModelAndRecleanup
-        // and the primary capture path: when imageReferenceEnabled is false,
-        // downgrade image-mode references to text for prompt-building.
+        // and the primary capture path. Two conditions force degradation:
+        //   1. imageReferenceEnabled is false (global off-switch).
+        //   2. userDowngradedConflict is true — the user chose "Downgrade &
+        //      send" to acknowledge that image parts would be dropped on their
+        //      non-vision model. Undo re-runs cleanup on the SAME model, so it
+        //      must reproduce the same text-only treatment. Without this guard,
+        //      undo would push raw image parts at the non-vision model and get
+        //      an API error, falling back to the unclean raw transcript.
         let rawRefs = overlay.model.references
         let effectiveRefs: [Reference]
-        if config.imageReferenceEnabled {
-            effectiveRefs = rawRefs
-        } else {
+        let shouldDegradeImageRefs = !config.imageReferenceEnabled
+            || overlay.model.userDowngradedConflict
+        if shouldDegradeImageRefs {
             effectiveRefs = rawRefs.map { ref in
                 guard ref.captureMode == .image else { return ref }
                 var degraded = ref
                 degraded.captureMode = .text
                 return degraded
             }
+        } else {
+            effectiveRefs = rawRefs
         }
         let pasteDestLabel = overlay.model.pasteTarget.map { dest in
             if let title = dest.windowTitle, !title.isEmpty {
