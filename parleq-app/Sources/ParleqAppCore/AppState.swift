@@ -3052,11 +3052,14 @@ public final class AppState {
             if Task.isCancelled { return }
             self.lastLLMLatencyMs = outcome.llmLatencyMs
             self.applyResult(outcome.text, cleanupFailureMessage: outcome.failureMessage)
-            // A manual transform supersedes the auto-applied default's
-            // provenance — the text is no longer just "Styled with X".
-            // Drop the chip (its Undo-to-plain affordance is stale too).
-            self.appliedPreset = nil
-            self.overlay.model.appliedPresetName = nil
+            if outcome.usedLLMOutput {
+                // A manual transform supersedes the auto-applied default's
+                // provenance — the text is no longer just "Styled with X".
+                // On failure the fallback IS the still-styled prior text,
+                // so the chip (and its Undo) stays truthful and kept.
+                self.appliedPreset = nil
+                self.overlay.model.appliedPresetName = nil
+            }
         }
     }
 
