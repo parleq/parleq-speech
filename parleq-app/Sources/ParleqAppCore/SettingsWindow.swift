@@ -550,12 +550,13 @@ final class SettingsModel: ObservableObject {
         c.azureAuthMode = ["apiKey", "azureAd"].contains(azureAuthMode) ? azureAuthMode : "apiKey"
         c.asrEndpoint = asrEndpoint.trimmingCharacters(in: .whitespaces)
         if c.asrEndpoint.isEmpty { c.asrEndpoint = Config.bundledASREndpoint }
-        c.customDictionary = Self.reconcileDictionary(
+        let reconciled = Self.reconcileDictionary(
             editorRows: dictionaryEntries,
             loadedByTerm: loadedDictionaryByTerm,
             loadedTerms: loadedDictionaryTerms,
             existing: existing.customDictionary
         )
+        c.customDictionary = reconciled.toWrite
         c.transformPresets = transformPresets.filter {
             !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 && !$0.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -600,28 +601,33 @@ final class SettingsModel: ObservableObject {
         c.managedKeys = managedKeys
         do {
             try Config.save(c)
-            // Refresh the load-time dictionary snapshot to the state we just
-            // wrote. save() runs once per keystroke while a dictionary term is
-            // being edited (DictionaryRowView's .onChange → onChange → save).
-            // Without this refresh the snapshot stays frozen at the value the
-            // window loaded with, so the term THIS save just wrote to disk is
-            // — on the next keystroke's save — neither the current editor term
+            // Refresh the load-time dictionary snapshot to the EDITOR-ROW
+            // portion of the state we just wrote. save() runs once per
+            // keystroke while a dictionary term is being edited
+            // (DictionaryRowView's .onChange → onChange → save). Without the
+            // refresh the snapshot stays frozen at the value the window
+            // loaded with, so the term THIS save just wrote to disk is — on
+            // the next keystroke's save — neither the current editor term
             // nor in the frozen snapshot, and the resurrection filter in
             // reconcileDictionary misclassifies it as "externally added" and
-            // re-appends it. Each intermediate string the field passes through
-            // ("Sny", "Sn", …) thus leaks in as a separate persisted entry.
-            // Refreshing here means a term this model itself just wrote is in
-            // the snapshot, so the filter correctly rejects it.
+            // re-appends it: each intermediate string the field passes
+            // through ("Sny", "Sn", …) leaks in as a separate entry. With
+            // the refresh, the edited row's previous state is in the
+            // snapshot and the filter rejects it.
             //
-            // Snapshot semantics stay consistent: an untouched row's
-            // `built == loaded` defer-to-disk comparison now compares against
-            // the just-saved state, which is exactly what the row still shows
-            // in the UI — so deferring to FUTURE external (LearnedStore) writes
-            // still works. (A LearnedStore write landing in the narrow window
-            // between two keystrokes could still be missed — acceptable.)
-            loadedDictionaryTerms = Set(c.customDictionary.map { $0.term.lowercased() })
+            // editorEntries, NOT toWrite: folding the merge's externally-
+            // added (LearnedStore) entries into the snapshot would make the
+            // next save silently DROP them — they have no editor rows, and
+            // once snapshot-known they'd no longer qualify as "external" to
+            // the filter that re-preserves them on every save.
+            //
+            // Untouched-row semantics stay consistent: `built == loaded`
+            // now compares against the just-saved state — exactly what the
+            // row still shows in the UI — so deferring to FUTURE external
+            // writes (and honoring external deletions) still works.
+            loadedDictionaryTerms = Set(reconciled.editorEntries.map { $0.term.lowercased() })
             loadedDictionaryByTerm = Dictionary(
-                c.customDictionary.map { ($0.term.lowercased(), $0) },
+                reconciled.editorEntries.map { ($0.term.lowercased(), $0) },
                 uniquingKeysWith: { first, _ in first })
             // 0.14.0 PR 6 (#221): push the new retention limits
             // into TranscriptHistory immediately so a save in
@@ -681,12 +687,26 @@ final class SettingsModel: ObservableObject {
     /// term this model itself wrote on a prior keystroke is in the snapshot and
     /// is correctly excluded — that's what stops intermediate keystroke states
     /// from accumulating as separate entries.
+    /// Returns the merged list to write plus `editorEntries`: the BUILT
+    /// value of every non-empty editor row — i.e. what the UI rows hold,
+    /// NOT what was written for them. The caller must refresh its load-time
+    /// snapshot from `editorEntries` ONLY, for two reasons:
+    ///   • Not the externally-added entries the merge appended: folding
+    ///     those into the snapshot would make the NEXT save treat them as
+    ///     editor-known and silently drop them (they have no editor rows,
+    ///     and they'd no longer be "external" to the resurrection filter).
+    ///   • The BUILT value, not the written value: an untouched row that
+    ///     deferred to a newer on-disk version still SHOWS its old content
+    ///     in the UI. Snapshotting the written (deferred) value would make
+    ///     the next save see that unchanged row as "edited" (built ≠
+    ///     loaded) and clobber the external update back to the stale row.
     nonisolated static func reconcileDictionary(
         editorRows: [DictionaryEntryRow],
         loadedByTerm: [String: DictionaryEntry],
         loadedTerms: Set<String>,
         existing: [DictionaryEntry]
-    ) -> [DictionaryEntry] {
+    ) -> (toWrite: [DictionaryEntry], editorEntries: [DictionaryEntry]) {
+        var editorEntries: [DictionaryEntry] = []
         var result = editorRows.compactMap { row -> DictionaryEntry? in
             let term = row.term.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !term.isEmpty else { return nil }
@@ -702,6 +722,7 @@ final class SettingsModel: ObservableObject {
                 biasing: row.biasing,
                 source: row.source
             )
+            editorEntries.append(built)
             // If the user hasn't touched this row (it still equals what we
             // loaded), defer to whatever the learn feature wrote on disk while
             // the window was open — the only other writer of the dictionary:
@@ -734,7 +755,7 @@ final class SettingsModel: ObservableObject {
                 && !loadedTerms.contains(entry.term.lowercased())
         }
         result.append(contentsOf: externallyAddedEntries)
-        return result
+        return (toWrite: result, editorEntries: editorEntries)
     }
 
     /// Persist a new Gemini API key to the macOS Keychain. Called

@@ -35,17 +35,20 @@ final class DictionaryReconcileTests: XCTestCase {
         }
 
         /// Reconcile + write + refresh snapshot, as save() does on success.
+        /// The snapshot refreshes from the EDITOR-ROW portion only — folding
+        /// the merge-appended external entries into the snapshot would make
+        /// the next save silently drop them (see reconcileDictionary docs).
         mutating func save(rows: [DictionaryEntryRow]) {
-            let written = SettingsModel.reconcileDictionary(
+            let reconciled = SettingsModel.reconcileDictionary(
                 editorRows: rows,
                 loadedByTerm: loadedByTerm,
                 loadedTerms: loadedTerms,
                 existing: onDisk
             )
-            onDisk = written
-            loadedTerms = Set(written.map { $0.term.lowercased() })
+            onDisk = reconciled.toWrite
+            loadedTerms = Set(reconciled.editorEntries.map { $0.term.lowercased() })
             loadedByTerm = Dictionary(
-                written.map { ($0.term.lowercased(), $0) },
+                reconciled.editorEntries.map { ($0.term.lowercased(), $0) },
                 uniquingKeysWith: { first, _ in first })
         }
     }
@@ -98,7 +101,7 @@ final class DictionaryReconcileTests: XCTestCase {
                 editorRows: [row],
                 loadedByTerm: frozenByTerm,   // never updated
                 loadedTerms: frozenTerms,     // never updated
-                existing: frozenDisk)
+                existing: frozenDisk).toWrite
         }
         XCTAssertGreaterThan(
             frozenDisk.count, 1,
@@ -173,10 +176,63 @@ final class DictionaryReconcileTests: XCTestCase {
             editorRows: [row],
             loadedByTerm: snapshotByTerm,
             loadedTerms: snapshotTerms,
-            existing: [newer])
+            existing: [newer]).toWrite
 
         XCTAssertEqual(result.count, 1)
         XCTAssertEqual(result.first?.context, "new", "Untouched row should defer to the newer on-disk version")
         XCTAssertEqual(result.first?.aliases, ["vertices"])
+    }
+
+    /// Regression for the follow-up review finding: an externally added term
+    /// must survive MULTIPLE consecutive saves while the window stays open.
+    /// (Refreshing the snapshot with the FULL written list — instead of the
+    /// editor-row portion — made the external term snapshot-known after the
+    /// first save, so the second save classified it as a user deletion and
+    /// silently dropped it.)
+    func test_externally_added_term_survives_consecutive_saves() {
+        let userEntry = DictionaryEntry(term: "Parleq", context: "app", source: .user)
+        var h = Harness(onDisk: [userEntry])
+
+        // LearnedStore lands a new term on disk while the window is open.
+        h.onDisk.append(
+            DictionaryEntry(term: "Kubernetes", context: "orchestrator", source: .learned))
+
+        // The user edits the visible row across several keystrokes — each
+        // one fires a save. The external term must survive every one.
+        var row = DictionaryEntryRow(term: "Parleq", context: "app", source: .user)
+        for text in ["Parle", "Parl", "Parleq"] {
+            row.term = text
+            h.save(rows: [row])
+            XCTAssertTrue(
+                h.onDisk.contains { $0.term == "Kubernetes" },
+                "External term dropped after save with editor term '\(text)'")
+        }
+        XCTAssertEqual(h.onDisk.count, 2)
+        XCTAssertTrue(h.onDisk.contains { $0.term == "Parleq" })
+    }
+
+    /// An externally MODIFIED untouched row keeps deferring to disk across
+    /// consecutive saves (the defer-to-disk branch with a refreshed snapshot).
+    func test_externally_modified_row_defers_across_consecutive_saves() {
+        let loaded = DictionaryEntry(term: "Vertex", context: "old", source: .user)
+        var h = Harness(onDisk: [loaded])
+
+        // The untouched editor row, exactly as loaded.
+        let untouched = DictionaryEntryRow(term: "Vertex", context: "old", source: .user)
+
+        // First save with nothing external: a no-op rewrite.
+        h.save(rows: [untouched])
+
+        // LearnedStore updates the same term's metadata on disk.
+        h.onDisk = [DictionaryEntry(term: "Vertex", context: "new", aliases: ["vertices"], source: .learned)]
+
+        // Two consecutive saves: both must keep the newer on-disk version,
+        // not clobber it back to the stale row.
+        h.save(rows: [untouched])
+        XCTAssertEqual(h.onDisk.first?.context, "new")
+        h.save(rows: [untouched])
+        XCTAssertEqual(h.onDisk.count, 1)
+        XCTAssertEqual(h.onDisk.first?.context, "new", "Second save must not clobber the external update")
+        XCTAssertEqual(h.onDisk.first?.aliases, ["vertices"])
     }
 }
