@@ -44,8 +44,15 @@ struct PresetsSettingsView: View {
                             .onChange(of: preset.name) { _, _ in model.save() }
                         Spacer()
                         Button(role: .destructive) {
-                            model.transformPresets.removeAll { $0.id == preset.id }
-                            if newPresetID == preset.id { newPresetID = "" }
+                            // Read the binding ONCE before mutating — a
+                            // ForEach($...) element binding is positional,
+                            // and reading it after removeAll shrinks the
+                            // array crashes on trailing elements (verified
+                            // via crash report: Array._checkSubscript via
+                            // Binding.getter).
+                            let deletedID = preset.id
+                            if newPresetID == deletedID { newPresetID = "" }
+                            model.transformPresets.removeAll { $0.id == deletedID }
                             model.save()
                         } label: {
                             Image(systemName: "trash")
