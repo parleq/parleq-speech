@@ -582,6 +582,10 @@ public struct Config: Sendable {
             c.learnFromCorrectionsEnabled = v
             managedKeys.insert("learnFromCorrectionsEnabled")
         }
+        if let v = ManagedConfig.managedBool(forKey: "transformPresetsEnabled") {
+            c.transformPresetsEnabled = v
+            managedKeys.insert("transformPresetsEnabled")
+        }
         if let v = ManagedConfig.managedInt(forKey: "learnedCorrectionsMaxEntries") {
             c.learnedCorrectionsMaxEntries = v
             managedKeys.insert("learnedCorrectionsMaxEntries")

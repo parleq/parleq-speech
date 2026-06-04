@@ -94,6 +94,7 @@ final class TransformPresetsTests: XCTestCase {
         XCTAssertNil(c.presetForApp(nil))
         XCTAssertNil(c.presetForApp("com.dangling.app"),
                      "A mapping whose preset was deleted resolves to nil, not a crash")
+        XCTAssertNil(c.presetForApp(""))
     }
 
     func test_presetForApp_nil_when_feature_disabled() {
