@@ -3000,6 +3000,12 @@ public final class AppState {
             // actually accepted, not the original pre-switch run.
             self?.lastLLMLatencyMs = outcome.llmLatencyMs
             self?.applyResult(outcome.text, cleanupFailureMessage: outcome.failureMessage)
+            if outcome.failureMessage != nil {
+                // The fallback render isn't styled — don't leave a stale
+                // "Styled with X" claim on it (mirrors the main path).
+                self?.appliedPreset = nil
+                self?.overlay.model.appliedPresetName = nil
+            }
         }
     }
 
