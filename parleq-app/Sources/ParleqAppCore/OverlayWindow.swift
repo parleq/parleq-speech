@@ -2226,10 +2226,18 @@ private struct OverlayContent: View {
                 }
             }
         case .capturing:
-            // Centered listening indicator, icon only — the header
-            // strip already shows "Listening on <mic>" so the label
-            // below the icon is redundant here. Removing it keeps the
-            // capture state compact and avoids the double label.
+            // Centered listening indicator.
+            //
+            // Label logic:
+            //   - References attached: show the teaching hint
+            //     ("say what to do with these references…") directly
+            //     below the waveform — this is the moment the user
+            //     needs it, right when they start speaking with context
+            //     attached. The header strip shows the reference chips,
+            //     not a mic label, so without this the hint is gone.
+            //   - No references: pass nil — the header strip already
+            //     shows "Listening on <mic>" so a second label would
+            //     duplicate it.
             //
             // Chip-aware height reservation: when presets exist, the
             // review state will include the presetRow strip (chipCapsuleHeight
@@ -2239,8 +2247,11 @@ private struct OverlayContent: View {
             // capture to review for single-line dictations — the cycle
             // floor keeps the panel at this size, so review entry is smooth.
             // When no presets exist, reserve nothing (smaller is fine).
+            let captureLabel: String? = model.references.isEmpty
+                ? nil
+                : "say what to do with these references…"
             VStack(spacing: 0) {
-                listeningIndicator(label: nil)
+                listeningIndicator(label: captureLabel)
                 if !presetChips.isEmpty {
                     // Reservation = chip capsule height + the VStack spacing
                     // (8pt) that will appear above the presetRow at review.
@@ -2370,23 +2381,6 @@ private struct OverlayContent: View {
         }
     }
 
-    /// Inline hint shown next to the sound-wave bars during capture.
-    /// When references are attached, the copy shifts from a generic
-    /// "listening…" to a directive that teaches the reference-aware
-    /// mental model — the user's utterance becomes an instruction to
-    /// apply against the attached materials, not just dictation to
-    /// be cleaned. The shift happens the moment a reference is added,
-    /// so the user encounters it at the exact moment it becomes
-    /// relevant.
-    private var capturingHintText: String {
-        if !model.references.isEmpty {
-            return "say what to do with these references…"
-        }
-        if let mic = model.microphoneName {
-            return "listening on \(mic)…"
-        }
-        return "listening…"
-    }
 }
 
 // Three slowly-blinking dots, used as a "listening / processing"
