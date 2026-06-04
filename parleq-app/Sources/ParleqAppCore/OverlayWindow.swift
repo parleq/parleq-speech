@@ -410,14 +410,43 @@ public final class OverlayWindow {
         microphoneName: String? = nil,
         cleanupFailureMessage: String? = nil
     ) {
-        model.update(
-            state: state,
-            text: text,
-            downloadProgress: downloadProgress,
-            microphoneName: microphoneName,
-            cleanupFailureMessage: cleanupFailureMessage
-        )
-        if !panel.isVisible {
+        let isFreshShow = !panel.isVisible
+        // Fresh shows (hidden → visible) must NOT crossfade. The SwiftUI
+        // tree still holds the PREVIOUS dictation's content at the moment
+        // the model mutates; the .animation(.easeInOut, value: model.state)
+        // modifier in contentArea would otherwise overlap the outgoing and
+        // incoming layouts during the fade, and the height measurement taken
+        // during that overlap reports the taller outgoing content — tagged
+        // with the current state, so the staleness guard passes — before
+        // settling to the correct height. Running the mutations in a
+        // no-animation transaction removes the stale content instantly so
+        // only the new layout is ever measured.
+        //
+        // While-visible transitions (capturing → cleaning → awaitingAccept,
+        // etc.) are unaffected: isFreshShow is false for those calls, so
+        // the standard animation path runs unchanged.
+        if isFreshShow {
+            var tx = Transaction()
+            tx.disablesAnimations = true
+            withTransaction(tx) {
+                model.update(
+                    state: state,
+                    text: text,
+                    downloadProgress: downloadProgress,
+                    microphoneName: microphoneName,
+                    cleanupFailureMessage: cleanupFailureMessage
+                )
+            }
+        } else {
+            model.update(
+                state: state,
+                text: text,
+                downloadProgress: downloadProgress,
+                microphoneName: microphoneName,
+                cleanupFailureMessage: cleanupFailureMessage
+            )
+        }
+        if isFreshShow {
             // Fresh dictation cycle — reset the height floor so this
             // cycle starts clean. A short dictation following a long
             // one must NOT inherit the previous cycle's tall floor;
