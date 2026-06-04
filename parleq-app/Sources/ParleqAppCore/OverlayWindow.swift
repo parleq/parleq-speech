@@ -89,8 +89,7 @@ public final class OverlayWindow {
     /// set to now whenever the panel transitions from hidden → visible.
     /// Used by the settle-window guard in resizePanelToHeight to identify
     /// measurements that arrive during the brief post-show layout
-    /// initialisation phase (TEMP-DIAG ground truth: first pass measures
-    /// a half-initialized view with cntH=0 / stale composeState).
+    /// initialisation phase (first pass can measure a half-initialized view).
     private var lastShownAt: TimeInterval = 0
     /// Last measurement received inside the settle window but not yet
     /// applied. Only the final (most recent) measurement is kept — earlier
@@ -331,11 +330,10 @@ public final class OverlayWindow {
     /// layout's measurement arriving right after a fresh capture show).
     ///
     /// Settle-window guard: the first layout pass(es) after a fresh show
-    /// measure a half-initialized view (TEMP-DIAG: cntH=0, stale
-    /// composeState) at an arbitrary height (152 or 218 observed). The
-    /// frame is already pre-sized to the remembered capture height, so
-    /// measurements arriving within 150ms of show() are coalesced — only
-    /// the last one is applied when the window closes. In steady state
+    /// measure a half-initialized view at an arbitrary height (152 or 218
+    /// observed). The frame is already pre-sized to the remembered capture
+    /// height, so measurements arriving within 150ms of show() are coalesced
+    /// — only the last one is applied when the window closes. In steady state
     /// (nothing changed) the deferred apply is a no-op; when the layout
     /// legitimately changed (e.g. presets added between dictations) the
     /// correct new height lands ≤150ms after show.
@@ -359,7 +357,7 @@ public final class OverlayWindow {
             OverlayWindow.logStderr(
                 "[parleq] overlay settle-window: deferring measurement " +
                 "h=\(Int(measurement.height)) state=\(measurement.state) " +
-                "sinceShow=\(String(format: "%.3f", sinceShow))s | \(measurement.debug)"
+                "sinceShow=\(String(format: "%.3f", sinceShow))s"
             )
             pendingSettleMeasurement = measurement
             settleApplyTask?.cancel()
@@ -423,9 +421,7 @@ public final class OverlayWindow {
         OverlayWindow.logStderr(
             "[parleq] overlay body-height resize: measured=\(Int(measuredHeight)) " +
             "maxPanel=\(Int(maxPanelHeight)) target=\(Int(target)) " +
-            "floor=\(Int(cycleFloorHeight)) → floored=\(Int(floored))" +
-            // TEMP-DIAG: append layout-driving state snapshot (counts/flags only, no content)
-            " | \(measurement.debug)"
+            "floor=\(Int(cycleFloorHeight)) → floored=\(Int(floored))"
         )
         frame.size.height = floored
 
@@ -506,9 +502,9 @@ public final class OverlayWindow {
             // synchronously (the @Published stored values update
             // immediately) but SwiftUI batches view-body re-evaluation
             // and may not flush it before layoutSubtreeIfNeeded() runs
-            // below. The TEMP-DIAG proved that the first layout pass
-            // after the show still sees txt=71 (the previous dictation's
-            // text) and mic=false (microphoneName not yet propagated).
+            // below. The first layout pass after the show can see the
+            // previous dictation's stale text and mic state if the
+            // assignments aren't applied before layoutSubtreeIfNeeded.
             //
             // Direct @Published assignments here are synchronous — they
             // are immediately visible to layoutSubtreeIfNeeded() /
@@ -1170,9 +1166,6 @@ private struct OverlayContentHeightKey: PreferenceKey {
 private struct OverlayBodyMeasurement: Equatable {
     var height: CGFloat
     var state: OverlayState
-    // TEMP-DIAG: counts/flags-only snapshot of every layout-driving
-    // input, to ground-truth the 218→186 capture settle. No content.
-    var debug: String = ""
 }
 
 /// PreferenceKey for the OverlayContent's outermost measured height —
@@ -1194,6 +1187,99 @@ private struct OverlayBodyHeightKey: PreferenceKey {
         if nextValue().height > value.height {
             value = nextValue()
         }
+    }
+}
+
+// MARK: - OverlayLayoutMetrics
+
+/// Layout constants for the overlay's shared template — slot heights
+/// that must be pixel-identical across all dictation states so the
+/// divider and footer block stay anchored while the center well swaps
+/// its interior.
+///
+/// All values are computed from live AppKit font metrics (or from the
+/// geometry constants of the views that set the relevant heights) so
+/// that accessibility / environment changes surface as visible CI
+/// failures (unit tests pin each constant to its design value) rather
+/// than silently drifting from reality.
+///
+/// Access via `@testable import ParleqAppCore` in tests — the enum is
+/// intentionally `internal` so it can be pinned in test assertions
+/// without polluting the public API surface.
+enum OverlayLayoutMetrics {
+    /// Minimum height of the center content well — the single flexible
+    /// region in the shared template. Must match the peak rendered
+    /// height of the `.capturing` state's listening indicator block so
+    /// the center well stays the same height in every dictation state
+    /// for single-line dictation.
+    ///
+    /// Derivation (stays in sync with listeningIndicator):
+    ///   ParleqListeningIndicator at scale 1.5:
+    ///     idleMax = 14, levelBoost = 14, scale = 1.5
+    ///     peakBarHeight = (idleMax + levelBoost) × scale = 42 pt
+    ///   listeningIndicator .padding(.vertical, 2): 2 pt per side
+    ///   Total: peakBarHeight + 2 × verticalPadding = 46 pt
+    static let contentWellMinHeight: CGFloat = {
+        let idleMax: CGFloat = 14
+        let levelBoost: CGFloat = 14
+        let indicatorScale: CGFloat = 1.5
+        let verticalPadding: CGFloat = 2
+        let peakBarHeight = (idleMax + levelBoost) * indicatorScale
+        return peakBarHeight + verticalPadding * 2
+    }()
+
+    /// Height of the utility slot (footer row 2) — the constant-height
+    /// slot that holds the gesture-hint strip while capturing, an empty
+    /// reservation while cleaning/refining, and the learn nudge (or an
+    /// empty reservation) in review.
+    ///
+    /// Derivation:
+    ///   font = SF Pro size 11 (system font)
+    ///   fontLineHeight = ceil(ascender − descender + leading) ≈ 14 pt
+    ///   verticalPadding = 6 pt per side
+    ///       (matches OverlayHintStrip's .padding(.vertical, 6))
+    ///   utilitySlotHeight = fontLineHeight + 2 × verticalPadding ≈ 26 pt
+    static var utilitySlotHeight: CGFloat {
+        let f = NSFont.systemFont(ofSize: 11)
+        let fontLineHeight = ceil(f.ascender - f.descender + f.leading)
+        let verticalPadding: CGFloat = 6
+        return fontLineHeight + verticalPadding * 2
+    }
+
+    /// Minimum height of footer row 1 — the action/hint row. Must
+    /// comfortably hold the tallest row-1 occupant (`.awaitingAccept`'s
+    /// OverlayButtons, a row of `.small` bordered buttons, ~22 pt).
+    ///
+    /// Derivation:
+    ///   font = SF Pro at NSFont.systemFontSize(for: .small) ≈ 11 pt
+    ///   fontLineHeight = ceil(ascender − descender + leading) ≈ 14 pt
+    ///   buttonVerticalInset = 4 pt per side
+    ///       (AppKit default for small bordered buttons)
+    ///   buttonHeight = fontLineHeight + 2 × inset ≈ 22 pt
+    ///   footerRow1MinHeight = buttonHeight + 2 pt breathing room ≈ 24 pt
+    static let footerRow1MinHeight: CGFloat = {
+        let f = NSFont.systemFont(ofSize: NSFont.systemFontSize(for: .small))
+        let fontLineHeight = ceil(f.ascender - f.descender + f.leading)
+        let buttonVerticalInset: CGFloat = 4
+        let buttonHeight = fontLineHeight + buttonVerticalInset * 2
+        return buttonHeight + 2  // 2 pt breathing room
+    }()
+
+    /// Floor for the shared center well — the SINGLE source of vertical
+    /// flex in the template. Tall enough to hold the `.cleaning` state's
+    /// dimmed listening icon plus the VStack(spacing: 6) gap plus the
+    /// status line height.
+    ///
+    /// Derivation:
+    ///   font = SF Pro size 12 (status/hint line)
+    ///   statusLineHeight = ceil(ascender − descender + leading) ≈ 14 pt
+    ///   vstackSpacing = 6 pt
+    ///   wellMinHeight = contentWellMinHeight + vstackSpacing + statusLineHeight
+    static var wellMinHeight: CGFloat {
+        let statusFont = NSFont.systemFont(ofSize: 12)
+        let statusLineHeight = ceil(statusFont.ascender - statusFont.descender + statusFont.leading)
+        let vstackSpacing: CGFloat = 6
+        return contentWellMinHeight + vstackSpacing + statusLineHeight
     }
 }
 
@@ -1504,21 +1590,10 @@ private struct OverlayContent: View {
         }
     }
 
-    /// Minimum height of the center content well, shared by the capture
-    /// state's icon block and the cleaning/review text area. The frame
-    /// floor keeps the WINDOW steady, but the rendered content collapses
-    /// inside it at hotkey release (capture → cleaning) because the two
-    /// sub-views have different intrinsic heights — which reads as the
-    /// same dip. Giving both states the same minimum height by
-    /// construction eliminates the collapse without hardcoding separate
-    /// magic numbers.
-    ///
-    /// Derivation (must stay in sync with listeningIndicator):
-    ///   ParleqListeningIndicator at scale 1.5:
-    ///     peak bar height = (idleMax 14 + levelBoost 14) × 1.5 = 42pt
-    ///   listeningIndicator vertical padding: 2pt each side = 4pt
-    ///   Total icon block height: 42 + 4 = 46pt
-    static let contentWellMinHeight: CGFloat = 46
+    /// Minimum height of the center content well — forwarded from
+    /// `OverlayLayoutMetrics.contentWellMinHeight` (the single source
+    /// of truth for this value, accessible to unit tests).
+    static var contentWellMinHeight: CGFloat { OverlayLayoutMetrics.contentWellMinHeight }
 
     /// Invisible spacer that reserves the same vertical footprint the
     /// real presetRow strip occupies in `.awaitingAccept`. Rendered at
@@ -1672,59 +1747,17 @@ private struct OverlayContent: View {
         }
     }
 
-    /// Minimum height of footer row 1 — the action/hint row. The review
-    /// state's row 1 is OverlayButtons (a row of `.small` bordered
-    /// buttons, ~22pt tall); the active states' row 1 is a single line of
-    /// 11pt text (PASTING-TO eyebrow + hint, ~16pt tall). Flooring BOTH
-    /// branches to this height makes the footer block the same height in
-    /// every dictation state, so row 1's baseline — and therefore the
-    /// divider directly above it — lands at the identical Y across
-    /// capturing / cleaning / awaitingAccept. 24pt comfortably clears the
-    /// small-button intrinsic height with a hair of breathing room.
-    static let footerRow1MinHeight: CGFloat = 24
+    /// Minimum height of footer row 1 — forwarded from
+    /// `OverlayLayoutMetrics.footerRow1MinHeight`.
+    static var footerRow1MinHeight: CGFloat { OverlayLayoutMetrics.footerRow1MinHeight }
 
-    /// Constant height of the utility slot (footer row 2). Derived from
-    /// the gesture-hints line's natural rendered height so the slot is
-    /// exactly sized for its tallest intended occupant.
-    ///
-    /// Derivation:
-    ///   font = SF Pro size 11 (system font)
-    ///   fontLineHeight = ceil(ascender − descender + leading)
-    ///                  ≈ ceil(10.73 − (−2.73) + 0) = ceil(13.46) = 14 pt
-    ///   verticalPadding = 6 pt per side (matching OverlayHintStrip's
-    ///                     .padding(.vertical, 6))
-    ///   utilitySlotHeight = fontLineHeight + 2 × verticalPadding
-    ///                     = 14 + 12 = 26 pt
-    ///
-    /// learnLine at 11 pt with no explicit padding renders at ~16 pt
-    /// (max of text line-height and the mini toggle control height) —
-    /// shorter than the slot, so it centres inside it safely.
-    static var utilitySlotHeight: CGFloat {
-        let font = NSFont.systemFont(ofSize: 11)
-        let fontLineHeight = ceil(font.ascender - font.descender + font.leading)
-        let verticalPadding: CGFloat = 6
-        return fontLineHeight + verticalPadding * 2
-    }
+    /// Height of the utility slot (footer row 2) — forwarded from
+    /// `OverlayLayoutMetrics.utilitySlotHeight`.
+    static var utilitySlotHeight: CGFloat { OverlayLayoutMetrics.utilitySlotHeight }
 
-    /// Floor for the shared center well — the SINGLE source of vertical
-    /// flex in the template. It must be tall enough to hold the TALLEST
-    /// single-line interior any state renders so the divider directly
-    /// below the well lands at the same Y in every state. The tallest is
-    /// the empty-cleaning interior: the listening icon
-    /// (contentWellMinHeight) + the VStack(spacing: 6) gap + the status
-    /// line (BlinkingDots / 12pt text). Capture (icon only) and review
-    /// (single-line text) both reserve up to this height, so the well is
-    /// a constant-height slot for single-line dictation and only its
-    /// interior swaps.
-    ///
-    /// Derived from font metrics (not hardcoded) so it tracks the status
-    /// line's real rendered height if the system font metrics shift.
-    static var wellMinHeight: CGFloat {
-        let statusFont = NSFont.systemFont(ofSize: 12)
-        let statusLineHeight = ceil(statusFont.ascender - statusFont.descender + statusFont.leading)
-        let vstackSpacing: CGFloat = 6
-        return contentWellMinHeight + vstackSpacing + statusLineHeight
-    }
+    /// Floor for the shared center well — forwarded from
+    /// `OverlayLayoutMetrics.wellMinHeight`.
+    static var wellMinHeight: CGFloat { OverlayLayoutMetrics.wellMinHeight }
 
     /// The single flexible center element of the shared template. Wraps
     /// the existing `contentArea` (which owns the scroll-threshold switch
@@ -2020,30 +2053,12 @@ private struct OverlayContent: View {
         // review layout firing right after a fresh capture show).
         .background(
             GeometryReader { geom in
-                // TEMP-DIAG: build a counts/flags-only snapshot of every
-                // layout-driving input alongside this measurement so we
-                // can ground-truth the 218→186 capture settle. No content.
-                let diagDebug: String = {
-                    let banner = model.errorMessage ?? model.permissionPrompt
-                    return "txt=\(model.text.count) refs=\(model.references.count) " +
-                        "compose=\(model.composeState) chips=\(presetChips.count) " +
-                        "applied=\(model.appliedPresetName != nil) transform=\(model.activeTransformName != nil) " +
-                        "cntH=\(Int(measuredContentHeight)) fail=\(model.cleanupFailureMessage != nil) " +
-                        "dl=\(model.downloadProgress != nil) mic=\(model.microphoneName != nil) " +
-                        "target=\(model.pasteTarget != nil) learnOn=\(learnFeatureEnabled) " +
-                        "learnJust=\(learnJustEnabled) dismissed=\(learnBannerDismissed) " +
-                        "banner=\(banner != nil) isKey=\(model.isKey) " +
-                        "picker=\(model.pickedModelOverride != nil) " +
-                        "spaceArmed=\(model.spaceArmedDuringHold) " +
-                        "refWin=\(model.referenceWindowsEnabled)"
-                }()
                 Color.clear
                     .preference(
                         key: OverlayBodyHeightKey.self,
                         value: OverlayBodyMeasurement(
                             height: geom.size.height,
-                            state: model.state,
-                            debug: diagDebug
+                            state: model.state
                         )
                     )
             }
