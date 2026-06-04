@@ -1288,6 +1288,27 @@ private struct OverlayContent: View {
     ///   Total icon block height: 42 + 4 = 46pt
     static let contentWellMinHeight: CGFloat = 46
 
+    /// Invisible spacer that reserves the same vertical footprint the
+    /// real presetRow strip occupies in `.awaitingAccept`. Rendered at
+    /// the bottom of the content view in `.capturing`, `.cleaning`, and
+    /// `.refining` so the fixed-footer region contributes identical
+    /// height throughout the whole dictation cycle when presets are
+    /// defined — eliminating the visible jump as the overlay transitions
+    /// into and out of the review state. Produces `EmptyView` when no
+    /// presets are configured so there is no overhead for users without
+    /// presets.
+    ///
+    /// The height mirrors the capture-state reservation formula:
+    ///   chipCapsuleHeight  — one chip row height (font-metric derived)
+    ///   + 8pt              — the VStack spacing that will appear above
+    ///                        presetRow in the body VStack at review
+    @ViewBuilder
+    private var chipStripReservation: some View {
+        if !presetChips.isEmpty {
+            Color.clear.frame(height: PresetChipMetrics.chipCapsuleHeight + 8)
+        }
+    }
+
     /// Warm "AI" gradient for the transform strip — anchored on the brand
     /// amber so the sizzle stays on-brand instead of introducing a foreign
     /// accent. Used by the sparkle glyph and chip borders.
@@ -2269,14 +2290,7 @@ private struct OverlayContent: View {
             VStack(spacing: 0) {
                 listeningIndicator(label: captureLabel)
                     .frame(minHeight: OverlayContent.contentWellMinHeight)
-                if !presetChips.isEmpty {
-                    // Reservation = chip capsule height + the VStack spacing
-                    // (8pt) that will appear above the presetRow at review.
-                    // Derived from PresetChipMetrics so it stays in sync with
-                    // the chip's actual rendered dimensions.
-                    let reservationHeight = PresetChipMetrics.chipCapsuleHeight + 8
-                    Color.clear.frame(height: reservationHeight)
-                }
+                chipStripReservation
             }
         case .cleaning:
             // minHeight = contentWellMinHeight so the text well occupies
@@ -2298,6 +2312,7 @@ private struct OverlayContent: View {
                         .font(.system(size: 12))
                         .foregroundColor(.secondary)
                 }
+                chipStripReservation
             }
             .frame(minHeight: OverlayContent.contentWellMinHeight, alignment: .topLeading)
         case .awaitingAccept:
@@ -2339,6 +2354,7 @@ private struct OverlayContent: View {
                     .opacity(0.55)
                 let refineHint = model.microphoneName.map { "listening for refinement on \($0)…" } ?? "listening for refinement…"
                 listeningIndicator(label: refineHint)
+                chipStripReservation
             }
         }
     }
