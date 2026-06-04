@@ -1766,11 +1766,11 @@ private struct OverlayContent: View {
     /// ONE template position shared by all dictation states, always
     /// occupying exactly `utilitySlotHeight` points:
     ///
-    ///   .capturing / latched compose — OverlayHintStrip (gesture hints:
+    ///   .capturing/.refining (live audio) — OverlayHintStrip (gesture hints:
     ///       "Space: attach a window · C: current window · P: open Parleq"
     ///       or the latched / armed variants). This is the tallest occupant
     ///       and establishes the slot constant.
-    ///   .cleaning / .refining       — Color.clear reservation (same height,
+    ///   .cleaning                   — Color.clear reservation (same height,
     ///       no visible content; preserves the card's bottom edge position).
     ///   .awaitingAccept             — learnLine when the nudge is eligible;
     ///       Color.clear reservation otherwise. learnLine fits within the
