@@ -139,6 +139,24 @@ public struct DictionaryEntry: Sendable, Equatable {
     }
 }
 
+/// A user-defined one-tap transform: `name` is the overlay chip label,
+/// `prompt` is the generalized refine instruction it runs ("Rewrite the
+/// text to be as concise as possible…"). Invoked two ways with the same
+/// stored prompt: tapped manually in the overlay (a refine pass on the
+/// shown text) or assigned as a per-app default (folded into that app's
+/// cleanup prompt — see SystemPrompts.transformHint).
+public struct TransformPreset: Sendable, Equatable, Identifiable {
+    public let id: String
+    public var name: String
+    public var prompt: String
+
+    public init(id: String = UUID().uuidString, name: String, prompt: String) {
+        self.id = id
+        self.name = name
+        self.prompt = prompt
+    }
+}
+
 public struct Config: Sendable {
     public var hotkeyBinding: String
     public var autoAcceptSeconds: TimeInterval
@@ -290,6 +308,14 @@ public struct Config: Sendable {
     /// the term before correcting. Fed to the LLM cleanup pass as a
     /// smart hint, not a forced-replace rule. Empty by default.
     public var customDictionary: [DictionaryEntry]
+    /// User-defined transform presets (overlay chips). Empty by default —
+    /// the feature is inert until the user creates one.
+    public var transformPresets: [TransformPreset]
+    /// Per-app default preset assignments: target app bundle ID → preset
+    /// id. When a dictation's paste target matches, that preset's prompt
+    /// is folded into the cleanup pass (one LLM call) and the overlay
+    /// shows "Styled with <name> · Undo".
+    public var presetAppDefaults: [String: String]
     /// Model to use when references are attached to a dictation.
     /// nil means "fall back to the cleanup model" — that's the setup
     /// wizard's "Same as cleanup" default and the legacy behavior for
@@ -377,6 +403,11 @@ public struct Config: Sendable {
     /// disable entirely.
     public var learnedCorrectionsRetentionHours: Int?
 
+    /// Master switch for transform presets. No Settings toggle (the
+    /// feature is inert with no presets defined); exists so MDM can pin
+    /// it off fleet-wide — chips hidden, per-app defaults not applied.
+    public var transformPresetsEnabled: Bool
+
     /// Keys whose effective values were sourced from MDM
     /// (/Library/Managed Preferences) rather than from the user's
     /// config file. Populated by Config.load(); never persisted to disk.
@@ -427,6 +458,8 @@ public struct Config: Sendable {
         audioInputDeviceUID: "",
         asrEndpoint: bundledASREndpoint,
         customDictionary: [],
+        transformPresets: [],
+        presetAppDefaults: [:],
         contextModel: nil,
         telemetryEnabled: false,
         referenceWindowsEnabled: true,
@@ -440,8 +473,13 @@ public struct Config: Sendable {
         learnFromCorrectionsEnabled: false,
         learnedCorrectionsMaxEntries: nil,
         learnedCorrectionsRetentionHours: nil,
+        transformPresetsEnabled: true,
         managedKeys: []
     )
+
+    /// Alias for `Config.default`. Provided so new code can use the
+    /// more natural name without colliding with the Swift keyword.
+    public static var defaults: Config { Config.default }
 
     public static func load() -> (config: Config, source: String) {
         let path = (NSHomeDirectory() as NSString).appendingPathComponent(".parleq/config.json")
