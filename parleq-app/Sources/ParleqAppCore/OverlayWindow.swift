@@ -1548,10 +1548,15 @@ private struct OverlayContent: View {
                     Image(systemName: "sparkles")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(OverlayContent.aiGradient)
-                    Text("Applying \(transform)…")
+                    Text("Applying \(transform)")
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
+                    // Animated dots instead of a static ellipsis: this row
+                    // REPLACES the anonymous cleaning…/refining… label (and
+                    // its BlinkingDots) during preset runs, so it carries
+                    // the perceived-liveness role too.
+                    BlinkingDots()
                     Spacer(minLength: 0)
                 }
             }
