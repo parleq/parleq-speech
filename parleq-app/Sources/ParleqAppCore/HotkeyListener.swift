@@ -126,6 +126,16 @@ public final class HotkeyListener {
     /// than a deliberate hold-then-hold-again sequence and slow
     /// enough to forgive a fumbled tap.
     private static let doubleTapWindow: TimeInterval = 0.3
+    /// Hold durations below this are keyboard/driver chatter, not human
+    /// taps; they must not arm the double-tap window. See handle(event:).
+    /// An intentional double-tap's first tap is 50–150 ms, well above
+    /// this threshold. Observed chatter is ~0 ms (down+up pair emitted
+    /// by the keyboard driver within the same flagsChanged flush).
+    private static let chatterDebounce: TimeInterval = 0.04
+    /// A real double-tap has a humanly-possible release→press gap; a
+    /// re-press within this window is keyboard/driver chatter re-emitting
+    /// the modifier, not a person tapping twice. See handle(event:).
+    private static let minHumanTapGap: TimeInterval = 0.04
 
     /// Virtual keycode for the Space bar on US/QWERTY. macOS
     /// dispatches Space by keyCode regardless of layout, same as
@@ -144,6 +154,11 @@ public final class HotkeyListener {
     /// front window as a reference. Same hold-threshold treatment as
     /// P so a brief Option-C still types ç.
     private static let cKeyCode: Int64 = 0x08
+
+    /// Timing-only gesture-classifier trace; opt-in like PARLEQ_VOCAB_TRACE —
+    /// see the chatter/double-tap field bug. Env is launch-stable; read once.
+    private static let hotkeyTrace: Bool =
+        ProcessInfo.processInfo.environment["PARLEQ_HOTKEY_TRACE"] == "1"
 
     private let binding: HotkeyBinding
     private let onKeyDown: (HotkeyDownEvent) -> Void
@@ -319,7 +334,9 @@ public final class HotkeyListener {
         // no dispatch needed.
         if isDown {
             let now = Date().timeIntervalSinceReferenceDate
-            let isDoubleTap = (now - lastKeyUpAt) < HotkeyListener.doubleTapWindow
+            let gap = now - lastKeyUpAt
+            let isDoubleTap = gap < HotkeyListener.doubleTapWindow
+                && gap >= HotkeyListener.minHumanTapGap
             // maskShift covers both left and right Shift.
             let isShiftHeld = event.flags.contains(.maskShift)
             // Reset the per-hold space + P flags at every fresh
@@ -331,9 +348,38 @@ public final class HotkeyListener {
             // Record the hold-start time for the P-gesture's
             // hold-threshold gate (see pHoldThreshold).
             keyDownAt = now
+            if HotkeyListener.hotkeyTrace {
+                let gapText = lastKeyUpAt == 0 ? "first" : "\(Int(gap * 1000))ms"
+                FileHandle.standardError.write(
+                    "[parleq] hotkey down (gap=\(gapText), doubleTap=\(isDoubleTap))\n"
+                        .data(using: .utf8) ?? Data()
+                )
+            }
             onKeyDown(HotkeyDownEvent(isDoubleTapHold: isDoubleTap, isShiftHeld: isShiftHeld))
         } else {
-            lastKeyUpAt = Date().timeIntervalSinceReferenceDate
+            let upNow = Date().timeIntervalSinceReferenceDate
+            // Debounce: a sub-40 ms "hold" is physically impossible — it's
+            // modifier-flag chatter from the keyboard/driver (observed as
+            // phantom 0.00 s captures in the log, 87 occurrences). Let the
+            // up flow through so the phantom capture aborts cleanly, but
+            // DON'T arm the double-tap window — otherwise the user's real
+            // press milliseconds later mis-classifies as a double-tap-hold
+            // and silently enters quick mode (no review overlay).
+            // keyDownAt is 0 on first ever event, so upNow - 0 is a large
+            // positive number — the threshold is comfortably passed and
+            // the window arms normally, which is the correct behaviour.
+            let holdDuration = upNow - keyDownAt
+            let armsDoubleTap = holdDuration >= HotkeyListener.chatterDebounce
+            if armsDoubleTap {
+                lastKeyUpAt = upNow
+            }
+            if HotkeyListener.hotkeyTrace {
+                let heldMs = Int(holdDuration * 1000)
+                FileHandle.standardError.write(
+                    "[parleq] hotkey up (held=\(heldMs)ms, armsDoubleTap=\(armsDoubleTap))\n"
+                        .data(using: .utf8) ?? Data()
+                )
+            }
             let upEvent = HotkeyUpEvent(spaceWasPressedDuringHold: spacePressedThisHold)
             // Defensive reset on emit — anything that happens after
             // this point belongs to a new hold cycle.

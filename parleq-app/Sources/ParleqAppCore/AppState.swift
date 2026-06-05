@@ -221,6 +221,43 @@ public final class AppState {
     /// and cleared in closeAndReset().
     private var lastRawTranscript: String = ""
 
+    /// The per-app default preset folded into the CURRENT dictation's
+    /// cleanup, if any. Drives the overlay chip, is reused by the
+    /// model-switch recleanup so styling survives a provider swap, and
+    /// is cleared per dictation and by the style-undo action (wired in a later task).
+    private var appliedPreset: TransformPreset?
+
+    /// The per-app default preset resolved for the CURRENT dictation,
+    /// independent of whether the cleanup that would have applied it
+    /// succeeded. `appliedPreset` tracks what the on-screen text actually
+    /// reflects (cleared on every fallback render); this tracks what the
+    /// user configured for the target app, so a model-switch re-run after
+    /// a failed first cleanup (e.g. image refs on a non-vision model)
+    /// still applies the intended styling. Cleared per dictation and
+    /// whenever a successful refine / manual transform / style-undo
+    /// supersedes the default's claim on this dictation.
+    private var intendedDefaultPreset: TransformPreset?
+
+    /// Raw ASR transcript of the dictation that `appliedPreset` styled.
+    /// `undoStyle()` replays plain cleanup from THIS snapshot — never
+    /// from `lastRawTranscript`, which every refine turn overwrites with
+    /// the refine utterance. Without the snapshot, an Undo after any
+    /// refine attempt (even a failed one, which keeps the chip) would
+    /// "clean" the spoken edit instruction and replace the reviewed
+    /// text with the wrong content. Set/cleared in lockstep with
+    /// `appliedPreset`.
+    private var styledRawTranscript: String = ""
+
+    /// References (post-degradation, exactly as sent) and destination
+    /// label of the cleanup call that `appliedPreset` styled. undoStyle()
+    /// replays against THESE, not the overlay's current references — if
+    /// the user attaches/removes references after the styled result
+    /// appears, Undo must still produce the un-styled version of the SAME
+    /// dictation-with-context, not a re-generation against new context.
+    /// Set/cleared in lockstep with `appliedPreset`/`styledRawTranscript`.
+    private var styledReferences: [Reference] = []
+    private var styledPasteDestLabel: String?
+
     // 0.14.0 PR 4 (#219): per-dictation timing capture for the Stats
     // section in PR 5. All three reset on every fresh capture; ASR
     // / LLM latencies are populated by the cleanup pipeline as it
@@ -496,6 +533,8 @@ public final class AppState {
         overlay.onSwitchToVisionModelAndRecleanup = { [weak self] id in
             self?.switchModelAndRecleanup(id)
         }
+        overlay.onRunPreset = { [weak self] id in self?.runPreset(id: id) }
+        overlay.onUndoStyle = { [weak self] in self?.undoStyle() }
         // Wire the overlay's async file-pick into AppState's pending-
         // capture bookkeeping. Submit (hotkeyUp) and accept() both
         // wait on / cancel pendingCaptureTasks; without this, an
@@ -1947,6 +1986,13 @@ public final class AppState {
         chosenDestination = nil
         currentText = ""
         lastRawTranscript = ""
+        appliedPreset = nil
+        intendedDefaultPreset = nil
+        styledRawTranscript = ""
+        styledReferences = []
+        styledPasteDestLabel = nil
+        overlay.model.appliedPresetName = nil
+        overlay.model.activeTransformName = nil
         lastCleanupFailed = false
         // 0.14.0 PR 4 (#219): clear last-pass timings so a previous
         // dictation's measurements don't leak into this entry if
@@ -2346,6 +2392,21 @@ public final class AppState {
                         self?.log("imageReferenceEnabled=false: image refs degraded to text for prompt-building")
                     }
                 }
+                // Per-app default preset: resolved on fresh cleanup turns
+                // only. Refine turns never fold a transform (the text being
+                // refined is already styled), and a successful refine CLEARS
+                // the styled provenance below — so nil here.
+                let defaultPreset: TransformPreset? = asRefine
+                    ? nil
+                    : loadedConfig.presetForApp(targetBundleID)
+                // Hoisted so the styled-provenance snapshot below records
+                // the SAME label this call was made with.
+                let pasteDestLabel: String? = self?.overlay.model.pasteTarget.map { dest in
+                    if let title = dest.windowTitle, !title.isEmpty {
+                        return "\(dest.appName) — \(title)"
+                    }
+                    return dest.appName
+                }
                 let outcome = await streamCleanupOrRefine(
                     llm: resolvedLLM,
                     overlay: overlay,
@@ -2356,12 +2417,8 @@ public final class AppState {
                     targetBundleID: targetBundleID,
                     customDictionary: dictionary,
                     references: effectiveRefs,
-                    pasteDestinationLabel: self?.overlay.model.pasteTarget.map { dest in
-                        if let title = dest.windowTitle, !title.isEmpty {
-                            return "\(dest.appName) — \(title)"
-                        }
-                        return dest.appName
-                    }
+                    pasteDestinationLabel: pasteDestLabel,
+                    transform: asRefine ? nil : defaultPreset?.prompt
                 )
                 if Task.isCancelled { return }
 
@@ -2371,11 +2428,51 @@ public final class AppState {
                 // LLM ran (no-LLM-configured / empty-transcript).
                 self?.lastLLMLatencyMs = outcome.llmLatencyMs
                 self?.applyResult(outcome.text, cleanupFailureMessage: outcome.failureMessage)
+                if !asRefine {
+                    // "Styled" requires the LLM to have actually used its output —
+                    // usedLLMOutput is false on every fallback path (no-LLM-configured,
+                    // empty-transcript, empty-stream, cancellation, error) so the chip
+                    // is never shown on unstyled raw text.
+                    let applied = outcome.usedLLMOutput ? defaultPreset : nil
+                    self?.appliedPreset = applied
+                    self?.overlay.model.appliedPresetName = applied?.name
+                    // Snapshot the dictation the style was applied to — plus
+                    // the references and destination label of THIS call — so
+                    // undoStyle() can replay plain cleanup of the same
+                    // dictation-with-context even after later refine turns
+                    // overwrite lastRawTranscript or the user changes the
+                    // attached references during review.
+                    self?.styledRawTranscript = applied != nil ? asrResult.text : ""
+                    self?.styledReferences = applied != nil ? effectiveRefs : []
+                    self?.styledPasteDestLabel = applied != nil ? pasteDestLabel : nil
+                    // The INTENDED default survives a failed run, so the
+                    // model-switch re-run (e.g. after an image-refs-on-
+                    // non-vision-model failure) can still apply it.
+                    self?.intendedDefaultPreset = defaultPreset
+                } else if outcome.usedLLMOutput {
+                    // A voice refine supersedes the styled provenance, same
+                    // rule as a manual chip tap (see runPreset): the text is
+                    // no longer just "Styled with X". Clear the stash + chip.
+                    // On refine FAILURE the prior (still-styled) text is kept,
+                    // so the chip stays — and its Undo stays faithful, because
+                    // undoStyle replays from styledRawTranscript, not the
+                    // lastRawTranscript this refine turn overwrote.
+                    self?.appliedPreset = nil
+                    self?.intendedDefaultPreset = nil
+                    self?.styledRawTranscript = ""
+                    self?.styledReferences = []
+                    self?.styledPasteDestLabel = nil
+                    self?.overlay.model.appliedPresetName = nil
+                }
                 let learnEnabled = self?.captureCorrectionSignals(
                     asRefine: asRefine,
                     rawInstruction: asrResult.text,
                     before: priorText,
-                    outcome: outcome
+                    outcome: outcome,
+                    // Same condition that set the "Styled with X" chip
+                    // above: the transform only shaped outcome.text when
+                    // a default resolved AND the LLM output was used.
+                    transformApplied: !asRefine && defaultPreset != nil && outcome.usedLLMOutput
                 ) ?? false
                 // Only spawn the off-path analysis trigger when the
                 // feature is on — otherwise we'd allocate a detached
@@ -2416,12 +2513,23 @@ public final class AppState {
     /// the feature is enabled, so the caller can decide whether to spawn
     /// the off-path analysis trigger (no point allocating a Task when
     /// the feature is off).
+    ///
+    /// `transformApplied` — true when a per-app default preset's
+    /// transform actually shaped `outcome.text`. Spell-out capture is
+    /// suppressed then: the styled line ("Translate to Spanish",
+    /// "Bulletize", …) may no longer contain the spelled term, or may
+    /// carry transform artifacts, either of which would feed the
+    /// learning analyzer bad context for dictionary proposals. Refine
+    /// records are unaffected (a refine is a faithful capture of that
+    /// edit whatever the text's styling, and refine turns never fold
+    /// a transform).
     @discardableResult
     private func captureCorrectionSignals(
         asRefine: Bool,
         rawInstruction: String,
         before: String,
-        outcome: CleanupOutcome
+        outcome: CleanupOutcome,
+        transformApplied: Bool = false
     ) -> Bool {
         let enabled = Config.load().config.learnFromCorrectionsEnabled
         guard enabled else { return false }
@@ -2435,7 +2543,7 @@ public final class AppState {
             journal.record(CorrectionRecord(
                 kind: .refine, instruction: instruction, before: before, after: outcome.text
             ), enabled: enabled)
-        } else {
+        } else if !transformApplied {
             for term in SpellOutDetector.candidates(in: rawInstruction) {
                 journal.record(CorrectionRecord(
                     kind: .spellout, after: outcome.text, term: term
@@ -2540,6 +2648,13 @@ public final class AppState {
         helpOverlay.hide()
         currentText = ""
         lastRawTranscript = ""
+        appliedPreset = nil
+        intendedDefaultPreset = nil
+        styledRawTranscript = ""
+        styledReferences = []
+        styledPasteDestLabel = nil
+        overlay.model.appliedPresetName = nil
+        overlay.model.activeTransformName = nil
         lastCleanupFailed = false
         pasteTarget = nil
         quickMode = false
@@ -2760,10 +2875,17 @@ public final class AppState {
     /// provider is wired), log a warning and fall back to the best
     /// available provider rather than silently returning `llm` whose
     /// baked-in model is NOT the override.
-    private func llmForInvocation() -> (any LLMProvider)? {
+    /// `hasReferences` — pass an explicit value when the invocation's
+    /// references differ from the overlay's CURRENT ones (undoStyle
+    /// replays against snapshot references; resolving the tier from the
+    /// live overlay there could route saved image parts at the plain
+    /// cleanup model after the user removed the references). nil (the
+    /// default) reads the live overlay state, the right answer for
+    /// every other caller.
+    private func llmForInvocation(hasReferences: Bool? = nil) -> (any LLMProvider)? {
         let config = Config.load().config
         let resolved = config.modelForInvocation(
-            hasReferences: !overlay.model.references.isEmpty,
+            hasReferences: hasReferences ?? !overlay.model.references.isEmpty,
             override: overlay.model.pickedModelOverride
         )
         let cleanupId = ModelIdentifier(provider: config.llmProvider, model: config.llmModel)
@@ -2950,6 +3072,26 @@ public final class AppState {
                 return degraded
             }
         }
+        // Use the INTENDED per-app default, not appliedPreset: when the
+        // first cleanup fell back (e.g. image refs on a non-vision model
+        // — exactly the case the Switch button exists for), appliedPreset
+        // was cleared with the fallback render, but the user's configured
+        // default should still style the re-run. Re-check the feature
+        // gate against the freshly-loaded config: intendedDefaultPreset
+        // was resolved when the dictation started, and MDM may have
+        // disabled presets since — the in-memory intent must not bypass
+        // presetForApp's transformPresetsEnabled guard.
+        let intendedPreset = recleanConfig.transformPresetsEnabled
+            ? intendedDefaultPreset
+            : nil
+        // Hoisted so the styled-provenance snapshot below records the
+        // SAME label this re-run was made with.
+        let pasteDestLabel: String? = overlay.model.pasteTarget.map { dest in
+            if let title = dest.windowTitle, !title.isEmpty {
+                return "\(dest.appName) — \(title)"
+            }
+            return dest.appName
+        }
         inFlightTask = Task { @MainActor [weak self] in
             let outcome = await streamCleanupOrRefine(
                 llm: resolvedLLM,
@@ -2961,12 +3103,8 @@ public final class AppState {
                 targetBundleID: targetBundleID,
                 customDictionary: dictionary,
                 references: effectiveRefs,
-                pasteDestinationLabel: self?.overlay.model.pasteTarget.map { dest in
-                    if let title = dest.windowTitle, !title.isEmpty {
-                        return "\(dest.appName) — \(title)"
-                    }
-                    return dest.appName
-                }
+                pasteDestinationLabel: pasteDestLabel,
+                transform: intendedPreset?.prompt
             )
             if Task.isCancelled { return }
             // 0.14.0 PR 4 (#219): the model-switch path runs its
@@ -2975,6 +3113,195 @@ public final class AppState {
             // actually accepted, not the original pre-switch run.
             self?.lastLLMLatencyMs = outcome.llmLatencyMs
             self?.applyResult(outcome.text, cleanupFailureMessage: outcome.failureMessage)
+            if outcome.usedLLMOutput {
+                // Same rule as the primary cleanup path: a successful
+                // styled run sets the chip + the snapshots Undo replays
+                // from (the transcript/references/label THIS run used).
+                // With no intended default everything resolves to
+                // nil/empty — clearing any stale claim.
+                self?.appliedPreset = intendedPreset
+                self?.overlay.model.appliedPresetName = intendedPreset?.name
+                self?.styledRawTranscript = intendedPreset != nil ? rawTranscript : ""
+                self?.styledReferences = intendedPreset != nil ? effectiveRefs : []
+                self?.styledPasteDestLabel = intendedPreset != nil ? pasteDestLabel : nil
+            } else {
+                // The fallback render isn't styled — don't leave a stale
+                // "Styled with X" claim on it. Mirrors the main path: only
+                // a successful non-empty LLM output sets usedLLMOutput=true,
+                // so every error/empty-stream/no-LLM path clears the chip.
+                // intendedDefaultPreset is deliberately KEPT — another
+                // switch attempt should still try to style.
+                self?.appliedPreset = nil
+                self?.styledRawTranscript = ""
+                self?.styledReferences = []
+                self?.styledPasteDestLabel = nil
+                self?.overlay.model.appliedPresetName = nil
+            }
+        }
+    }
+
+    /// Run a transform preset against the current review text — the
+    /// preset's stored prompt occupies the same instruction slot a spoken
+    /// refine uses, through the same pipeline. Deliberately does NOT call
+    /// captureCorrectionSignals: a canned preset instruction is not a
+    /// correction signal and would pollute term-learning analysis.
+    @MainActor
+    func runPreset(id: String) {
+        guard phase == .awaitingAccept else { return }
+        let (config, _) = Config.load()
+        guard config.transformPresetsEnabled,
+              let preset = config.transformPresets.first(where: { $0.id == id })
+        else { return }
+        let current = overlay.model.text
+        guard !current.isEmpty else { return }
+        let dictionary = config.customDictionaryEnabled ? config.customDictionary : []
+        // hasReferences: false — a preset tap is a plain-text refine of
+        // the SHOWN text (no reference parts are sent below), so resolve
+        // the cleanup tier even if references are still attached.
+        let resolvedLLM = llmForInvocation(hasReferences: false)
+        let targetBundleID = pasteTarget?.bundleID
+        // Cancel any lingering auto-accept timer so it doesn't fire
+        // mid-re-cleanup.
+        cancelAutoAcceptTimer()
+        // Surface the transform name while it streams so the overlay's
+        // cleaning state reads "Applying <name>…" instead of the
+        // anonymous indicator.
+        overlay.model.activeTransformName = preset.name
+        phase = .cleaning
+        // Defensive: the awaitingAccept guard means any prior task has
+        // completed, but cancel before reassigning anyway — matching
+        // the main capture path — so a dropped reference can never
+        // keep streaming.
+        inFlightTask?.cancel()
+        inFlightTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            // A manual preset tap is a refine pass on the SHOWN text, so
+            // references aren't needed — the text already reflects them.
+            let outcome = await streamCleanupOrRefine(
+                llm: resolvedLLM,
+                overlay: self.overlay,
+                useOverlay: true,
+                asRefine: true,
+                rawTranscript: preset.prompt,
+                priorText: current,
+                targetBundleID: targetBundleID,
+                customDictionary: dictionary
+            )
+            if Task.isCancelled {
+                // Clear the transform name on early-exit so a cancelled
+                // run never leaks the label into the next dictation.
+                self.overlay.model.activeTransformName = nil
+                return
+            }
+            self.lastLLMLatencyMs = outcome.llmLatencyMs
+            // Clear before applyResult so the status line disappears at
+            // the same moment the result text appears.
+            self.overlay.model.activeTransformName = nil
+            self.applyResult(outcome.text, cleanupFailureMessage: outcome.failureMessage)
+            if outcome.usedLLMOutput {
+                // A manual transform supersedes the auto-applied default's
+                // provenance — the text is no longer just "Styled with X".
+                // On failure the fallback IS the still-styled prior text,
+                // so the chip (and its Undo, replayed from the
+                // styledRawTranscript snapshot) stays truthful and kept.
+                self.appliedPreset = nil
+                self.intendedDefaultPreset = nil
+                self.styledRawTranscript = ""
+                self.styledReferences = []
+                self.styledPasteDestLabel = nil
+                self.overlay.model.appliedPresetName = nil
+            }
+        }
+    }
+
+    /// Undo a per-app default style: clear the stash + chip immediately,
+    /// then re-run PLAIN cleanup (no transform) from the styledRawTranscript
+    /// snapshot — the dictation the style was applied to. NOT from
+    /// lastRawTranscript: refine turns overwrite that with the refine
+    /// utterance, so it can hold the wrong text by the time Undo is
+    /// clicked (e.g. after a failed refine, which keeps the chip).
+    /// Mirrors switchModelAndRecleanup's reference handling
+    /// (same refs, same imageReferenceEnabled degradation, same destination
+    /// label) so reference-aware dictations undo faithfully — the result is
+    /// the un-styled version of the SAME dictation, not a plain re-run that
+    /// drops context.
+    @MainActor
+    func undoStyle() {
+        guard phase == .awaitingAccept, appliedPreset != nil else { return }
+        let raw = styledRawTranscript
+        // Replay against the SNAPSHOTS from the styled run — not the
+        // overlay's current references or target. If the user attached or
+        // removed references after the styled result appeared, Undo must
+        // still produce the un-styled version of the SAME
+        // dictation-with-context, not a re-generation against new context.
+        let snapshotRefs = styledReferences
+        let snapshotDestLabel = styledPasteDestLabel
+        // Re-align lastRawTranscript with the dictation this undo
+        // restores: a failed refine may have left it holding the spoken
+        // refine instruction, and a later model-switch re-clean reads it.
+        lastRawTranscript = raw
+        appliedPreset = nil
+        intendedDefaultPreset = nil
+        styledRawTranscript = ""
+        styledReferences = []
+        styledPasteDestLabel = nil
+        overlay.model.appliedPresetName = nil
+        guard !raw.isEmpty else { return }
+        let (config, _) = Config.load()
+        let dictionary = config.customDictionaryEnabled ? config.customDictionary : []
+        // Resolve the tier from the SNAPSHOT references, not the live
+        // overlay — the user may have removed references before Undo,
+        // and the replay still carries the snapshot reference parts.
+        let resolvedLLM = llmForInvocation(hasReferences: !snapshotRefs.isEmpty)
+        let targetBundleID = pasteTarget?.bundleID
+        // The snapshot refs are post-degradation as sent, but re-apply the
+        // same image-reference degradation as switchModelAndRecleanup and
+        // the primary capture path (idempotent on already-degraded refs).
+        // Two conditions force degradation:
+        //   1. imageReferenceEnabled is false (global off-switch).
+        //   2. userDowngradedConflict is true — the user chose "Downgrade &
+        //      send" to acknowledge that image parts would be dropped on their
+        //      non-vision model. Undo re-runs cleanup on the SAME model, so it
+        //      must reproduce the same text-only treatment (the flag may have
+        //      been set AFTER the styled run, e.g. via a model switch).
+        let effectiveRefs: [Reference]
+        let shouldDegradeImageRefs = !config.imageReferenceEnabled
+            || overlay.model.userDowngradedConflict
+        if shouldDegradeImageRefs {
+            effectiveRefs = snapshotRefs.map { ref in
+                guard ref.captureMode == .image else { return ref }
+                var degraded = ref
+                degraded.captureMode = .text
+                return degraded
+            }
+        } else {
+            effectiveRefs = snapshotRefs
+        }
+        let pasteDestLabel = snapshotDestLabel
+        // Cancel any lingering auto-accept timer so it doesn't fire
+        // mid-re-cleanup.
+        cancelAutoAcceptTimer()
+        phase = .cleaning
+        // Defensive: cancel before reassigning (matching the main
+        // capture path) so a dropped reference can never keep streaming.
+        inFlightTask?.cancel()
+        inFlightTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            let outcome = await streamCleanupOrRefine(
+                llm: resolvedLLM,
+                overlay: self.overlay,
+                useOverlay: true,
+                asRefine: false,
+                rawTranscript: raw,
+                priorText: "",
+                targetBundleID: targetBundleID,
+                customDictionary: dictionary,
+                references: effectiveRefs,
+                pasteDestinationLabel: pasteDestLabel
+            )
+            if Task.isCancelled { return }
+            self.lastLLMLatencyMs = outcome.llmLatencyMs
+            self.applyResult(outcome.text, cleanupFailureMessage: outcome.failureMessage)
         }
     }
 
@@ -3069,11 +3396,20 @@ struct CleanupOutcome {
     /// into TranscriptEntry by AppState so the Stats section can
     /// surface latency averages.
     public let llmLatencyMs: Int?
+    /// True ONLY when the assembled LLM output was actually used as
+    /// the result text (i.e. the stream ran, produced a non-empty
+    /// string, and that string is `text`). False at every fallback
+    /// return site: no-LLM-configured, empty-transcript, empty-stream,
+    /// cancellation, and error. Guards the "Styled with …" chip so an
+    /// empty-stream fallback (which still carries llmLatencyMs from the
+    /// completed-but-empty stream) does not incorrectly claim styling.
+    public let usedLLMOutput: Bool
 
-    init(text: String, failureMessage: String?, llmLatencyMs: Int? = nil) {
+    init(text: String, failureMessage: String?, llmLatencyMs: Int? = nil, usedLLMOutput: Bool = false) {
         self.text = text
         self.failureMessage = failureMessage
         self.llmLatencyMs = llmLatencyMs
+        self.usedLLMOutput = usedLLMOutput
     }
 }
 
@@ -3104,7 +3440,8 @@ private func streamCleanupOrRefine(
     targetBundleID: String? = nil,
     customDictionary: [DictionaryEntry] = [],
     references: [Reference] = [],
-    pasteDestinationLabel: String? = nil
+    pasteDestinationLabel: String? = nil,
+    transform: String? = nil
 ) async -> CleanupOutcome {
     let fallback = asRefine ? priorText : rawTranscript
     guard let llm = llm else {
@@ -3143,9 +3480,14 @@ private func streamCleanupOrRefine(
         // the dictionary hint when non-empty so the LLM can bias toward
         // the user's preferred spellings on reference-aware turns too.
         let dictHint = SystemPrompts.dictionaryHint(dictionary: customDictionary)
-        systemPrompt = dictHint.isEmpty
-            ? PromptBuilder.referenceAwareSystem
-            : PromptBuilder.referenceAwareSystem + "\n\n" + dictHint
+        // Reference-aware turns use the reference-specific transform
+        // wording — the plain transformHint references "the cleanup
+        // rules above", which don't exist in this system prompt.
+        let transformAddendum = asRefine ? "" : SystemPrompts.referenceTransformHint(transform)
+        var refSystem = PromptBuilder.referenceAwareSystem
+        if !dictHint.isEmpty { refSystem += "\n\n" + dictHint }
+        if !transformAddendum.isEmpty { refSystem += "\n\n" + transformAddendum }
+        systemPrompt = refSystem
         var firstTurn = PromptBuilder.buildFirstTurnMessage(
             references: references,
             destination: pasteDestinationLabel,
@@ -3178,7 +3520,7 @@ private func streamCleanupOrRefine(
         // instead of cleaning. The structural wrapper makes the
         // user message a meta-instruction containing the data,
         // rather than being mistakable for the data itself.
-        systemPrompt = SystemPrompts.cleanup(dictionary: customDictionary)
+        systemPrompt = SystemPrompts.cleanup(dictionary: customDictionary, transform: transform)
         messages = [LLMMessage(role: "user", content: "Transcript to clean up:\n\n\(rawTranscript)")]
     }
 
@@ -3250,7 +3592,7 @@ private func streamCleanupOrRefine(
             }
             return CleanupOutcome(text: fallback, failureMessage: nil, llmLatencyMs: latencyBox.value)
         }
-        return CleanupOutcome(text: final, failureMessage: nil, llmLatencyMs: latencyBox.value)
+        return CleanupOutcome(text: final, failureMessage: nil, llmLatencyMs: latencyBox.value, usedLLMOutput: true)
     } catch {
         // Short-circuit on cancellation. The outer Task sees
         // Task.isCancelled === true and skips applyResult, but

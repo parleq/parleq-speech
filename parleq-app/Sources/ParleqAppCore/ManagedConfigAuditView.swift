@@ -108,6 +108,9 @@ private func resolveAuditRow(key: String, config: Config, defaults: Config) -> (
     // Phase 9 — learn-from-corrections (opt-in feature + journal retention).
     case "learnFromCorrectionsEnabled":
         return formatBool(config.learnFromCorrectionsEnabled, managed: isManaged, defaultVal: defaults.learnFromCorrectionsEnabled)
+    // Transform presets feature toggle.
+    case "transformPresetsEnabled":
+        return formatBool(config.transformPresetsEnabled, managed: isManaged, defaultVal: defaults.transformPresetsEnabled)
     case "learnedCorrectionsMaxEntries":
         return formatOptionalRetentionInt(
             config.learnedCorrectionsMaxEntries,

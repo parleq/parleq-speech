@@ -101,6 +101,7 @@ parleq-speech/
 | `OverlayWindow.swift` | Borderless `NSPanel` + SwiftUI. Captures Enter/Esc without stealing focus. |
 | `Paster.swift` | Pasteboard snapshot → set → activate target → simulate Cmd-V → restore. |
 | `SettingsWindow.swift` | SwiftUI two-pane Settings. Sidebar with sections (Hotkey, Audio, Behavior, Paste, Cleanup, Dictionary, Usage, Advanced); per-section content cards. Always-center window, brand amber accent. |
+| `PresetsSettingsView.swift` | "Presets" Settings pane: transform-preset list editor (name + prompt) + per-app default mapping. A preset is a canned refine instruction; an app default folds into that app's cleanup prompt (one LLM call) with a "Styled with X · Undo" chip in the overlay. |
 | `SetupWizard.swift` | First-run / re-runnable setup wizard. Step-pill progress indicator at top, per-provider configuration cards, matched palette to Settings. |
 | `MenuBar.swift` | Status-item menu (Microphone submenu, Settings, Run Setup, Open at Login, Recent Dictations, Quit). Microphone submenu rebuilds on open; selection posts `parleqMicrophoneSelectionChanged` so Settings reflects it. |
 | `Config.swift` | `~/.parleq/config.json` loader/saver. |
@@ -154,6 +155,8 @@ These are non-obvious and worth flagging to anyone editing the codebase:
   "wizard":     { "completed": false },
   "paste":      { "trailing_space": true, "no_trailing_space_apps": [] },
   "dictionary": { "terms": [{ "term": "Parleq", "context": "voice dictation app", "aliases": ["parlay", "parlez"], "biasing": "asrAndLLM" }] },
+  "presets":    [{ "id": "…", "name": "Concise", "prompt": "Rewrite the text to be as concise as possible while preserving all key information." }],
+  "preset_app_defaults": { "com.apple.mail": "<preset id>" },
   "features":   { "learn_from_corrections_enabled": false,
                   "learned_corrections_max_entries": null,
                   "learned_corrections_retention_hours": null },
@@ -170,6 +173,7 @@ Schema is documented in source comments at the top of `Config.swift`. The Settin
 | `GEMINI_API_KEY` | Google AI key for Gemini provider. Resolved at app launch; Keychain takes precedence in Settings UI. |
 | `AWS_PROFILE` / `AWS_REGION` | Fallbacks when Settings AWS profile/region are empty. Won't work for Finder launches (sparse launchd env). |
 | `PARLEQ_VOCAB_TRACE=1` | Opt-in: restores per-replacement detail in the `LocalASR` `[vocab]` log lines (`replaced 'X' → 'Y' [reason]`). Off by default for compliance. |
+| `PARLEQ_HOTKEY_TRACE=1` | Opt-in: hotkey gesture-classifier timing trace (gap/held ms) to stderr. Off by default. |
 | `PARLEQ_BEDROCK_TRACE=1` | Opt-in: enables Soto's debug logger to stderr. Off by default. |
 
 ## Commit conventions

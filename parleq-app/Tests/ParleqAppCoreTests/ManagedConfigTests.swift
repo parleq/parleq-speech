@@ -498,14 +498,18 @@ final class ManagedConfigTests: XCTestCase {
 
     // MARK: - 13. ManagedConfig.allKeys — single source of truth
 
-    func test_allKeys_count_is_thirtyfive() {
+    func test_allKeys_count_is_thirtysix() {
         // Phase 1 (8) + Phase 2 (8) + Phase 3 (2) + Phase 4 (3)
         // + Phase 7 (9 incl. vertexAuthMode) + Phase 8 (2 transcript-history)
-        // + Phase 9 (3 learn-from-corrections) = 35.
-        // Bumping this count requires a coordinated change in
-        // ManagedConfig.allKeys + the audit-row resolution + the docs page.
-        XCTAssertEqual(ManagedConfig.allKeys.count, 35,
-                       "ManagedConfig.allKeys must contain exactly 35 managed-eligible keys")
+        // + Phase 9 (3 learn-from-corrections) + transform-presets (1) = 36.
+        // If this fails, a key was added or removed — update the docs table
+        // (web managed-configuration page) and this count together.
+        XCTAssertEqual(ManagedConfig.allKeys.count, 36,
+                       "ManagedConfig.allKeys must contain exactly 36 managed-eligible keys")
+    }
+
+    func test_allKeys_contains_transformPresetsEnabled() {
+        XCTAssertTrue(ManagedConfig.allKeys.contains("transformPresetsEnabled"))
     }
 
     func test_allKeys_contains_phase9_learn_keys() {
@@ -1224,5 +1228,23 @@ final class ManagedConfigTests: XCTestCase {
         } catch {
             XCTFail("Expected LLMError, got \(error)")
         }
+    }
+
+    // MARK: - transformPresetsEnabled audit row
+
+    func test_auditRow_transformPresetsEnabled_does_not_render_as_unknown() {
+        // buildAuditRows() delegates to resolveAuditRow which previously
+        // fell through to the `default: "(unknown key)"` branch for this key.
+        // Confirm the dedicated case is now wired up.
+        let rows = buildAuditRows()
+        guard let row = rows.first(where: { $0.key == "transformPresetsEnabled" }) else {
+            XCTFail("transformPresetsEnabled must appear in buildAuditRows() output")
+            return
+        }
+        XCTAssertNotEqual(row.displayValue, "(unknown key)",
+                          "transformPresetsEnabled must not render as (unknown key)")
+        // The default value is true; without MDM override it should render "true".
+        XCTAssertFalse(row.displayValue.isEmpty,
+                       "transformPresetsEnabled audit row must have a non-empty display value")
     }
 }

@@ -143,6 +143,11 @@ final class SettingsModel: ObservableObject {
     /// on each load.
     @Published var dictionaryEntries: [DictionaryEntryRow]
 
+    /// Editable copy of Config.transformPresets.
+    @Published var transformPresets: [TransformPreset]
+    /// Editable copy of Config.presetAppDefaults (bundleID → preset id).
+    @Published var presetAppDefaults: [String: String]
+
     /// Lowercased terms present in the dictionary when this model last
     /// loaded from disk. Used by `save()` to tell a learned term that was
     /// auto-applied *while this window was open* (must be preserved on
@@ -319,6 +324,8 @@ final class SettingsModel: ObservableObject {
         self.loadedDictionaryByTerm = Dictionary(
             config.customDictionary.map { ($0.term.lowercased(), $0) },
             uniquingKeysWith: { first, _ in first })
+        self.transformPresets = config.transformPresets
+        self.presetAppDefaults = config.presetAppDefaults
         self.geminiKeyIsSet = KeychainStore.hasGeminiAPIKey
         self.contextModel = config.contextModel
         // Tier fields — derived from the flat config fields.
@@ -425,6 +432,8 @@ final class SettingsModel: ObservableObject {
         self.loadedDictionaryByTerm = Dictionary(
             config.customDictionary.map { ($0.term.lowercased(), $0) },
             uniquingKeysWith: { first, _ in first })
+        self.transformPresets = config.transformPresets
+        self.presetAppDefaults = config.presetAppDefaults
         self.geminiKeyIsSet = KeychainStore.hasGeminiAPIKey
         self.contextModel = config.contextModel
         // Re-derive tier fields from the reloaded config.
@@ -541,51 +550,32 @@ final class SettingsModel: ObservableObject {
         c.azureAuthMode = ["apiKey", "azureAd"].contains(azureAuthMode) ? azureAuthMode : "apiKey"
         c.asrEndpoint = asrEndpoint.trimmingCharacters(in: .whitespaces)
         if c.asrEndpoint.isEmpty { c.asrEndpoint = Config.bundledASREndpoint }
-        c.customDictionary = dictionaryEntries.compactMap { row -> DictionaryEntry? in
-            let term = row.term.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !term.isEmpty else { return nil }
-            let ctx = row.context.trimmingCharacters(in: .whitespacesAndNewlines)
-            let aliases = row.aliases
-                .split(separator: ",", omittingEmptySubsequences: true)
-                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                .filter { !$0.isEmpty }
-            let built = DictionaryEntry(
-                term: term,
-                context: ctx.isEmpty ? nil : ctx,
-                aliases: aliases,
-                biasing: row.biasing,
-                source: row.source
-            )
-            // If the user hasn't touched this row (it still equals what we
-            // loaded), defer to whatever the learn feature wrote on disk while
-            // the window was open — the only other writer of the dictionary:
-            //   • modified on disk (learned auto-apply or accepted suggestion)
-            //     → keep the newer on-disk version, not the stale row;
-            //   • absent from disk (retired/reverted via the Learned view)
-            //     → honor the deletion by dropping the row (return nil).
-            // An edited row always wins (the user is actively changing it).
-            let key = term.lowercased()
-            if let loaded = loadedDictionaryByTerm[key], built == loaded {
-                if let onDisk = existing.customDictionary.first(where: { $0.term.lowercased() == key }) {
-                    return onDisk != loaded ? onDisk : built
-                }
-                return nil  // externally deleted while open — stay deleted
-            }
-            return built
+        let reconciled = Self.reconcileDictionary(
+            editorRows: dictionaryEntries,
+            loadedByTerm: loadedDictionaryByTerm,
+            loadedTerms: loadedDictionaryTerms,
+            existing: existing.customDictionary
+        )
+        c.customDictionary = reconciled.toWrite
+        c.transformPresets = transformPresets.filter {
+            !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && !$0.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
-        // Preserve terms written to config.json by the learn feature *while
-        // this window was open* — auto-applied learned terms AND suggestions
-        // the user accepted (source .user). They're not in the editor's rows,
-        // so the rebuild above would silently drop them. We re-add an on-disk
-        // entry only when it's absent from the current rows AND wasn't present
-        // when this model loaded (so a term the user deliberately deleted in
-        // the editor stays deleted).
-        let editorTerms = Set(c.customDictionary.map { $0.term.lowercased() })
-        let externallyAddedEntries = existing.customDictionary.filter { entry in
-            !editorTerms.contains(entry.term.lowercased())
-                && !loadedDictionaryTerms.contains(entry.term.lowercased())
+        // Two-tier mapping filter:
+        // — DISK (c.presetAppDefaults): only keep mappings whose preset was
+        //   persisted in c.transformPresets — guarantees no dangling refs on
+        //   next load.
+        // — PUBLISHED (presetAppDefaults): keep mappings for ALL in-memory
+        //   presets, including ones transiently blank mid-retype, so clearing
+        //   a preset's name field temporarily doesn't lose its per-app default
+        //   in the UI; the mapping re-persists once the preset is valid again.
+        let persistedIDs = Set(c.transformPresets.map { $0.id })
+        let inMemoryIDs = Set(transformPresets.map { $0.id })
+        c.presetAppDefaults = presetAppDefaults.filter { persistedIDs.contains($0.value) }
+        let published = presetAppDefaults.filter { inMemoryIDs.contains($0.value) }
+        if presetAppDefaults != published {
+            presetAppDefaults = published
         }
-        c.customDictionary.append(contentsOf: externallyAddedEntries)
         // Context tier: nil when context == cleanup so the resolver
         // short-circuits cleanly (nil means "same as cleanup" in Config).
         let contextId = ModelIdentifier(provider: contextProvider, model: contextModelName.trimmingCharacters(in: .whitespaces))
@@ -611,6 +601,34 @@ final class SettingsModel: ObservableObject {
         c.managedKeys = managedKeys
         do {
             try Config.save(c)
+            // Refresh the load-time dictionary snapshot to the EDITOR-ROW
+            // portion of the state we just wrote. save() runs once per
+            // keystroke while a dictionary term is being edited
+            // (DictionaryRowView's .onChange → onChange → save). Without the
+            // refresh the snapshot stays frozen at the value the window
+            // loaded with, so the term THIS save just wrote to disk is — on
+            // the next keystroke's save — neither the current editor term
+            // nor in the frozen snapshot, and the resurrection filter in
+            // reconcileDictionary misclassifies it as "externally added" and
+            // re-appends it: each intermediate string the field passes
+            // through ("Sny", "Sn", …) leaks in as a separate entry. With
+            // the refresh, the edited row's previous state is in the
+            // snapshot and the filter rejects it.
+            //
+            // editorEntries, NOT toWrite: folding the merge's externally-
+            // added (LearnedStore) entries into the snapshot would make the
+            // next save silently DROP them — they have no editor rows, and
+            // once snapshot-known they'd no longer qualify as "external" to
+            // the filter that re-preserves them on every save.
+            //
+            // Untouched-row semantics stay consistent: `built == loaded`
+            // now compares against the just-saved state — exactly what the
+            // row still shows in the UI — so deferring to FUTURE external
+            // writes (and honoring external deletions) still works.
+            loadedDictionaryTerms = Set(reconciled.editorEntries.map { $0.term.lowercased() })
+            loadedDictionaryByTerm = Dictionary(
+                reconciled.editorEntries.map { ($0.term.lowercased(), $0) },
+                uniquingKeysWith: { first, _ in first })
             // 0.14.0 PR 6 (#221): push the new retention limits
             // into TranscriptHistory immediately so a save in
             // Settings → Privacy & Features takes effect without
@@ -642,6 +660,108 @@ final class SettingsModel: ObservableObject {
         text.split(whereSeparator: { ",\n".contains($0) })
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
+    }
+
+    /// Reconcile the editor's dictionary rows against the on-disk dictionary
+    /// to produce the term list to persist. Pure (no I/O) so it can be tested
+    /// directly without touching `~/.parleq`.
+    ///
+    /// Three inputs describe the world at save time:
+    ///   • `editorRows`   — the live UI rows (each rebuilt into a DictionaryEntry).
+    ///   • `loadedByTerm` / `loadedTerms` — the snapshot of the dictionary the
+    ///     model holds from its last successful load *or save* (see save()).
+    ///   • `existing`     — the dictionary currently on disk (re-read in save()).
+    ///
+    /// Two concerns are folded together here:
+    ///   1. Untouched-row defer-to-disk: a row the user hasn't edited (still
+    ///      equals its snapshot) yields to whatever the learn feature wrote on
+    ///      disk while the window was open — keep the newer on-disk version, or
+    ///      drop the row if it was externally deleted. An edited row always wins.
+    ///   2. Resurrection of externally-added terms: terms the learn feature
+    ///      added on disk while the window was open (not in the rows, not in the
+    ///      load-time snapshot) are re-appended so the rebuild doesn't drop them.
+    ///
+    /// The snapshot is the load-bearing input for #2: a term that is in the
+    /// snapshot is NOT treated as externally added. save() refreshes the
+    /// snapshot to the just-written state after every successful write, so a
+    /// term this model itself wrote on a prior keystroke is in the snapshot and
+    /// is correctly excluded — that's what stops intermediate keystroke states
+    /// from accumulating as separate entries.
+    /// Returns the merged list to write plus `editorEntries`: the BUILT
+    /// value of every non-empty editor row — i.e. what the UI rows hold,
+    /// NOT what was written for them. The caller must refresh its load-time
+    /// snapshot from `editorEntries` ONLY, for two reasons:
+    ///   • Not the externally-added entries the merge appended: folding
+    ///     those into the snapshot would make the NEXT save treat them as
+    ///     editor-known and silently drop them (they have no editor rows,
+    ///     and they'd no longer be "external" to the resurrection filter).
+    ///   • The BUILT value, not the written value: an untouched row that
+    ///     deferred to a newer on-disk version still SHOWS its old content
+    ///     in the UI. Snapshotting the written (deferred) value would make
+    ///     the next save see that unchanged row as "edited" (built ≠
+    ///     loaded) and clobber the external update back to the stale row.
+    nonisolated static func reconcileDictionary(
+        editorRows: [DictionaryEntryRow],
+        loadedByTerm: [String: DictionaryEntry],
+        loadedTerms: Set<String>,
+        existing: [DictionaryEntry]
+    ) -> (toWrite: [DictionaryEntry], editorEntries: [DictionaryEntry]) {
+        var editorEntries: [DictionaryEntry] = []
+        var result = editorRows.compactMap { row -> DictionaryEntry? in
+            let term = row.term.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !term.isEmpty else { return nil }
+            let ctx = row.context.trimmingCharacters(in: .whitespacesAndNewlines)
+            let aliases = row.aliases
+                .split(separator: ",", omittingEmptySubsequences: true)
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+            let built = DictionaryEntry(
+                term: term,
+                context: ctx.isEmpty ? nil : ctx,
+                aliases: aliases,
+                biasing: row.biasing,
+                source: row.source
+            )
+            // Deliberately BEFORE the defer branch below: editorEntries must
+            // include the built value even for rows the defer branch drops
+            // (externally deleted). The row is still in the UI, and keeping
+            // its term in the refreshed snapshot is what makes the next
+            // save's loadedTerms guard suppress re-resurrection — don't
+            // "optimize" this to only-written rows.
+            editorEntries.append(built)
+            // If the user hasn't touched this row (it still equals what we
+            // loaded), defer to whatever the learn feature wrote on disk while
+            // the window was open — the only other writer of the dictionary:
+            //   • modified on disk (learned auto-apply or accepted suggestion)
+            //     → keep the newer on-disk version, not the stale row;
+            //   • absent from disk (retired/reverted via the Learned view)
+            //     → honor the deletion by dropping the row (return nil).
+            // An edited row always wins (the user is actively changing it).
+            let key = term.lowercased()
+            if let loaded = loadedByTerm[key], built == loaded {
+                if let onDisk = existing.first(where: { $0.term.lowercased() == key }) {
+                    return onDisk != loaded ? onDisk : built
+                }
+                return nil  // externally deleted while open — stay deleted
+            }
+            return built
+        }
+        // Preserve terms written to config.json by the learn feature *while
+        // this window was open* — auto-applied learned terms AND suggestions
+        // the user accepted (source .user). They're not in the editor's rows,
+        // so the rebuild above would silently drop them. We re-add an on-disk
+        // entry only when it's absent from the current rows AND wasn't present
+        // in the load-time snapshot (so a term the user deliberately deleted in
+        // the editor stays deleted, and a term this model itself wrote on a
+        // prior keystroke — now folded into the refreshed snapshot — isn't
+        // resurrected as a separate entry).
+        let editorTerms = Set(result.map { $0.term.lowercased() })
+        let externallyAddedEntries = existing.filter { entry in
+            !editorTerms.contains(entry.term.lowercased())
+                && !loadedTerms.contains(entry.term.lowercased())
+        }
+        result.append(contentsOf: externallyAddedEntries)
+        return (toWrite: result, editorEntries: editorEntries)
     }
 
     /// Persist a new Gemini API key to the macOS Keychain. Called
@@ -993,7 +1113,7 @@ struct SettingsView: View {
     // longer owns a sidebar; it renders the pane for whichever section
     // the app-shell selection points at.
     enum SettingsSection: String, Hashable, CaseIterable, Identifiable {
-        case hotkey, audio, behavior, paste, cleanup, dictionary, usage, permissions, privacyFeatures, updates, advanced
+        case hotkey, audio, behavior, paste, cleanup, dictionary, presets, usage, permissions, privacyFeatures, updates, advanced
         var id: String { rawValue }
         var label: String {
             switch self {
@@ -1003,6 +1123,7 @@ struct SettingsView: View {
             case .paste:           return "Paste"
             case .cleanup:         return "Cleanup"
             case .dictionary:      return "Dictionary"
+            case .presets:         return "Presets"
             case .usage:           return "Usage"
             case .permissions:     return "Permissions"
             case .privacyFeatures: return "Privacy & Features"
@@ -1018,6 +1139,7 @@ struct SettingsView: View {
             case .paste:           return "doc.on.clipboard"
             case .cleanup:         return "wand.and.sparkles"
             case .dictionary:      return "character.book.closed"
+            case .presets:         return "wand.and.rays"
             case .usage:           return "chart.bar"
             case .permissions:     return "lock.shield"
             case .privacyFeatures: return "person.badge.shield.checkmark"
@@ -1118,6 +1240,7 @@ struct SettingsView: View {
                 case .paste:           pasteSection
                 case .cleanup:         cleanupSection
                 case .dictionary:      dictionarySection
+                case .presets:         PresetsSettingsView(model: model)
                 case .usage:           usageSection
                 case .permissions:     permissionsSection
                 case .privacyFeatures: privacyFeaturesSection

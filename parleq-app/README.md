@@ -54,6 +54,7 @@ make notarize            # build + Apple notarize + staple (requires keychain pr
 | `LearningAnalyzer.swift` | Periodic off-hot-path actor. Reads the in-memory correction ring, calls the configured cleanup LLM to propose dictionary changes, auto-applies high-confidence non-colliding term additions (via `LearnedStore`), and surfaces the rest as pending suggestions. |
 | `LearnedStore.swift` | Apply / suggest / revert surface for learned dictionary changes. High-confidence proposals auto-apply into the custom dictionary tagged `source=learned`; others become pending suggestions. **In-memory only** — pending suggestions and the applied-changes log are process memory, wiped on quit; the only durable output is the learned terms in `config.json`. |
 | `LearnedView.swift` | SwiftUI "Learned" sidebar section in Settings. Shows pending suggestions (Accept / Dismiss), the applied-changes log (Revert), and the feature on/off toggle. Disabling offers to clear the in-memory correction data immediately (cleared on quit regardless). |
+| `PresetsSettingsView.swift` | "Presets" Settings pane: transform-preset list editor (name + prompt) + per-app default mapping. A preset is a canned refine instruction; an app default folds into that app's cleanup prompt (one LLM call) with a "Styled with X · Undo" chip in the overlay. |
 
 ## Per-utterance pipeline
 

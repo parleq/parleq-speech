@@ -93,6 +93,8 @@ public enum ManagedConfig {
         "learnFromCorrectionsEnabled",
         "learnedCorrectionsMaxEntries",
         "learnedCorrectionsRetentionHours",
+        // Transform presets — MDM off-switch for fleet-wide policy
+        "transformPresetsEnabled",
     ]
 
     /// Subset of `allKeys` whose effective value is an Int.

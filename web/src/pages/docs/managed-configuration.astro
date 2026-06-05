@@ -116,6 +116,12 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
             <td class="px-4 py-3">true</td>
             <td class="px-4 py-3">Disables the background fetch of LLM model-pricing data that Parleq pulls once per launch (when stale) from <code class="font-mono text-[12px]">raw.githubusercontent.com</code> (the community LiteLLM price table) to keep the Usage / Stats cost figures current. When <code class="font-mono text-[12px]">false</code>, Parleq makes no such request and serves its bundled price table instead. Set this for locked-down or air-gapped fleets where any outbound HTTPS to a non-approved host must be justified. (The <code class="font-mono text-[12px]">PARLEQ_DISABLE_LIVE_PRICING=1</code> environment variable does the same for a single user without MDM.)</td>
           </tr>
+          <tr class="bg-[color:var(--color-bg)]">
+            <td class="px-4 py-3 font-mono text-[13px] text-[color:var(--color-text)]">transformPresetsEnabled</td>
+            <td class="px-4 py-3">Boolean</td>
+            <td class="px-4 py-3">true</td>
+            <td class="px-4 py-3">Set to <code class="font-mono text-[12px]">false</code> to disable transform presets fleet-wide &mdash; preset chips hidden and per-app defaults not applied.</td>
+          </tr>
         </tbody>
       </table>
     </div>

@@ -139,6 +139,24 @@ public struct DictionaryEntry: Sendable, Equatable {
     }
 }
 
+/// A user-defined one-tap transform: `name` is the overlay chip label,
+/// `prompt` is the generalized refine instruction it runs ("Rewrite the
+/// text to be as concise as possible…"). Invoked two ways with the same
+/// stored prompt: tapped manually in the overlay (a refine pass on the
+/// shown text) or assigned as a per-app default (folded into that app's
+/// cleanup prompt — see SystemPrompts.transformHint).
+public struct TransformPreset: Sendable, Equatable, Identifiable {
+    public let id: String
+    public var name: String
+    public var prompt: String
+
+    public init(id: String = UUID().uuidString, name: String, prompt: String) {
+        self.id = id
+        self.name = name
+        self.prompt = prompt
+    }
+}
+
 public struct Config: Sendable {
     public var hotkeyBinding: String
     public var autoAcceptSeconds: TimeInterval
@@ -290,6 +308,27 @@ public struct Config: Sendable {
     /// the term before correcting. Fed to the LLM cleanup pass as a
     /// smart hint, not a forced-replace rule. Empty by default.
     public var customDictionary: [DictionaryEntry]
+    /// User-defined transform presets (overlay chips). Empty by default —
+    /// the feature is inert until the user creates one.
+    public var transformPresets: [TransformPreset]
+    /// Per-app default preset assignments: target app bundle ID → preset
+    /// id. When a dictation's paste target matches, that preset's prompt
+    /// is folded into the cleanup pass (one LLM call) and the overlay
+    /// shows "Styled with <name> · Undo".
+    public var presetAppDefaults: [String: String]
+
+    /// Resolve the per-app default preset for a paste target. nil when
+    /// the feature is disabled (MDM), the bundle is unmapped, or the
+    /// mapped preset id no longer exists (deleted preset → dangling map
+    /// entry resolves safely to nil).
+    public func presetForApp(_ bundleID: String?) -> TransformPreset? {
+        guard transformPresetsEnabled,
+              let bundleID, !bundleID.isEmpty,
+              let presetID = presetAppDefaults[bundleID]
+        else { return nil }
+        return transformPresets.first { $0.id == presetID }
+    }
+
     /// Model to use when references are attached to a dictation.
     /// nil means "fall back to the cleanup model" — that's the setup
     /// wizard's "Same as cleanup" default and the legacy behavior for
@@ -377,6 +416,11 @@ public struct Config: Sendable {
     /// disable entirely.
     public var learnedCorrectionsRetentionHours: Int?
 
+    /// Master switch for transform presets. No Settings toggle (the
+    /// feature is inert with no presets defined); exists so MDM can pin
+    /// it off fleet-wide — chips hidden, per-app defaults not applied.
+    public var transformPresetsEnabled: Bool
+
     /// Keys whose effective values were sourced from MDM
     /// (/Library/Managed Preferences) rather than from the user's
     /// config file. Populated by Config.load(); never persisted to disk.
@@ -427,6 +471,8 @@ public struct Config: Sendable {
         audioInputDeviceUID: "",
         asrEndpoint: bundledASREndpoint,
         customDictionary: [],
+        transformPresets: [],
+        presetAppDefaults: [:],
         contextModel: nil,
         telemetryEnabled: false,
         referenceWindowsEnabled: true,
@@ -440,6 +486,7 @@ public struct Config: Sendable {
         learnFromCorrectionsEnabled: false,
         learnedCorrectionsMaxEntries: nil,
         learnedCorrectionsRetentionHours: nil,
+        transformPresetsEnabled: true,
         managedKeys: []
     )
 
@@ -462,234 +509,10 @@ public struct Config: Sendable {
                 applyManagedOverlay(&c)
                 return (c, "defaults (config not a JSON object)")
             }
-            var c = Config.default
-            if let hotkey = dict["hotkey"] as? [String: Any],
-               let binding = hotkey["binding"] as? String {
-                c.hotkeyBinding = binding
-            }
-            if let ui = dict["ui"] as? [String: Any] {
-                if let secs = ui["auto_accept_seconds"] as? NSNumber {
-                    c.autoAcceptSeconds = TimeInterval(truncating: secs)
-                }
-                if let delay = ui["overlay_show_delay_ms"] as? NSNumber {
-                    // Clamp to a sane 0...2000ms so a fat-fingered
-                    // config can't make the overlay never appear or
-                    // lag absurdly. 0 = show immediately.
-                    c.overlayShowDelayMs = min(2000, max(0, delay.intValue))
-                }
-                if let aucousticFeedback = ui["acoustic_feedback"] as? Bool {
-                    c.acousticFeedback = aucousticFeedback
-                }
-                if let recordingPulse = ui["recording_pulse"] as? Bool {
-                    c.recordingPulse = recordingPulse
-                }
-                if let startSound = ui["start_sound"] as? String, !startSound.isEmpty {
-                    c.startSound = startSound
-                }
-                if let endSound = ui["end_sound"] as? String, !endSound.isEmpty {
-                    c.endSound = endSound
-                }
-            }
-            if let asr = dict["asr"] as? [String: Any] {
-                if let mode = asr["mode"] as? String {
-                    c.asrMode = mode
-                }
-                if let endpoint = asr["endpoint"] as? String, !endpoint.isEmpty {
-                    c.asrEndpoint = endpoint
-                }
-            }
-            if let llm = dict["llm"] as? [String: Any] {
-                if let mode = llm["mode"] as? String {
-                    c.llmMode = mode
-                }
-                if let model = llm["model"] as? String {
-                    c.llmModel = model
-                }
-                if let provider = llm["provider"] as? String, !provider.isEmpty {
-                    c.llmProvider = provider
-                }
-            }
-            if let aws = dict["aws"] as? [String: Any] {
-                if let region = aws["region"] as? String, !region.isEmpty {
-                    c.awsRegion = region
-                }
-                if let profile = aws["profile"] as? String {
-                    let trimmed = profile.trimmingCharacters(in: .whitespacesAndNewlines)
-                    c.awsProfile = trimmed.isEmpty ? nil : trimmed
-                }
-                // Auth mode is "sso" or "static" (#21 step 3).
-                // Anything unrecognized falls back to the default
-                // ("sso") so a config written by a newer build that
-                // adds e.g. "bedrock-api-key" doesn't strand an
-                // older build with no working mode.
-                if let mode = aws["auth_mode"] as? String,
-                   ["sso", "static", "bedrockApiKey"].contains(mode) {
-                    c.awsAuthMode = mode
-                }
-            }
-            if let vertex = dict["vertex"] as? [String: Any] {
-                if let project = vertex["project"] as? String {
-                    c.vertexProject = project.trimmingCharacters(in: .whitespacesAndNewlines)
-                }
-                if let region = vertex["region"] as? String, !region.isEmpty {
-                    c.vertexRegion = region
-                }
-                if let mode = vertex["auth_mode"] as? String,
-                   ["adc", "serviceAccount"].contains(mode) {
-                    c.vertexAuthMode = mode
-                }
-                if let anthropicRegion = vertex["anthropic_region"] as? String,
-                   !anthropicRegion.isEmpty {
-                    c.vertexAnthropicRegion = anthropicRegion
-                }
-            }
-            if let azure = dict["azure"] as? [String: Any] {
-                if let resource = azure["resource"] as? String {
-                    c.azureResource = resource.trimmingCharacters(in: .whitespacesAndNewlines)
-                }
-                if let deployment = azure["deployment"] as? String {
-                    c.azureDeployment = deployment.trimmingCharacters(in: .whitespacesAndNewlines)
-                }
-                if let version = azure["api_version"] as? String, !version.isEmpty {
-                    c.azureApiVersion = version
-                }
-                if let mode = azure["auth_mode"] as? String,
-                   ["apiKey", "azureAd"].contains(mode) {
-                    c.azureAuthMode = mode
-                }
-                // "family" key in on-disk configs is silently ignored —
-                // AzureOpenAIProvider.family is now a computed property
-                // derived from isOpenAIReasoningModel(model). Old configs
-                // that carry the key decode fine; Swift ignores unknown
-                // keys in manual JSONSerialization parsing.
-            }
-            if let wizard = dict["wizard"] as? [String: Any],
-               let completed = wizard["completed"] as? Bool {
-                c.wizardCompleted = completed
-            }
-            if let audio = dict["audio"] as? [String: Any] {
-                if let cont = audio["continue_other_audio"] as? Bool {
-                    c.continueOtherAudio = cont
-                }
-                if let uid = audio["input_device_uid"] as? String {
-                    c.audioInputDeviceUID = uid.trimmingCharacters(in: .whitespacesAndNewlines)
-                }
-            }
-            if let paste = dict["paste"] as? [String: Any] {
-                if let trailing = paste["trailing_space"] as? Bool {
-                    c.trailingSpace = trailing
-                }
-                if let denylist = paste["no_trailing_space_apps"] as? [String] {
-                    c.noTrailingSpaceAppBundleIDs = denylist
-                }
-            }
-            if let dictionary = dict["dictionary"] as? [String: Any],
-               let raw = dictionary["terms"] as? [Any] {
-                // Accept either bare strings ("Parleq") or objects
-                // ({"term": "Acme", "context": "...", "aliases": [...],
-                // "biasing": "asrAndLLM" | "llmOnly"}). Hand-edited
-                // configs can mix the two; the UI always writes
-                // objects. Missing fields fall back to the
-                // DictionaryEntry defaults — backwards-compatible
-                // with configs written before aliases / biasing
-                // shipped.
-                c.customDictionary = raw.compactMap { item -> DictionaryEntry? in
-                    if let str = item as? String {
-                        let trimmed = str.trimmingCharacters(in: .whitespacesAndNewlines)
-                        return trimmed.isEmpty ? nil : DictionaryEntry(term: trimmed)
-                    }
-                    if let obj = item as? [String: Any],
-                       let term = obj["term"] as? String {
-                        let trimmedTerm = term.trimmingCharacters(in: .whitespacesAndNewlines)
-                        guard !trimmedTerm.isEmpty else { return nil }
-                        let ctx = (obj["context"] as? String)?
-                            .trimmingCharacters(in: .whitespacesAndNewlines)
-                        let aliases: [String] = {
-                            guard let raw = obj["aliases"] as? [String] else { return [] }
-                            return raw
-                                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                                .filter { !$0.isEmpty }
-                        }()
-                        let biasing: DictionaryBiasing = {
-                            guard let raw = obj["biasing"] as? String,
-                                  let parsed = DictionaryBiasing(rawValue: raw)
-                            else { return .asrAndLLM }
-                            return parsed
-                        }()
-                        let source: DictionarySource = {
-                            guard let raw = obj["source"] as? String,
-                                  let parsed = DictionarySource(rawValue: raw)
-                            else { return .user }
-                            return parsed
-                        }()
-                        return DictionaryEntry(
-                            term: trimmedTerm,
-                            context: (ctx?.isEmpty ?? true) ? nil : ctx,
-                            aliases: aliases,
-                            biasing: biasing,
-                            source: source
-                        )
-                    }
-                    return nil
-                }
-            }
-            if let telemetry = dict["telemetry"] as? [String: Any],
-               let enabled = telemetry["enabled"] as? Bool {
-                c.telemetryEnabled = enabled
-            }
-            // Context model (Phase 2): optional model tier for
-            // reference-aware turns. nil (missing from old configs)
-            // means "same as cleanup".
-            if let contextModel = dict["context_model"] as? [String: Any],
-               let provider = contextModel["provider"] as? String,
-               let model = contextModel["model"] as? String {
-                let trimmedProvider = provider.trimmingCharacters(in: .whitespacesAndNewlines)
-                let trimmedModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !trimmedProvider.isEmpty && !trimmedModel.isEmpty {
-                    c.contextModel = ModelIdentifier(provider: trimmedProvider, model: trimmedModel)
-                }
-            }
-            // Feature toggles (Phase 5). All default to true; missing
-            // keys from older configs leave the feature enabled, which
-            // is the safe forward-compat behavior.
-            if let features = dict["features"] as? [String: Any] {
-                if let v = features["reference_windows_enabled"] as? Bool {
-                    c.referenceWindowsEnabled = v
-                }
-                if let v = features["clipboard_reference_enabled"] as? Bool {
-                    c.clipboardReferenceEnabled = v
-                }
-                if let v = features["image_reference_enabled"] as? Bool {
-                    c.imageReferenceEnabled = v
-                }
-                if let v = features["file_reference_enabled"] as? Bool {
-                    c.fileReferenceEnabled = v
-                }
-                if let v = features["custom_dictionary_enabled"] as? Bool {
-                    c.customDictionaryEnabled = v
-                }
-                if let v = features["custom_model_entry_enabled"] as? Bool {
-                    c.customModelEntryEnabled = v
-                }
-                // 0.14.0 PR 6 (#221): transcript-history retention.
-                // Negative values rejected on read; nil parses to
-                // nil (unlimited). 0 is meaningful ("disable entirely").
-                if let v = features["transcript_history_max_entries"] as? Int, v >= 0 {
-                    c.transcriptHistoryMaxEntries = v
-                }
-                if let v = features["transcript_history_retention_hours"] as? Int, v >= 0 {
-                    c.transcriptHistoryRetentionHours = v
-                }
-                if let v = features["learn_from_corrections_enabled"] as? Bool {
-                    c.learnFromCorrectionsEnabled = v
-                }
-                if let v = features["learned_corrections_max_entries"] as? Int, v >= 0 {
-                    c.learnedCorrectionsMaxEntries = v
-                }
-                if let v = features["learned_corrections_retention_hours"] as? Int, v >= 0 {
-                    c.learnedCorrectionsRetentionHours = v
-                }
-            }
+            // Delegate all field parsing to the single-source-of-truth
+            // seam. load() owns only file I/O, error/fallback handling,
+            // and the MDM managed-overlay block that runs after parsing.
+            var c = Config.parse(fromDictionary: dict)
             // MDM overlay: check the seven managed-eligible Bool keys.
             // If MDM has forced a value, it overrides the user-stored
             // value and the key is added to managedKeys so Settings
@@ -758,6 +581,10 @@ public struct Config: Sendable {
         if let v = ManagedConfig.managedBool(forKey: "learnFromCorrectionsEnabled") {
             c.learnFromCorrectionsEnabled = v
             managedKeys.insert("learnFromCorrectionsEnabled")
+        }
+        if let v = ManagedConfig.managedBool(forKey: "transformPresetsEnabled") {
+            c.transformPresetsEnabled = v
+            managedKeys.insert("transformPresetsEnabled")
         }
         if let v = ManagedConfig.managedInt(forKey: "learnedCorrectionsMaxEntries") {
             c.learnedCorrectionsMaxEntries = v
@@ -1264,6 +1091,276 @@ public struct Config: Sendable {
         }
     }
 
+    // MARK: - Test seams
+
+    /// Parse a Config from a raw JSON dictionary (the same logic used
+    /// by `load()`, but without filesystem I/O or MDM overlay).
+    /// Production `load()` delegates here; tests call it directly as a seam.
+    /// Internal so tests can call it via `@testable import`.
+    static func parse(fromDictionary parsed: [String: Any]) -> Config {
+        var c = Config.default
+        if let hotkey = parsed["hotkey"] as? [String: Any],
+           let binding = hotkey["binding"] as? String {
+            c.hotkeyBinding = binding
+        }
+        if let ui = parsed["ui"] as? [String: Any] {
+            if let secs = ui["auto_accept_seconds"] as? NSNumber {
+                c.autoAcceptSeconds = TimeInterval(truncating: secs)
+            }
+            if let delay = ui["overlay_show_delay_ms"] as? NSNumber {
+                c.overlayShowDelayMs = min(2000, max(0, delay.intValue))
+            }
+            if let v = ui["acoustic_feedback"] as? Bool { c.acousticFeedback = v }
+            if let v = ui["recording_pulse"] as? Bool { c.recordingPulse = v }
+            if let v = ui["start_sound"] as? String, !v.isEmpty { c.startSound = v }
+            if let v = ui["end_sound"] as? String, !v.isEmpty { c.endSound = v }
+        }
+        if let asr = parsed["asr"] as? [String: Any] {
+            if let v = asr["mode"] as? String { c.asrMode = v }
+            if let v = asr["endpoint"] as? String, !v.isEmpty { c.asrEndpoint = v }
+        }
+        if let llm = parsed["llm"] as? [String: Any] {
+            if let v = llm["mode"] as? String { c.llmMode = v }
+            if let v = llm["model"] as? String { c.llmModel = v }
+            if let v = llm["provider"] as? String, !v.isEmpty { c.llmProvider = v }
+        }
+        if let aws = parsed["aws"] as? [String: Any] {
+            if let v = aws["region"] as? String, !v.isEmpty { c.awsRegion = v }
+            if let v = aws["profile"] as? String {
+                let t = v.trimmingCharacters(in: .whitespacesAndNewlines)
+                c.awsProfile = t.isEmpty ? nil : t
+            }
+            if let v = aws["auth_mode"] as? String,
+               ["sso", "static", "bedrockApiKey"].contains(v) { c.awsAuthMode = v }
+        }
+        if let vertex = parsed["vertex"] as? [String: Any] {
+            if let v = vertex["project"] as? String {
+                c.vertexProject = v.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            if let v = vertex["region"] as? String, !v.isEmpty { c.vertexRegion = v }
+            if let v = vertex["auth_mode"] as? String,
+               ["adc", "serviceAccount"].contains(v) { c.vertexAuthMode = v }
+            if let v = vertex["anthropic_region"] as? String, !v.isEmpty {
+                c.vertexAnthropicRegion = v
+            }
+        }
+        if let azure = parsed["azure"] as? [String: Any] {
+            if let v = azure["resource"] as? String {
+                c.azureResource = v.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            if let v = azure["deployment"] as? String {
+                c.azureDeployment = v.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            if let v = azure["api_version"] as? String, !v.isEmpty { c.azureApiVersion = v }
+            if let v = azure["auth_mode"] as? String,
+               ["apiKey", "azureAd"].contains(v) { c.azureAuthMode = v }
+        }
+        if let wizard = parsed["wizard"] as? [String: Any],
+           let completed = wizard["completed"] as? Bool {
+            c.wizardCompleted = completed
+        }
+        if let audio = parsed["audio"] as? [String: Any] {
+            if let v = audio["continue_other_audio"] as? Bool { c.continueOtherAudio = v }
+            if let v = audio["input_device_uid"] as? String {
+                c.audioInputDeviceUID = v.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+        if let paste = parsed["paste"] as? [String: Any] {
+            if let v = paste["trailing_space"] as? Bool { c.trailingSpace = v }
+            if let v = paste["no_trailing_space_apps"] as? [String] {
+                c.noTrailingSpaceAppBundleIDs = v
+            }
+        }
+        if let dictionary = parsed["dictionary"] as? [String: Any],
+           let raw = dictionary["terms"] as? [Any] {
+            c.customDictionary = raw.compactMap { item -> DictionaryEntry? in
+                if let str = item as? String {
+                    let trimmed = str.trimmingCharacters(in: .whitespacesAndNewlines)
+                    return trimmed.isEmpty ? nil : DictionaryEntry(term: trimmed)
+                }
+                if let obj = item as? [String: Any], let term = obj["term"] as? String {
+                    let trimmedTerm = term.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !trimmedTerm.isEmpty else { return nil }
+                    let ctx = (obj["context"] as? String)?
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    let aliases: [String] = {
+                        guard let raw = obj["aliases"] as? [String] else { return [] }
+                        return raw.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                            .filter { !$0.isEmpty }
+                    }()
+                    let biasing: DictionaryBiasing = {
+                        guard let raw = obj["biasing"] as? String,
+                              let parsed = DictionaryBiasing(rawValue: raw)
+                        else { return .asrAndLLM }
+                        return parsed
+                    }()
+                    let source: DictionarySource = {
+                        guard let raw = obj["source"] as? String,
+                              let parsed = DictionarySource(rawValue: raw)
+                        else { return .user }
+                        return parsed
+                    }()
+                    return DictionaryEntry(
+                        term: trimmedTerm,
+                        context: (ctx?.isEmpty ?? true) ? nil : ctx,
+                        aliases: aliases,
+                        biasing: biasing,
+                        source: source
+                    )
+                }
+                return nil
+            }
+        }
+        if let telemetry = parsed["telemetry"] as? [String: Any],
+           let enabled = telemetry["enabled"] as? Bool {
+            c.telemetryEnabled = enabled
+        }
+        if let contextModel = parsed["context_model"] as? [String: Any],
+           let provider = contextModel["provider"] as? String,
+           let model = contextModel["model"] as? String {
+            let tp = provider.trimmingCharacters(in: .whitespacesAndNewlines)
+            let tm = model.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !tp.isEmpty && !tm.isEmpty {
+                c.contextModel = ModelIdentifier(provider: tp, model: tm)
+            }
+        }
+        if let features = parsed["features"] as? [String: Any] {
+            if let v = features["reference_windows_enabled"] as? Bool { c.referenceWindowsEnabled = v }
+            if let v = features["clipboard_reference_enabled"] as? Bool { c.clipboardReferenceEnabled = v }
+            if let v = features["image_reference_enabled"] as? Bool { c.imageReferenceEnabled = v }
+            if let v = features["file_reference_enabled"] as? Bool { c.fileReferenceEnabled = v }
+            if let v = features["custom_dictionary_enabled"] as? Bool { c.customDictionaryEnabled = v }
+            if let v = features["custom_model_entry_enabled"] as? Bool { c.customModelEntryEnabled = v }
+            if let v = features["transcript_history_max_entries"] as? Int, v >= 0 {
+                c.transcriptHistoryMaxEntries = v
+            }
+            if let v = features["transcript_history_retention_hours"] as? Int, v >= 0 {
+                c.transcriptHistoryRetentionHours = v
+            }
+            if let v = features["learn_from_corrections_enabled"] as? Bool {
+                c.learnFromCorrectionsEnabled = v
+            }
+            if let v = features["learned_corrections_max_entries"] as? Int, v >= 0 {
+                c.learnedCorrectionsMaxEntries = v
+            }
+            if let v = features["learned_corrections_retention_hours"] as? Int, v >= 0 {
+                c.learnedCorrectionsRetentionHours = v
+            }
+            if let v = features["transform_presets_enabled"] as? Bool {
+                c.transformPresetsEnabled = v
+            }
+        }
+        // Transform presets — top-level "presets" array.
+        if let raw = parsed["presets"] as? [Any] {
+            c.transformPresets = raw.compactMap { item -> TransformPreset? in
+                guard let obj = item as? [String: Any],
+                      let id = obj["id"] as? String,
+                      !id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                      let name = (obj["name"] as? String)?
+                          .trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty,
+                      let prompt = (obj["prompt"] as? String)?
+                          .trimmingCharacters(in: .whitespacesAndNewlines), !prompt.isEmpty
+                else { return nil }
+                return TransformPreset(id: id.trimmingCharacters(in: .whitespacesAndNewlines), name: name, prompt: prompt)
+            }
+        }
+        // Per-app default mapping — top-level "preset_app_defaults".
+        // Trim whitespace from both keys (bundle IDs) and values (preset IDs)
+        // so hand-authored managed configs with padding still resolve correctly.
+        if let raw = parsed["preset_app_defaults"] as? [String: Any] {
+            var mapped: [String: String] = [:]
+            for (key, value) in raw {
+                let k = key.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard let v = (value as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      !k.isEmpty, !v.isEmpty else { continue }
+                mapped[k] = v
+            }
+            c.presetAppDefaults = mapped
+        }
+        return c
+    }
+
+    /// Serialize a Config to a JSON dictionary (the same structure that
+    /// `save()` writes, minus filesystem I/O and MDM preservation).
+    /// Production `save()` delegates here; tests call it directly as a seam.
+    /// Internal so tests can call it via `@testable import`.
+    static func serializeToDictionary(_ config: Config) -> [String: Any] {
+        var featuresDict: [String: Any] = [
+            "reference_windows_enabled": config.referenceWindowsEnabled,
+            "clipboard_reference_enabled": config.clipboardReferenceEnabled,
+            "image_reference_enabled": config.imageReferenceEnabled,
+            "file_reference_enabled": config.fileReferenceEnabled,
+            "custom_dictionary_enabled": config.customDictionaryEnabled,
+            "custom_model_entry_enabled": config.customModelEntryEnabled,
+            "learn_from_corrections_enabled": config.learnFromCorrectionsEnabled,
+            "transform_presets_enabled": config.transformPresetsEnabled,
+        ]
+        if let v = config.transcriptHistoryMaxEntries { featuresDict["transcript_history_max_entries"] = v }
+        if let v = config.transcriptHistoryRetentionHours { featuresDict["transcript_history_retention_hours"] = v }
+        if let v = config.learnedCorrectionsMaxEntries { featuresDict["learned_corrections_max_entries"] = v }
+        if let v = config.learnedCorrectionsRetentionHours { featuresDict["learned_corrections_retention_hours"] = v }
+
+        var dict: [String: Any] = [
+            "hotkey": ["binding": config.hotkeyBinding],
+            "ui": [
+                "auto_accept_seconds": config.autoAcceptSeconds,
+                "overlay_show_delay_ms": config.overlayShowDelayMs,
+                "acoustic_feedback": config.acousticFeedback,
+                "recording_pulse": config.recordingPulse,
+                "start_sound": config.startSound,
+                "end_sound": config.endSound,
+            ],
+            "audio": [
+                "continue_other_audio": config.continueOtherAudio,
+                "input_device_uid": config.audioInputDeviceUID,
+            ],
+            "asr": ["mode": config.asrMode, "endpoint": config.asrEndpoint],
+            "llm": ["mode": config.llmMode, "provider": config.llmProvider, "model": config.llmModel],
+            "aws": ["region": config.awsRegion, "profile": config.awsProfile ?? "", "auth_mode": config.awsAuthMode],
+            "vertex": [
+                "project": config.vertexProject,
+                "region": config.vertexRegion,
+                "auth_mode": config.vertexAuthMode,
+                "anthropic_region": config.vertexAnthropicRegion,
+            ],
+            "azure": [
+                "resource": config.azureResource,
+                "deployment": config.azureDeployment,
+                "api_version": config.azureApiVersion,
+                "auth_mode": config.azureAuthMode,
+            ],
+            "wizard": ["completed": config.wizardCompleted],
+            "paste": [
+                "trailing_space": config.trailingSpace,
+                "no_trailing_space_apps": config.noTrailingSpaceAppBundleIDs,
+            ],
+            "dictionary": [
+                "terms": config.customDictionary.map { entry -> [String: Any] in
+                    var obj: [String: Any] = ["term": entry.term]
+                    if let ctx = entry.context, !ctx.isEmpty { obj["context"] = ctx }
+                    if !entry.aliases.isEmpty { obj["aliases"] = entry.aliases }
+                    if entry.biasing != .asrAndLLM { obj["biasing"] = entry.biasing.rawValue }
+                    if entry.source != .user { obj["source"] = entry.source.rawValue }
+                    return obj
+                },
+            ],
+            "telemetry": ["enabled": config.telemetryEnabled],
+            "features": featuresDict,
+        ]
+        if let model = config.contextModel {
+            dict["context_model"] = ["provider": model.provider, "model": model.model]
+        }
+        if !config.transformPresets.isEmpty {
+            dict["presets"] = config.transformPresets.map { preset -> [String: Any] in
+                ["id": preset.id, "name": preset.name, "prompt": preset.prompt]
+            }
+        }
+        if !config.presetAppDefaults.isEmpty {
+            dict["preset_app_defaults"] = config.presetAppDefaults
+        }
+        return dict
+    }
+
     /// Write the config back to ~/.parleq/config.json. Used by the
     /// Settings window when the user changes a value. Creates the
     /// .parleq directory if needed. The on-disk schema mirrors the
@@ -1418,6 +1515,11 @@ public struct Config: Sendable {
         } else if let existing = existingFeatures["learned_corrections_retention_hours"] {
             featuresDict["learned_corrections_retention_hours"] = existing
         }
+        if !config.managedKeys.contains("transformPresetsEnabled") {
+            featuresDict["transform_presets_enabled"] = config.transformPresetsEnabled
+        } else if let existing = existingFeatures["transform_presets_enabled"] {
+            featuresDict["transform_presets_enabled"] = existing
+        }
 
         // Phase 7 destination-pin preservation. When a destination
         // pin is active, the user can't change the field in
@@ -1459,131 +1561,85 @@ public struct Config: Sendable {
             ? ((existingAzure["deployment"] as? String) ?? config.azureDeployment)
             : config.azureDeployment
 
-        let dict: [String: Any] = [
-            "hotkey": [
-                "binding": config.hotkeyBinding,
-            ],
-            "ui": [
-                "auto_accept_seconds": config.autoAcceptSeconds,
-                "overlay_show_delay_ms": config.overlayShowDelayMs,
-                "acoustic_feedback": config.acousticFeedback,
-                "recording_pulse": config.recordingPulse,
-                "start_sound": config.startSound,
-                "end_sound": config.endSound,
-            ],
-            "audio": [
-                "continue_other_audio": config.continueOtherAudio,
-                "input_device_uid": config.audioInputDeviceUID,
-            ],
-            "asr": [
-                "mode": config.asrMode,
-                "endpoint": asrEndpointToWrite,
-            ],
-            "llm": [
-                "mode": config.llmMode,
-                "provider": llmProviderToWrite,
-                "model": llmModelToWrite,
-            ],
-            "aws": [
-                "region": awsRegionToWrite,
-                "profile": awsProfileToWrite,
-                // Phase 5: when bedrockAuthMode is managed, preserve the
-                // existing on-disk auth_mode so removing the MDM profile
-                // restores the user's pre-MDM choice. Symmetric with the
-                // provider/model preservation logic above.
-                "auth_mode": config.managedKeys.contains("bedrockAuthMode")
-                    ? ((existingAWS["auth_mode"] as? String) ?? config.awsAuthMode)
-                    : config.awsAuthMode,
-            ],
-            "vertex": [
-                "project": vertexProjectToWrite,
-                "region": vertexRegionToWrite,
-                "auth_mode": vertexAuthModeToWrite,
-                "anthropic_region": vertexAnthropicRegionToWrite,
-            ],
-            "azure": [
-                "resource": azureResourceToWrite,
-                "deployment": azureDeploymentToWrite,
-                "api_version": config.azureApiVersion,
-                // Phase 5: preserve on-disk azure.auth_mode when
-                // azureAuthMode is managed (same rationale as aws.auth_mode).
-                "auth_mode": config.managedKeys.contains("azureAuthMode")
-                    ? ((existingAzure["auth_mode"] as? String) ?? config.azureAuthMode)
-                    : config.azureAuthMode,
-            ],
-            "wizard": [
-                "completed": config.wizardCompleted,
-            ],
-            "paste": [
-                "trailing_space": config.trailingSpace,
-                "no_trailing_space_apps": config.noTrailingSpaceAppBundleIDs,
-            ],
-            "dictionary": [
-                "terms": config.customDictionary.map { entry -> [String: Any] in
-                    var obj: [String: Any] = ["term": entry.term]
-                    if let ctx = entry.context, !ctx.isEmpty {
-                        obj["context"] = ctx
-                    }
-                    if !entry.aliases.isEmpty {
-                        obj["aliases"] = entry.aliases
-                    }
-                    if entry.biasing != .asrAndLLM {
-                        // Skip the field when it's the default —
-                        // keeps existing on-disk configs visually
-                        // unchanged for users who never touch the
-                        // biasing toggle.
-                        obj["biasing"] = entry.biasing.rawValue
-                    }
-                    if entry.source != .user {
-                        // Skip the field for ordinary user entries so
-                        // existing on-disk configs stay byte-identical;
-                        // only learned entries carry the provenance tag.
-                        obj["source"] = entry.source.rawValue
-                    }
-                    return obj
-                },
-            ],
-            "telemetry": [
-                "enabled": config.telemetryEnabled,
-            ],
-            "context_model": {
-                // Preserve on-disk context_model only when context tier is
-                // PINNED (single value forced). Under allowlist the user can
-                // pick among allowed values so the chosen value must persist.
-                // Per-field preservation: provider and model are tracked
-                // separately, so a pinned-provider-only case writes the user's
-                // current model alongside the preserved provider.
-                if ctxTierPinned {
-                    let existingProvider = (existingContextModel["provider"] as? String) ?? ""
-                    let existingModel    = (existingContextModel["model"] as? String) ?? ""
-                    // Provider preservation: pinned → preserve on-disk.
-                    let provider = ctxProviderPinned && !existingProvider.isEmpty
-                        ? existingProvider
-                        : (config.contextModel?.provider ?? "")
-                    // Model preservation: pinned → preserve. Provider pinned
-                    // + model totally unmanaged → preserve (pair-as-unit).
-                    // Provider pinned + model allowlist → write user's
-                    // current choice (allowlist lets user pick within set).
-                    let preserveModel = ctxModelPinned
-                        || (ctxProviderPinned && !ctxModelAllowlist)
-                    let model = preserveModel && !existingModel.isEmpty
-                        ? existingModel
-                        : (config.contextModel?.model ?? "")
-                    if !provider.isEmpty || !model.isEmpty {
-                        return ["provider": provider, "model": model] as Any
-                    }
-                    return NSNull() as Any
-                }
-                if let model = config.contextModel {
-                    return [
-                        "provider": model.provider,
-                        "model": model.model,
-                    ] as Any
-                }
-                return NSNull() as Any
-            }(),
-            "features": featuresDict,
+        // Start from the single-source-of-truth base serialization, then
+        // apply save()'s extra semantics on top: MDM managed-key
+        // preservation and the context_model CTX-pinning logic.
+        var dict = Config.serializeToDictionary(config)
+
+        // Patch ASR, LLM, AWS, Vertex, Azure sections with the
+        // managed-override values computed above. These overwrite the
+        // naive per-field values that serializeToDictionary put in.
+        dict["asr"] = [
+            "mode": config.asrMode,
+            "endpoint": asrEndpointToWrite,
         ]
+        dict["llm"] = [
+            "mode": config.llmMode,
+            "provider": llmProviderToWrite,
+            "model": llmModelToWrite,
+        ]
+        dict["aws"] = [
+            "region": awsRegionToWrite,
+            "profile": awsProfileToWrite,
+            // Phase 5: when bedrockAuthMode is managed, preserve the
+            // existing on-disk auth_mode so removing the MDM profile
+            // restores the user's pre-MDM choice. Symmetric with the
+            // provider/model preservation logic above.
+            "auth_mode": config.managedKeys.contains("bedrockAuthMode")
+                ? ((existingAWS["auth_mode"] as? String) ?? config.awsAuthMode)
+                : config.awsAuthMode,
+        ]
+        dict["vertex"] = [
+            "project": vertexProjectToWrite,
+            "region": vertexRegionToWrite,
+            "auth_mode": vertexAuthModeToWrite,
+            "anthropic_region": vertexAnthropicRegionToWrite,
+        ]
+        dict["azure"] = [
+            "resource": azureResourceToWrite,
+            "deployment": azureDeploymentToWrite,
+            "api_version": config.azureApiVersion,
+            // Phase 5: preserve on-disk azure.auth_mode when
+            // azureAuthMode is managed (same rationale as aws.auth_mode).
+            "auth_mode": config.managedKeys.contains("azureAuthMode")
+                ? ((existingAzure["auth_mode"] as? String) ?? config.azureAuthMode)
+                : config.azureAuthMode,
+        ]
+
+        // Patch features with the MDM-aware featuresDict computed above.
+        dict["features"] = featuresDict
+
+        // Patch context_model: preserve on-disk when context tier is
+        // PINNED (single value forced). Under allowlist the user can
+        // pick among allowed values so the chosen value must persist.
+        // Per-field preservation: provider and model are tracked
+        // separately, so a pinned-provider-only case writes the user's
+        // current model alongside the preserved provider.
+        if ctxTierPinned {
+            let existingProvider = (existingContextModel["provider"] as? String) ?? ""
+            let existingModel    = (existingContextModel["model"] as? String) ?? ""
+            // Provider preservation: pinned → preserve on-disk.
+            let provider = ctxProviderPinned && !existingProvider.isEmpty
+                ? existingProvider
+                : (config.contextModel?.provider ?? "")
+            // Model preservation: pinned → preserve. Provider pinned
+            // + model totally unmanaged → preserve (pair-as-unit).
+            // Provider pinned + model allowlist → write user's
+            // current choice (allowlist lets user pick within set).
+            let preserveModel = ctxModelPinned
+                || (ctxProviderPinned && !ctxModelAllowlist)
+            let model = preserveModel && !existingModel.isEmpty
+                ? existingModel
+                : (config.contextModel?.model ?? "")
+            if !provider.isEmpty || !model.isEmpty {
+                dict["context_model"] = ["provider": provider, "model": model]
+            } else {
+                dict.removeValue(forKey: "context_model")
+            }
+        }
+        // (No else branch needed: dict comes fresh from
+        // serializeToDictionary, which omits context_model when nil —
+        // the key can't be present outside the pinned branch above.)
         let data = try JSONSerialization.data(
             withJSONObject: dict, options: [.prettyPrinted, .sortedKeys]
         )

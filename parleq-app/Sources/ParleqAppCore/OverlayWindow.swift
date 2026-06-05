@@ -103,6 +103,13 @@ public final class OverlayWindow {
     /// itself owns the entry-pick callback chain; the overlay just
     /// requests the picker be shown.
     public var onShowWindowPicker: (() -> Void)?
+    /// AppState wires this to run a transform preset (by id) as a refine
+    /// pass on the current review text. Triggered by the preset chips in
+    /// the .awaitingAccept footer.
+    public var onRunPreset: ((String) -> Void)?
+    /// AppState wires this to undo a per-app default style: re-runs plain
+    /// cleanup (no transform addendum) from the retained raw transcript.
+    public var onUndoStyle: (() -> Void)?
     /// M2 fix: wired to AppState.switchModelAndRecleanup(_:) so the
     /// Switch-to-vision-model button re-runs cleanup with the new
     /// provider rather than only flipping the badge. Distinct from the
@@ -172,6 +179,8 @@ public final class OverlayWindow {
                 onAccept: {},
                 onShowWindowPicker: {},
                 onSwitchToVisionModelAndRecleanup: { _ in },
+                onRunPreset: { _ in },
+                onUndoStyle: {},
                 onBodyHeightChange: { _ in }
             )
         )
@@ -217,6 +226,11 @@ public final class OverlayWindow {
         // can track whether it's the focused window. The OverlayButtons
         // view uses model.isKey to show the "Parleq lost focus" message
         // when the panel isn't key.
+        //
+        // These observers (and didChangeScreen below) hop via Task —
+        // next-turn delivery is fine for state mirroring. Only the
+        // didResize backstop uses MainActor.assumeIsolated, because it
+        // needs its corrective setFrame to land in the SAME turn.
         NotificationCenter.default.addObserver(
             forName: NSWindow.didBecomeKeyNotification,
             object: panel,
@@ -235,6 +249,72 @@ public final class OverlayWindow {
                 self?.model.isKey = false
             }
         }
+
+        // Reactive height backstop. AppKit can resize the panel through
+        // private paths that bypass both our preference-key sizing chain
+        // and the public setFrame overrides (observed: a focus cycle on a
+        // content-full overlay ballooned the panel to the transcript's
+        // unscrolled height with no setFrame log). Whatever the initiator,
+        // didResize fires afterward — if the height exceeds the live
+        // screen cap, snap back to the clamped frame.
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.didResizeNotification,
+            object: panel,
+            queue: .main
+        ) { [weak self] _ in
+            // queue: .main guarantees the main thread, so assume the
+            // actor synchronously rather than enqueueing a Task — the
+            // corrective setFrame then happens in the same turn, and
+            // the didResize it fires re-enters through the (no-op)
+            // guard instead of allocating a follow-up task.
+            MainActor.assumeIsolated {
+                self?.enforceHeightCapAfterExternalResize()
+            }
+        }
+        // Trace screen migration (count-only). NSScreen.main follows
+        // keyboard focus, so moving focus to another screen changes
+        // which visibleFrame the height caps compute from — logging
+        // both values pins that down if the external-resize balloon
+        // ever recurs in the field.
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.didChangeScreenNotification,
+            object: panel,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                let h = self.panel.screen?.visibleFrame.height ?? -1
+                let mainH = NSScreen.main?.visibleFrame.height ?? -1
+                OverlayWindow.logStderr(
+                    "[parleq] overlay panel changed screen: panelScreenH=\(Int(h)) mainScreenH=\(Int(mainH)) frameH=\(Int(self.panel.frame.height))"
+                )
+            }
+        }
+    }
+
+    /// Backstop invoked from NSWindow.didResizeNotification: if some
+    /// path outside resizePanelToHeight grew the panel past the live
+    /// screen cap, clamp it back. No-op for in-cap resizes.
+    ///
+    /// The cap derives from the PANEL's screen, not NSScreen.main:
+    /// the backstop's trigger scenario is focus moving to another
+    /// display, which is precisely when NSScreen.main (it follows
+    /// keyboard focus) stops describing the screen the panel is on.
+    private func enforceHeightCapAfterExternalResize() {
+        let visible = (panel.screen ?? NSScreen.main)?.visibleFrame.height ?? 800
+        let maxPanelHeight = OverlayWindow.computeMaxPanelHeight(visibleHeight: visible)
+        var frame = panel.frame
+        guard frame.size.height > maxPanelHeight + 0.5 else { return }
+        OverlayWindow.logStderr(
+            "[parleq] overlay panel ballooned externally to \(Int(frame.size.height)) " +
+            "(cap \(Int(maxPanelHeight))) — snapping back"
+        )
+        frame.size.height = maxPanelHeight
+        // Origin needs no correction here even if the external resize
+        // displaced it: this setFrame goes through OverlayPanel's
+        // applyAnchor override, which re-pins origin.y to the armed
+        // anchoredBottomY on every call.
+        panel.setFrame(frame, display: true, animate: false)
     }
 
     /// Replace the hosting controller's rootView so that the SwiftUI
@@ -259,6 +339,8 @@ public final class OverlayWindow {
             onSwitchToVisionModelAndRecleanup: { [weak self] id in
                 self?.onSwitchToVisionModelAndRecleanup?(id)
             },
+            onRunPreset: { [weak self] id in self?.onRunPreset?(id) },
+            onUndoStyle: { [weak self] in self?.onUndoStyle?() },
             onBodyHeightChange: { [weak self] newHeight in
                 self?.resizePanelToHeight(newHeight)
             }
@@ -273,7 +355,15 @@ public final class OverlayWindow {
     /// rather than installing hc as the panel's contentViewController,
     /// so the controller's viewDidLayout is never called).
     private func resizePanelToHeight(_ measuredHeight: CGFloat) {
-        let visible = NSScreen.main?.visibleFrame.height ?? 800
+        // Cap against the PANEL's screen (NSScreen.main follows keyboard
+        // focus and can be a different display) — same derivation as the
+        // external-resize backstop and applyAnchor, so all three clamps
+        // agree on multi-display setups. The SwiftUI-side max-height
+        // inputs (maxContentHeight/maxPanelHeight passed at init) remain
+        // launch-screen constants — a known cosmetic limitation that only
+        // affects the inner scroll-switch threshold, never the panel
+        // frame, which these clamps bound.
+        let visible = ((panel.screen ?? NSScreen.main)?.visibleFrame.height) ?? 800
         let maxPanelHeight = OverlayWindow.computeMaxPanelHeight(visibleHeight: visible)
         let target = max(
             OverlayWindow.minHeight,
@@ -397,7 +487,9 @@ public final class OverlayWindow {
     /// cap is enforced inside SwiftUI (see OverlayContent.maxContentHeight).
     private func resizePanelToFitContent() {
         let preferred = hostingController.preferredContentSize
-        let visible = NSScreen.main?.visibleFrame.height ?? 800
+        // Panel-screen derivation, matching resizePanelToHeight /
+        // applyAnchor / the external-resize backstop.
+        let visible = ((panel.screen ?? NSScreen.main)?.visibleFrame.height) ?? 800
         let maxPanelHeight = max(
             OverlayWindow.minHeight + 1,
             visible - OverlayWindow.bottomAnchorOffset - OverlayWindow.topBreathingRoom
@@ -572,7 +664,14 @@ private final class OverlayPanel: NSPanel {
         // cannot exceed the screen's available height minus the
         // bottom anchor and a small breathing-room buffer. This is
         // the final say.
-        if let screen = NSScreen.main {
+        //
+        // Cap against the PANEL's screen (falling back to NSScreen.main
+        // only when the panel has none): NSScreen.main follows keyboard
+        // focus, and the external-resize backstop — whose snap-back
+        // routes through this method — fires precisely in multi-display
+        // focus-change scenarios where the two screens differ. The two
+        // clamps must agree.
+        if let screen = self.screen ?? NSScreen.main {
             let visible = screen.visibleFrame
             let absoluteMax = max(140, visible.height - 96 - 16)
             if r.size.height > absoluteMax {
@@ -720,6 +819,21 @@ public final class OverlayModel: ObservableObject {
     /// state so a successful subsequent dictation doesn't carry over
     /// the prior turn's failure annotation.
     @Published var cleanupFailureMessage: String?
+
+    /// Name of the per-app default preset folded into the current
+    /// dictation's cleanup, nil when none. Drives the review state's
+    /// "Styled with <name> · Undo" chip.
+    @Published var appliedPresetName: String?
+
+    /// Name of the transform preset currently being applied by a
+    /// manual chip tap; drives the cleaning-state status line
+    /// ("Applying <name>…"). Set in AppState.runPreset(id:) right
+    /// before the in-flight Task is spawned; cleared immediately
+    /// after applyResult() returns (success OR failure) AND in every
+    /// early-exit / cancel path so the label can never leak into a
+    /// subsequent dictation. Not set by undoStyle() (which is a
+    /// plain cleanup re-run, not a named transform).
+    @Published var activeTransformName: String?
 
     /// Array of Reference objects to display in the overlay. Used by
     /// the reference window feature to show context-aware references
@@ -886,6 +1000,156 @@ private struct OverlayBodyHeightKey: PreferenceKey {
     }
 }
 
+// MARK: - PresetChipMetrics
+
+/// Geometry constants shared by PresetChip's view code and the
+/// width-fitting math — keep these in lockstep so the AppKit
+/// estimate matches what SwiftUI renders.
+///
+/// All values are in points (pre-scale, density-independent).
+///
+/// NSFont is not Sendable under Swift 6, so fonts are created
+/// on-the-fly inside the measurement helpers rather than stored
+/// as static properties — the allocation cost is negligible
+/// compared to the text-measurement call itself.
+enum PresetChipMetrics {
+    /// Horizontal padding applied on each side of the chip label
+    /// (matches `.padding(.horizontal, 9)` in PresetChip).
+    static let horizontalPadding: CGFloat = 9
+    /// HStack inter-chip spacing (matches the `spacing: 6` on the
+    /// HStack in `presetRow`).
+    static let interChipSpacing: CGFloat = 6
+    /// Maximum label width applied when the rendered text exceeds this
+    /// value (matches `.frame(maxWidth: 120)` in PresetChip — see
+    /// chipWidth(for:) which caps at this value before adding padding).
+    static let labelMaxWidth: CGFloat = 120
+    /// Footprint reserved for the "⋯" overflow menu when at least
+    /// one chip overflows. Must cover the real rendered width of the
+    /// ⋯ button: `.menuStyle(.borderlessButton)` renders a dropdown
+    /// chevron alongside the glyph, making the actual footprint ~40pt
+    /// not ~20pt. A few extra points above the true size are fine —
+    /// they're absorbed by the trailing Spacer(minLength:0).
+    static let overflowMenuReserve: CGFloat = 44
+    /// Horizontal safety margin subtracted from the computed available
+    /// width before fitting. Absorbs sub-pixel rounding, HStack
+    /// justification slack, and any un-modelled padding so we don't
+    /// accidentally spill one chip past the edge.
+    static let safetyMargin: CGFloat = 14
+
+    /// Rendered width of one chip for `title`: AppKit-measures the
+    /// string with the chip font (size 11, weight .medium), caps at
+    /// `labelMaxWidth` (matching the view's `.frame(maxWidth:)` guard),
+    /// then adds the capsule horizontal padding on both sides plus
+    /// a 2pt per-chip slack so rounding never clips the last inline chip.
+    static func chipWidth(for title: String) -> CGFloat {
+        let chipFont = NSFont.systemFont(ofSize: 11, weight: .medium)
+        let measured = (title as NSString)
+            .size(withAttributes: [.font: chipFont]).width
+        return min(measured, labelMaxWidth) + horizontalPadding * 2 + 2
+    }
+
+    /// AppKit-measures `string` with `nsFont` and returns the raw
+    /// pixel width (uncapped). Use chipWidth(for:) for chip titles;
+    /// use this for arbitrary strings such as "Undo".
+    static func textWidth(for string: String, nsFont: NSFont) -> CGFloat {
+        (string as NSString)
+            .size(withAttributes: [.font: nsFont]).width
+    }
+}
+
+// MARK: - Width-aware chip fitting
+
+/// Returns how many leading chips from `widths` fit in `available`
+/// points.
+///
+/// - If ALL chips fit (no overflow), returns `widths.count` — no
+///   overflow-reserve is held back because no ⋯ menu will appear.
+/// - Otherwise returns the largest *k* such that the first *k* chips
+///   (widths + inter-chip spacing) PLUS the overflow-menu reserve fit
+///   within `available`.  k == 0 means even a single chip won't fit
+///   after accounting for the reserve; all chips go into the ⋯ menu.
+///
+/// Pure function — no AppKit / SwiftUI calls; unit-testable from the
+/// test target without a host application.
+nonisolated func fittingChipCount(
+    widths: [CGFloat],
+    available: CGFloat,
+    spacing: CGFloat,
+    overflowReserve: CGFloat
+) -> Int {
+    guard !widths.isEmpty else { return 0 }
+
+    // Try the all-fit case first (no overflow reserve needed).
+    var total: CGFloat = 0
+    for (i, w) in widths.enumerated() {
+        total += (i > 0 ? spacing : 0) + w
+    }
+    if total <= available { return widths.count }
+
+    // Overflow: greedy fit with the ⋯ reserve held back.
+    var used: CGFloat = 0
+    var count = 0
+    for w in widths {
+        let next = used + (count > 0 ? spacing : 0) + w
+        if next + spacing + overflowReserve > available { break }
+        used = next
+        count += 1
+    }
+    return count
+}
+
+// MARK: - PresetChip view
+
+/// One transform-preset capsule for the review strip. Dim at rest; the
+/// gradient border + text brighten on hover (no ambient animation).
+private struct PresetChip: View {
+    let title: String
+    let help: String
+    let action: () -> Void
+    @State private var hovered = false
+
+    var body: some View {
+        Button(action: action) {
+            // Short titles (no cap applied) use .fixedSize so the HStack
+            // can NEVER compress them — they take their measured width or
+            // overflow into the ⋯ menu, never truncate mid-strip.
+            // Long titles (cap applied) truncate at labelMaxWidth as before.
+            let isLongTitle = (title as NSString)
+                .size(withAttributes: [.font: NSFont.systemFont(ofSize: 11, weight: .medium)])
+                .width > PresetChipMetrics.labelMaxWidth
+            Group {
+                if isLongTitle {
+                    Text(title)
+                        .font(.system(size: 11, weight: .medium))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .frame(maxWidth: PresetChipMetrics.labelMaxWidth)
+                } else {
+                    Text(title)
+                        .font(.system(size: 11, weight: .medium))
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                }
+            }
+            .foregroundColor(hovered ? .primary : .secondary)
+            .padding(.horizontal, PresetChipMetrics.horizontalPadding)
+            .padding(.vertical, 3)
+            .background(Capsule().fill(Color.primary.opacity(hovered ? 0.08 : 0.04)))
+            .overlay(
+                Capsule()
+                    .strokeBorder(OverlayContent.aiGradient, lineWidth: 1)
+                    .opacity(hovered ? 0.9 : 0.45)
+            )
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .help(help)
+        .onHover { hovered = $0 }
+        .animation(.easeOut(duration: 0.12), value: hovered)
+        .accessibilityHint("Apply this transform to the dictation")
+    }
+}
+
 private struct OverlayContent: View {
     @ObservedObject var model: OverlayModel
     /// Fixed outer width passed in from OverlayWindow. We constrain
@@ -920,6 +1184,12 @@ private struct OverlayContent: View {
     /// conflict warning row, triggering AppState to re-run cleanup
     /// with the new provider rather than only flipping the badge.
     let onSwitchToVisionModelAndRecleanup: (ModelIdentifier) -> Void
+    /// Fires when the user taps a preset chip in the review footer.
+    /// AppState's `runPreset(id:)` receives the preset's stable id.
+    let onRunPreset: (String) -> Void
+    /// Fires when the user taps "Undo" on the "Styled with X" chip.
+    /// AppState's `undoStyle()` re-runs plain cleanup from the raw transcript.
+    let onUndoStyle: () -> Void
 
     /// Fires whenever the body's outermost measured height changes.
     /// OverlayWindow uses this to drive panel resize directly, since
@@ -956,6 +1226,10 @@ private struct OverlayContent: View {
     // sensitive overlay. Refreshed on appear and on state transitions.
     @State private var learnFeatureEnabled = false
     @State private var learnFeatureManaged = false
+
+    // Preset chips for the review footer, cached so the per-render body
+    // doesn't hit disk (Config.load) — same pattern as the learn flags.
+    @State private var presetChips: [TransformPreset] = []
 
     /// The "Learn from corrections" nudge line shown on the review state
     /// while the feature is off and not dismissed (24h window). Its toggle
@@ -1007,6 +1281,143 @@ private struct OverlayContent: View {
         }
     }
 
+    /// Warm "AI" gradient for the transform strip — anchored on the brand
+    /// amber so the sizzle stays on-brand instead of introducing a foreign
+    /// accent. Used by the sparkle glyph and chip borders.
+    static let aiGradient = LinearGradient(
+        colors: [SettingsView.brandAccent, Color(red: 0.95, green: 0.45, blue: 0.50)],
+        startPoint: .topLeading, endPoint: .bottomTrailing
+    )
+
+    /// Quiet transform-preset strip between the dictation text and the
+    /// commit row — review state only. Lives in the FIXED footer (never
+    /// the scrolling text) so reference-heavy overlays can't push it
+    /// around. Mini capsule chips with a warm amber-anchored gradient
+    /// border + sparkle glyph; hover transitions only, no ambient animation.
+    ///
+    /// Width-aware overflow: chip labels are measured deterministically
+    /// with AppKit (PresetChipMetrics.chipWidth) against the FIXED
+    /// overlay width (`width`). The greedy fittingChipCount() function
+    /// decides how many chips render inline; the remainder, if any,
+    /// overflow into a ⋯ menu. No GeometryReader — the overlay's
+    /// height-plumbing uses that path and adding another one here
+    /// risks fighting for the same preference keys.
+    ///
+    /// Available width formula (verified against the view hierarchy):
+    ///   width
+    ///   - (16 + 8) * 2  (.padding(16) content + .padding(8) shadow room, each side)
+    ///   - sparkleReserve  (~12pt glyph + 6pt HStack spacing)
+    ///   - styledBlockWidth (when appliedPresetName != nil:
+    ///       min(ceil(measuredStyledText) + 1, 160) + 4 spacing
+    ///       + measuredUndoText + interChipSpacing after the block
+    ///       (the spacing only when chips follow); the label renders
+    ///       at exactly that capped width)
+    ///   - safetyMargin
+    @ViewBuilder
+    private var presetRow: some View {
+        if !presetChips.isEmpty || model.appliedPresetName != nil {
+            // ── width-aware fitting ─────────────────────────────────
+            // The overlay width is fixed (OverlayWindow.fixedWidth),
+            // so we measure the chip titles with AppKit and greedily
+            // fit as many as possible into the remaining horizontal
+            // space.  No GeometryReader — deterministic at body-eval time.
+            // 16pt content padding + 8pt shadow breathing room, each side
+            // (the view chain is VStack.padding(16)…padding(8).frame(width:)).
+            let contentPadding: CGFloat = (16 + 8) * 2
+            // Sparkle SF Symbol (~12pt at size-11 semibold) + HStack
+            // spacing to the next element.
+            let sparkleReserve: CGFloat = 12 + PresetChipMetrics.interChipSpacing
+
+            // If a per-app style was applied, its "Styled with X · Undo"
+            // block consumes some horizontal space before the chips start.
+            // The label renders at EXACTLY this measured-and-capped width
+            // (.frame(width:) below) so the fit math and the rendered
+            // footprint can never disagree — a character-count heuristic
+            // here once let a short-but-wide name render past its
+            // reservation and crowd the chips off the edge.
+            let styledLabelWidth: CGFloat? = model.appliedPresetName.map { name in
+                let labelFont = NSFont.systemFont(ofSize: 11)
+                // ceil + 1pt slack: an exact fractional width can trigger
+                // tail-truncation on the text it was measured from.
+                let measured = ceil(PresetChipMetrics.textWidth(
+                    for: "Styled with \(name)", nsFont: labelFont)) + 1
+                return min(measured, 160)
+            }
+            let styledBlockWidth: CGFloat = {
+                guard let styledLabelWidth else { return 0 }
+                let undoFont = NSFont.systemFont(ofSize: 11, weight: .medium)
+                let undoWidth = PresetChipMetrics.textWidth(for: "Undo", nsFont: undoFont)
+                // Inner HStack spacing (4) + outer HStack spacing to the
+                // first chip (interChipSpacing = 6) — the latter only
+                // when there IS a chip after the block.
+                return styledLabelWidth + 4 + undoWidth
+                    + (presetChips.isEmpty ? 0 : PresetChipMetrics.interChipSpacing)
+            }()
+
+            let availableWidth = width
+                - contentPadding
+                - sparkleReserve
+                - styledBlockWidth
+                - PresetChipMetrics.safetyMargin
+
+            let widths = presetChips.map { PresetChipMetrics.chipWidth(for: $0.name) }
+            let visibleCount = fittingChipCount(
+                widths: widths,
+                available: availableWidth,
+                spacing: PresetChipMetrics.interChipSpacing,
+                overflowReserve: PresetChipMetrics.overflowMenuReserve
+            )
+            // ── render ──────────────────────────────────────────────
+            HStack(spacing: PresetChipMetrics.interChipSpacing) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(OverlayContent.aiGradient)
+                    .help("Transform presets — applied before you insert")
+                if let name = model.appliedPresetName, let styledLabelWidth {
+                    HStack(spacing: 4) {
+                        Text("Styled with \(name)")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            // Exact measured width (capped at 160) — keeps
+                            // the rendered footprint identical to what the
+                            // chip-fit math reserved above.
+                            .frame(width: styledLabelWidth, alignment: .leading)
+                        Button("Undo") { onUndoStyle() }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(SettingsView.brandAccent)
+                            .help("Undo the applied style and re-run plain cleanup")
+                            .accessibilityLabel("Undo style: \(name)")
+                    }
+                }
+                ForEach(presetChips.prefix(visibleCount)) { preset in
+                    PresetChip(title: preset.name, help: preset.prompt) {
+                        onRunPreset(preset.id)
+                    }
+                }
+                if visibleCount < presetChips.count {
+                    Menu {
+                        ForEach(presetChips.dropFirst(visibleCount)) { preset in
+                            Button(preset.name) { onRunPreset(preset.id) }
+                                .help(preset.prompt)
+                                .accessibilityHint("Apply this transform to the dictation")
+                        }
+                    } label: {
+                        Text("⋯")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.secondary)
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                    .help("More transforms")
+                }
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             // Single header strip combining paste-target chip + reference
@@ -1053,6 +1464,13 @@ private struct OverlayContent: View {
             // gesture, not a clickable control) so users know it's
             // still available alongside the buttons.
             if model.state == .awaitingAccept {
+                // Transform-preset strip — quiet capsule chips with a warm
+                // amber-anchored gradient, between the dictation text and
+                // the commit row (text → transform → accept). Fixed chrome
+                // (never inside the scrolling text area). Hover transitions
+                // only; no ambient animation.
+                presetRow
+
                 // Single-line footer: Copy on left, then Cancel, the
                 // paste-target inline (so Accept is visually paired
                 // with its destination), then Accept on the right.
@@ -1123,6 +1541,26 @@ private struct OverlayContent: View {
                 spaceArmedDuringHold: model.spaceArmedDuringHold
             )
 
+            // Named status title: name the transform while it
+            // streams, instead of the anonymous cleaning state.
+            if model.state == .cleaning, let transform = model.activeTransformName {
+                HStack(spacing: 6) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(OverlayContent.aiGradient)
+                    Text("Applying \(transform)")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                    // Animated dots instead of a static ellipsis: this row
+                    // REPLACES the anonymous cleaning…/refining… label (and
+                    // its BlinkingDots) during preset runs, so it carries
+                    // the perceived-liveness role too.
+                    BlinkingDots()
+                    Spacer(minLength: 0)
+                }
+            }
+
             // One-time "Learn from corrections" nudge with an inline
             // toggle — review state only, below the hint strip.
             if model.state == .awaitingAccept {
@@ -1189,11 +1627,21 @@ private struct OverlayContent: View {
 
     /// Read the learn-feature gating from Config once and cache it, so the
     /// `learnLine` builder doesn't call Config.load() (a disk read) on every
-    /// body evaluation during the accept countdown.
+    /// body evaluation during the accept countdown. Also refreshes the cached
+    /// preset chips for the review footer (same single Config.load call).
     private func refreshLearnFeatureFlags() {
         let cfg = Config.load().config
         learnFeatureEnabled = cfg.learnFromCorrectionsEnabled
         learnFeatureManaged = cfg.managedKeys.contains("learnFromCorrectionsEnabled")
+        presetChips = cfg.transformPresetsEnabled ? cfg.transformPresets : []
+        // If MDM (or a config edit) disabled presets mid-session, also
+        // retire an in-flight "Styled with X · Undo" chip — its Undo
+        // action belongs to the now-disabled feature. New dictations
+        // already honor the gate per-utterance via presetForApp; this
+        // covers a review that was on screen when the flag flipped.
+        if !cfg.transformPresetsEnabled {
+            model.appliedPresetName = nil
+        }
     }
 
     /// The content's intrinsic height threshold above which the
@@ -1249,6 +1697,20 @@ private struct OverlayContent: View {
         }
         .onPreferenceChange(OverlayContentHeightKey.self) { newHeight in
             if abs(measuredContentHeight - newHeight) > 0.5 {
+                // Log scroll-mode branch flips (count-only — no
+                // transcript content). Flips are rare (a couple per
+                // long dictation), and a flip back to direct-render on
+                // a content-full overlay would mean measuredContentHeight
+                // was reset (SwiftUI @State loss) — the suspected trigger
+                // for the external-resize balloon the didResize backstop
+                // defends against.
+                let wasScroll = measuredContentHeight > scrollThreshold
+                let isScroll = newHeight > scrollThreshold
+                if wasScroll != isScroll {
+                    FileHandle.standardError.write(
+                        "[parleq] overlay content mode: \(wasScroll ? "scroll" : "direct") → \(isScroll ? "scroll" : "direct") (cntH=\(Int(measuredContentHeight))→\(Int(newHeight)) thresh=\(Int(scrollThreshold)))\n"
+                            .data(using: .utf8) ?? Data())
+                }
                 measuredContentHeight = newHeight
             }
         }
@@ -1282,20 +1744,41 @@ private struct OverlayContent: View {
                 // unfinished UI. Show a tertiary-color affordance hint
                 // instead so the area has visible purpose.
                 if model.references.isEmpty {
-                    HStack(spacing: 5) {
-                        Image(systemName: "rectangle.on.rectangle.angled")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.tertiary)
-                        Text("Add a reference window for context")
-                            // SF Rounded for consistency with the
-                            // listening-state hint — same family of
-                            // secondary descriptive text.
-                            .font(.system(size: 11, design: .rounded))
-                            .foregroundStyle(.tertiary)
-                            .lineLimit(1)
+                    if model.state == .capturing {
+                        // During active capture, replace the "Add a
+                        // reference window" affordance with the live
+                        // microphone label — more useful feedback when
+                        // the user is actually speaking. Same font /
+                        // styling / position as the hint it replaces.
+                        let listenLabel = model.microphoneName.map { "Listening on \($0)" } ?? "Listening…"
+                        HStack(spacing: 5) {
+                            Image(systemName: "mic.fill")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                            Text(listenLabel)
+                                .font(.system(size: 11, design: .rounded))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                        }
+                        .accessibilityLabel(listenLabel)
+                        Spacer()
+                    } else {
+                        HStack(spacing: 5) {
+                            Image(systemName: "rectangle.on.rectangle.angled")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.tertiary)
+                            Text("Add a reference window for context")
+                                // SF Rounded for consistency with the
+                                // listening-state hint — same family of
+                                // secondary descriptive text.
+                                .font(.system(size: 11, design: .rounded))
+                                .foregroundStyle(.tertiary)
+                                .lineLimit(1)
+                        }
+                        .accessibilityHidden(true)
+                        Spacer()
                     }
-                    .accessibilityHidden(true)
-                    Spacer()
                 } else {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 6) {
@@ -1778,14 +2261,14 @@ private struct OverlayContent: View {
                 }
             }
         case .capturing:
-            // Centered, system-stock listening indicator. Replaces
-            // the prior left-aligned SoundWaveBars (which were
-            // mic-level driven and stopped animating during refine).
-            // SF Symbol "waveform" with the .variableColor.iterative
-            // .symbolEffect is the Tahoe-native animated treatment —
-            // continuous animation, no dependency on per-buffer mic
-            // levels, identical behavior in capture and refine.
-            listeningIndicator(label: capturingHintText)
+            // Centered listening indicator, icon only — the header
+            // strip already shows "Listening on <mic>" so the label
+            // below the icon is redundant here. Removing it keeps the
+            // capture state compact and avoids the double label.
+            // When references are attached the header shows the reference
+            // chips; pass the teaching hint in that case so there's still
+            // a listening cue.
+            listeningIndicator(label: model.references.isEmpty ? nil : "say what to do with these references…")
         case .cleaning:
             VStack(alignment: .leading, spacing: 6) {
                 if !model.text.isEmpty {
@@ -1794,11 +2277,17 @@ private struct OverlayContent: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                HStack(spacing: 8) {
-                    BlinkingDots()
-                    Text(model.text.isEmpty ? "cleaning…" : "refining…")
-                        .font(.system(size: 12))
-                        .foregroundColor(.secondary)
+                // During a manual preset run the named "Applying <name>…"
+                // status row (rendered below the hint strip) carries the
+                // progress role — showing the anonymous label too would
+                // duplicate/conflict for one operation.
+                if model.activeTransformName == nil {
+                    HStack(spacing: 8) {
+                        BlinkingDots()
+                        Text(model.text.isEmpty ? "cleaning…" : "refining…")
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+                    }
                 }
             }
         case .awaitingAccept:
@@ -1846,22 +2335,31 @@ private struct OverlayContent: View {
     /// (the same shape as the menu-bar favicon), with per-bar heights
     /// driven by `model.level` — so it's the static Parleq logo at
     /// rest and an audio-reactive waveform when audio is coming in.
+    ///
+    /// `label` is optional. Pass nil for .capturing when no references
+    /// are attached (the header strip already shows "Listening on <mic>"
+    /// — a second label below the icon would duplicate it and inflate
+    /// the capture-state height). Pass a string for .refining, and for
+    /// .capturing when references are attached (the header is then
+    /// occupied by reference chips, so the teaching hint must appear here).
     @ViewBuilder
-    private func listeningIndicator(label: String) -> some View {
+    private func listeningIndicator(label: String?) -> some View {
         VStack(spacing: 10) {
-            ParleqListeningIndicator(level: model.level)
-            Text(label)
-                // SF Rounded gives the label a touch of warmth that
-                // pairs well with the rounded-rect listening bars,
-                // without going whimsical. Body text + transcript
-                // stay on SF Pro so the casual treatment is
-                // localized to the listening hint.
-                .font(.system(size: 12, design: .rounded))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.tail)
+            ParleqListeningIndicator(level: model.level, scale: 1.5)
+            if let label {
+                Text(label)
+                    // SF Rounded gives the label a touch of warmth that
+                    // pairs well with the rounded-rect listening bars,
+                    // without going whimsical. Body text + transcript
+                    // stay on SF Pro so the casual treatment is
+                    // localized to the listening hint.
+                    .font(.system(size: 12, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, 2)
         .frame(maxWidth: .infinity, alignment: .center)
     }
 
@@ -1892,23 +2390,6 @@ private struct OverlayContent: View {
         }
     }
 
-    /// Inline hint shown next to the sound-wave bars during capture.
-    /// When references are attached, the copy shifts from a generic
-    /// "listening…" to a directive that teaches the reference-aware
-    /// mental model — the user's utterance becomes an instruction to
-    /// apply against the attached materials, not just dictation to
-    /// be cleaned. The shift happens the moment a reference is added,
-    /// so the user encounters it at the exact moment it becomes
-    /// relevant.
-    private var capturingHintText: String {
-        if !model.references.isEmpty {
-            return "say what to do with these references…"
-        }
-        if let mic = model.microphoneName {
-            return "listening on \(mic)…"
-        }
-        return "listening…"
-    }
 }
 
 // Three slowly-blinking dots, used as a "listening / processing"
