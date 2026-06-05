@@ -248,6 +248,16 @@ public final class AppState {
     /// `appliedPreset`.
     private var styledRawTranscript: String = ""
 
+    /// References (post-degradation, exactly as sent) and destination
+    /// label of the cleanup call that `appliedPreset` styled. undoStyle()
+    /// replays against THESE, not the overlay's current references — if
+    /// the user attaches/removes references after the styled result
+    /// appears, Undo must still produce the un-styled version of the SAME
+    /// dictation-with-context, not a re-generation against new context.
+    /// Set/cleared in lockstep with `appliedPreset`/`styledRawTranscript`.
+    private var styledReferences: [Reference] = []
+    private var styledPasteDestLabel: String?
+
     // 0.14.0 PR 4 (#219): per-dictation timing capture for the Stats
     // section in PR 5. All three reset on every fresh capture; ASR
     // / LLM latencies are populated by the cleanup pipeline as it
@@ -1979,6 +1989,8 @@ public final class AppState {
         appliedPreset = nil
         intendedDefaultPreset = nil
         styledRawTranscript = ""
+        styledReferences = []
+        styledPasteDestLabel = nil
         overlay.model.appliedPresetName = nil
         overlay.model.activeTransformName = nil
         lastCleanupFailed = false
@@ -2387,6 +2399,14 @@ public final class AppState {
                 let defaultPreset: TransformPreset? = asRefine
                     ? nil
                     : loadedConfig.presetForApp(targetBundleID)
+                // Hoisted so the styled-provenance snapshot below records
+                // the SAME label this call was made with.
+                let pasteDestLabel: String? = self?.overlay.model.pasteTarget.map { dest in
+                    if let title = dest.windowTitle, !title.isEmpty {
+                        return "\(dest.appName) — \(title)"
+                    }
+                    return dest.appName
+                }
                 let outcome = await streamCleanupOrRefine(
                     llm: resolvedLLM,
                     overlay: overlay,
@@ -2397,12 +2417,7 @@ public final class AppState {
                     targetBundleID: targetBundleID,
                     customDictionary: dictionary,
                     references: effectiveRefs,
-                    pasteDestinationLabel: self?.overlay.model.pasteTarget.map { dest in
-                        if let title = dest.windowTitle, !title.isEmpty {
-                            return "\(dest.appName) — \(title)"
-                        }
-                        return dest.appName
-                    },
+                    pasteDestinationLabel: pasteDestLabel,
                     transform: asRefine ? nil : defaultPreset?.prompt
                 )
                 if Task.isCancelled { return }
@@ -2421,10 +2436,15 @@ public final class AppState {
                     let applied = outcome.usedLLMOutput ? defaultPreset : nil
                     self?.appliedPreset = applied
                     self?.overlay.model.appliedPresetName = applied?.name
-                    // Snapshot the dictation the style was applied to, so
-                    // undoStyle() can replay plain cleanup of THIS text even
-                    // after later refine turns overwrite lastRawTranscript.
+                    // Snapshot the dictation the style was applied to — plus
+                    // the references and destination label of THIS call — so
+                    // undoStyle() can replay plain cleanup of the same
+                    // dictation-with-context even after later refine turns
+                    // overwrite lastRawTranscript or the user changes the
+                    // attached references during review.
                     self?.styledRawTranscript = applied != nil ? asrResult.text : ""
+                    self?.styledReferences = applied != nil ? effectiveRefs : []
+                    self?.styledPasteDestLabel = applied != nil ? pasteDestLabel : nil
                     // The INTENDED default survives a failed run, so the
                     // model-switch re-run (e.g. after an image-refs-on-
                     // non-vision-model failure) can still apply it.
@@ -2440,6 +2460,8 @@ public final class AppState {
                     self?.appliedPreset = nil
                     self?.intendedDefaultPreset = nil
                     self?.styledRawTranscript = ""
+                    self?.styledReferences = []
+                    self?.styledPasteDestLabel = nil
                     self?.overlay.model.appliedPresetName = nil
                 }
                 let learnEnabled = self?.captureCorrectionSignals(
@@ -2629,6 +2651,8 @@ public final class AppState {
         appliedPreset = nil
         intendedDefaultPreset = nil
         styledRawTranscript = ""
+        styledReferences = []
+        styledPasteDestLabel = nil
         overlay.model.appliedPresetName = nil
         overlay.model.activeTransformName = nil
         lastCleanupFailed = false
@@ -3053,6 +3077,14 @@ public final class AppState {
         let intendedPreset = recleanConfig.transformPresetsEnabled
             ? intendedDefaultPreset
             : nil
+        // Hoisted so the styled-provenance snapshot below records the
+        // SAME label this re-run was made with.
+        let pasteDestLabel: String? = overlay.model.pasteTarget.map { dest in
+            if let title = dest.windowTitle, !title.isEmpty {
+                return "\(dest.appName) — \(title)"
+            }
+            return dest.appName
+        }
         inFlightTask = Task { @MainActor [weak self] in
             let outcome = await streamCleanupOrRefine(
                 llm: resolvedLLM,
@@ -3064,12 +3096,7 @@ public final class AppState {
                 targetBundleID: targetBundleID,
                 customDictionary: dictionary,
                 references: effectiveRefs,
-                pasteDestinationLabel: self?.overlay.model.pasteTarget.map { dest in
-                    if let title = dest.windowTitle, !title.isEmpty {
-                        return "\(dest.appName) — \(title)"
-                    }
-                    return dest.appName
-                },
+                pasteDestinationLabel: pasteDestLabel,
                 transform: intendedPreset?.prompt
             )
             if Task.isCancelled { return }
@@ -3081,13 +3108,15 @@ public final class AppState {
             self?.applyResult(outcome.text, cleanupFailureMessage: outcome.failureMessage)
             if outcome.usedLLMOutput {
                 // Same rule as the primary cleanup path: a successful
-                // styled run sets the chip + the snapshot Undo replays
-                // from (the transcript THIS run cleaned). With no
-                // intended default both resolve to nil/empty — clearing
-                // any stale claim.
+                // styled run sets the chip + the snapshots Undo replays
+                // from (the transcript/references/label THIS run used).
+                // With no intended default everything resolves to
+                // nil/empty — clearing any stale claim.
                 self?.appliedPreset = intendedPreset
                 self?.overlay.model.appliedPresetName = intendedPreset?.name
                 self?.styledRawTranscript = intendedPreset != nil ? rawTranscript : ""
+                self?.styledReferences = intendedPreset != nil ? effectiveRefs : []
+                self?.styledPasteDestLabel = intendedPreset != nil ? pasteDestLabel : nil
             } else {
                 // The fallback render isn't styled — don't leave a stale
                 // "Styled with X" claim on it. Mirrors the main path: only
@@ -3097,6 +3126,8 @@ public final class AppState {
                 // switch attempt should still try to style.
                 self?.appliedPreset = nil
                 self?.styledRawTranscript = ""
+                self?.styledReferences = []
+                self?.styledPasteDestLabel = nil
                 self?.overlay.model.appliedPresetName = nil
             }
         }
@@ -3166,6 +3197,8 @@ public final class AppState {
                 self.appliedPreset = nil
                 self.intendedDefaultPreset = nil
                 self.styledRawTranscript = ""
+                self.styledReferences = []
+                self.styledPasteDestLabel = nil
                 self.overlay.model.appliedPresetName = nil
             }
         }
@@ -3186,6 +3219,13 @@ public final class AppState {
     func undoStyle() {
         guard phase == .awaitingAccept, appliedPreset != nil else { return }
         let raw = styledRawTranscript
+        // Replay against the SNAPSHOTS from the styled run — not the
+        // overlay's current references or target. If the user attached or
+        // removed references after the styled result appeared, Undo must
+        // still produce the un-styled version of the SAME
+        // dictation-with-context, not a re-generation against new context.
+        let snapshotRefs = styledReferences
+        let snapshotDestLabel = styledPasteDestLabel
         // Re-align lastRawTranscript with the dictation this undo
         // restores: a failed refine may have left it holding the spoken
         // refine instruction, and a later model-switch re-clean reads it.
@@ -3193,41 +3233,38 @@ public final class AppState {
         appliedPreset = nil
         intendedDefaultPreset = nil
         styledRawTranscript = ""
+        styledReferences = []
+        styledPasteDestLabel = nil
         overlay.model.appliedPresetName = nil
         guard !raw.isEmpty else { return }
         let (config, _) = Config.load()
         let dictionary = config.customDictionaryEnabled ? config.customDictionary : []
         let resolvedLLM = llmForInvocation()
         let targetBundleID = pasteTarget?.bundleID
-        // Apply the same image-reference degradation as switchModelAndRecleanup
-        // and the primary capture path. Two conditions force degradation:
+        // The snapshot refs are post-degradation as sent, but re-apply the
+        // same image-reference degradation as switchModelAndRecleanup and
+        // the primary capture path (idempotent on already-degraded refs).
+        // Two conditions force degradation:
         //   1. imageReferenceEnabled is false (global off-switch).
         //   2. userDowngradedConflict is true — the user chose "Downgrade &
         //      send" to acknowledge that image parts would be dropped on their
         //      non-vision model. Undo re-runs cleanup on the SAME model, so it
-        //      must reproduce the same text-only treatment. Without this guard,
-        //      undo would push raw image parts at the non-vision model and get
-        //      an API error, falling back to the unclean raw transcript.
-        let rawRefs = overlay.model.references
+        //      must reproduce the same text-only treatment (the flag may have
+        //      been set AFTER the styled run, e.g. via a model switch).
         let effectiveRefs: [Reference]
         let shouldDegradeImageRefs = !config.imageReferenceEnabled
             || overlay.model.userDowngradedConflict
         if shouldDegradeImageRefs {
-            effectiveRefs = rawRefs.map { ref in
+            effectiveRefs = snapshotRefs.map { ref in
                 guard ref.captureMode == .image else { return ref }
                 var degraded = ref
                 degraded.captureMode = .text
                 return degraded
             }
         } else {
-            effectiveRefs = rawRefs
+            effectiveRefs = snapshotRefs
         }
-        let pasteDestLabel = overlay.model.pasteTarget.map { dest in
-            if let title = dest.windowTitle, !title.isEmpty {
-                return "\(dest.appName) — \(title)"
-            }
-            return dest.appName
-        }
+        let pasteDestLabel = snapshotDestLabel
         // Cancel any lingering auto-accept timer so it doesn't fire
         // mid-re-cleanup.
         cancelAutoAcceptTimer()
