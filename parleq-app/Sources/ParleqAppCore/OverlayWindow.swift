@@ -355,7 +355,15 @@ public final class OverlayWindow {
     /// rather than installing hc as the panel's contentViewController,
     /// so the controller's viewDidLayout is never called).
     private func resizePanelToHeight(_ measuredHeight: CGFloat) {
-        let visible = NSScreen.main?.visibleFrame.height ?? 800
+        // Cap against the PANEL's screen (NSScreen.main follows keyboard
+        // focus and can be a different display) — same derivation as the
+        // external-resize backstop and applyAnchor, so all three clamps
+        // agree on multi-display setups. The SwiftUI-side max-height
+        // inputs (maxContentHeight/maxPanelHeight passed at init) remain
+        // launch-screen constants — a known cosmetic limitation that only
+        // affects the inner scroll-switch threshold, never the panel
+        // frame, which these clamps bound.
+        let visible = ((panel.screen ?? NSScreen.main)?.visibleFrame.height) ?? 800
         let maxPanelHeight = OverlayWindow.computeMaxPanelHeight(visibleHeight: visible)
         let target = max(
             OverlayWindow.minHeight,
@@ -479,7 +487,9 @@ public final class OverlayWindow {
     /// cap is enforced inside SwiftUI (see OverlayContent.maxContentHeight).
     private func resizePanelToFitContent() {
         let preferred = hostingController.preferredContentSize
-        let visible = NSScreen.main?.visibleFrame.height ?? 800
+        // Panel-screen derivation, matching resizePanelToHeight /
+        // applyAnchor / the external-resize backstop.
+        let visible = ((panel.screen ?? NSScreen.main)?.visibleFrame.height) ?? 800
         let maxPanelHeight = max(
             OverlayWindow.minHeight + 1,
             visible - OverlayWindow.bottomAnchorOffset - OverlayWindow.topBreathingRoom
@@ -2262,11 +2272,17 @@ private struct OverlayContent: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                HStack(spacing: 8) {
-                    BlinkingDots()
-                    Text(model.text.isEmpty ? "cleaning…" : "refining…")
-                        .font(.system(size: 12))
-                        .foregroundColor(.secondary)
+                // During a manual preset run the named "Applying <name>…"
+                // status row (rendered below the hint strip) carries the
+                // progress role — showing the anonymous label too would
+                // duplicate/conflict for one operation.
+                if model.activeTransformName == nil {
+                    HStack(spacing: 8) {
+                        BlinkingDots()
+                        Text(model.text.isEmpty ? "cleaning…" : "refining…")
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+                    }
                 }
             }
         case .awaitingAccept:
