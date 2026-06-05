@@ -105,6 +105,48 @@ final class OIDCConfigTests: XCTestCase {
                        "schemeless redirect_uri must keep the default")
     }
 
+    /// An http(s):// redirect_uri is rejected at parse time — the custom-scheme
+    /// callback can never intercept an http(s) URL, so it would fail opaquely at
+    /// sign-in. The default value is kept.
+    func test_https_redirect_uri_is_rejected() {
+        let dict: [String: Any] = ["oidc": ["redirect_uri": "https://example.com/callback"]]
+        let parsed = Config.parse(fromDictionary: dict)
+        XCTAssertEqual(parsed.oidcRedirectURI, Config.default.oidcRedirectURI,
+                       "https redirect_uri must keep the default")
+        let dict2: [String: Any] = ["oidc": ["redirect_uri": "http://localhost/callback"]]
+        let parsed2 = Config.parse(fromDictionary: dict2)
+        XCTAssertEqual(parsed2.oidcRedirectURI, Config.default.oidcRedirectURI,
+                       "http redirect_uri must keep the default")
+    }
+
+    /// A custom-scheme redirect_uri is accepted at parse time.
+    func test_custom_scheme_redirect_uri_is_accepted() {
+        let dict: [String: Any] = ["oidc": ["redirect_uri": "parleq-auth://oidc/callback"]]
+        XCTAssertEqual(Config.parse(fromDictionary: dict).oidcRedirectURI,
+                       "parleq-auth://oidc/callback")
+        let dict2: [String: Any] = ["oidc": ["redirect_uri": "com.googleusercontent.apps.1234:/oauth2redirect"]]
+        XCTAssertEqual(Config.parse(fromDictionary: dict2).oidcRedirectURI,
+                       "com.googleusercontent.apps.1234:/oauth2redirect")
+    }
+
+    /// An https:// issuer round-trips on the JSON path; an http:// non-loopback
+    /// issuer is rejected (kept default) for parity with the MDM validator;
+    /// http:// loopback (the Keycloak dev rig) is still accepted.
+    func test_json_issuer_validation_parity() {
+        let httpsDict: [String: Any] = ["oidc": ["issuer": "https://acme.okta.com"]]
+        XCTAssertEqual(Config.parse(fromDictionary: httpsDict).oidcIssuer, "https://acme.okta.com")
+
+        let badDict: [String: Any] = ["oidc": ["issuer": "http://attacker.example/realms/parleq"]]
+        XCTAssertEqual(Config.parse(fromDictionary: badDict).oidcIssuer,
+                       Config.default.oidcIssuer,
+                       "http non-loopback issuer must keep the default")
+
+        let loopbackDict: [String: Any] = ["oidc": ["issuer": "http://127.0.0.1:8080/realms/parleq"]]
+        XCTAssertEqual(Config.parse(fromDictionary: loopbackDict).oidcIssuer,
+                       "http://127.0.0.1:8080/realms/parleq",
+                       "http loopback issuer (Keycloak dev rig) must still be accepted")
+    }
+
     /// extra_auth_params with non-String values drops those entries.
     func test_extra_auth_params_drops_non_string_values() {
         let dict: [String: Any] = ["oidc": ["extra_auth_params": ["prompt": "consent", "n": 5]]]

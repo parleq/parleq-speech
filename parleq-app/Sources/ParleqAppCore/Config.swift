@@ -959,12 +959,11 @@ public struct Config: Sendable {
             managedKeys.insert("oidcEphemeralBrowserSession")
         }
         if let raw = ManagedConfig.managedString(forKey: "oidcRedirectURI") {
-            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-            if let scheme = URL(string: trimmed)?.scheme, !scheme.isEmpty {
-                c.oidcRedirectURI = trimmed
+            if let validated = ManagedConfig.validateOIDCRedirectURI(raw) {
+                c.oidcRedirectURI = validated
                 managedKeys.insert("oidcRedirectURI")
             } else {
-                configLogStderr("[parleq] oidcRedirectURI: rejected managed value — not a URL with a scheme; treating as unmanaged")
+                configLogStderr("[parleq] oidcRedirectURI: rejected managed value — must be a URL with a custom (non-http/https) scheme; treating as unmanaged")
             }
         }
         if let dict = ManagedConfig.managedStringDict(forKey: "oidcExtraAuthParams") {
@@ -1314,24 +1313,36 @@ public struct Config: Sendable {
         // Enterprise OIDC federation — top-level "oidc" section (the
         // shared corporate sign-in shared by the AWS + GCP federation legs).
         if let oidc = parsed["oidc"] as? [String: Any] {
+            // issuer must be an https:// URL (or http:// loopback for the
+            // in-repo Keycloak dev rig) — the same HTTPS-or-loopback rule the
+            // MDM path applies via ManagedConfig.validateOIDCIssuer. runtime
+            // discover() catches a bad value later and fails closed, so this
+            // is parity/legibility: reject at load (keep the prior/default
+            // value) with a code-only log rather than letting it sit in config.
             if let v = oidc["issuer"] as? String {
-                c.oidcIssuer = v.trimmingCharacters(in: .whitespacesAndNewlines)
+                if let validated = ManagedConfig.validateOIDCIssuer(v) {
+                    c.oidcIssuer = validated
+                } else {
+                    configLogStderr("[parleq] oidc.issuer: rejected — must be an https:// URL (or http:// loopback for dev); keeping previous value")
+                }
             }
             if let v = oidc["client_id"] as? String {
                 c.oidcClientID = v.trimmingCharacters(in: .whitespacesAndNewlines)
             }
             if let v = oidc["scopes"] as? [String], !v.isEmpty { c.oidcScopes = v }
             if let v = oidc["ephemeral_browser"] as? Bool { c.oidcEphemeralBrowser = v }
-            // redirect_uri must parse as a URL with a non-empty scheme — the
-            // callback scheme is derived from it (URL(string:)?.scheme), so a
-            // schemeless value would silently break browser interception.
-            // Reject (keep the default) with a count-only log.
+            // redirect_uri must parse as a URL with a custom (non-http/https)
+            // scheme — the callback is intercepted by ASWebAuthenticationSession's
+            // custom-scheme handler, so the scheme is derived from this value
+            // (URL(string:)?.scheme). A schemeless value breaks browser
+            // interception; an http(s):// value can never be intercepted by the
+            // custom-scheme callback and would fail opaquely at sign-in. Reject
+            // both (keep the default) with a code-only log.
             if let v = oidc["redirect_uri"] as? String {
-                let trimmed = v.trimmingCharacters(in: .whitespacesAndNewlines)
-                if let scheme = URL(string: trimmed)?.scheme, !scheme.isEmpty {
-                    c.oidcRedirectURI = trimmed
+                if let validated = ManagedConfig.validateOIDCRedirectURI(v) {
+                    c.oidcRedirectURI = validated
                 } else {
-                    configLogStderr("[parleq] oidc.redirect_uri: rejected — value does not parse as a URL with a scheme; keeping default")
+                    configLogStderr("[parleq] oidc.redirect_uri: rejected — must be a URL with a custom (non-http/https) scheme; keeping default")
                 }
             }
             // extra_auth_params: a flat [String: String] of additional

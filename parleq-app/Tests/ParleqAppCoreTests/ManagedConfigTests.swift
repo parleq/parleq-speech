@@ -638,6 +638,44 @@ final class ManagedConfigTests: XCTestCase {
         XCTAssertNil(ManagedConfig.validateOIDCIssuer("file:///tmp/issuer"))
     }
 
+    // MARK: - validateOIDCRedirectURI
+
+    func test_validateOIDCRedirectURI_accepts_custom_scheme() {
+        // parleq-auth: app-private scheme.
+        XCTAssertEqual(
+            ManagedConfig.validateOIDCRedirectURI("parleq-auth://oidc/callback"),
+            "parleq-auth://oidc/callback"
+        )
+        // Reversed-client-ID shape (Google native OAuth).
+        XCTAssertEqual(
+            ManagedConfig.validateOIDCRedirectURI("com.googleusercontent.apps.1234:/oauth2redirect"),
+            "com.googleusercontent.apps.1234:/oauth2redirect"
+        )
+        // Trimmed.
+        XCTAssertEqual(
+            ManagedConfig.validateOIDCRedirectURI("  parleq-auth://oidc/callback  "),
+            "parleq-auth://oidc/callback"
+        )
+    }
+
+    func test_validateOIDCRedirectURI_rejects_https() {
+        // http(s):// can never be intercepted by ASWebAuthenticationSession's
+        // custom-scheme callback — it would fail opaquely at sign-in.
+        XCTAssertNil(ManagedConfig.validateOIDCRedirectURI("https://example.com/callback"))
+        XCTAssertNil(ManagedConfig.validateOIDCRedirectURI("HTTPS://example.com/callback"))
+    }
+
+    func test_validateOIDCRedirectURI_rejects_http() {
+        XCTAssertNil(ManagedConfig.validateOIDCRedirectURI("http://localhost/callback"))
+        XCTAssertNil(ManagedConfig.validateOIDCRedirectURI("HTTP://localhost/callback"))
+    }
+
+    func test_validateOIDCRedirectURI_rejects_schemeless_and_empty() {
+        XCTAssertNil(ManagedConfig.validateOIDCRedirectURI("no-scheme-here"))
+        XCTAssertNil(ManagedConfig.validateOIDCRedirectURI(""))
+        XCTAssertNil(ManagedConfig.validateOIDCRedirectURI("   "))
+    }
+
     func test_allKeys_contains_all_phase1_bool_keys() {
         let phase1Keys = [
             "referenceWindowsEnabled",

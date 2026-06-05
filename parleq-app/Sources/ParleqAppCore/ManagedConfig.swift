@@ -471,6 +471,26 @@ public enum ManagedConfig {
         return trimmed
     }
 
+    /// Validates an OIDC redirect_uri. Returns the trimmed value if it passes,
+    /// nil otherwise. The callback is intercepted by ASWebAuthenticationSession's
+    /// custom-scheme handler, so the redirect_uri MUST carry a non-http/https
+    /// scheme — a `parleq-auth:` value or a reversed-client-ID
+    /// (`com.googleusercontent.apps.…:`) shape. An http(s):// redirect_uri can
+    /// never be intercepted by the custom-scheme callback and would fail opaquely
+    /// at sign-in, so it is rejected here (and on the JSON path) at load rather
+    /// than surfacing as a confusing runtime failure. Used by the MDM overlay and
+    /// the JSON config-load path so the rule is defined once.
+    public static func validateOIDCRedirectURI(_ raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              let scheme = URL(string: trimmed)?.scheme, !scheme.isEmpty,
+              scheme.lowercased() != "http", scheme.lowercased() != "https"
+        else {
+            return nil
+        }
+        return trimmed
+    }
+
     /// Returns false when `staticApiKeysAllowed` is not managed or is true.
     public static func isProviderAuthPathBlocked(provider: String, authMode: String?) -> Bool {
         // Only active when staticApiKeysAllowed is managed AND set to false.
