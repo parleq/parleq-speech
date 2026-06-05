@@ -93,10 +93,13 @@ parleq-speech/
 | `ASRClient.swift` | Two-headed: bundled path calls `LocalASR` in-process; HTTP path `POST`s WAV bytes + `X-Parleq-Vocabulary` header to a user-configured external `asr.endpoint` (Sherpa-ONNX, faster-whisper, …). |
 | `LLMProvider.swift` | Provider protocol + shared types (`LLMMessage`, `LLMStreamEvent`, `LLMStreamSummary`). |
 | `LLMClient.swift` + `LLMStreaming.swift` | Google Gemini direct-API impl (SSE streaming). |
-| `VertexProvider.swift` + `VertexServiceAccount.swift` | Google Vertex AI impl. Two auth modes: gcloud ADC (shells out for tokens) and service-account JSON (mints OAuth tokens via JWT-bearer / RS256). |
-| `BedrockProvider.swift` | AWS Bedrock impl via Soto `ConverseStream`. SSO + static-credential auth modes. |
+| `VertexProvider.swift` + `VertexServiceAccount.swift` | Google Vertex AI impl. Four auth modes: gcloud ADC (shells out for tokens), service-account JSON (mints OAuth tokens via JWT-bearer / RS256), `oidcFederation` (Workforce Identity federated bearer from `CachedExchange` + `x-goog-user-project`), and `googleOAuth` (native Google sign-in via the OIDC engine — the session's OAuth access token, with the `cloud-platform` scope, is the Vertex bearer directly; no exchanger/STS hop; same `x-goog-user-project` header). |
+| `BedrockProvider.swift` | AWS Bedrock impl via Soto `ConverseStream`. SSO + static-credential auth modes, plus `oidc` mode (federated STS credentials from `CachedExchange`). |
 | `BedrockBearerProvider.swift` + `BedrockEventStream.swift` | Scoped Bedrock-API-key auth path. Plain HTTPS with `Authorization: Bearer <key>`, in-tree event-stream parser — bypasses Soto entirely. |
 | `AzureOpenAIProvider.swift` | Azure OpenAI impl. Two auth modes (resource API key, Microsoft Entra ID via `az login`). Two model families (Standard, Reasoning) since Azure routes by deployment name. |
+| `OIDCSession.swift` | Cloud-ignorant OIDC actor for enterprise federation: discovery, PKCE sign-in (via `ASWebAuthenticationSession`), rotation-safe single-flight refresh (rotated refresh token persisted to Keychain on receipt), published state machine. `OIDCSessionModel` is the MainActor facade for SwiftUI. ID/access tokens are memory-only; only the refresh token + identity snapshot persist (Keychain). |
+| `CloudCredentialExchangers.swift` | Turns an OIDC ID token into per-cloud credentials behind a single-flight TTL cache (`CachedExchange`, 5-min refresh-ahead, hotkey-down `warm()`). `AWSWebIdentityExchanger` (Soto STS `AssumeRoleWithWebIdentity` → temp credentials; email as role-session name for CloudTrail) and `GCPWorkforceExchanger` (Workforce Identity Federation token exchange → federated bearer). Per-hop status feeds the connection doctor; logs are state+code only. |
+| `CompanyAccountView.swift` | "Company Account" Settings section: corporate sign-in, signed-in identity (renders name/email in UI only — never logged), and a connection doctor (token-free discovery → silent refresh → per-leg AWS/GCP exchange status). Fails closed to raw on-device ASR when federation is unavailable. |
 | `SystemPrompts.swift` | Cleanup + refine prompts. `cleanup(dictionary:)` returns the prompt with an optional smart-vocabulary addendum. |
 | `OverlayWindow.swift` | Borderless `NSPanel` + SwiftUI. Captures Enter/Esc without stealing focus. |
 | `Paster.swift` | Pasteboard snapshot → set → activate target → simulate Cmd-V → restore. |
@@ -106,9 +109,9 @@ parleq-speech/
 | `MenuBar.swift` | Status-item menu (Microphone submenu, Settings, Run Setup, Open at Login, Recent Dictations, Quit). Microphone submenu rebuilds on open; selection posts `parleqMicrophoneSelectionChanged` so Settings reflects it. |
 | `Config.swift` | `~/.parleq/config.json` loader/saver. |
 | `UsageLedger.swift` + `PricingCache.swift` | Append-only JSONL at `~/.parleq/usage.jsonl` (**metadata only** — no transcript content) plus a LiteLLM live-pricing fetcher cached at `~/.parleq/pricing-cache.json`. |
-| `KeychainStore.swift` | Wraps SecItem APIs for every provider secret: Gemini API key, Bedrock API key, AWS static credentials, Vertex service-account JSON, Azure resource API key. Service `com.parleq.app`. Settings UI is the canonical writer; never displayed in plaintext after save. |
+| `KeychainStore.swift` | Wraps SecItem APIs for every provider secret: Gemini API key, Bedrock API key, AWS static credentials, Vertex service-account JSON, Azure resource API key, OIDC refresh token + identity snapshot (enterprise federation; access/ID tokens are memory-only). Service `com.parleq.app`. Settings UI is the canonical writer; never displayed in plaintext after save. |
 | `LogFile.swift` | At launch, `dup2`s stderr to `~/.parleq/app.log` (10 MB cap, truncates on launch when over). Skipped when stderr is a TTY (developer mode). |
-| `TranscriptHistory.swift` | In-memory ring buffer (cap 20) of recent cleaned transcripts. **Process memory only — never written to disk.** Surfaced via the menu bar's Recent Dictations submenu; clicking copies text to the pasteboard. Wiped on app quit. |
+| `TranscriptHistory.swift` | Unlimited by default (bounded via the managed/config caps; `0` disables) in-memory list of recent cleaned transcripts. **Process memory only — never written to disk.** Surfaced in the Parleq window's Recent Dictations section (the menu-bar submenu was removed in 0.14.0); clicking copies text to the pasteboard. Wiped on app quit. |
 | `SpellOutDetector.swift` | Detects spelled-out word candidates (e.g. "A-P-I") in the raw ASR transcript and surfaces the assembled term + context as a correction signal for the learning journal. |
 | `CorrectionJournal.swift` | Opt-in, bounded, **in-memory-only** ring buffer of correction signals — voice-refine events (instruction + the edit's before/after text) and spell-out candidates (assembled term + the cleaned text it appeared in). Captures correction *events* only, not a log of every dictation (a refine record holds that edit's full before/after text). Count + age caps bound the ring; **never written to disk**; wiped on app quit; off by default. |
 | `LearningAnalyzer.swift` | Periodic off-hot-path actor that reads the in-memory correction ring, asks the configured cleanup LLM to propose dictionary additions/modifications, then hands high-confidence non-colliding proposals to `LearnedStore` for auto-apply and the rest as pending suggestions. Analysis logging is count-only (no transcript content). |
@@ -149,9 +152,16 @@ These are non-obvious and worth flagging to anyone editing the codebase:
   "audio":      { "continue_other_audio": true, "input_device_uid": "" },
   "asr":        { "mode": "default", "endpoint": "http://127.0.0.1:8767/inference" },
   "llm":        { "mode": "default", "provider": "gemini", "model": "gemini-2.5-flash" },
-  "aws":        { "region": "us-east-2", "profile": "", "auth_mode": "sso" },
-  "vertex":     { "project": "", "region": "us-central1", "auth_mode": "adc" },
+  "aws":        { "region": "us-east-2", "profile": "", "auth_mode": "sso",
+                  "role_arn": "", "session_duration_seconds": 3600 },
+  "vertex":     { "project": "", "region": "us-central1", "auth_mode": "adc",
+                  "workforce_provider": "" },
   "azure":      { "resource": "", "deployment": "", "api_version": "2025-04-01-preview", "auth_mode": "apiKey", "family": "standard" },
+  "oidc":       { "issuer": "", "client_id": "",
+                  "scopes": ["openid", "profile", "email", "offline_access"],
+                  "ephemeral_browser": false,
+                  "redirect_uri": "parleq-auth://oidc/callback",
+                  "extra_auth_params": {} },
   "wizard":     { "completed": false },
   "paste":      { "trailing_space": true, "no_trailing_space_apps": [] },
   "dictionary": { "terms": [{ "term": "Parleq", "context": "voice dictation app", "aliases": ["parlay", "parlez"], "biasing": "asrAndLLM" }] },

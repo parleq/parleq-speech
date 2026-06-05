@@ -498,14 +498,15 @@ final class ManagedConfigTests: XCTestCase {
 
     // MARK: - 13. ManagedConfig.allKeys — single source of truth
 
-    func test_allKeys_count_is_thirtysix() {
+    func test_allKeys_count_is_fortyfive() {
         // Phase 1 (8) + Phase 2 (8) + Phase 3 (2) + Phase 4 (3)
         // + Phase 7 (9 incl. vertexAuthMode) + Phase 8 (2 transcript-history)
-        // + Phase 9 (3 learn-from-corrections) + transform-presets (1) = 36.
+        // + Phase 9 (3 learn-from-corrections) + transform-presets (1)
+        // + Enterprise OIDC federation (9 incl. redirect_uri + extra_auth_params) = 45.
         // If this fails, a key was added or removed — update the docs table
         // (web managed-configuration page) and this count together.
-        XCTAssertEqual(ManagedConfig.allKeys.count, 36,
-                       "ManagedConfig.allKeys must contain exactly 36 managed-eligible keys")
+        XCTAssertEqual(ManagedConfig.allKeys.count, 45,
+                       "ManagedConfig.allKeys must contain exactly 45 managed-eligible keys")
     }
 
     func test_allKeys_contains_transformPresetsEnabled() {
@@ -594,6 +595,85 @@ final class ManagedConfigTests: XCTestCase {
 
     func test_validateASREndpoint_rejects_file_scheme() {
         XCTAssertNil(ManagedConfig.validateASREndpoint("file:///tmp/inference"))
+    }
+
+    func test_validateOIDCIssuer_accepts_https() {
+        XCTAssertEqual(
+            ManagedConfig.validateOIDCIssuer("https://acme.okta.com"),
+            "https://acme.okta.com"
+        )
+    }
+
+    func test_validateOIDCIssuer_trims_whitespace() {
+        XCTAssertEqual(
+            ManagedConfig.validateOIDCIssuer("  https://acme.okta.com  "),
+            "https://acme.okta.com"
+        )
+    }
+
+    func test_validateOIDCIssuer_accepts_http_loopback() {
+        // The in-repo Keycloak dev rig runs on http://localhost — allowed.
+        XCTAssertEqual(
+            ManagedConfig.validateOIDCIssuer("http://localhost:8080/realms/parleq"),
+            "http://localhost:8080/realms/parleq"
+        )
+        XCTAssertEqual(
+            ManagedConfig.validateOIDCIssuer("http://127.0.0.1:8080/realms/parleq"),
+            "http://127.0.0.1:8080/realms/parleq"
+        )
+    }
+
+    func test_validateOIDCIssuer_rejects_http_non_loopback() {
+        // An MDM-pushed plain-HTTP non-loopback issuer must fail closed at load
+        // — it would let a network attacker substitute the discovery document.
+        XCTAssertNil(ManagedConfig.validateOIDCIssuer("http://attacker.example/realms/parleq"))
+    }
+
+    func test_validateOIDCIssuer_rejects_empty() {
+        XCTAssertNil(ManagedConfig.validateOIDCIssuer(""))
+        XCTAssertNil(ManagedConfig.validateOIDCIssuer("   "))
+    }
+
+    func test_validateOIDCIssuer_rejects_file_scheme() {
+        XCTAssertNil(ManagedConfig.validateOIDCIssuer("file:///tmp/issuer"))
+    }
+
+    // MARK: - validateOIDCRedirectURI
+
+    func test_validateOIDCRedirectURI_accepts_custom_scheme() {
+        // parleq-auth: app-private scheme.
+        XCTAssertEqual(
+            ManagedConfig.validateOIDCRedirectURI("parleq-auth://oidc/callback"),
+            "parleq-auth://oidc/callback"
+        )
+        // Reversed-client-ID shape (Google native OAuth).
+        XCTAssertEqual(
+            ManagedConfig.validateOIDCRedirectURI("com.googleusercontent.apps.1234:/oauth2redirect"),
+            "com.googleusercontent.apps.1234:/oauth2redirect"
+        )
+        // Trimmed.
+        XCTAssertEqual(
+            ManagedConfig.validateOIDCRedirectURI("  parleq-auth://oidc/callback  "),
+            "parleq-auth://oidc/callback"
+        )
+    }
+
+    func test_validateOIDCRedirectURI_rejects_https() {
+        // http(s):// can never be intercepted by ASWebAuthenticationSession's
+        // custom-scheme callback — it would fail opaquely at sign-in.
+        XCTAssertNil(ManagedConfig.validateOIDCRedirectURI("https://example.com/callback"))
+        XCTAssertNil(ManagedConfig.validateOIDCRedirectURI("HTTPS://example.com/callback"))
+    }
+
+    func test_validateOIDCRedirectURI_rejects_http() {
+        XCTAssertNil(ManagedConfig.validateOIDCRedirectURI("http://localhost/callback"))
+        XCTAssertNil(ManagedConfig.validateOIDCRedirectURI("HTTP://localhost/callback"))
+    }
+
+    func test_validateOIDCRedirectURI_rejects_schemeless_and_empty() {
+        XCTAssertNil(ManagedConfig.validateOIDCRedirectURI("no-scheme-here"))
+        XCTAssertNil(ManagedConfig.validateOIDCRedirectURI(""))
+        XCTAssertNil(ManagedConfig.validateOIDCRedirectURI("   "))
     }
 
     func test_allKeys_contains_all_phase1_bool_keys() {
@@ -800,6 +880,102 @@ final class ManagedConfigTests: XCTestCase {
 
         XCTAssertEqual(c.llmModel, "gpt-4o",
                        "Pinned cleanupModel should take precedence")
+    }
+
+    // MARK: - 16b. Save-side model preservation under a pinned provider
+    //
+    // These drive the pure mergeForSave seam directly. The MDM bug:
+    // provider pinned (cleanupProvider) without a model pin/allowlist
+    // used to preserve the ON-DISK model unconditionally, swallowing
+    // the user's in-app model pick within the pinned provider. The fix
+    // preserves on-disk only when that on-disk model is FOREIGN to the
+    // pinned provider (a pre-MDM fallback to restore on profile removal).
+
+    func test_save_pinned_provider_canonical_ondisk_writes_user_pick() {
+        // Regression: MDM pins cleanupProvider=vertex (no model pin).
+        // On disk: vertex/gemini-2.5-flash. User picked flash-lite in
+        // Settings. The save must WRITE the in-memory pick, not snap
+        // back to the on-disk model.
+        var c = Config.default
+        c.llmProvider = "vertex"
+        c.llmModel = "gemini-2.5-flash-lite"
+        c.managedKeys = ["cleanupProvider"]
+        let existing: [String: Any] = [
+            "llm": ["provider": "vertex", "model": "gemini-2.5-flash"]
+        ]
+        let merged = Config.mergeForSave(c, existing: existing)
+        let llm = merged["llm"] as? [String: Any]
+        XCTAssertEqual(llm?["model"] as? String, "gemini-2.5-flash-lite",
+                       "User's in-pin model pick must be written, not the on-disk value")
+    }
+
+    func test_save_pinned_provider_foreign_ondisk_is_preserved() {
+        // Original protection intact: provider pinned (so the written
+        // provider is the on-disk value), and the on-disk model is
+        // FOREIGN to that provider (gpt-4o-mini is not in vertex's
+        // catalog) — a pre-MDM fallback awaiting the runtime auto-snap.
+        // Preserve it so removing the profile restores the user's
+        // original choice; the in-memory model is the auto-snap.
+        var c = Config.default
+        c.llmProvider = "vertex"
+        c.llmModel = "gemini-2.5-flash"  // runtime auto-snap
+        c.managedKeys = ["cleanupProvider"]
+        let existing: [String: Any] = [
+            "llm": ["provider": "vertex", "model": "gpt-4o-mini"]
+        ]
+        let merged = Config.mergeForSave(c, existing: existing)
+        let llm = merged["llm"] as? [String: Any]
+        XCTAssertEqual(llm?["model"] as? String, "gpt-4o-mini",
+                       "Foreign on-disk model (pre-MDM fallback) must be preserved")
+    }
+
+    func test_save_model_pinned_preserves_ondisk_regardless() {
+        // cleanupModel pinned → always preserve the on-disk value, even
+        // when it is canonical for the (also-pinned) provider. Unchanged
+        // by the fix.
+        var c = Config.default
+        c.llmProvider = "vertex"
+        c.llmModel = "gemini-2.5-flash-lite"  // would-be in-memory value
+        c.managedKeys = ["cleanupProvider", "cleanupModel"]
+        let existing: [String: Any] = [
+            "llm": ["provider": "vertex", "model": "gemini-2.5-flash"]
+        ]
+        let merged = Config.mergeForSave(c, existing: existing)
+        let llm = merged["llm"] as? [String: Any]
+        XCTAssertEqual(llm?["model"] as? String, "gemini-2.5-flash",
+                       "Pinned model always preserves the on-disk value")
+    }
+
+    func test_save_ctx_pinned_provider_canonical_ondisk_writes_user_pick() {
+        // Context-tier mirror of the regression: contextProvider pinned
+        // to vertex (no contextModel pin); on disk vertex/gemini-2.5-flash;
+        // user picked flash-lite. The save must write the in-memory pick.
+        var c = Config.default
+        c.managedKeys = ["contextProvider"]
+        c.contextModel = ModelIdentifier(provider: "vertex", model: "gemini-2.5-flash-lite")
+        let existing: [String: Any] = [
+            "context_model": ["provider": "vertex", "model": "gemini-2.5-flash"]
+        ]
+        let merged = Config.mergeForSave(c, existing: existing)
+        let ctx = merged["context_model"] as? [String: Any]
+        XCTAssertEqual(ctx?["model"] as? String, "gemini-2.5-flash-lite",
+                       "Context tier: user's in-pin model pick must be written")
+    }
+
+    func test_save_ctx_pinned_provider_foreign_ondisk_is_preserved() {
+        // Context-tier mirror of the protection: provider pinned (the
+        // written provider is the preserved on-disk vertex), on-disk
+        // model is foreign to vertex (gpt-4o-mini) → preserve it.
+        var c = Config.default
+        c.managedKeys = ["contextProvider"]
+        c.contextModel = ModelIdentifier(provider: "vertex", model: "gemini-2.5-flash")
+        let existing: [String: Any] = [
+            "context_model": ["provider": "vertex", "model": "gpt-4o-mini"]
+        ]
+        let merged = Config.mergeForSave(c, existing: existing)
+        let ctx = merged["context_model"] as? [String: Any]
+        XCTAssertEqual(ctx?["model"] as? String, "gpt-4o-mini",
+                       "Context tier: foreign on-disk model must be preserved")
     }
 
     // MARK: - 17. Phase 3 — sparkleUpdateFeedURL validation
@@ -1236,7 +1412,7 @@ final class ManagedConfigTests: XCTestCase {
         // buildAuditRows() delegates to resolveAuditRow which previously
         // fell through to the `default: "(unknown key)"` branch for this key.
         // Confirm the dedicated case is now wired up.
-        let rows = buildAuditRows()
+        let rows = buildAuditRows(config: Config.default)
         guard let row = rows.first(where: { $0.key == "transformPresetsEnabled" }) else {
             XCTFail("transformPresetsEnabled must appear in buildAuditRows() output")
             return
@@ -1246,5 +1422,38 @@ final class ManagedConfigTests: XCTestCase {
         // The default value is true; without MDM override it should render "true".
         XCTAssertFalse(row.displayValue.isEmpty,
                        "transformPresetsEnabled audit row must have a non-empty display value")
+    }
+
+    /// Every OIDC-federation key must have a dedicated audit-row case — none
+    /// may fall through to the "(unknown key)" default. Guards the generic-OP
+    /// keys (oidcRedirectURI / oidcExtraAuthParams) and the existing seven
+    /// against being added to allKeys without an audit row.
+    func test_every_oidc_allKey_has_an_audit_row() {
+        let oidcKeys = ManagedConfig.allKeys.filter {
+            $0.hasPrefix("oidc") || $0 == "awsRoleArn"
+                || $0 == "awsSessionDurationSeconds" || $0 == "vertexWorkforceProvider"
+        }
+        let rows = buildAuditRows(config: Config.default)
+        for key in oidcKeys {
+            guard let row = rows.first(where: { $0.key == key }) else {
+                XCTFail("\(key) missing from buildAuditRows()")
+                continue
+            }
+            XCTAssertNotEqual(row.displayValue, "(unknown key)",
+                              "\(key) must have a dedicated audit-row case")
+        }
+    }
+
+    func test_auditRow_oidc_generic_op_keys_render() {
+        // Synthetic default config — NOT Config.load(): the developer's live
+        // ~/.parleq/config.json may legitimately carry non-default OIDC
+        // values (it did, during live testing, and broke this test).
+        let rows = buildAuditRows(config: Config.default)
+        let redirect = rows.first { $0.key == "oidcRedirectURI" }
+        XCTAssertEqual(redirect?.displayValue, "parleq-auth://oidc/callback",
+                       "default redirect URI must render verbatim")
+        let extra = rows.first { $0.key == "oidcExtraAuthParams" }
+        XCTAssertEqual(extra?.displayValue, "(none)",
+                       "empty extra-auth-params must render as (none)")
     }
 }

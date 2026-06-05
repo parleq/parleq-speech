@@ -4,6 +4,24 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-06-05
+
+This release brings corporate sign-in to Parleq. One "Sign in with your company account" button connects every employee — not just the ones with cloud CLIs — to your organization's AWS Bedrock or Google Vertex AI, with no per-user API keys to distribute or rotate. Offboarding flows from your identity provider: disable the user there and their next credential refresh fails closed (already-issued cloud sessions expire on their own — keep session durations short). Personal users get something too: sign in with your Google account and dictate straight into Gemini.
+
+### Added
+
+- **Enterprise OIDC sign-in.** A new **Company Account** section in Settings (and the setup wizard) signs you into your organization's identity provider — Okta, Microsoft Entra ID, Amazon Cognito, or any standards-compliant OIDC IdP — through the system browser sheet, with PKCE and your org's own session policies (passkeys and MFA flow straight through; device-based conditional access works wherever your IdP supports it in a browser session). That one sign-in then mints short-lived cloud credentials for **AWS Bedrock** (via IAM role federation, with per-user CloudTrail attribution) or **Google Vertex AI** (via Workforce Identity Federation). The Keychain holds only a refresh token and a sign-in identity snapshot — never a cloud credential; short-lived cloud credentials live in memory and expire on their own. Sign out — or get offboarded at your IdP — and dictation **fails closed** to on-device-only transcription at the next credential refresh (already-issued short-lived sessions run out on their own) rather than falling back to any personal credential.
+- **Sign in with Google → Gemini, no broker.** A new Vertex auth mode uses your Google account's sign-in directly as the Vertex credential — no workforce pool, no Cloud organization, no service-account JSON. The simplest path from "I have a Google account and a GCP project" to dictating with Gemini. If your account doesn't grant all the access Parleq asked for (those easy-to-miss consent checkboxes), sign-in now says so immediately instead of failing mysteriously later.
+- **Connection doctor.** A **Test connection** button in Company Account walks the three hops — your IdP, the cloud token exchange, and the AI provider — and shows exactly which one failed and what the server said, so the fix (or the screenshot for IT) is obvious.
+- **Re-auth that never interrupts.** When your org session eventually expires mid-day, Parleq finishes the dictation it's on, shows a quiet notice, and waits — it never pops a browser in the middle of your sentence.
+- **Nine new managed-configuration keys** so IT can pin the whole flow: the OIDC issuer, client ID, scopes, browser-session mode, redirect URI, extra auth parameters, the AWS role and session duration, and the GCP workforce provider. Users sign in; they can't re-point the app at a personal tenant.
+- **New documentation**: enterprise SSO setup playbooks for IT admins, a DIY guide for setting up these flows at home (free-tier IdPs, the gotchas that burn hours, and how to drive it with an AI assistant), and a dedicated enterprise page on parleq.app.
+
+### Fixed
+
+- **Security-audit hardening across the new auth engine.** A three-way audit (disk persistence, logging, network) confirmed the core promises — tokens never touch disk outside the Keychain, never appear in URLs, never reach logs — and fixed what it found: server error bodies are now redacted from retry log lines (a pre-existing leak), IdP-supplied error codes are sanitized before logging, the OIDC HTTP stack uses an ephemeral session that can never write a response to the disk cache, and a managed `oidcIssuer` must be HTTPS to be accepted at all.
+- **Debug builds no longer write a log file.** Development builds previously mirrored their verbose stderr (which can include transcript text from the speech engine's own debug output) into `~/.parleq/app.log`. Release builds were never affected; debug builds now keep stderr ephemeral unless explicitly opted in.
+
 ## [0.19.0] - 2026-06-04
 
 This release puts your favorite rewrites one tap away. Define your own transform presets — Concise, Formal, Bulletize, anything you can phrase — and they appear as chips on the review overlay, restyle a dictation before it's pasted, and can even run automatically for chosen apps.

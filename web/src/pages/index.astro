@@ -1,6 +1,7 @@
 ---
 import Layout from '../layouts/Layout.astro';
-import Logo from '../components/Logo.astro';
+import SiteHeader from '../components/SiteHeader.astro';
+import OverlayMockup from '../components/OverlayMockup.astro';
 import { fetchLatestRelease } from '../lib/release';
 
 const release = await fetchLatestRelease();
@@ -13,81 +14,118 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
 // download in the fallback case.
 const downloadUrl = release.downloadUrl;
 
-const highlights = [
+// All eleven capabilities, flattened into a single uniform grid. Each
+// card is glyph + title + ONE distilled sentence, and links to where the
+// full story lives (how-it-works stage/section anchors, or /enterprise).
+// `icon` selects an inline line-glyph drawn in the markup below — the
+// same hand-rolled SVGs the old bento layout used, no icon library. The
+// full body copy these distill from now lives at each `href`; see the
+// how-it-works stages, Reference Windows, refine-loop, and /enterprise.
+const base = `${import.meta.env.BASE_URL}`.replace(/\/$/, '');
+const capabilities = [
   {
-    title: 'Speech recognition runs on your Mac',
-    body: 'Your audio never goes to the cloud. Parleq bundles Parakeet TDT v3 — a small, fast speech model — and runs it locally on Apple Silicon\'s Neural Engine. No cloud transcription bill, no per-call latency, and after first launch, no warm-up wait.',
-  },
-  {
-    title: 'Use the AI you already have',
-    body: 'Plug in whichever AI provider fits your situation: Google Gemini or OpenAI direct for personal use, AWS Bedrock (Claude or GPT-OSS) for an AWS shop, Google Vertex AI for a GCP shop, or Azure OpenAI for a Microsoft shop. Or skip cleanup entirely and paste the raw transcript. Each provider works with both pasted API keys and the same sign-in your other tools use — gcloud, az login, AWS SSO, IAM keys, or scoped Bedrock API keys.',
-  },
-  {
-    title: 'Teach it the words it gets wrong',
-    body: 'Names, jargon, and project codenames the speech model commonly mishears go in the custom dictionary. Add the alternate spellings the model usually emits, an optional context blurb to help the AI judge whether a topic actually matches, and a per-term toggle for cases where biasing the speech recognition itself causes false positives.',
-  },
-  {
-    title: 'Pastes where you started, not where you ended',
-    body: 'The app you were in when you pressed the hotkey is captured at that moment. If your attention drifts mid-dictation, the cleaned text still lands in the right window. Per-app overrides skip the trailing space for terminals and other apps that handle their own spacing.',
-  },
-  {
-    title: 'Reference Windows',
-    body: 'Tap Space while holding the dictation hotkey to pause audio and pick a window — or C to grab the one you\'re already looking at — then keep dictating; your spoken words land with the right specificity because the LLM sees what you\'re pointing at. Attach a file or clipboard snapshot too. Window captures are PNG-in-memory only: never written to disk, released when the session ends, sent only to your configured LLM endpoint.',
-  },
-  {
-    title: 'Learns from your corrections',
-    body: 'When you repeatedly fix the same name or phrase, Parleq notices. The opt-in "Learn from corrections" feature keeps short correction snippets in memory (never written to disk) and occasionally asks your already-configured cleanup model to suggest dictionary improvements — no new service, no new network destination. High-confidence spelling fixes apply automatically (and are revertible); the rest appear as suggestions to accept or dismiss.',
-  },
-  {
-    title: 'One-tap transform presets',
-    body: 'Define your own named rewrites — Concise, Formal, Bulletize, anything you can phrase — and they appear as chips on the review overlay. Tap one to restyle the dictation before it\'s pasted; chain another on top. Assign a preset to an app and dictations into it arrive already styled, with a one-tap Undo. Each preset is just a stored instruction to your already-configured cleanup model — no new service, nothing stored beyond the presets you wrote.',
+    title: 'On-device speech recognition',
+    blurb: 'Parakeet TDT v3 runs on the Apple Neural Engine — audio never leaves your Mac, and nothing is written to disk.',
+    icon: 'mic',
+    href: `${base}/how-it-works/#stage-transcribe`,
   },
   {
     title: 'Compliance-friendly by default',
-    body: 'Audio is never written to disk — it lives in memory only, for the few seconds a dictation takes. Logs record metrics (latency, token counts) but never the text itself. Provider API keys live in the macOS Keychain. Cloud sign-in modes (AWS SSO, gcloud, az login) delegate to your existing CLI session, so Parleq never stores long-lived AWS, GCP, or Azure session tokens directly.',
-  },
-  {
-    title: 'MDM-deployable for IT admins',
-    body: 'Deploy Parleq via your existing MDM (Jamf, Kandji, Mosyle, Intune) and push a managed configuration profile that pins the LLM provider, restricts the model list, disables optional features outside your security review scope, and prevents users from changing any of it. No Parleq admin portal, no licensing key system, no phone-home check.',
-    link: { href: '/docs/admin-guide/', label: 'Admin Guide →' },
-  },
-  {
-    title: 'A home of its own',
-    body: 'Hold the dictation hotkey and tap P to open the Parleq window from anywhere — a real app window with Recent Dictations, a Stats dashboard, Settings, and About in one sidebar. No Dock icon, no clutter; it appears when you summon it and gets out of the way when you\'re done.',
+    blurb: 'Audio stays in memory, logs are metrics-only, secrets live in the Keychain, and dictation fails closed when you sign out.',
+    icon: 'shield',
+    href: `${base}/enterprise/`,
   },
   {
     title: 'Recovery built in',
-    body: 'Your recent cleaned dictations live in the Parleq window\'s Recent Dictations list — click any entry to copy it back, or paste it straight into the app you were just in. Useful when a paste lands in the wrong window. The text stays in memory only and is wiped on quit; never written to disk.',
+    blurb: 'Recent cleaned dictations stay in an in-memory list you can copy or re-paste — wiped on quit, never written to disk.',
+    icon: 'clock-rewind',
+    href: `${base}/how-it-works/#stage-paste`,
+  },
+  {
+    title: 'Teach it the words it gets wrong',
+    blurb: 'A custom dictionary biases the speech model toward your names and jargon, with aliases and a per-term opt-out.',
+    icon: 'book',
+    href: `${base}/how-it-works/#stage-transcribe`,
+  },
+  {
+    title: 'Learns from your corrections',
+    blurb: 'Opt-in: when you keep fixing the same word, Parleq asks your existing cleanup model to suggest dictionary improvements.',
+    icon: 'sparkle',
+    href: `${base}/how-it-works/#stage-cleanup`,
+  },
+  {
+    title: 'One-tap transform presets',
+    blurb: 'Your own named rewrites appear as chips on the overlay — tap to restyle before pasting, or set one as an app default.',
+    icon: 'gear',
+    href: `${base}/how-it-works/#refine-loop`,
+  },
+  {
+    title: 'Reference Windows',
+    blurb: 'Point at a window, file, or clipboard so the LLM sees your context — captures stay in memory and never touch disk.',
+    icon: 'window',
+    href: `${base}/how-it-works/#reference-windows`,
+  },
+  {
+    title: 'Use the AI you already have',
+    blurb: 'Pick Gemini, OpenAI, Bedrock, Vertex, or Azure — with pasted keys or the CLI sign-in your other tools already use.',
+    icon: 'chips',
+    href: `${base}/how-it-works/#stage-cleanup`,
+  },
+  {
+    title: 'Pastes where you started',
+    blurb: 'The focused app is captured at hotkey-down, so cleaned text lands in the right window even if your attention drifts.',
+    icon: 'cursor',
+    href: `${base}/how-it-works/#stage-paste`,
+  },
+  {
+    title: 'A home of its own',
+    blurb: 'Hold the hotkey and tap P for the Parleq window — Recent Dictations, Stats, Settings, and About, with no Dock clutter.',
+    icon: 'house',
+    href: `${base}/how-it-works/#gestures`,
+  },
+  {
+    title: 'MDM-deployable for IT admins',
+    blurb: 'Push a managed profile that pins the provider, model list, OIDC issuer, and destinations so users can\'t re-point the app.',
+    icon: 'lock',
+    href: `${base}/enterprise/`,
   },
 ];
 ---
 
 <Layout title="Parleq — Local-first AI dictation for macOS">
-  <!-- Header: wordmark on left, nav links on right. -->
-  <header class="mx-auto flex max-w-5xl items-center justify-between px-6 pt-8">
-    <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/'} class="inline-flex items-center">
-      <Logo height="36" />
-    </a>
-    <nav class="flex items-center gap-6 text-sm font-medium text-[color:var(--color-text-muted)]">
-      <span class="text-[color:var(--color-text)]">Home</span>
-      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/how-it-works/'} class="transition-colors hover:text-[color:var(--color-text)]">How it works</a>
-      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/'} class="transition-colors hover:text-[color:var(--color-text)]">Docs</a>
-      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/faq/'} class="transition-colors hover:text-[color:var(--color-text)]">FAQ</a>
-      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/about/'} class="transition-colors hover:text-[color:var(--color-text)]">About</a>
-      <a href={repoUrl} class="transition-colors hover:text-[color:var(--color-text)]">GitHub →</a>
-    </nav>
-  </header>
+  <SiteHeader active="home" />
 
   <!-- Hero. Centered headline + waveform motif + dual CTA. The wave
        bars idle-pulse to suggest the live audio visualization users
        see in the app while dictating. -->
   <section class="mx-auto max-w-3xl px-6 pt-24 pb-20 text-center sm:pt-32 sm:pb-28">
-    <div aria-hidden="true" class="mb-10 flex h-16 items-end justify-center">
+    <div aria-hidden="true" class="mb-6 flex h-16 items-end justify-center">
       <span class="wave-bar"></span>
       <span class="wave-bar"></span>
       <span class="wave-bar"></span>
       <span class="wave-bar"></span>
       <span class="wave-bar"></span>
+    </div>
+
+    <!-- Live cleanup demo line. A quiet, looping product demo that sits
+         under the wave bars: a raw spoken transcript (muted monospace,
+         filler words) types out, then morphs into the cleaned sentence
+         (site text color) — the core capture→clean promise, shown rather
+         than told. Decorative (aria-hidden): the h1 below carries the
+         message for screen readers. Server-renders the FIRST example's
+         CLEANED line as the static default, so a no-JS or reduced-motion
+         visitor sees correct, finished content; the script replaces it
+         with the animated loop only when motion is allowed. The fixed
+         min-height reserves space for the longest example wrapped on
+         mobile, so the loop never reflows the hero. -->
+    <div
+      id="hero-demo"
+      aria-hidden="true"
+      class="mx-auto mb-8 flex min-h-[3.25rem] max-w-xl items-center justify-center px-2 text-center text-sm leading-snug sm:min-h-[2.5rem] sm:text-base"
+    >
+      <span id="hero-demo-text" class="text-[color:var(--color-text)]"
+        >Can we move the standup to Thursday?</span
+      >
     </div>
 
     <h1 class="font-display text-5xl leading-[1.05] font-medium tracking-tight sm:text-6xl md:text-7xl">
@@ -98,7 +136,21 @@ const highlights = [
       <span class="text-[color:var(--color-text)]">Parleq</span> <span class="font-mono text-base text-[color:var(--color-text-subtle)]">/PAR-lek/</span> is a local-first AI dictation app for macOS. Hold a global hotkey, talk, and watch your words appear — cleaned up, punctuated, and pasted into whatever app was focused. Audio stays on your Mac.
     </p>
 
-    <div class="mt-12 flex flex-col items-center justify-center gap-3 sm:flex-row sm:gap-4">
+    <!-- Enterprise teaser pill. Links to the dedicated /enterprise page
+         (the richer IT-buyer story); the consumer pitch above stays
+         untouched. -->
+    <div class="mt-10">
+      <a
+        href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/enterprise/'}
+        class="inline-flex items-center gap-2 rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-4 py-1.5 text-sm font-medium text-[color:var(--color-text-muted)] transition-colors hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-text)]"
+      >
+        <span aria-hidden="true" class="inline-block h-1.5 w-1.5 rounded-full bg-[color:var(--color-accent)]"></span>
+        New · Enterprise SSO for Okta, Entra &amp; any OIDC IdP
+        <span aria-hidden="true">→</span>
+      </a>
+    </div>
+
+    <div class="mt-6 flex flex-col items-center justify-center gap-3 sm:flex-row sm:gap-4">
       <a
         href={downloadUrl}
         class="inline-flex items-center gap-2 rounded-full bg-[color:var(--color-accent)] px-7 py-3 text-base font-semibold text-white shadow-sm transition-colors hover:bg-[color:var(--color-accent-hover)]"
@@ -118,179 +170,386 @@ const highlights = [
     </p>
   </section>
 
-  <!-- Refinement showcase. The differentiator most worth dwelling on:
-       once the overlay is open, you can keep talking to it. Each
-       hotkey press treats your speech as an edit instruction over
-       the current text rather than a new dictation. Two compact
-       chains — one workplace-email, one code-review — show the
-       loop in two contexts users will recognize. -->
-  <section class="border-t border-[color:var(--color-border-subtle)]">
-    <div class="mx-auto max-w-3xl px-6 py-20 sm:py-24">
+  <!-- Refinement showcase, as a scenario CAROUSEL. The overlay is the
+       one surface every Parleq feature lives on, so the pager walks
+       through five contexts a user will recognize — refinement (email,
+       code review), one-tap presets, reference windows, and teaching it
+       your words — each paired with a CSS-built mockup of the actual
+       overlay (see OverlayMockup.astro). Mechanics: all five slides are
+       in the DOM; inactive ones carry the `hidden` attribute. The script
+       at the bottom of the page is a swap-pager (no sliding track) with
+       prev/next chevrons, dot indicators, motion-gated autoplay, and a
+       reduced-motion-gated fade on the incoming slide. -->
+  <section id="refine" data-reveal class="scroll-mt-20 border-t border-[color:var(--color-border-subtle)] bg-[color:var(--color-bg)]">
+    <div class="mx-auto max-w-5xl px-6 py-20 sm:py-24">
       <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">
-        Refinement
+        The overlay
       </p>
       <h2 class="mt-4 font-display text-3xl leading-[1.1] font-medium tracking-tight sm:text-4xl">
         Talk it into shape.
       </h2>
-      <p class="mt-6 text-lg leading-relaxed text-[color:var(--color-text-muted)]">
-        Most dictation tools clean up your words once and you're stuck with whatever they decide. Parleq lets you keep talking. While the overlay is open, hold the hotkey again — your next sentence becomes an edit instruction over the text you already have. Change tone, restructure, add context, switch formats, all without touching the keyboard. When it's right, tap the hotkey to paste.
+      <p class="mt-6 max-w-3xl text-lg leading-relaxed text-[color:var(--color-text-muted)]">
+        Most dictation tools clean up your words once and you're stuck with whatever they decide. Parleq lets you keep talking. While the overlay is open, hold the hotkey again — your next sentence becomes an edit instruction over the text you already have. Reshape tone, reach for a one-tap preset, point at a window for context, or teach it a word it keeps missing. When it's right, tap the hotkey to paste.
       </p>
 
-      <!-- Example 1: a quick status update being elevated into a proper email.
-           Single-refinement chain — keeps this example tight so the
-           page introduces the loop with a low-load case. -->
-      <div class="mt-14">
-        <p class="text-[11px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">
-          For your inbox
-        </p>
-        <p class="mt-2 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
-          You're at your desk; you want to send your manager a status update. Talk first, polish second.
-        </p>
+      <!-- Carousel. role/aria-roledescription mark it as a carousel for
+           assistive tech; the slides region is announced as the active
+           panel. -->
+      <div
+        id="refine-carousel"
+        role="region"
+        aria-roledescription="carousel"
+        aria-label="Parleq scenarios"
+        class="mt-12"
+      >
+        <!-- Visually-hidden live region: announces the active scenario's
+             name to screen readers when the slide changes (including on
+             autoplay, where there's no user gesture to trigger a read). -->
+        <div id="refine-announce" class="sr-only" aria-live="polite"></div>
 
-        <div class="mt-6 space-y-3">
-          <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5">
-            <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-text-subtle)]">
-              You dictate
-            </p>
-            <p class="mt-2 font-mono text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">
-              "wanted to give you a quick update on the q3 numbers we're tracking ahead of plan on revenue but a little behind on new accounts"
-            </p>
-            <p class="mt-5 text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">
-              Parleq cleans →
-            </p>
-            <p class="mt-2 text-[15px] leading-relaxed text-[color:var(--color-text)]">
-              "Wanted to give you a quick update on the Q3 numbers. We're tracking ahead of plan on revenue but a little behind on new accounts."
-            </p>
-          </div>
-
-          <div class="rounded-xl border border-[color:var(--color-accent-soft)] bg-[color:var(--color-accent-soft)]/15 p-5">
-            <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">
-              You hold ⌥ and say
-            </p>
-            <p class="mt-2 font-display italic text-[16px] leading-relaxed text-[color:var(--color-text)]">
-              "make it a proper email starting with hi cynthia, and ask for a 15-minute check-in this week"
-            </p>
-          </div>
-
-          <div class="rounded-xl border-2 border-[color:var(--color-accent-soft)] bg-[color:var(--color-accent-soft)]/30 p-5">
-            <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">
-              Parleq refines →
-            </p>
-            <p class="mt-2 text-[15px] leading-relaxed text-[color:var(--color-text)]">
-              "Hi Cynthia, I wanted to share a quick Q3 update. We're tracking ahead of plan on revenue but a little behind on new accounts. Could we set up a 15-minute check-in this week to review priorities?"
-            </p>
-            <p class="mt-3 font-mono text-[10px] uppercase tracking-[0.16em] text-[color:var(--color-accent)]">
-              ↳ tap ⌥ — pasted
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <!-- Example 2: a developer talking through a code-review thought,
-           then reshaping it across two refinement passes. The
-           multi-step chain shows the iterative nature of the loop —
-           you don't have to nail it on the first refine. -->
-      <div class="mt-14">
-        <p class="text-[11px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">
-          For your code reviews
-        </p>
-        <p class="mt-2 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
-          Mid-review, you spot a bug. Talk through what you found, tighten the wording, then reshape it for the right audience — all without typing.
-        </p>
-
-        <div class="mt-6 space-y-3">
-          <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5">
-            <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-text-subtle)]">
-              You dictate
-            </p>
-            <p class="mt-2 font-mono text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">
-              "hey can you take another look at the auth middleware pr i think there's a bug in the token refresh path where we're not handling the 401 retry correctly"
-            </p>
-            <p class="mt-5 text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">
-              Parleq cleans →
-            </p>
-            <p class="mt-2 text-[15px] leading-relaxed text-[color:var(--color-text)]">
-              "Hey, can you take another look at the auth middleware PR? I think there's a bug in the token refresh path where we're not handling the 401 retry correctly."
-            </p>
-          </div>
-
-          <div class="rounded-xl border border-[color:var(--color-accent-soft)] bg-[color:var(--color-accent-soft)]/15 p-5">
-            <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">
-              You hold ⌥ and say
-            </p>
-            <p class="mt-2 font-display italic text-[16px] leading-relaxed text-[color:var(--color-text)]">
-              "shorter, drop the hedge"
-            </p>
-          </div>
-
-          <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5">
-            <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">
-              Parleq refines →
-            </p>
-            <p class="mt-2 text-[15px] leading-relaxed text-[color:var(--color-text)]">
-              "Can you re-review the auth middleware PR? The 401 retry on token refresh is broken."
-            </p>
-          </div>
-
-          <div class="rounded-xl border border-[color:var(--color-accent-soft)] bg-[color:var(--color-accent-soft)]/15 p-5">
-            <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">
-              You hold ⌥ and say
-            </p>
-            <p class="mt-2 font-display italic text-[16px] leading-relaxed text-[color:var(--color-text)]">
-              "rewrite as a slack message tagging at sarah, and add that I'll add a regression test"
-            </p>
-          </div>
-
-          <div class="rounded-xl border-2 border-[color:var(--color-accent-soft)] bg-[color:var(--color-accent-soft)]/30 p-5">
-            <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">
-              Parleq refines →
-            </p>
-            <p class="mt-2 text-[15px] leading-relaxed text-[color:var(--color-text)]">
-              "@sarah can you re-review the auth middleware PR? The 401 retry on token refresh is broken — I'll add a regression test."
-            </p>
-            <p class="mt-3 font-mono text-[10px] uppercase tracking-[0.16em] text-[color:var(--color-accent)]">
-              ↳ tap ⌥ — pasted into Slack
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <p class="mt-12 text-sm leading-relaxed text-[color:var(--color-text-subtle)]">
-        Each refinement runs against the visible text, not from scratch. Tone changes, format swaps ("rewrite as bullets", "turn it into a commit message"), corrections, or building up a longer thought across several presses — all the same loop, all driven by your voice.
-      </p>
-    </div>
-  </section>
-
-  <!-- Highlights grid. 3-up on desktop, single column on phone. Each
-       card is just a <h3> + <p>; no icons because they tend to feel
-       generic on developer-tool sites unless you draw them yourself. -->
-  <section class="mx-auto max-w-5xl px-6 pb-24">
-    <div class="grid gap-12 sm:grid-cols-2 sm:gap-x-10 sm:gap-y-14 lg:grid-cols-3">
-      {highlights.map((h) => (
-        <div>
-          <h3 class="font-display text-xl font-semibold tracking-tight">
-            {h.title}
-          </h3>
-          <p class="mt-3 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
-            {h.body}
-          </p>
-          {h.link && (
-            <p class="mt-3">
-              <a
-                href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + h.link.href}
-                class="text-[14px] font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline"
+        <!-- Slide stack. Each slide: copy-left / overlay-mockup-right on
+             desktop (lg), stacked on mobile. Inactive slides carry the
+             `hidden` attribute + aria-hidden; the script toggles them. -->
+        <div class="relative">
+          <!-- Slide 1: Workplace email — the existing single-refinement
+               email chain. -->
+          <div class="refine-slide grid items-center gap-10 lg:grid-cols-2" data-slide-name="Workplace email">
+            <div>
+              <p class="text-[11px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">
+                For your inbox
+              </p>
+              <h3 class="mt-3 font-display text-2xl font-semibold tracking-tight">
+                A status update, talked into an email.
+              </h3>
+              <p class="mt-3 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
+                You're at your desk and want to send your manager a quick update. Dictate it loose; Parleq cleans the Q3 numbers into proper sentences. Then hold the hotkey and say <span class="font-medium text-[color:var(--color-text)]">"make it a proper email starting with hi Cynthia, and ask for a 15-minute check-in this week."</span> Tap to paste.
+              </p>
+            </div>
+            <div class="flex justify-center lg:justify-end">
+              <OverlayMockup
+                pastingTo="Mail"
+                model="2.5 Flash"
+                refine={`"make it a proper email starting with hi Cynthia, and ask for a 15-minute check-in this week"`}
               >
-                {h.link.label}
-              </a>
-            </p>
-          )}
+                "Hi Cynthia, I wanted to share a quick Q3 update. We're tracking ahead of plan on revenue but a little behind on new accounts. Could we set up a 15-minute check-in this week to review priorities?"
+              </OverlayMockup>
+            </div>
+          </div>
+
+          <!-- Slide 2: Code review — the existing multi-pass chain,
+               tightened to its final state. -->
+          <div class="refine-slide grid items-center gap-10 lg:grid-cols-2" data-slide-name="Code review" hidden aria-hidden="true">
+            <div>
+              <p class="text-[11px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">
+                For your code reviews
+              </p>
+              <h3 class="mt-3 font-display text-2xl font-semibold tracking-tight">
+                Reshape a review note across passes.
+              </h3>
+              <p class="mt-3 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
+                Mid-review you spot a bug. Talk through it, then refine: <span class="font-medium text-[color:var(--color-text)]">"shorter, drop the hedge,"</span> then <span class="font-medium text-[color:var(--color-text)]">"rewrite as a Slack message tagging @sarah, and add that I'll add a regression test."</span> Each pass runs against the visible text, not from scratch.
+              </p>
+            </div>
+            <div class="flex justify-center lg:justify-end">
+              <OverlayMockup
+                pastingTo="Slack"
+                model="2.5 Flash"
+                refine={`"rewrite as a Slack message tagging @sarah, and add that I'll add a regression test"`}
+              >
+                "@sarah can you re-review the auth middleware PR? The 401 retry on token refresh is broken — I'll add a regression test."
+              </OverlayMockup>
+            </div>
+          </div>
+
+          <!-- Slide 3: One-tap presets — chips on the overlay, chainable,
+               per-app defaults with one-tap Undo. -->
+          <div class="refine-slide grid items-center gap-10 lg:grid-cols-2" data-slide-name="One-tap presets" hidden aria-hidden="true">
+            <div>
+              <p class="text-[11px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">
+                One-tap presets
+              </p>
+              <h3 class="mt-3 font-display text-2xl font-semibold tracking-tight">
+                Your own rewrites, one tap away.
+              </h3>
+              <p class="mt-3 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
+                Define named rewrites — Concise, Formal, Bulletize, anything you can phrase — and they appear as chips on the review overlay. Tap one to restyle before pasting; chain another on top. Assign a preset to an app and dictations into it arrive already styled, with a one-tap Undo.
+              </p>
+            </div>
+            <div class="flex justify-center lg:justify-end">
+              <OverlayMockup
+                pastingTo="Notes"
+                model="2.5 Flash"
+                presets={[
+                  { label: 'Concise', active: true },
+                  { label: 'Formal' },
+                  { label: 'Bulletize' },
+                ]}
+              >
+                "We're ahead on revenue and slightly behind on new accounts; check-in this week to set priorities."
+              </OverlayMockup>
+            </div>
+          </div>
+
+          <!-- Slide 4: Reference Windows — hold + Space to pick a window
+               (or C for the focused one), attachments, PNG-in-memory
+               privacy note. -->
+          <div class="refine-slide grid items-center gap-10 lg:grid-cols-2" data-slide-name="Reference windows" hidden aria-hidden="true">
+            <div>
+              <p class="text-[11px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">
+                Reference windows
+              </p>
+              <h3 class="mt-3 font-display text-2xl font-semibold tracking-tight">
+                Point at what you're talking about.
+              </h3>
+              <p class="mt-3 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
+                Tap Space while holding the hotkey to pause audio and pick a window — or C to grab the one you're looking at — then keep dictating. The LLM sees what you're pointing at, so your words land with the right specificity. Attach a file or clipboard snapshot too.
+              </p>
+              <p class="mt-3 text-[13px] leading-relaxed text-[color:var(--color-text-subtle)]">
+                Window captures are PNG-in-memory only: never written to disk, released when the session ends, sent only to your configured LLM endpoint.
+              </p>
+            </div>
+            <div class="flex justify-center lg:justify-end">
+              <OverlayMockup
+                pastingTo="Mail"
+                model="2.5 Flash"
+                hint="Dictating with a reference window"
+                hintProminent={true}
+                attachment="Calendar — window attached"
+              >
+                "Looks like Thursday at 2pm is open on your calendar — does that work for the check-in?"
+              </OverlayMockup>
+            </div>
+          </div>
+
+          <!-- Slide 5: Teach it your words — custom dictionary terms/
+               aliases + opt-in learn-from-corrections. -->
+          <div class="refine-slide grid items-center gap-10 lg:grid-cols-2" data-slide-name="Teach it your words" hidden aria-hidden="true">
+            <div>
+              <p class="text-[11px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">
+                Teach it your words
+              </p>
+              <h3 class="mt-3 font-display text-2xl font-semibold tracking-tight">
+                Names and jargon, spelled the way you mean.
+              </h3>
+              <p class="mt-3 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
+                Names, jargon, and project codenames go in the custom dictionary — with the alternate spellings the speech model usually emits and an optional context blurb. When you repeatedly fix the same word, the opt-in "Learn from corrections" feature notices and suggests dictionary improvements; high-confidence fixes apply automatically and stay revertible.
+              </p>
+            </div>
+            <div class="flex justify-center lg:justify-end">
+              <OverlayMockup
+                pastingTo="Slack"
+                model="2.5 Flash"
+              >
+                "Shipping the <mark class="rounded bg-[color:var(--color-accent)]/25 px-1 text-[#fcd9a3]">Parleq</mark> build to TestFlight tonight — codename stays as written."
+              </OverlayMockup>
+            </div>
+          </div>
         </div>
-      ))}
+
+        <!-- Controls: prev chevron · dots · next chevron. Centered under
+             the slide stack. -->
+        <div class="mt-12 flex items-center justify-center gap-5">
+          <button
+            id="refine-prev"
+            type="button"
+            aria-label="Previous scenario"
+            class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-surface)] text-[color:var(--color-text-muted)] transition-colors hover:border-[color:var(--color-text-muted)] hover:text-[color:var(--color-text)]"
+          >
+            <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="m15 18-6-6 6-6" />
+            </svg>
+          </button>
+
+          <div id="refine-dots" class="flex items-center gap-2.5" role="group" aria-label="Choose scenario"></div>
+
+          <button
+            id="refine-next"
+            type="button"
+            aria-label="Next scenario"
+            class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-surface)] text-[color:var(--color-text-muted)] transition-colors hover:border-[color:var(--color-text-muted)] hover:text-[color:var(--color-text)]"
+          >
+            <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="m9 18 6-6-6-6" />
+            </svg>
+          </button>
+        </div>
+      </div>
     </div>
   </section>
 
-  <!-- Install section. Tester-readable so a non-engineer can follow it. -->
-  <section class="border-t border-[color:var(--color-border-subtle)]">
+  <!-- Capabilities grid. One compact section in place of the old three
+       bento clusters: a uniform grid of all eleven capabilities, each an
+       EQUAL-size card (no column spans) of glyph + title + one distilled
+       sentence, linking to where the full story lives (how-it-works
+       stages/sections, or /enterprise). Each card carries a hand-rolled
+       inline line glyph (1.5px stroke, amber) keyed off its `icon`; no
+       icon library, no emoji. The section keeps the tinted band + a
+       single [data-reveal] target so it fades in on scroll. Mobile:
+       single column. -->
+  <section data-reveal class="border-t border-[color:var(--color-border-subtle)] bg-[color:var(--color-section-tint)]">
+    <div class="mx-auto max-w-5xl px-6 py-24">
+      <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">
+        Everything it does
+      </p>
+      <h2 class="mt-3 font-display text-2xl leading-[1.1] font-medium tracking-tight sm:text-3xl">
+        Eleven capabilities, one quiet hotkey.
+      </h2>
+      <div class="mt-10 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+        {capabilities.map((card) => (
+          <a
+            href={card.href}
+            class="group flex flex-col rounded-2xl border border-[color:var(--color-border-subtle)] bg-[color:var(--color-surface)] p-6 transition-colors hover:border-[color:var(--color-accent)]"
+          >
+            <span aria-hidden="true" class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[color:var(--color-border-subtle)] bg-[color:var(--color-bg)] text-[color:var(--color-accent)]">
+              <svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                {card.icon === 'mic' && (
+                      <>
+                        <rect x="9" y="3" width="6" height="11" rx="3" />
+                        <path d="M6 11a6 6 0 0 0 12 0" />
+                        <path d="M12 17v4M9 21h6" />
+                      </>
+                    )}
+                    {card.icon === 'shield' && (
+                      <>
+                        <path d="M12 3 5 6v5c0 4.2 2.9 7.8 7 9 4.1-1.2 7-4.8 7-9V6l-7-3Z" />
+                        <path d="m9 12 2 2 4-4" />
+                      </>
+                    )}
+                    {card.icon === 'clock-rewind' && (
+                      <>
+                        <path d="M3 8a9 9 0 1 1-1.5 5" />
+                        <path d="M3 4v4h4" />
+                        <path d="M12 8v4l3 2" />
+                      </>
+                    )}
+                    {card.icon === 'book' && (
+                      <>
+                        <path d="M4 5a2 2 0 0 1 2-2h13v15H6a2 2 0 0 0-2 2V5Z" />
+                        <path d="M4 19a2 2 0 0 1 2-2h13" />
+                        <path d="M9 7h6M9 10h4" />
+                      </>
+                    )}
+                    {card.icon === 'sparkle' && (
+                      <>
+                        <path d="M12 3v6M12 15v6M3 12h6M15 12h6" />
+                        <path d="m7.5 7.5 2 2M14.5 14.5l2 2M16.5 7.5l-2 2M9.5 14.5l-2 2" />
+                      </>
+                    )}
+                    {card.icon === 'gear' && (
+                      <>
+                        <circle cx="12" cy="12" r="3" />
+                        <path d="M12 2v3M12 19v3M22 12h-3M5 12H2M19.1 4.9l-2.1 2.1M7 17l-2.1 2.1M19.1 19.1 17 17M7 7 4.9 4.9" />
+                      </>
+                    )}
+                    {card.icon === 'window' && (
+                      <>
+                        <rect x="3" y="4" width="18" height="16" rx="2" />
+                        <path d="M3 9h18" />
+                        <path d="M6.5 6.5h.01M9 6.5h.01" />
+                      </>
+                    )}
+                    {card.icon === 'chips' && (
+                      <>
+                        <rect x="7" y="7" width="10" height="10" rx="1.5" />
+                        <path d="M10 4v3M14 4v3M10 17v3M14 17v3M4 10h3M4 14h3M17 10h3M17 14h3" />
+                      </>
+                    )}
+                    {card.icon === 'cursor' && (
+                      <>
+                        <path d="M5 3l6 16 2-6 6-2L5 3Z" />
+                      </>
+                    )}
+                    {card.icon === 'house' && (
+                      <>
+                        <path d="M4 11 12 4l8 7" />
+                        <path d="M6 10v9h12v-9" />
+                        <path d="M10 19v-5h4v5" />
+                      </>
+                    )}
+                    {card.icon === 'lock' && (
+                      <>
+                        <rect x="5" y="11" width="14" height="9" rx="2" />
+                        <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+                        <path d="M12 15v2" />
+                      </>
+                    )}
+              </svg>
+            </span>
+            <h3 class="mt-4 text-lg font-semibold tracking-tight text-[color:var(--color-text)]">
+              {card.title}
+            </h3>
+            <p class="mt-2 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
+              {card.blurb}
+            </p>
+            <span aria-hidden="true" class="mt-4 inline-flex text-[13px] font-medium text-[color:var(--color-accent)] group-hover:underline">
+              Learn more →
+            </span>
+          </a>
+        ))}
+      </div>
+      <p class="mt-10 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
+        Want the full pipeline, stage by stage?{' '}
+        <a href={`${base}/how-it-works/`} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Read How it works →</a>
+      </p>
+    </div>
+  </section>
+
+  <!-- Built for the enterprise. The OIDC-federation story for org
+       buyers: one sign-in for everyone, audit attribution, no Parleq
+       servers in the path. A one-off DARK band — a near-black slate
+       gradient breaks the warm-white rhythm so the enterprise pitch
+       reads as a distinct, weightier moment. Text colors are pinned
+       to literal light slate values (not the light-mode tokens) so
+       everything inside passes contrast on the dark ground; the amber
+       accent carries through for the eyebrow, bullets, and links.
+       id anchors the hero pill + the site-wide "Enterprise" nav link;
+       scroll-mt keeps the heading clear of the viewport top on jump. -->
+  <section
+    id="enterprise"
+    data-reveal
+    class="scroll-mt-20 bg-gradient-to-br from-[#272d35] to-[#15181d] text-[#cbd5e1]"
+  >
+    <div class="mx-auto max-w-3xl px-6 py-20 sm:py-24">
+      <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">
+        For organizations
+      </p>
+      <h2 class="mt-4 font-display text-3xl leading-[1.1] font-medium tracking-tight text-white sm:text-4xl">
+        Built for the enterprise.
+      </h2>
+      <p class="mt-6 text-lg leading-relaxed text-[#cbd5e1]">
+        One corporate sign-in backs cloud cleanup for every employee — not just the engineers with a CLI configured. The user authenticates once with your identity provider (Okta, Microsoft Entra ID, or any OIDC IdP); Parleq federates that into AWS Bedrock or Google Cloud Vertex AI and mints short-lived per-cloud credentials at call time. No per-user API keys to distribute or rotate, and no long-lived cloud secret on the device.
+      </p>
+      <ul class="mt-8 space-y-4 text-[15px] leading-relaxed text-[#cbd5e1]">
+        <li class="flex gap-3">
+          <span aria-hidden="true" class="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[color:var(--color-accent)]"></span>
+          <span><strong class="font-semibold text-white">One sign-in for the whole company.</strong> Sales, support, and ops sign in with the same account they already have — federated identity, not a developer-only path.</span>
+        </li>
+        <li class="flex gap-3">
+          <span aria-hidden="true" class="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[color:var(--color-accent)]"></span>
+          <span><strong class="font-semibold text-white">Per-user audit attribution.</strong> The federated session carries the signed-in user's identity, so CloudTrail and Cloud Audit Logging attribute every cleanup call to the actual person.</span>
+        </li>
+        <li class="flex gap-3">
+          <span aria-hidden="true" class="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[color:var(--color-accent)]"></span>
+          <span><strong class="font-semibold text-white">No Parleq servers in the data path, ever.</strong> Tokens go to your IdP and your cloud's STS endpoints; transcript text goes only to the LLM endpoint you already configured. There is no Parleq cloud service to review.</span>
+        </li>
+        <li class="flex gap-3">
+          <span aria-hidden="true" class="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[color:var(--color-accent)]"></span>
+          <span><strong class="font-semibold text-white">A security-review packet in the repo.</strong> Data flows, trust boundaries, and secrets handling are documented for your security team before procurement.</span>
+        </li>
+      </ul>
+      <div class="mt-10 flex flex-wrap gap-x-6 gap-y-3 text-[14px] font-medium">
+        <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/enterprise/'} class="text-white underline-offset-4 hover:underline">More for IT teams →</a>
+        <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/enterprise-sso/'} class="text-[color:var(--color-accent)] underline-offset-4 hover:underline">Enterprise SSO setup →</a>
+        <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/managed-configuration/'} class="text-[color:var(--color-accent)] underline-offset-4 hover:underline">Managed configuration →</a>
+        <a href={`${repoUrl}/blob/main/docs/SECURITY_REVIEW.md`} class="text-[color:var(--color-accent)] underline-offset-4 hover:underline">Security review →</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Install section. Tester-readable so a non-engineer can follow it.
+       Returns to the warm-white base after the dark enterprise band;
+       the dark-to-light edge is its own separator, so no border-t. -->
+  <section data-reveal class="bg-[color:var(--color-bg)]">
     <div class="mx-auto max-w-3xl px-6 py-20 sm:py-24">
       <h2 class="font-display text-3xl font-medium tracking-tight sm:text-4xl">
         Get Parleq
@@ -332,7 +591,7 @@ const highlights = [
   <footer class="border-t border-[color:var(--color-border-subtle)]">
     <div class="mx-auto flex max-w-5xl flex-col items-start justify-between gap-4 px-6 py-10 text-sm text-[color:var(--color-text-subtle)] sm:flex-row sm:items-center">
       <div class="flex items-center gap-3">
-        <span class="font-display text-base font-semibold text-[color:var(--color-text)]">Parleq</span>
+        <span class="text-base font-semibold text-[color:var(--color-text)]">Parleq</span>
         <span>·</span>
         <span>Apache-2.0</span>
       </div>
@@ -343,4 +602,457 @@ const highlights = [
       </div>
     </div>
   </footer>
+
+  <!-- Scroll cue. Fixed bottom-center nudge toward the Refinement
+       showcase; homepage-only, so it lives here rather than in the
+       layout. Auto-hides once the visitor scrolls past the hero. The
+       chevron bounce is a CSS keyframe gated on prefers-reduced-motion. -->
+  <button
+    id="scroll-cue"
+    type="button"
+    aria-label="See it in action"
+    class="fixed bottom-6 left-1/2 z-40 inline-flex -translate-x-1/2 items-center gap-2 rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-surface)]/90 px-4 py-2 text-sm font-medium text-[color:var(--color-text-muted)] shadow-sm backdrop-blur transition-opacity duration-300 hover:text-[color:var(--color-text)]"
+  >
+    See it in action
+    <svg aria-hidden="true" class="animate-scroll-cue h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  </button>
+
+  <!-- Reveal-on-scroll + scroll-cue behavior. is:inline so it runs
+       immediately on this page without Astro's module hoisting (it
+       touches only homepage DOM, needs no bundling, and must apply
+       .reveal before first paint of below-the-fold sections). -->
+  <script is:inline>
+    document.addEventListener('DOMContentLoaded', () => {
+      // Reveal-on-scroll. If the visitor prefers reduced motion we do
+      // NOTHING — content stays fully visible, never gets .reveal. This
+      // ordering matters: applying .reveal first would hide content for
+      // a reduced-motion user.
+      if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        const targets = document.querySelectorAll('[data-reveal]');
+        const observer = new IntersectionObserver(
+          (entries, obs) => {
+            entries.forEach((entry) => {
+              if (entry.isIntersecting) {
+                entry.target.classList.add('reveal-visible');
+                obs.unobserve(entry.target); // once-only
+              }
+            });
+          },
+          { threshold: 0, rootMargin: '0px' }
+        );
+        // Hide only elements that start BELOW the viewport: anything
+        // already in view on load keeps both classes in the same frame
+        // (no one-frame blank flash); the observer's async first
+        // callback then no-ops on them via the once-only unobserve.
+        targets.forEach((el) => {
+          el.classList.add('reveal');
+          if (el.getBoundingClientRect().top < window.innerHeight) {
+            el.classList.add('reveal-visible');
+          }
+          observer.observe(el);
+        });
+      }
+
+      // Scroll cue: smooth-scroll to the Refinement showcase, then
+      // auto-hide once the visitor leaves the hero.
+      const cue = document.getElementById('scroll-cue');
+      if (cue) {
+        cue.addEventListener('click', () => {
+          // Honor the OS reduced-motion preference: instant jump for
+          // those users, smooth glide for everyone else.
+          const behavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+            ? 'instant'
+            : 'smooth';
+          const refine = document.getElementById('refine');
+          if (refine) {
+            refine.scrollIntoView({ behavior });
+          } else {
+            window.scrollBy({ top: window.innerHeight * 0.85, behavior });
+          }
+        });
+        const toggleCue = () => {
+          const hidden = window.scrollY > 80;
+          cue.classList.toggle('opacity-0', hidden);
+          cue.classList.toggle('pointer-events-none', hidden);
+        };
+        toggleCue();
+        window.addEventListener('scroll', toggleCue, { passive: true });
+      }
+
+      // Hero live cleanup demo. Loops through a few examples: a raw
+      // spoken transcript types out word-by-word in muted monospace
+      // (with a blinking caret), the filler words then dissolve, and the
+      // line crossfades into the cleaned sentence in the site text color.
+      // ~10–12s/cycle. Decorative only (the region is aria-hidden); the
+      // h1 carries the real message. Disabled under reduced motion — the
+      // server-rendered cleaned first line stays put. Paused via an
+      // IntersectionObserver while the hero is scrolled off-screen so we
+      // don't burn timers in the background.
+      const demoHost = document.getElementById('hero-demo');
+      const demoText = document.getElementById('hero-demo-text');
+      const demoReduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (demoHost && demoText && !demoReduceMotion) {
+        // Each example: raw words (with a `filler` flag on the words that
+        // dissolve) plus the cleaned sentence. The raw words include
+        // their trailing space so the typed line spaces correctly; the
+        // CSS .hero-demo-word preserves that space.
+        const examples = [
+          {
+            raw: [
+              { t: 'um', filler: true },
+              { t: 'so', filler: true },
+              { t: 'basically', filler: true },
+              { t: 'can' },
+              { t: 'we' },
+              { t: 'uh', filler: true },
+              { t: 'move' },
+              { t: 'the' },
+              { t: 'standup' },
+              { t: 'to' },
+              { t: 'thursday' },
+            ],
+            cleaned: 'Can we move the standup to Thursday?',
+          },
+          {
+            raw: [
+              { t: 'okay', filler: true },
+              { t: 'so', filler: true },
+              { t: 'the' },
+              { t: 'uh', filler: true },
+              { t: 'the', filler: true },
+              { t: 'null' },
+              { t: 'check' },
+              { t: 'goes' },
+              { t: 'before' },
+              { t: 'the' },
+              { t: 'early' },
+              { t: 'return' },
+              { t: 'i', filler: true },
+              { t: 'think', filler: true },
+            ],
+            cleaned: 'The null check goes before the early return.',
+          },
+          {
+            raw: [
+              { t: 'send' },
+              { t: 'jamie' },
+              { t: 'the' },
+              { t: 'q3' },
+              { t: 'numbers' },
+              { t: 'and' },
+              { t: 'um', filler: true },
+              { t: 'cc' },
+              { t: 'finance' },
+              { t: 'please', filler: true },
+            ],
+            cleaned: 'Send Jamie the Q3 numbers and CC finance.',
+          },
+        ];
+
+        // Per-word typing cadence ~80–120ms with slight variance, so it
+        // reads like words arriving as you speak rather than a metronome.
+        // The longer beats (pre-clean pause, 3s hold, an inter-example
+        // settle) carry the cycle to the ~10–12s target without speeding
+        // the typing into a typewriter clatter.
+        const WORD_MIN = 80;          // ms — fastest gap between words
+        const WORD_MAX = 120;         // ms — slowest gap between words
+        const PRE_CLEAN_PAUSE = 700;  // ms — beat after the last raw word
+        const COLLAPSE_MS = 450;      // ms — filler dissolve (matches CSS)
+        const HOLD_MS = 3400;         // ms — dwell on the cleaned line
+        const FADE_MS = 500;          // ms — line crossfade (matches CSS)
+        const SETTLE_MS = 600;        // ms — quiet gap before the next example
+
+        let exIndex = 0;
+        let running = false;
+        // Starts false: the IntersectionObserver's initial callback is the
+        // single start path, so the loop never runs while the hero is
+        // off-screen (e.g. a deep-link landing on #enterprise).
+        let visible = false;
+        // Maps each *pending* timeout id → its promise resolver. A timer
+        // removes its own entry once it fires, so the map stays bounded
+        // over a long-running loop. On cancellation clearTimers() both
+        // clears the timeout AND resolves the pending promise — without
+        // that, the cycle() coroutine suspended on `await wait(...)` would
+        // hang forever (leaking its closure). Resolving lets it resume,
+        // hit the generation-token live() check, and return cleanly.
+        const timers = new Map();
+        const wait = (ms) =>
+          new Promise((resolve) => {
+            const id = setTimeout(() => {
+              timers.delete(id);
+              resolve();
+            }, ms);
+            timers.set(id, resolve);
+          });
+        const clearTimers = () => {
+          timers.forEach((resolve, id) => {
+            clearTimeout(id);
+            resolve();
+          });
+          timers.clear();
+        };
+        // Per-run generation token. stop() bumps it, so a cycle() that was
+        // suspended in an uncancellable await (e.g. the double-rAF below,
+        // which clearTimers can't reach) detects on resume that its run is
+        // stale and bails — even if start() has since flipped `running`
+        // back to true. Guards against two cycles racing the same node.
+        let generation = 0;
+        const rand = (min, max) => min + Math.random() * (max - min);
+
+        // Replace the line's contents with a fresh set of word spans,
+        // returning them so the caller can collapse fillers later.
+        const buildRawSpans = (ex) => {
+          demoText.innerHTML = '';
+          demoText.className = 'hero-demo-raw hero-demo-fade';
+          demoText.style.opacity = '1';
+          const spans = ex.raw.map((w, i) => {
+            const span = document.createElement('span');
+            span.className = 'hero-demo-word';
+            // Trailing space on every word but the last keeps spacing
+            // intact even as neighbors collapse.
+            span.textContent = i < ex.raw.length - 1 ? w.t + ' ' : w.t;
+            span.dataset.filler = w.filler ? '1' : '0';
+            return span;
+          });
+          return spans;
+        };
+
+        // One full beat for a single example. `myGen` pins this run; any
+        // await/rAF resume re-checks both `running` and the generation so
+        // a stale (stopped-then-restarted) cycle never touches the DOM.
+        const cycle = async (ex) => {
+          const myGen = generation;
+          const live = () => running && generation === myGen;
+
+          // --- Dictation phase: type words in with a blinking caret. ---
+          const spans = buildRawSpans(ex);
+          const caret = document.createElement('span');
+          caret.className = 'hero-demo-caret';
+          for (let i = 0; i < spans.length; i++) {
+            if (!live()) return;
+            demoText.appendChild(spans[i]);
+            demoText.appendChild(caret); // caret trails the latest word
+            await wait(rand(WORD_MIN, WORD_MAX));
+            if (!live()) return;
+          }
+
+          // --- Pre-clean beat, then drop the caret. ---
+          await wait(PRE_CLEAN_PAUSE);
+          if (!live()) return;
+          if (caret.parentNode) caret.parentNode.removeChild(caret);
+
+          // --- Cleanup phase: dissolve the fillers, then crossfade the
+          //     remaining raw text into the cleaned sentence. ---
+          spans.forEach((span) => {
+            if (span.dataset.filler === '1') span.classList.add('is-dropped');
+          });
+          await wait(COLLAPSE_MS);
+          if (!live()) return;
+
+          // Crossfade out, swap to the cleaned line in site text color,
+          // crossfade in. A whole-line fade reads as "it settled" without
+          // a jarring word-for-word remap.
+          demoText.style.opacity = '0';
+          await wait(FADE_MS);
+          if (!live()) return;
+          demoText.className = 'hero-demo-cleaned hero-demo-fade';
+          demoText.textContent = ex.cleaned;
+          demoText.style.opacity = '0';
+          // Double rAF so the opacity-0 frame commits before we fade in.
+          // This await isn't timer-tracked, so the post-resume live()
+          // check (via the generation token) is what cancels it.
+          await new Promise((resolve) =>
+            requestAnimationFrame(() =>
+              requestAnimationFrame(() => resolve())
+            )
+          );
+          if (!live()) return;
+          demoText.style.opacity = '1';
+
+          // --- Hold the cleaned line, then fade the whole line out and
+          //     settle into a brief quiet gap before the next example. ---
+          await wait(HOLD_MS);
+          if (!live()) return;
+          demoText.style.opacity = '0';
+          await wait(FADE_MS);
+          if (!live()) return;
+          await wait(SETTLE_MS);
+        };
+
+        const loop = async () => {
+          if (running) return; // guard against double-start on re-entry
+          running = true;
+          // Pin this loop's run. A synchronous stop()+start() (e.g. an
+          // observer callback delivering leave+enter in one invocation)
+          // bumps `generation` and spins up a fresh loop; this guard stops
+          // the old loop from launching another cycle() into the new run,
+          // and from clearing the new run's `running` flag on its exit.
+          const loopGen = generation;
+          while (running && visible && generation === loopGen) {
+            await cycle(examples[exIndex]);
+            if (!running || generation !== loopGen) break;
+            exIndex = (exIndex + 1) % examples.length;
+          }
+          if (generation === loopGen) running = false;
+        };
+        const start = () => {
+          if (!running && visible) loop();
+        };
+        const stop = () => {
+          running = false;
+          generation++; // invalidate any suspended cycle's run token
+          clearTimers();
+        };
+
+        // Pause the loop while the hero is scrolled away; resume (from a
+        // clean example boundary) when it returns into view.
+        const heroObserver = new IntersectionObserver(
+          (entries) => {
+            entries.forEach((entry) => {
+              visible = entry.isIntersecting;
+              if (visible) start();
+              else stop();
+            });
+          },
+          { threshold: 0 }
+        );
+        // The observer fires an initial callback (a microtask after
+        // observe()) with the hero's current visibility, which is the only
+        // thing that flips `visible` true and starts the loop.
+        heroObserver.observe(demoHost);
+      }
+
+      // Refinement scenario carousel. Swap-pager: all slides are in the
+      // DOM; we toggle `hidden` + aria-hidden so only one shows. Dots are
+      // generated from the slides; chevrons step. Autoplay advances every
+      // 6s and re-arms on any manual change; it pauses on hover/focus and
+      // is disabled entirely under prefers-reduced-motion. The incoming
+      // slide gets a short opacity fade, also gated on reduced motion.
+      const carousel = document.getElementById('refine-carousel');
+      const slides = carousel
+        ? Array.from(carousel.querySelectorAll('.refine-slide'))
+        : [];
+      if (carousel && slides.length > 0) {
+        const dotsHost = document.getElementById('refine-dots');
+        const announce = document.getElementById('refine-announce');
+        const prevBtn = document.getElementById('refine-prev');
+        const nextBtn = document.getElementById('refine-next');
+        const N = slides.length;
+        const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        let index = 0;
+        let timer = null;
+        // Suppresses the entrance fade on the very first render so the
+        // already-visible first slide doesn't flash to opacity 0 and back
+        // on load. Real fades only run on subsequent (manual/auto) swaps.
+        let initialized = false;
+
+        // Build one dot per slide; the slide's name becomes its tooltip.
+        const dots = slides.map((slide, i) => {
+          const name = slide.getAttribute('data-slide-name') || `Scenario ${i + 1}`;
+          const dot = document.createElement('button');
+          dot.type = 'button';
+          dot.setAttribute('aria-label', name);
+          dot.setAttribute('title', name);
+          dot.className =
+            'h-2.5 w-2.5 rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-border)] transition-colors hover:bg-[color:var(--color-text-subtle)] hover:border-[color:var(--color-text-subtle)]';
+          dot.addEventListener('click', () => go(i));
+          dotsHost && dotsHost.appendChild(dot);
+          return dot;
+        });
+
+        const render = () => {
+          slides.forEach((slide, i) => {
+            const active = i === index;
+            if (active) {
+              slide.removeAttribute('hidden');
+              slide.removeAttribute('aria-hidden');
+              // Gated entrance fade for the incoming slide — skipped on
+              // the first render (slide already visible) and under reduced
+              // motion, both of which want an instant, flash-free show.
+              if (!reduceMotion && initialized) {
+                slide.style.transition = 'opacity 300ms ease';
+                slide.style.opacity = '0';
+                // Double rAF so the browser commits an opacity-0 frame
+                // before we flip to 1 — a single rAF can get coalesced and
+                // skip the transition.
+                requestAnimationFrame(() => {
+                  requestAnimationFrame(() => {
+                    slide.style.opacity = '1';
+                  });
+                });
+              } else {
+                slide.style.opacity = '1';
+              }
+            } else {
+              slide.setAttribute('hidden', '');
+              slide.setAttribute('aria-hidden', 'true');
+              slide.style.opacity = '';
+              // Clear the inline fade transition so inactive slides don't
+              // carry a dangling property between activations.
+              slide.style.transition = '';
+            }
+          });
+          dots.forEach((dot, i) => {
+            const active = i === index;
+            if (active) {
+              dot.setAttribute('aria-current', 'true');
+              dot.classList.add('bg-[color:var(--color-accent)]', 'border-[color:var(--color-accent)]');
+              dot.classList.remove('bg-[color:var(--color-border)]', 'border-[color:var(--color-border)]', 'hover:bg-[color:var(--color-text-subtle)]', 'hover:border-[color:var(--color-text-subtle)]');
+            } else {
+              dot.removeAttribute('aria-current');
+              dot.classList.remove('bg-[color:var(--color-accent)]', 'border-[color:var(--color-accent)]');
+              dot.classList.add('bg-[color:var(--color-border)]', 'border-[color:var(--color-border)]', 'hover:bg-[color:var(--color-text-subtle)]', 'hover:border-[color:var(--color-text-subtle)]');
+            }
+          });
+          // Announce the active scenario to screen readers — but only on
+          // real swaps, so page load doesn't fire an unsolicited read.
+          if (announce && initialized) {
+            announce.textContent =
+              slides[index].getAttribute('data-slide-name') || `Scenario ${index + 1}`;
+          }
+        };
+
+        const arm = () => {
+          if (reduceMotion) return; // no autoplay for reduced-motion users
+          if (timer) clearInterval(timer);
+          timer = setInterval(() => go(index + 1), 6000);
+        };
+        const disarm = () => {
+          if (timer) {
+            clearInterval(timer);
+            timer = null;
+          }
+        };
+
+        // go() is the single mutation path: wrap-around index, re-render,
+        // and re-arm autoplay so a manual change restarts the dwell clock.
+        function go(i) {
+          index = ((i % N) + N) % N;
+          render();
+          arm();
+        }
+
+        prevBtn && prevBtn.addEventListener('click', () => go(index - 1));
+        nextBtn && nextBtn.addEventListener('click', () => go(index + 1));
+
+        // Pause autoplay while the visitor is interacting with the region.
+        // focusin/focusout bubble, so the focusout handler checks
+        // relatedTarget — re-arm only when focus actually leaves the
+        // carousel, not when it moves between a dot and a chevron.
+        carousel.addEventListener('mouseenter', disarm);
+        carousel.addEventListener('mouseleave', arm);
+        carousel.addEventListener('focusin', disarm);
+        carousel.addEventListener('focusout', (e) => {
+          if (!carousel.contains(e.relatedTarget)) arm();
+        });
+
+        render();
+        // From here on, swaps animate; the initial paint above did not.
+        initialized = true;
+        arm();
+      }
+    });
+  </script>
 </Layout>

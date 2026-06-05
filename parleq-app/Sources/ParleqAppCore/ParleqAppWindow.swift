@@ -359,6 +359,36 @@ public final class ParleqAppWindowController: NSObject {
         settingsModel.onResetASR = handler
     }
 
+    /// Wire the Enterprise OIDC federation handles into the canonical
+    /// SettingsModel so the Company Account section can drive sign-in /
+    /// sign-out / connection-test against the AppState-owned session +
+    /// exchange caches. Called from `parleq-app/main.swift` at launch,
+    /// ONLY when an OIDC auth mode is active and a session was actually
+    /// constructed — exactly the `setOnResetASR` pattern. For a
+    /// non-enterprise launch this is never called and the model's OIDC
+    /// handles stay nil (the section also stays hidden via
+    /// `companyAccountVisible`).
+    ///
+    /// `sessionModel` must already be `bind(to:)`-ed to the session so
+    /// its `@Published state` mirrors the actor. The closures are the
+    /// only channel the UI uses; no token or identity content crosses
+    /// this boundary (the model holds state + closures, never tokens).
+    public func setOIDCCompanyAccount(
+        sessionModel: OIDCSessionModel,
+        signIn: @escaping () -> Void,
+        signOut: @escaping () -> Void,
+        testConnection: @escaping () async -> (FederationHopStatus, FederationHopStatus),
+        awsConfigured: Bool,
+        gcpConfigured: Bool
+    ) {
+        settingsModel.oidcSessionModel = sessionModel
+        settingsModel.oidcSignIn = signIn
+        settingsModel.oidcSignOut = signOut
+        settingsModel.oidcTestConnection = testConnection
+        settingsModel.oidcAWSConfigured = awsConfigured
+        settingsModel.oidcGCPConfigured = gcpConfigured
+    }
+
     /// Programmatically close the app window. Used by Recent
     /// Dictations' "Paste here" flow — once the target app has the
     /// pasted text, the user typically wants Parleq's window to get

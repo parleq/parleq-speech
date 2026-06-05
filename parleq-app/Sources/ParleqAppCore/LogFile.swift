@@ -50,6 +50,24 @@ public enum LogFile {
         if isatty(fileno(stderr)) == 1 {
             return
         }
+        // COMPLIANCE INVARIANT (#2): transcript content NEVER lands in
+        // stderr / log files. FluidAudio's in-tree VocabularyRescorer logs
+        // `[DEBUG] [FluidAudio.VocabularyRescorer] Final: <full transcript>`
+        // via its AppLogger, and that mirror-to-stderr path is compiled in only
+        // for DEBUG builds (its `debugMode` is a `#if DEBUG` constant and its
+        // logger only mirrors `.debug` to the console in DEBUG — RELEASE builds
+        // route `.debug` to Unified Logging only, so the shipped product never
+        // emits it). FluidAudio exposes no host-facing knob to suppress it, so
+        // we close the *persistence* leak here: in a DEBUG build we do NOT
+        // dup2 stderr into the on-disk app.log (transcript-bearing DEBUG lines
+        // would otherwise be written to disk). The dev still sees live output
+        // on the spawned stderr; opt back into the file with PARLEQ_DEBUG_LOG=1
+        // when the transcript exposure is acceptable (a local dev decision).
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["PARLEQ_DEBUG_LOG"] != "1" {
+            return
+        }
+        #endif
         let dir = "\(NSHomeDirectory())/.parleq"
         try? FileManager.default.createDirectory(
             atPath: dir, withIntermediateDirectories: true

@@ -1,24 +1,12 @@
 ---
 import Layout from '../../layouts/Layout.astro';
-import Logo from '../../components/Logo.astro';
+import SiteHeader from '../../components/SiteHeader.astro';
 
 const repoUrl = 'https://github.com/parleq/parleq-speech';
 ---
 
 <Layout title="Managed Configuration (MDM) — Parleq" description="Deploy Parleq at scale with macOS Managed Configuration. IT admins can force-disable features, lock settings, and govern the app via Jamf, Kandji, Mosyle, or any MDM that speaks macOS.">
-  <header class="mx-auto flex max-w-5xl items-center justify-between px-6 pt-8">
-    <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/'} class="inline-flex items-center">
-      <Logo height="36" />
-    </a>
-    <nav class="flex items-center gap-6 text-sm font-medium text-[color:var(--color-text-muted)]">
-      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/'} class="transition-colors hover:text-[color:var(--color-text)]">Home</a>
-      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/how-it-works/'} class="transition-colors hover:text-[color:var(--color-text)]">How it works</a>
-      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/'} class="text-[color:var(--color-text)]">Docs</a>
-      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/faq/'} class="transition-colors hover:text-[color:var(--color-text)]">FAQ</a>
-      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/about/'} class="transition-colors hover:text-[color:var(--color-text)]">About</a>
-      <a href={repoUrl} class="transition-colors hover:text-[color:var(--color-text)]">GitHub &rarr;</a>
-    </nav>
-  </header>
+  <SiteHeader active="docs" />
 
   <article class="mx-auto max-w-2xl px-6 pt-16 pb-24">
     <p class="text-sm">
@@ -30,7 +18,7 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
       Managed Configuration
     </h1>
     <p class="mt-6 text-[17px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      Parleq supports macOS Managed Configuration so IT departments can deploy it as a governed application: disable optional features, lock settings, prevent users from overriding them, and override the Sparkle update channel to point at a corporate-hosted appcast mirror. Configuration is read from <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">/Library/Managed Preferences/com.parleq.app.plist</code>, which any MDM that speaks macOS can write &mdash; Jamf Pro, Kandji, Mosyle, Intune, Workspace ONE, Addigy, JumpCloud, and others.
+      Parleq supports macOS Managed Configuration so IT departments can deploy it as a governed application: disable optional features, lock settings, prevent users from overriding them, and override the Sparkle update channel to point at a corporate-hosted appcast mirror. Configuration is read from <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">/Library/Managed Preferences/com.parleq.app.plist</code>, which any MDM that speaks macOS can write &mdash; Jamf Pro, Kandji, Mosyle, Intune, Workspace ONE, Addigy, JumpCloud, and others. Pins are enforced while the configuration profile is installed: on supervised (DEP-enrolled) Macs the profile is non-removable; on unsupervised machines a local administrator can remove the profile, so use supervised enrollment where you need a hard guarantee.
     </p>
     <p class="mt-3 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
       For a step-by-step deployment guide aimed at IT administrators (rather than developers), see the <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/admin-guide/'} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Admin Guide</a>.
@@ -55,7 +43,7 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
       Parleq accepts two categories of managed keys: <strong class="text-[color:var(--color-text)]">feature toggles</strong> (Boolean, default <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">true</code>) and <strong class="text-[color:var(--color-text)]">provider/model lockdown</strong> (String or [String]).
     </p>
 
-    <h3 class="mt-8 font-display text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Feature toggles</h3>
+    <h3 class="mt-8 text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Feature toggles</h3>
 
     <div class="mt-4 overflow-x-auto rounded-xl border border-[color:var(--color-border)]">
       <table class="w-full text-[14px] text-[color:var(--color-text-muted)]">
@@ -127,7 +115,7 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
     </div>
 
     <!-- Provider / model lockdown keys -->
-    <h3 class="mt-10 font-display text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Provider and model lockdown</h3>
+    <h3 class="mt-10 text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Provider and model lockdown</h3>
     <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
       These keys restrict which LLM providers and models users can pick. Parleq has two tiers &mdash; <strong class="text-[color:var(--color-text)]">Cleanup</strong> (used for normal dictation) and <strong class="text-[color:var(--color-text)]">Context</strong> (used when references are attached) &mdash; and each tier has an independent set of keys.
     </p>
@@ -193,7 +181,7 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
     </div>
 
     <!-- Authentication-mode restriction keys (Phase 4) -->
-    <h3 class="mt-10 font-display text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Authentication-mode restrictions</h3>
+    <h3 class="mt-10 text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Authentication-mode restrictions</h3>
     <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
       These keys let IT admins restrict how users authenticate to LLM providers — forcing federated identity (Entra ID, AWS SSO) and disabling static API-key entry across the board.
     </p>
@@ -239,7 +227,7 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
     </div>
 
     <!-- Destination pins (Phase 7) -->
-    <h3 class="mt-10 font-display text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Destination pins</h3>
+    <h3 class="mt-10 text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Destination pins</h3>
     <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
       Provider, model, and auth-mode pins above govern <em>which</em> service Parleq calls; destination pins govern <em>where</em>. Even with an allowed provider, an unconstrained user can route data to their personal cloud tenant or their own ASR server. The keys in this section close that gap.
     </p>
@@ -298,8 +286,73 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
       </table>
     </div>
 
+    <!-- Enterprise OIDC federation pins -->
+    <h3 class="mt-10 text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Enterprise OIDC federation</h3>
+    <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      These keys configure Parleq&rsquo;s optional <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/enterprise-sso/'} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">corporate single sign-on</a>: one OIDC sign-in, federated into AWS Bedrock (<code class="font-mono text-[12px]">AssumeRoleWithWebIdentity</code>) and/or Google Cloud Vertex AI (Workforce Identity Federation), with no per-user API keys. Pinning the issuer, client ID, role ARN, and workforce provider via MDM gives the whole fleet a single managed identity path. The refresh token and signed-in identity stay Keychain-only and are never managed-config surfaced. Set both <code class="font-mono text-[12px]">oidcIssuer</code> and <code class="font-mono text-[12px]">oidcClientID</code>, then enable a leg by pinning <code class="font-mono text-[12px]">awsAuthMode: oidc</code> (with <code class="font-mono text-[12px]">awsRoleArn</code>) and/or <code class="font-mono text-[12px]">vertexAuthMode: oidcFederation</code> (with <code class="font-mono text-[12px]">vertexWorkforceProvider</code>).
+    </p>
+
+    <div class="mt-6 overflow-x-auto rounded-xl border border-[color:var(--color-border)]">
+      <table class="w-full text-[14px] text-[color:var(--color-text-muted)]">
+        <thead class="border-b border-[color:var(--color-border)] bg-[color:var(--color-surface)]">
+          <tr>
+            <th class="px-4 py-3 text-left font-semibold text-[color:var(--color-text)]">Key</th>
+            <th class="px-4 py-3 text-left font-semibold text-[color:var(--color-text)]">Type</th>
+            <th class="px-4 py-3 text-left font-semibold text-[color:var(--color-text)]">Behavior</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-[color:var(--color-border)]">
+          <tr class="bg-[color:var(--color-bg)]">
+            <td class="px-4 py-3 font-mono text-[13px] text-[color:var(--color-text)]">oidcIssuer</td>
+            <td class="px-4 py-3 font-mono text-[13px]">String</td>
+            <td class="px-4 py-3"><strong class="text-[color:var(--color-text)]">Pin the OIDC issuer URL</strong> (e.g. <code class="font-mono text-[12px]">https://acme.okta.com</code>). Parleq runs OIDC discovery against <code class="font-mono text-[12px]">&lt;issuer&gt;/.well-known/openid-configuration</code>. Empty pins are rejected with a log warning and treated as unmanaged.</td>
+          </tr>
+          <tr class="bg-[color:var(--color-surface)]">
+            <td class="px-4 py-3 font-mono text-[13px] text-[color:var(--color-text)]">oidcClientID</td>
+            <td class="px-4 py-3 font-mono text-[13px]">String</td>
+            <td class="px-4 py-3"><strong class="text-[color:var(--color-text)]">Pin the public OIDC client ID</strong> registered with the IdP for Parleq. The client must be a native / public client (no secret) that permits PKCE and the <code class="font-mono text-[12px]">parleq-auth://oidc/callback</code> redirect URI. Empty pins rejected.</td>
+          </tr>
+          <tr class="bg-[color:var(--color-bg)]">
+            <td class="px-4 py-3 font-mono text-[13px] text-[color:var(--color-text)]">oidcScopes</td>
+            <td class="px-4 py-3 font-mono text-[13px]">[String]</td>
+            <td class="px-4 py-3"><strong class="text-[color:var(--color-text)]">Pin the requested scopes.</strong> Default <code class="font-mono text-[12px]">["openid", "profile", "email", "offline_access"]</code>. Keep <code class="font-mono text-[12px]">offline_access</code> so the IdP issues a refresh token for silent re-authentication.</td>
+          </tr>
+          <tr class="bg-[color:var(--color-surface)]">
+            <td class="px-4 py-3 font-mono text-[13px] text-[color:var(--color-text)]">oidcEphemeralBrowserSession</td>
+            <td class="px-4 py-3 font-mono text-[13px]">Boolean</td>
+            <td class="px-4 py-3"><strong class="text-[color:var(--color-text)]">Force an ephemeral sign-in web session.</strong> When <code class="font-mono text-[12px]">true</code>, the PKCE sign-in uses an ephemeral browser session (no shared cookies / persistent IdP session), so each sign-in starts clean. Default <code class="font-mono text-[12px]">false</code>.</td>
+          </tr>
+          <tr class="bg-[color:var(--color-bg)]">
+            <td class="px-4 py-3 font-mono text-[13px] text-[color:var(--color-text)]">oidcRedirectURI</td>
+            <td class="px-4 py-3 font-mono text-[13px]">String</td>
+            <td class="px-4 py-3"><strong class="text-[color:var(--color-text)]">Pin the OAuth redirect URI</strong> used in the authorization request and token exchange. The browser callback scheme is derived from this URL&rsquo;s scheme. Default <code class="font-mono text-[12px]">parleq-auth://oidc/callback</code>; generic OPs (e.g. a Google native client) need their own reversed-client-ID scheme such as <code class="font-mono text-[12px]">com.googleusercontent.apps.&lt;id&gt;:/oauth2redirect</code>. A value that doesn&rsquo;t parse as a URL with a scheme is rejected (the default is kept).</td>
+          </tr>
+          <tr class="bg-[color:var(--color-surface)]">
+            <td class="px-4 py-3 font-mono text-[13px] text-[color:var(--color-text)]">oidcExtraAuthParams</td>
+            <td class="px-4 py-3 font-mono text-[13px]">Dictionary</td>
+            <td class="px-4 py-3"><strong class="text-[color:var(--color-text)]">Pin extra authorization-request query params.</strong> A <code class="font-mono text-[12px]">[String: String]</code> map appended to the sign-in URL &mdash; e.g. <code class="font-mono text-[12px]">{`{"access_type": "offline", "prompt": "consent"}`}</code> to force a refresh token on every Google sign-in. Reserved OIDC params (<code class="font-mono text-[12px]">client_id</code>, <code class="font-mono text-[12px]">redirect_uri</code>, <code class="font-mono text-[12px]">state</code>, <code class="font-mono text-[12px]">nonce</code>, <code class="font-mono text-[12px]">code_challenge*</code>, <code class="font-mono text-[12px]">response_type</code>, <code class="font-mono text-[12px]">scope</code>) are ignored. Default empty.</td>
+          </tr>
+          <tr class="bg-[color:var(--color-bg)]">
+            <td class="px-4 py-3 font-mono text-[13px] text-[color:var(--color-text)]">awsRoleArn</td>
+            <td class="px-4 py-3 font-mono text-[13px]">String</td>
+            <td class="px-4 py-3"><strong class="text-[color:var(--color-text)]">Pin the AWS IAM role ARN</strong> assumed via <code class="font-mono text-[12px]">AssumeRoleWithWebIdentity</code> when <code class="font-mono text-[12px]">awsAuthMode: oidc</code>. The role&rsquo;s trust policy is what gates access (the STS call itself is unauthenticated). Empty pins rejected.</td>
+          </tr>
+          <tr class="bg-[color:var(--color-surface)]">
+            <td class="px-4 py-3 font-mono text-[13px] text-[color:var(--color-text)]">awsSessionDurationSeconds</td>
+            <td class="px-4 py-3 font-mono text-[13px]">Integer</td>
+            <td class="px-4 py-3"><strong class="text-[color:var(--color-text)]">Pin the requested STS session duration</strong> for the federated AWS credentials. Default <code class="font-mono text-[12px]">3600</code> (1 h). Clamped to STS&rsquo;s <code class="font-mono text-[12px]">900</code>&ndash;<code class="font-mono text-[12px]">43200</code> s (15 min &ndash; 12 h) window. Shorter durations tighten offboarding latency &mdash; already-issued STS credentials are not revocable, so they live to this maximum.</td>
+          </tr>
+          <tr class="bg-[color:var(--color-bg)]">
+            <td class="px-4 py-3 font-mono text-[13px] text-[color:var(--color-text)]">vertexWorkforceProvider</td>
+            <td class="px-4 py-3 font-mono text-[13px]">String</td>
+            <td class="px-4 py-3"><strong class="text-[color:var(--color-text)]">Pin the GCP Workforce Identity provider resource name</strong> (<code class="font-mono text-[12px]">locations/global/workforcePools/&lt;pool&gt;/providers/&lt;provider&gt;</code>) used when <code class="font-mono text-[12px]">vertexAuthMode: oidcFederation</code>. Empty pins rejected.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
     <!-- Operational policy keys (Phase 3) -->
-    <h3 class="mt-10 font-display text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Operational policy</h3>
+    <h3 class="mt-10 text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Operational policy</h3>
     <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
       These keys let IT admins govern update channels and logging policy.
     </p>
@@ -345,7 +398,7 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
     </div>
 
     <!-- Transcript-history retention keys (Phase 8) -->
-    <h3 class="mt-10 font-display text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Transcript-history retention</h3>
+    <h3 class="mt-10 text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Transcript-history retention</h3>
     <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
       These keys bound the in-memory Recent Dictations history (the cleaned-text list in the Parleq window). Both are integers; either or both can be set, and whichever limit is hit first drops entries. With no policy, history is unbounded until the app quits &mdash; there is no on-disk transcript retention surface either way.
     </p>
@@ -382,7 +435,7 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
     </div>
 
     <!-- Learned-corrections retention keys -->
-    <h3 class="mt-10 font-display text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Learn from corrections</h3>
+    <h3 class="mt-10 text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Learn from corrections</h3>
     <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
       These keys govern the opt-in &ldquo;Learn from your corrections&rdquo; feature (off by default). When enabled, Parleq keeps short correction snippets <strong>in memory only (never written to disk)</strong> and occasionally asks the user&rsquo;s already-configured cleanup model to suggest custom-dictionary improvements. No new network destination is introduced &mdash; analysis uses the same cleanup model the user already has configured. IT can pin this feature off entirely or bound the in-session correction ring by entry count and retention window. The semantics are the same as for the <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">transcriptHistory*</code> keys: either Int key set to <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">0</code> disables the ring entirely.
     </p>
@@ -420,7 +473,7 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
       </table>
     </div>
 
-    <h3 class="mt-12 font-display text-xl font-semibold tracking-tight text-[color:var(--color-text)]">
+    <h3 class="mt-12 text-xl font-semibold tracking-tight text-[color:var(--color-text)]">
       Known limitation &mdash; customDictionary entry content
     </h3>
     <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">

@@ -132,6 +132,13 @@ struct ParleqAppView: View {
             // write the stale `false` back, and the toggle reflects reality.
             settingsModel.learnFromCorrectionsEnabled = true
         }
+        .onReceive(NotificationCenter.default.publisher(for: .parleqOpenCompanyAccount)) { _ in
+            // Deep-link from a provider card's corporate-sign-in mode:
+            // expand the Settings group and select the Company Account
+            // pane so the user lands on the sign-in surface.
+            settingsExpanded = true
+            selectedSection.value = .settings(.companyAccount)
+        }
     }
 
     /// Auto-hide the sidebar when the window narrows below
@@ -186,7 +193,13 @@ struct ParleqAppView: View {
             DisclosureGroup(isExpanded: $settingsExpanded) {
                 // Usage is promoted to a top-level row (above), so drop
                 // it from the Settings sub-list to avoid duplication.
-                ForEach(SettingsView.SettingsSection.allCases.filter { $0 != .usage }) { pane in
+                // Company Account only appears for enterprise users (an
+                // OIDC issuer configured or a provider in an OIDC auth
+                // mode) — zero-config users never see it.
+                ForEach(SettingsView.SettingsSection.allCases.filter {
+                    $0 != .usage
+                        && ($0 != .companyAccount || settingsModel.companyAccountVisible)
+                }) { pane in
                     Label(pane.label, systemImage: pane.icon)
                         .tag(ParleqAppSelection.settings(pane))
                 }

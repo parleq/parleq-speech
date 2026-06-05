@@ -32,6 +32,11 @@
   --color-accent-hover: #b45309;
   --color-accent-soft: #fef3c7;
   --color-wave: #d97706;
+
+  /* Very faint slate wash for the homepage section rhythm — sits a hair
+     below the warm-white base so alternating sections read as distinct
+     bands without a hard line. Derived from the slate border palette. */
+  --color-section-tint: #f5f6f8;
 }
 
 html {
@@ -43,6 +48,13 @@ html {
   /* Inter's stylistic-set tweaks: cv11 = single-storey "a", ss01 =
      contextual alternates. Subtle but worth the bytes for body text. */
   font-feature-settings: 'cv11', 'ss01';
+}
+
+/* Smooth in-page anchor jumps (#enterprise, #refine, scroll cue) —
+   gated so a reduced-motion visitor gets instant jumps, never an
+   override of their OS preference. */
+@media (prefers-reduced-motion: no-preference) {
+  html { scroll-behavior: smooth; }
 }
 
 body {
@@ -85,4 +97,135 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .wave-bar { animation: none; transform: scaleY(0.6); }
+}
+
+/* Hero live cleanup demo. A raw spoken transcript types out in muted
+   monospace, then morphs into the cleaned sentence in the site text
+   color. The JS owns the word-by-word build; CSS owns the two visual
+   states (raw vs. cleaned), the per-word collapse of filler words, and
+   the typing caret. Everything here is purely decorative — the region
+   is aria-hidden and the loop only runs when motion is allowed. */
+
+/* Each word is its own inline element so fillers can collapse
+   independently. The width/opacity transition is what makes the
+   fillers look like they "dissolve" rather than snap away. */
+.hero-demo-word {
+  display: inline-block;
+  white-space: pre;            /* keep the trailing space per word */
+  max-width: 12ch;             /* generous cap; no real word exceeds it */
+  opacity: 1;
+  transition:
+    opacity 0.45s ease,
+    max-width 0.45s ease;
+}
+/* Filler words on cleanup: fade to nothing and pinch their width to 0
+   so the surrounding words slide together. overflow:hidden keeps the
+   collapsing glyphs from spilling during the transition. */
+.hero-demo-word.is-dropped {
+  max-width: 0;
+  opacity: 0;
+  overflow: hidden;
+}
+
+/* Raw (dictation) phase: muted monospace, as if mid-utterance. */
+.hero-demo-raw {
+  font-family: var(--font-mono);
+  color: var(--color-text-subtle);
+}
+/* Cleaned phase: settle into the site's body text color. */
+.hero-demo-cleaned {
+  color: var(--color-text);
+}
+
+/* Whole-line crossfade used when swapping examples and on the final
+   hold→clear. Kept short so the loop feels calm, not flashy. Carries
+   both opacity and color so the combined `.hero-demo-cleaned
+   .hero-demo-fade` class still animates the color shift (a later
+   single-property `transition` would otherwise override it). */
+.hero-demo-fade {
+  transition:
+    opacity 0.5s ease,
+    color 0.45s ease;
+}
+
+/* Typing caret: a slim blinking bar appended during the dictation
+   phase only. Gated behind no-preference so reduced-motion visitors
+   never see it (the loop itself is also disabled for them in JS). */
+@media (prefers-reduced-motion: no-preference) {
+  .hero-demo-caret {
+    display: inline-block;
+    width: 2px;
+    height: 1.05em;
+    margin-left: 1px;
+    vertical-align: text-bottom;
+    background: var(--color-text-subtle);
+    animation: hero-demo-blink 1s step-end infinite;
+  }
+  @keyframes hero-demo-blink {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0; }
+  }
+}
+
+/* Reveal-on-scroll. The .reveal class is applied by JS only when the
+   user hasn't asked for reduced motion — content is fully visible by
+   default, so a no-JS or reduced-motion visitor never sees a blank
+   section. An IntersectionObserver flips .reveal-visible once per
+   element as it enters the viewport. */
+.reveal {
+  opacity: 0;
+  transform: translateY(36px);
+  transition:
+    opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.reveal-visible {
+  opacity: 1;
+  transform: none;
+}
+
+/* How-it-works pipeline stepper. The data-transformation strip
+   doubles as stage navigation; the script flips its boxes into
+   aria-current buttons. The active box picks up the amber-accent
+   treatment (mirroring the "Pasted" box's resting accent style), so
+   the mapping box→panel reads at a glance. Hover/idle styling lives in
+   markup classes; this rule covers only the aria-current state that
+   needs a selector. aria-current="step" is the semantically correct
+   token for step/stage navigation; the JS sets exactly that. */
+.stepper-box[aria-current='step'] {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent-soft) 35%, transparent);
+}
+/* Subtle marker for the native <details> rows: hide the default
+   disclosure triangle (we render our own amber chevron) and rotate the
+   chevron when open. `list-style: none` is the cross-browser way to
+   drop the <summary> marker (Firefox + standards-mode); the
+   ::-webkit- rule covers older Safari/Chrome that ignore list-style on
+   summary. The rotation is gated on no-preference so a reduced-motion
+   visitor sees an instant flip, not a spin. */
+.stage-detail > summary {
+  list-style: none;
+}
+.stage-detail > summary::-webkit-details-marker {
+  display: none;
+}
+.stage-detail[open] > summary .stage-detail-chevron {
+  transform: rotate(90deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .stage-detail-chevron {
+    transition: none;
+  }
+}
+
+/* Scroll cue chevron bounce. Gated behind no-preference so a
+   reduced-motion visitor gets a still chevron. */
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes scroll-cue {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(6px); }
+  }
+  .animate-scroll-cue {
+    animation: scroll-cue 1.6s ease-in-out infinite;
+  }
 }

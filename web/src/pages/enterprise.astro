@@ -1,0 +1,277 @@
+---
+import Layout from '../layouts/Layout.astro';
+import SiteHeader from '../components/SiteHeader.astro';
+
+const repoUrl = 'https://github.com/parleq/parleq-speech';
+const base = `${import.meta.env.BASE_URL}`.replace(/\/$/, '');
+---
+
+<Layout
+  title="Parleq for the enterprise — one sign-in for every employee"
+  description="Back Parleq's cloud cleanup with one corporate OIDC sign-in instead of per-user API keys. Federate Okta, Microsoft Entra ID, or any OIDC IdP into AWS Bedrock or Google Vertex AI. Audio stays on-device; no Parleq servers in the data path."
+>
+  <SiteHeader active="enterprise" />
+
+  <!-- Hero. Leads DARK — the enterprise aesthetic — with the same
+       near-black slate gradient family the homepage #enterprise band and
+       the how-it-works trust band use. Text colors pin to literal light
+       slate values (not the light-mode tokens) so everything clears
+       contrast on the dark ground; the amber accent carries through. -->
+  <section class="bg-gradient-to-br from-[#272d35] to-[#15181d] text-[#cbd5e1]">
+    <div class="mx-auto max-w-3xl px-6 pt-20 pb-24 sm:pt-28 sm:pb-28">
+      <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">
+        Parleq for organizations
+      </p>
+      <h1 class="mt-4 font-display text-4xl leading-[1.05] font-medium tracking-tight text-white sm:text-5xl md:text-6xl">
+        One sign-in for every employee.
+      </h1>
+      <div class="mt-6 flex flex-wrap items-center gap-2 text-[13px] font-medium">
+        <span class="inline-flex items-center rounded-full border border-[color:var(--color-accent)]/40 bg-[color:var(--color-accent)]/10 px-3 py-1 text-[color:var(--color-accent)]">Free</span>
+        <span class="inline-flex items-center rounded-full border border-white/20 px-3 py-1 text-[#cbd5e1]">Apache-2.0</span>
+        <span class="inline-flex items-center rounded-full border border-white/20 px-3 py-1 text-[#cbd5e1]">Open source</span>
+      </div>
+      <p class="mt-8 max-w-2xl text-lg leading-relaxed text-[#cbd5e1] sm:text-xl">
+        Back cloud cleanup with your corporate OIDC identity provider — Okta, Microsoft Entra ID, or any OIDC IdP — federated into AWS Bedrock or Google Vertex AI. Every employee dictates with the account they already have. No per-user API keys, no CLI dependence, no Parleq servers in the data path — ever.
+      </p>
+      <p class="mt-5 max-w-2xl text-lg leading-relaxed text-[#cbd5e1] sm:text-xl">
+        Parleq itself costs nothing — there's no per-seat price and no license to buy. The only bill is your own cloud provider's charge for the LLM tokens, on the contract you already hold.
+      </p>
+      <div class="mt-10 flex flex-wrap gap-x-6 gap-y-3 text-[15px] font-medium">
+        <a href={base + '/docs/enterprise-sso/'} class="inline-flex items-center gap-2 rounded-full bg-[color:var(--color-accent)] px-6 py-2.5 text-white transition-colors hover:bg-[color:var(--color-accent-hover)]">
+          Enterprise SSO setup →
+        </a>
+        <a href={`${repoUrl}/blob/main/docs/SECURITY_REVIEW.md`} class="inline-flex items-center gap-2 rounded-full border border-white/20 px-6 py-2.5 text-white transition-colors hover:border-white/50">
+          Security review packet →
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Trust model. The properties a security reviewer skims for, drawn
+       from the homepage band + the Enterprise SSO doc intro. Light base
+       after the dark hero; the dark→light edge is its own separator. -->
+  <section data-reveal class="bg-[color:var(--color-bg)]">
+    <div class="mx-auto max-w-3xl px-6 py-20 sm:py-24">
+      <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">
+        Trust model
+      </p>
+      <h2 class="mt-4 font-display text-3xl leading-[1.1] font-medium tracking-tight sm:text-4xl">
+        How the trust model works.
+      </h2>
+      <p class="mt-6 max-w-2xl text-lg leading-relaxed text-[color:var(--color-text-muted)]">
+        One PKCE sign-in with your IdP backs cloud cleanup for everyone — not just the engineers with a CLI configured. The properties that matter before procurement:
+      </p>
+      <ul class="mt-8 space-y-5 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
+        <li class="flex gap-3">
+          <span aria-hidden="true" class="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[color:var(--color-accent)]"></span>
+          <span><strong class="font-semibold text-[color:var(--color-text)]">Audio never leaves the Mac.</strong> Speech recognition runs entirely on-device. Only the transcript text crosses a network boundary — and it goes only to your cloud provider, on your contract.</span>
+        </li>
+        <li class="flex gap-3">
+          <span aria-hidden="true" class="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[color:var(--color-accent)]"></span>
+          <span><strong class="font-semibold text-[color:var(--color-text)]">Credentials live in memory only.</strong> One PKCE sign-in mints short-lived cloud credentials at call time; they expire on their own. The Keychain holds nothing but a refresh token.</span>
+        </li>
+        <li class="flex gap-3">
+          <span aria-hidden="true" class="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[color:var(--color-accent)]"></span>
+          <span><strong class="font-semibold text-[color:var(--color-text)]">Fails closed.</strong> Sign out — or get offboarded at your IdP — and dictation falls back to on-device-only: the cleanup pass is skipped, never silently re-pointed at a personal credential.</span>
+        </li>
+        <li class="flex gap-3">
+          <span aria-hidden="true" class="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[color:var(--color-accent)]"></span>
+          <span><strong class="font-semibold text-[color:var(--color-text)]">Revocation latency, honestly.</strong> Disabling a user at your IdP stops the next credential refresh; already-issued short-lived cloud sessions are not revocable and run to their expiry — keep the AWS session duration short (15 min–1 h) where offboarding speed matters.</span>
+        </li>
+        <li class="flex gap-3">
+          <span aria-hidden="true" class="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[color:var(--color-accent)]"></span>
+          <span><strong class="font-semibold text-[color:var(--color-text)]">Per-user audit attribution.</strong> On AWS the role session name carries the signed-in user's identity, so CloudTrail attributes every cleanup call to the actual person.</span>
+        </li>
+        <li class="flex gap-3">
+          <span aria-hidden="true" class="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[color:var(--color-accent)]"></span>
+          <span><strong class="font-semibold text-[color:var(--color-text)]">No Parleq servers in the path.</strong> Tokens go to your IdP and your cloud's STS endpoints; transcript text goes only to the LLM endpoint you already configured. There is no Parleq cloud service to review.</span>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- MDM deployment. From the homepage "MDM-deployable for IT admins"
+       highlight + the managed-configuration story. Tinted band for the
+       section rhythm. -->
+  <section data-reveal class="border-t border-[color:var(--color-border-subtle)] bg-[color:var(--color-section-tint)]">
+    <div class="mx-auto max-w-3xl px-6 py-20 sm:py-24">
+      <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">
+        Managed deployment
+      </p>
+      <h2 class="mt-4 font-display text-3xl leading-[1.1] font-medium tracking-tight sm:text-4xl">
+        Deploy it like any other governed app.
+      </h2>
+      <p class="mt-6 max-w-2xl text-lg leading-relaxed text-[color:var(--color-text-muted)]">
+        Push Parleq through your existing MDM — Jamf, Kandji, Mosyle, or Intune — with a managed configuration profile that pins the parts you care about and locks users out of changing them.
+      </p>
+      <div class="mt-8 grid gap-4 sm:grid-cols-2">
+        <div class="rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6">
+          <h3 class="text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Pin what matters</h3>
+          <p class="mt-3 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
+            Pin the provider, restrict the model list, and pin the OIDC issuer and client ID plus the AWS role / GCP workforce provider. Users sign in — but they can't re-point the app at a personal tenant while the profile is in place.
+          </p>
+        </div>
+        <div class="rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6">
+          <h3 class="text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Nothing to phone home</h3>
+          <p class="mt-3 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
+            No Parleq admin portal, no license-key system, no license-key check-in or usage beacon — the only call to a Parleq-controlled host is the Sparkle update check against parleq.app (version + OS string, no identifiers, no dictation data). The managed profile is the whole control surface.
+          </p>
+        </div>
+      </div>
+      <div class="mt-8 flex flex-wrap gap-x-6 gap-y-3 text-[14px] font-medium">
+        <a href={base + '/docs/managed-configuration/'} class="text-[color:var(--color-accent)] underline-offset-4 hover:underline">Managed configuration reference →</a>
+        <a href={base + '/docs/admin-guide/'} class="text-[color:var(--color-accent)] underline-offset-4 hover:underline">Admin guide →</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Security review. The "reviewers read the code" pitch — open source,
+       the packet in the repo, and the connection doctor. Dark band again
+       for the security-centerpiece weight, mirroring how-it-works'
+       trust band. -->
+  <section data-reveal class="bg-gradient-to-br from-[#272d35] to-[#15181d] text-[#cbd5e1]">
+    <div class="mx-auto max-w-3xl px-6 py-20 sm:py-24">
+      <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">
+        For your security team
+      </p>
+      <h2 class="mt-4 font-display text-3xl leading-[1.1] font-medium tracking-tight text-white sm:text-4xl">
+        Built to be reviewed.
+      </h2>
+      <p class="mt-6 max-w-2xl text-lg leading-relaxed text-[#cbd5e1]">
+        Parleq ships a security-review packet in the repo — data flows, trust boundaries, and audit history — so your security team can read it before procurement. And because Parleq is open source (Apache-2.0), reviewers can read the code itself rather than take a vendor's word for it.
+      </p>
+      <ul class="mt-8 space-y-4 text-[15px] leading-relaxed text-[#cbd5e1]">
+        <li class="flex gap-3">
+          <span aria-hidden="true" class="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[color:var(--color-accent)]"></span>
+          <span><strong class="font-semibold text-white">The packet.</strong> <code class="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[13px] text-white">docs/SECURITY_REVIEW.md</code> on GitHub — data flows, trust boundaries, and the audit history.</span>
+        </li>
+        <li class="flex gap-3">
+          <span aria-hidden="true" class="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[color:var(--color-accent)]"></span>
+          <span><strong class="font-semibold text-white">Read the code.</strong> Apache-2.0, public repo — reviewers verify the claims against the source.</span>
+        </li>
+        <li class="flex gap-3">
+          <span aria-hidden="true" class="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[color:var(--color-accent)]"></span>
+          <span><strong class="font-semibold text-white">A connection doctor.</strong> Settings → Company Account → Test connection shows which hop failed — IdP, token exchange, or provider — so a new setup is confirmable end-to-end.</span>
+        </li>
+      </ul>
+      <div class="mt-10 flex flex-wrap gap-x-6 gap-y-3 text-[14px] font-medium">
+        <a href={`${repoUrl}/blob/main/docs/SECURITY_REVIEW.md`} class="text-[color:var(--color-accent)] underline-offset-4 hover:underline">Security review packet →</a>
+        <a href={repoUrl} class="text-[color:var(--color-accent)] underline-offset-4 hover:underline">Source on GitHub →</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Free for every seat. The procurement advantage: no licensing
+       system to buy, no vendor contract, the bill is the customer's own
+       cloud account, and open source means the security team reads the
+       code. Tinted band for section rhythm; sits before the CTA row. -->
+  <section data-reveal class="border-t border-[color:var(--color-border-subtle)] bg-[color:var(--color-section-tint)]">
+    <div class="mx-auto max-w-3xl px-6 py-20 sm:py-24">
+      <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">
+        Procurement
+      </p>
+      <h2 class="mt-4 font-display text-3xl leading-[1.1] font-medium tracking-tight sm:text-4xl">
+        Free for every seat.
+      </h2>
+      <div class="mt-8 grid gap-4 sm:grid-cols-3">
+        <div class="rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6">
+          <h3 class="text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Nothing to procure</h3>
+          <p class="mt-3 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
+            No per-seat pricing, no license keys, no vendor contract to negotiate. Deploy to one Mac or ten thousand at the same price: zero.
+          </p>
+        </div>
+        <div class="rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6">
+          <h3 class="text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Your existing cloud bill</h3>
+          <p class="mt-3 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
+            The only cost is your own cloud provider's charge for LLM tokens, billed to the AWS or Google contract you already hold — not to Parleq.
+          </p>
+        </div>
+        <div class="rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6">
+          <h3 class="text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Read the code, not a whitepaper</h3>
+          <p class="mt-3 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
+            Apache-2.0 and fully open source. Your security team verifies the claims against the source itself rather than trusting a vendor's word.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA row. The four next-step links: the SSO setup playbooks, the
+       managed-config reference, the admin guide, and the repo. Light
+       base after the dark security band. -->
+  <section data-reveal class="bg-[color:var(--color-bg)]">
+    <div class="mx-auto max-w-3xl px-6 py-20 sm:py-24">
+      <h2 class="font-display text-3xl leading-[1.1] font-medium tracking-tight sm:text-4xl">
+        Where to start.
+      </h2>
+      <div class="mt-10 grid gap-4 sm:grid-cols-2">
+        <a href={base + '/docs/enterprise-sso/'} class="group rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6 transition-colors hover:border-[color:var(--color-text-muted)]">
+          <h3 class="text-xl font-semibold tracking-tight text-[color:var(--color-text)]">Enterprise SSO</h3>
+          <p class="mt-3 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">The setup playbooks: federate your IdP into AWS Bedrock and Google Vertex AI, leg by leg.</p>
+          <p class="mt-5 text-[13px] font-medium text-[color:var(--color-accent)] group-hover:underline">Setup playbooks →</p>
+        </a>
+        <a href={base + '/docs/managed-configuration/'} class="group rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6 transition-colors hover:border-[color:var(--color-text-muted)]">
+          <h3 class="text-xl font-semibold tracking-tight text-[color:var(--color-text)]">Managed Configuration</h3>
+          <p class="mt-3 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">The full schema for every managed-config key — provider pinning, OIDC pins, and the rest.</p>
+          <p class="mt-5 text-[13px] font-medium text-[color:var(--color-accent)] group-hover:underline">Schema reference →</p>
+        </a>
+        <a href={base + '/docs/admin-guide/'} class="group rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6 transition-colors hover:border-[color:var(--color-text-muted)]">
+          <h3 class="text-xl font-semibold tracking-tight text-[color:var(--color-text)]">Admin Guide</h3>
+          <p class="mt-3 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">Deploying to a fleet, step by step — the MDM profile, upload, and verify workflow.</p>
+          <p class="mt-5 text-[13px] font-medium text-[color:var(--color-accent)] group-hover:underline">Deployment workflow →</p>
+        </a>
+        <a href={repoUrl} class="group rounded-xl border-2 border-[color:var(--color-accent)] bg-[color:var(--color-surface)] p-6 transition-colors hover:bg-[color:var(--color-section-tint)]">
+          <h3 class="text-xl font-semibold tracking-tight text-[color:var(--color-text)]">Source on GitHub</h3>
+          <p class="mt-3 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">Free and Apache-2.0. Read the code, the security-review packet, and the audit history — and verify every claim on this page yourself.</p>
+          <p class="mt-5 text-[13px] font-medium text-[color:var(--color-accent)] group-hover:underline">Read the source →</p>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <footer class="border-t border-[color:var(--color-border-subtle)]">
+    <div class="mx-auto flex max-w-5xl flex-col items-start justify-between gap-4 px-6 py-10 text-sm text-[color:var(--color-text-subtle)] sm:flex-row sm:items-center">
+      <div class="flex items-center gap-3">
+        <span class="text-base font-semibold text-[color:var(--color-text)]">Parleq</span>
+        <span>·</span>
+        <span>Apache-2.0</span>
+      </div>
+      <div class="flex items-center gap-6">
+        <a href={repoUrl} class="hover:text-[color:var(--color-text)]">GitHub</a>
+        <a href={`${repoUrl}/releases`} class="hover:text-[color:var(--color-text)]">Releases</a>
+        <a href={`${repoUrl}/blob/main/THIRD_PARTY_LICENSES.md`} class="hover:text-[color:var(--color-text)]">Licenses</a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Reveal-on-scroll. Same inline pattern as the homepage: reduced-
+       motion visitors keep content fully visible (never get .reveal); an
+       IntersectionObserver flips .reveal-visible once per section. The
+       same-frame fix keeps already-in-view sections from flashing blank
+       on load. -->
+  <script is:inline>
+    document.addEventListener('DOMContentLoaded', () => {
+      if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        const targets = document.querySelectorAll('[data-reveal]');
+        const observer = new IntersectionObserver(
+          (entries, obs) => {
+            entries.forEach((entry) => {
+              if (entry.isIntersecting) {
+                entry.target.classList.add('reveal-visible');
+                obs.unobserve(entry.target);
+              }
+            });
+          },
+          { threshold: 0, rootMargin: '0px' }
+        );
+        targets.forEach((el) => {
+          el.classList.add('reveal');
+          if (el.getBoundingClientRect().top < window.innerHeight) {
+            el.classList.add('reveal-visible');
+          }
+          observer.observe(el);
+        });
+      }
+    });
+  </script>
+</Layout>

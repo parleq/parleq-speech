@@ -48,7 +48,7 @@ Switch in **Settings → Cleanup → Provider**. The Settings restart-required b
 ### Gemini setup
 
 1. Visit [Google AI Studio](https://aistudio.google.com/app/apikey) (sign in with a Google account).
-2. **Create API key** → copy it. Free tier is sufficient for dictation use.
+2. **Create API key** → copy it. Free tier is typically sufficient for personal dictation — check current quotas. (Provider pricing and free tiers change without notice — verify current rates.)
 3. Make the key available to Parleq. Two options:
    - **Settings UI (recommended)**: open Parleq → Settings → Cleanup (with Provider = Gemini), click **Set Gemini API Key…**, paste the key, Save. Stored in the macOS Keychain — never written to plaintext config files. The Settings UI shows "•••• stored in Keychain" once a key is present.
    - **Environment variable**: add `export GEMINI_API_KEY=...` to your shell rc and launch Parleq from a terminal that has it set. Useful for CI / automated testing. Note that Finder-launched apps don't inherit shell env, so for everyday use the Keychain path is more robust.
@@ -66,7 +66,7 @@ If your organization already has an AWS account with Bedrock enabled and SSO con
 
 #### 1. Create or use an AWS account with Bedrock
 
-If you don't have an AWS account: AWS's [account-creation walkthrough](https://aws.amazon.com/getting-started/). Bedrock is a paid service; pricing is per token (a typical Parleq cleanup is well under a cent per call against Haiku 4.5).
+If you don't have an AWS account: AWS's [account-creation walkthrough](https://aws.amazon.com/getting-started/). Bedrock is a paid service; pricing is per token (a typical Parleq cleanup is well under a cent per call against Haiku 4.5). (Provider pricing and free tiers change without notice — verify current rates.)
 
 #### 2. Enable model access in Bedrock
 

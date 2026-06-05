@@ -95,6 +95,23 @@ public enum ManagedConfig {
         "learnedCorrectionsRetentionHours",
         // Transform presets — MDM off-switch for fleet-wide policy
         "transformPresetsEnabled",
+        // Enterprise OIDC federation — issuer/client/scopes/ephemeral
+        // sign-in pins plus the AWS (role ARN, STS session duration) and
+        // GCP (workforce provider) federation-leg destination pins. All
+        // org-config strings; the identity snapshot + refresh token stay
+        // Keychain-only and are never managed-config surfaced.
+        "oidcIssuer",
+        "oidcClientID",
+        "oidcScopes",
+        "oidcEphemeralBrowserSession",
+        // Generic-OP knobs: custom redirect URI (Google reversed-client-ID
+        // scheme etc.) and extra authorization-request params (access_type /
+        // prompt). Dictionary-typed; see managedStringDict.
+        "oidcRedirectURI",
+        "oidcExtraAuthParams",
+        "awsRoleArn",
+        "awsSessionDurationSeconds",
+        "vertexWorkforceProvider",
     ]
 
     /// Subset of `allKeys` whose effective value is an Int.
@@ -108,6 +125,8 @@ public enum ManagedConfig {
         "transcriptHistoryRetentionHours",
         "learnedCorrectionsMaxEntries",
         "learnedCorrectionsRetentionHours",
+        // Enterprise OIDC federation — STS session duration (seconds).
+        "awsSessionDurationSeconds",
     ]
 
     /// Emit a one-line startup summary of which managed keys were
@@ -184,6 +203,12 @@ public enum ManagedConfig {
                 }
                 if let val = managedStringArray(forKey: key) {
                     return "\(key)=[\(val.joined(separator: ","))]"
+                }
+                if let val = managedStringDict(forKey: key) {
+                    // Log the param NAMES only, not their values — keeps the
+                    // log self-documenting without echoing arbitrary
+                    // admin-pushed query-param values into app.log.
+                    return "\(key)={\(val.keys.sorted().joined(separator: ","))}"
                 }
                 return key
             }.joined(separator: ", ")
@@ -298,7 +323,21 @@ public enum ManagedConfig {
     ///   | bedrock        | static         | YES     |
     ///   | bedrock        | bedrockApiKey  | YES     |
     ///   | bedrock        | sso            | NO      |
+    ///   | bedrock        | oidc           | NO      |
+    ///   | vertex         | oidcFederation | NO      |
+    ///   | vertex         | googleOAuth    | NO      |
     ///   | none / unknown | —              | NO      |
+    ///
+    /// The enterprise-OIDC federation modes ("oidc" for Bedrock,
+    /// "oidcFederation" for Vertex) are federated — temporary credentials
+    /// minted from a corporate sign-in, no static key on disk — so they
+    /// are never blocked by `staticApiKeysAllowed=false`. The Vertex
+    /// "googleOAuth" mode (native Google sign-in via the OIDC engine, the
+    /// access token used directly as a Vertex bearer) likewise holds no
+    /// static key on disk — only a refresh token in the Keychain, same as
+    /// the federation modes — so it is also never blocked. They all fall
+    /// through the existing string comparisons (≠ "static"/"bedrockApiKey"
+    /// for Bedrock, ≠ "serviceAccount" for Vertex) to a NO result.
     ///
     /// Logging-mode policy values pinned by MDM via the `loggingMode`
     /// key. Recognized values today:
@@ -411,6 +450,47 @@ public enum ManagedConfig {
         return trimmed
     }
 
+    /// Validates a managed OIDC issuer URL. Returns the trimmed value if it
+    /// passes, nil otherwise. Mirrors the HTTPS-or-loopback-HTTP rule that
+    /// `OIDCSession.discover` enforces (and `OIDCDiscovery.parse` applies to the
+    /// discovered endpoints) — so an MDM-pushed `http://…` non-loopback issuer
+    /// fails closed AT LOAD rather than only later at discovery time. A
+    /// plain-HTTP non-loopback issuer would let a network attacker substitute a
+    /// discovery document and redirect every subsequent token exchange.
+    public static func validateOIDCIssuer(_ raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        // The issuer may carry a trailing slash (discover() strips it); parse
+        // the bare value so the scheme/host checks see the real URL shape.
+        guard let url = URL(string: trimmed),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "https" || (scheme == "http" && isLoopbackHost(url))
+        else {
+            return nil
+        }
+        return trimmed
+    }
+
+    /// Validates an OIDC redirect_uri. Returns the trimmed value if it passes,
+    /// nil otherwise. The callback is intercepted by ASWebAuthenticationSession's
+    /// custom-scheme handler, so the redirect_uri MUST carry a non-http/https
+    /// scheme — a `parleq-auth:` value or a reversed-client-ID
+    /// (`com.googleusercontent.apps.…:`) shape. An http(s):// redirect_uri can
+    /// never be intercepted by the custom-scheme callback and would fail opaquely
+    /// at sign-in, so it is rejected here (and on the JSON path) at load rather
+    /// than surfacing as a confusing runtime failure. Used by the MDM overlay and
+    /// the JSON config-load path so the rule is defined once.
+    public static func validateOIDCRedirectURI(_ raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              let scheme = URL(string: trimmed)?.scheme, !scheme.isEmpty,
+              scheme.lowercased() != "http", scheme.lowercased() != "https"
+        else {
+            return nil
+        }
+        return trimmed
+    }
+
     /// Returns false when `staticApiKeysAllowed` is not managed or is true.
     public static func isProviderAuthPathBlocked(provider: String, authMode: String?) -> Bool {
         // Only active when staticApiKeysAllowed is managed AND set to false.
@@ -495,6 +575,33 @@ public enum ManagedConfig {
         let strings = array.compactMap { $0 as? String }
         // Return nil for an empty or fully non-String array — treat
         // a managed empty array as "no restriction" to avoid accidental lockout.
+        return strings.isEmpty ? nil : strings
+    }
+
+    /// Returns the MDM-managed [String: String] dictionary for `key`, or nil
+    /// if the key is not managed or has no usable string-valued entries.
+    /// Non-String values are dropped element-wise (malformed profiles
+    /// occasionally include mixed-type dictionaries). An empty result is
+    /// returned as nil — a managed empty dict is treated as "unset" so it
+    /// can't accidentally override a non-empty default.
+    ///
+    /// Same CFPreferencesAppValueIsForced semantics as `managedBool`.
+    /// Used by the OIDC extra-auth-params pin (oidcExtraAuthParams).
+    public static func managedStringDict(forKey key: String) -> [String: String]? {
+        let appID = bundleID as CFString
+        let cfKey = key as CFString
+        guard CFPreferencesAppValueIsForced(cfKey, appID) else {
+            return nil
+        }
+        guard let raw = CFPreferencesCopyAppValue(cfKey, appID) else {
+            return nil
+        }
+        // CFDictionary bridges to [String: Any] (or [AnyHashable: Any]).
+        // Narrow to String→String, dropping non-String values.
+        guard let dict = raw as? [String: Any] else {
+            return nil
+        }
+        let strings = dict.compactMapValues { $0 as? String }
         return strings.isEmpty ? nil : strings
     }
 }
