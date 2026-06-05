@@ -26,7 +26,7 @@ const sections = [
       },
       {
         q: 'Where are my API keys stored?',
-        a: `In the macOS Keychain — \`KeychainStore\` writes them to the user's login keychain via SecItem APIs. Never in \`~/.parleq/config.json\` or any other plaintext file on disk. This applies to every provider's secrets: Gemini API key, Bedrock API key, AWS static IAM credentials, Vertex service-account JSON (the whole JSON is one Keychain item), and the Azure resource API key.`,
+        a: `In the macOS Keychain — \`KeychainStore\` writes them to the user's login keychain via SecItem APIs. Never in \`~/.parleq/config.json\` or any other plaintext file on disk. This applies to every provider's secrets: Gemini API key, OpenAI API key, Bedrock API key, AWS static IAM credentials, Vertex service-account JSON (the whole JSON is one Keychain item), and the Azure resource API key — plus, for enterprise OIDC sign-in, a refresh token and a sign-in identity snapshot (never a cloud credential).`,
       },
       {
         q: 'Does Parleq learn from my corrections? What gets stored?',
@@ -51,7 +51,7 @@ const sections = [
       },
       {
         q: 'Can I run cleanup entirely locally, with no cloud at all?',
-        a: `Not yet — but you can skip cleanup entirely. Open Settings → Cleanup → Provider and pick **None — paste raw ASR (skip cleanup)**. Parleq will paste exactly what the on-device speech model emitted, with no punctuation/casing pass. The result is rougher but fully local and zero-cost. A future build may add a local-LLM cleanup option for users with the GPU/RAM headroom; not committed.`,
+        a: `Not yet — but you can skip cleanup entirely. Re-run the setup wizard (menu bar → **Run Setup…**) and choose **None — skip cleanup**, or set \`llm.provider\` to \`"none"\` in \`~/.parleq/config.json\` (IT can pin it via managed configuration). The in-app Settings picker lists only real providers. Parleq will then paste exactly what the on-device speech model emitted, with no punctuation/casing pass. The result is rougher but fully local and zero-cost. A future build may add a local-LLM cleanup option for users with the GPU/RAM headroom; not committed.`,
       },
       {
         q: 'Can I use a model that isn\'t in the dropdown?',

@@ -187,7 +187,7 @@ aws sso login --profile work
         Bedrock charges per token at the model-specific rate — no monthly subscription. Cleanup prompts are short (a few hundred input tokens, a few hundred output tokens), so a typical day of dictation runs to single-digit cents. Parleq's <strong class="text-[color:var(--color-text)]">Settings → Usage</strong> tab tracks per-call token counts and rolls them into a running cost estimate using AWS's published rates.
       </p>
       <p>
-        See the current rates at <a href="https://aws.amazon.com/bedrock/pricing/" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">aws.amazon.com/bedrock/pricing</a>. There's no charge for unused capacity — Bedrock is fully on-demand.
+        See the current rates at <a href="https://aws.amazon.com/bedrock/pricing/" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">aws.amazon.com/bedrock/pricing</a>. There's no charge for unused capacity in on-demand mode (provisioned throughput, which you'd buy explicitly, does bill for reserved capacity).
       </p>
     </div>
 

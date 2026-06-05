@@ -3,9 +3,12 @@ Parleq 0.20.0
 This release brings corporate sign-in to Parleq. One "Sign in with your
 company account" button connects every employee — not just the ones with
 cloud CLIs — to your organization's AWS Bedrock or Google Vertex AI,
-with no per-user API keys to distribute and nothing for IT to revoke by
-hand when someone leaves. Personal users get something too: sign in
-with your Google account and dictate straight into Gemini.
+with no per-user API keys to distribute or rotate. Offboarding flows
+from your identity provider: disable the user there and their next
+credential refresh fails closed (already-issued cloud sessions expire
+on their own — keep session durations short). Personal users get
+something too: sign in with your Google account and dictate straight
+into Gemini.
 
 ### Added
 
@@ -13,15 +16,19 @@ with your Google account and dictate straight into Gemini.
   (and the setup wizard) signs you into your organization's identity
   provider — Okta, Microsoft Entra ID, Amazon Cognito, or any
   standards-compliant OIDC IdP — through the system browser sheet, with
-  PKCE and your org's own session policies (passkeys, MFA, device trust
-  all just work). That one sign-in then mints short-lived cloud
+  PKCE and your org's own session policies (passkeys and MFA flow straight
+  through; device-based conditional
+  access works wherever your IdP supports it in a browser session).
+  That one sign-in then mints short-lived cloud
   credentials for AWS Bedrock (via IAM role federation, with per-user
   CloudTrail attribution) or Google Vertex AI (via Workforce Identity
   Federation). The Keychain holds only a refresh token and a sign-in
   identity snapshot — never a cloud credential; short-lived cloud
   credentials live in memory and expire on their own. Sign out — or get
   offboarded at your IdP — and dictation fails closed to on-device-only
-  transcription rather than falling back to any personal credential.
+  transcription at the next credential refresh (already-issued
+  short-lived sessions run out on their own) rather than falling back
+  to any personal credential.
 - Sign in with Google → Gemini, no broker. A new Vertex auth mode uses
   your Google account's sign-in directly as the Vertex credential — no
   workforce pool, no Cloud organization, no service-account JSON. The

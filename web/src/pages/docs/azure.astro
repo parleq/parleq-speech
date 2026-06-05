@@ -181,7 +181,7 @@ az account set --subscription "My Team Subscription"`}</code></pre>
         Charges land on the Azure subscription that owns the resource, alongside everything else your org bills there.
       </p>
       <p>
-        <strong class="text-[color:var(--color-text)]">Cleaning up after testing.</strong> Idle Azure OpenAI resources don't incur compute charges — there's no provisioned capacity to pay for unless you've explicitly purchased it. You can leave the resource in place between sessions; if you want to remove it entirely, delete the deployment first, then the resource, both from the Azure portal.
+        <strong class="text-[color:var(--color-text)]">Cleaning up after testing.</strong> Idle Azure OpenAI standard pay-as-you-go deployments don't incur compute charges — there's no provisioned capacity to pay for unless you've explicitly purchased it (provisioned-throughput deployments bill while idle). You can leave the resource in place between sessions; if you want to remove it entirely, delete the deployment first, then the resource, both from the Azure portal.
       </p>
     </div>
 

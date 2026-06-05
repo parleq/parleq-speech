@@ -190,6 +190,9 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
 }`}</code></pre>
     </div>
     <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">"Resource": "*"</code> keeps the example short &mdash; scope it to the specific model or inference-profile ARNs you have approved for least privilege.
+    </p>
+    <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
       Put the role&rsquo;s ARN in <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">aws.role_arn</code> and set <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">aws.auth_mode</code> to <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">oidc</code>. The requested STS session duration is <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">aws.session_duration_seconds</code> (default 3600, clamped to 900&ndash;43200). Bedrock model access is per-region, so make sure the chosen region has the model enabled. The role&rsquo;s session name carries the signed-in user&rsquo;s email for CloudTrail attribution.
     </p>
 

@@ -76,6 +76,10 @@ const base = `${import.meta.env.BASE_URL}`.replace(/\/$/, '');
         </li>
         <li class="flex gap-3">
           <span aria-hidden="true" class="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[color:var(--color-accent)]"></span>
+          <span><strong class="font-semibold text-[color:var(--color-text)]">Revocation latency, honestly.</strong> Disabling a user at your IdP stops the next credential refresh; already-issued short-lived cloud sessions are not revocable and run to their expiry — keep the AWS session duration short (15 min–1 h) where offboarding speed matters.</span>
+        </li>
+        <li class="flex gap-3">
+          <span aria-hidden="true" class="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[color:var(--color-accent)]"></span>
           <span><strong class="font-semibold text-[color:var(--color-text)]">Per-user audit attribution.</strong> On AWS the role session name carries the signed-in user's identity, so CloudTrail attributes every cleanup call to the actual person.</span>
         </li>
         <li class="flex gap-3">
@@ -104,13 +108,13 @@ const base = `${import.meta.env.BASE_URL}`.replace(/\/$/, '');
         <div class="rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6">
           <h3 class="text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Pin what matters</h3>
           <p class="mt-3 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
-            Pin the provider, restrict the model list, and pin the OIDC issuer and client ID plus the AWS role / GCP workforce provider. Users sign in — but they can't re-point the app at a personal tenant.
+            Pin the provider, restrict the model list, and pin the OIDC issuer and client ID plus the AWS role / GCP workforce provider. Users sign in — but they can't re-point the app at a personal tenant while the profile is in place.
           </p>
         </div>
         <div class="rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6">
           <h3 class="text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Nothing to phone home</h3>
           <p class="mt-3 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
-            No Parleq admin portal, no license-key system, no phone-home check. The managed profile is the whole control surface.
+            No Parleq admin portal, no license-key system, no license-key check-in or usage beacon — the only call to a Parleq-controlled host is the Sparkle update check against parleq.app (version + OS string, no identifiers, no dictation data). The managed profile is the whole control surface.
           </p>
         </div>
       </div>
