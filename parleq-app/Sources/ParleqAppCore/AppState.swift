@@ -2875,10 +2875,17 @@ public final class AppState {
     /// provider is wired), log a warning and fall back to the best
     /// available provider rather than silently returning `llm` whose
     /// baked-in model is NOT the override.
-    private func llmForInvocation() -> (any LLMProvider)? {
+    /// `hasReferences` — pass an explicit value when the invocation's
+    /// references differ from the overlay's CURRENT ones (undoStyle
+    /// replays against snapshot references; resolving the tier from the
+    /// live overlay there could route saved image parts at the plain
+    /// cleanup model after the user removed the references). nil (the
+    /// default) reads the live overlay state, the right answer for
+    /// every other caller.
+    private func llmForInvocation(hasReferences: Bool? = nil) -> (any LLMProvider)? {
         let config = Config.load().config
         let resolved = config.modelForInvocation(
-            hasReferences: !overlay.model.references.isEmpty,
+            hasReferences: hasReferences ?? !overlay.model.references.isEmpty,
             override: overlay.model.pickedModelOverride
         )
         let cleanupId = ModelIdentifier(provider: config.llmProvider, model: config.llmModel)
@@ -3239,7 +3246,10 @@ public final class AppState {
         guard !raw.isEmpty else { return }
         let (config, _) = Config.load()
         let dictionary = config.customDictionaryEnabled ? config.customDictionary : []
-        let resolvedLLM = llmForInvocation()
+        // Resolve the tier from the SNAPSHOT references, not the live
+        // overlay — the user may have removed references before Undo,
+        // and the replay still carries the snapshot reference parts.
+        let resolvedLLM = llmForInvocation(hasReferences: !snapshotRefs.isEmpty)
         let targetBundleID = pasteTarget?.bundleID
         // The snapshot refs are post-degradation as sent, but re-apply the
         // same image-reference degradation as switchModelAndRecleanup and
