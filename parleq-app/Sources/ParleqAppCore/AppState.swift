@@ -3155,7 +3155,10 @@ public final class AppState {
         let current = overlay.model.text
         guard !current.isEmpty else { return }
         let dictionary = config.customDictionaryEnabled ? config.customDictionary : []
-        let resolvedLLM = llmForInvocation()
+        // hasReferences: false — a preset tap is a plain-text refine of
+        // the SHOWN text (no reference parts are sent below), so resolve
+        // the cleanup tier even if references are still attached.
+        let resolvedLLM = llmForInvocation(hasReferences: false)
         let targetBundleID = pasteTarget?.bundleID
         // Cancel any lingering auto-accept timer so it doesn't fire
         // mid-re-cleanup.
