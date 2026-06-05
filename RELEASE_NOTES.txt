@@ -20,12 +20,12 @@ before it's pasted, and can even run automatically for chosen apps.
 - Per-app default presets. Assign a preset to an app and dictations into
   that app arrive already styled — the preset folds into the normal
   cleanup pass, so there's no extra request and no flash of un-styled
-  text. The overlay shows "Styled with <name>" and a one-tap Undo that
+  text. The overlay shows "Styled with \<name\>" and a one-tap Undo that
   re-runs plain cleanup if this particular dictation shouldn't have been
   transformed. IT admins can pin the whole feature off via managed
   configuration (transformPresetsEnabled).
 - The overlay tells you where it's listening. During capture the header
-  now reads "Listening on <your microphone>", and the capture state is
+  now reads "Listening on \<your microphone\>", and the capture state is
   more compact — just the animated Parleq mark, no redundant label.
 
 ### Fixed

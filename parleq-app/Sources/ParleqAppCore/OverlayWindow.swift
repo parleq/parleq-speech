@@ -654,7 +654,14 @@ private final class OverlayPanel: NSPanel {
         // cannot exceed the screen's available height minus the
         // bottom anchor and a small breathing-room buffer. This is
         // the final say.
-        if let screen = NSScreen.main {
+        //
+        // Cap against the PANEL's screen (falling back to NSScreen.main
+        // only when the panel has none): NSScreen.main follows keyboard
+        // focus, and the external-resize backstop — whose snap-back
+        // routes through this method — fires precisely in multi-display
+        // focus-change scenarios where the two screens differ. The two
+        // clamps must agree.
+        if let screen = self.screen ?? NSScreen.main {
             let visible = screen.visibleFrame
             let absoluteMax = max(140, visible.height - 96 - 16)
             if r.size.height > absoluteMax {
