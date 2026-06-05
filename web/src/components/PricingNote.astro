@@ -1,0 +1,19 @@
+---
+// Reusable footnote for third-party cost claims (AWS, Google, Microsoft,
+// Okta, OpenAI, domain registrars, etc.). Pair each in-scope cost claim
+// with a dagger superscript (`<sup>†</sup>`) at the claim site and drop
+// one <PricingNote /> at the end of the section that holds the claim(s).
+//
+// Scope: ONLY third-party pricing, free tiers, and quotas — things we
+// don't control. Parleq's own promises (free, Apache-2.0, no per-seat,
+// no license keys) are ours to make and never get this note.
+//
+// Wording is the single source of truth; do not paraphrase per-page.
+---
+
+<p class="mt-6 border-t border-[color:var(--color-border-subtle)] pt-3 text-[13px] leading-relaxed text-[color:var(--color-text-subtle)]">
+  † Third-party pricing, free tiers, and quotas are set by the providers — AWS,
+  Google, Microsoft, Okta, and others change them without notice. Cost
+  statements here were accurate when written; verify current rates on the
+  provider's pricing page before you build.
+</p>

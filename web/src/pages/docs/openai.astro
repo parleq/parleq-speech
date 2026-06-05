@@ -1,6 +1,7 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import SiteHeader from '../../components/SiteHeader.astro';
+import PricingNote from '../../components/PricingNote.astro';
 
 const repoUrl = 'https://github.com/parleq/parleq-speech';
 ---
@@ -109,8 +110,9 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
     </h2>
     <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
       <p>
-        Per-token at <a href="https://platform.openai.com/docs/pricing" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">OpenAI's published rates</a>. Cleanup prompts are short (a few hundred input tokens, a few hundred output tokens), so a typical day of personal dictation runs to single-digit cents on gpt-4o-mini. <strong class="text-[color:var(--color-text)]">Settings → Usage</strong> tracks per-call token counts and rolling cost estimates.
+        Per-token<sup>†</sup> at <a href="https://platform.openai.com/docs/pricing" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">OpenAI's published rates</a>. Cleanup prompts are short (a few hundred input tokens, a few hundred output tokens), so a typical day of personal dictation runs to single-digit cents on gpt-4o-mini. <strong class="text-[color:var(--color-text)]">Settings → Usage</strong> tracks per-call token counts and rolling cost estimates.
       </p>
+      <PricingNote />
     </div>
 
     <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">

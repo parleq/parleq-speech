@@ -1,6 +1,7 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import SiteHeader from '../../components/SiteHeader.astro';
+import PricingNote from '../../components/PricingNote.astro';
 
 const repoUrl = 'https://github.com/parleq/parleq-speech';
 ---
@@ -35,7 +36,7 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
       Pick your path
     </h2>
     <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      Three routes, all roughly $0 as of this writing &mdash; Cognito&rsquo;s free tier (10,000 monthly active users on the default Essentials plan), OAuth, STS, and Workforce Identity Federation carry no service charge at personal scale. You pay only for the LLM tokens you use. Provider pricing is theirs to change &mdash; check current rates before you build. Start at the top.
+      Three routes, all roughly $0<sup>†</sup> &mdash; Cognito&rsquo;s free tier (10,000 monthly active users on the default Essentials plan), OAuth, STS, and Workforce Identity Federation carry no service charge at personal scale. You pay only for the LLM tokens you use. Start at the top.
     </p>
 
     <div class="mt-6 overflow-x-auto rounded-xl border border-[color:var(--color-border)]">
@@ -155,7 +156,7 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
       Path B &mdash; Cognito &rarr; AWS Bedrock
     </h2>
     <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      A free Amazon Cognito user pool becomes your personal OIDC issuer; an IAM role trusts it via <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">AssumeRoleWithWebIdentity</code>. Cognito gives you an AWS-hosted public issuer with a publicly-fetchable JWKS, so the AWS leg works with nothing exposed to the internet yourself. The free tier covers far more monthly active users than a single person will ever use &mdash; but note the tiers: 10,000 MAU free is the default <strong class="text-[color:var(--color-text)]">Essentials</strong> plan, the <strong class="text-[color:var(--color-text)]">Plus</strong> plan has no free tier, and SAML/OIDC-<em>federated</em> users get only 50 free MAU. Confirm current rates at <a href="https://aws.amazon.com/cognito/pricing/" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">aws.amazon.com/cognito/pricing</a>.
+      A free Amazon Cognito user pool becomes your personal OIDC issuer; an IAM role trusts it via <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">AssumeRoleWithWebIdentity</code>. Cognito gives you an AWS-hosted public issuer with a publicly-fetchable JWKS, so the AWS leg works with nothing exposed to the internet yourself. The free tier<sup>†</sup> covers far more monthly active users than a single person will ever use &mdash; but note the tiers: 10,000 MAU free is the default <strong class="text-[color:var(--color-text)]">Essentials</strong> plan, the <strong class="text-[color:var(--color-text)]">Plus</strong> plan has no free tier, and SAML/OIDC-<em>federated</em> users get only 50 free MAU (<a href="https://aws.amazon.com/cognito/pricing/" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">aws.amazon.com/cognito/pricing</a>).
     </p>
     <ul class="mt-4 space-y-2 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
       <li>&bull; Create a user pool and add an <strong class="text-[color:var(--color-text)]">app client</strong> of the <strong class="text-[color:var(--color-text)]">public client</strong> type (no secret), with the authorization-code grant and a callback of <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">parleq-auth://oidc/callback</code>.</li>
@@ -191,7 +192,7 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
     </p>
     <ul class="mt-4 space-y-2 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
       <li>&bull; Build the Cognito pool exactly as in Path B (it&rsquo;s your issuer for both clouds).</li>
-      <li>&bull; <strong class="text-[color:var(--color-text)]">Get a GCP organization:</strong> sign up for <strong class="text-[color:var(--color-text)]">Cloud Identity Free</strong> with a domain you own and complete the DNS TXT verification. This is the real work in Path C. (Cloud Identity Free is free for up to 50 users; the domain you verify is a separate ~$10&ndash;15/yr registrar charge.)</li>
+      <li>&bull; <strong class="text-[color:var(--color-text)]">Get a GCP organization:</strong> sign up for <strong class="text-[color:var(--color-text)]">Cloud Identity Free</strong> with a domain you own and complete the DNS TXT verification. This is the real work in Path C. (Cloud Identity Free is free for up to 50 users; the domain you verify is a separate ~$10&ndash;15/yr registrar charge.<sup>†</sup>)</li>
       <li>&bull; Create a <strong class="text-[color:var(--color-text)]">workforce pool</strong> and add an <strong class="text-[color:var(--color-text)]">OIDC provider</strong> for the Cognito issuer. The issuer URI <strong class="text-[color:var(--color-text)]">must be public HTTPS</strong> &mdash; a localhost IdP cannot work here even if you upload the JWKS inline. Cognito is public HTTPS, so it&rsquo;s fine.</li>
       <li>&bull; Grant <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">roles/aiplatform.user</code> to the workforce-pool <strong class="text-[color:var(--color-text)]">principalSet</strong> (scope it tighter by attribute if you can).</li>
       <li>&bull; Config: <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">vertex.auth_mode</code> = <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">oidcFederation</code>, plus <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">vertex.workforce_provider</code> (<code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">locations/global/workforcePools/&lt;pool&gt;/providers/&lt;provider&gt;</code>) and <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">vertex.project</code>.</li>
@@ -253,6 +254,8 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
         </tbody>
       </table>
     </div>
+
+    <PricingNote />
   </article>
 
   <footer class="border-t border-[color:var(--color-border-subtle)]">

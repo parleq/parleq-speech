@@ -1,6 +1,7 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import SiteHeader from '../../components/SiteHeader.astro';
+import PricingNote from '../../components/PricingNote.astro';
 
 const repoUrl = 'https://github.com/parleq/parleq-speech';
 
@@ -35,7 +36,7 @@ const providers = [
   {
     slug: 'gemini',
     name: 'Google Gemini',
-    blurb: 'Direct Google AI Studio API key. The fastest path to first-paste — about five minutes from sign-up to dictation. A free tier is available without a credit card; check Google\'s pricing page for current quotas.',
+    blurb: 'Direct Google AI Studio API key. The fastest path to first-paste — about five minutes from sign-up to dictation. A free tier<sup>†</sup> is available without a credit card; check Google\'s pricing page for current quotas.',
     difficulty: 'Easiest',
   },
   {
@@ -90,11 +91,12 @@ const providers = [
             <h2 class="text-xl font-semibold tracking-tight text-[color:var(--color-text)]">{p.name}</h2>
             <span class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-text-subtle)]">{p.difficulty}</span>
           </div>
-          <p class="mt-3 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">{p.blurb}</p>
+          <p class="mt-3 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]" set:html={p.blurb}></p>
           <p class="mt-5 text-[13px] font-medium text-[color:var(--color-accent)] group-hover:underline">Setup guide →</p>
         </a>
       ))}
     </div>
+    <PricingNote />
 
     <section class="mt-16">
       <h2 class="font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">Enterprise &amp; teams</h2>

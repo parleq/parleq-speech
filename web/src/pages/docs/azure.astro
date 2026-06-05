@@ -1,6 +1,7 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import SiteHeader from '../../components/SiteHeader.astro';
+import PricingNote from '../../components/PricingNote.astro';
 
 const repoUrl = 'https://github.com/parleq/parleq-speech';
 ---
@@ -175,14 +176,15 @@ az account set --subscription "My Team Subscription"`}</code></pre>
     </h2>
     <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
       <p>
-        Per-token pricing per <a href="https://azure.microsoft.com/pricing/details/cognitive-services/openai-service/" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Azure's published rates</a>, plus regional capacity (TPM — tokens per minute) granted per deployment. Cleanup traffic is short-prompt + short-response, so single-user dictation use is well below default TPM caps.
+        Per-token pricing<sup>†</sup> per <a href="https://azure.microsoft.com/pricing/details/cognitive-services/openai-service/" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Azure's published rates</a>, plus regional capacity (TPM — tokens per minute) granted per deployment. Cleanup traffic is short-prompt + short-response, so single-user dictation use is well below default TPM caps.
       </p>
       <p>
         Charges land on the Azure subscription that owns the resource, alongside everything else your org bills there.
       </p>
       <p>
-        <strong class="text-[color:var(--color-text)]">Cleaning up after testing.</strong> Idle Azure OpenAI standard pay-as-you-go deployments don't incur compute charges — there's no provisioned capacity to pay for unless you've explicitly purchased it (provisioned-throughput deployments bill while idle). You can leave the resource in place between sessions; if you want to remove it entirely, delete the deployment first, then the resource, both from the Azure portal.
+        <strong class="text-[color:var(--color-text)]">Cleaning up after testing.</strong> Idle Azure OpenAI standard pay-as-you-go deployments don't incur compute charges<sup>†</sup> — there's no provisioned capacity to pay for unless you've explicitly purchased it (provisioned-throughput deployments bill while idle). You can leave the resource in place between sessions; if you want to remove it entirely, delete the deployment first, then the resource, both from the Azure portal.
       </p>
+      <PricingNote />
     </div>
 
     <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
