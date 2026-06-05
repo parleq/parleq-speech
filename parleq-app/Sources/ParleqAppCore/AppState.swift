@@ -3467,7 +3467,10 @@ private func streamCleanupOrRefine(
         // the dictionary hint when non-empty so the LLM can bias toward
         // the user's preferred spellings on reference-aware turns too.
         let dictHint = SystemPrompts.dictionaryHint(dictionary: customDictionary)
-        let transformAddendum = asRefine ? "" : SystemPrompts.transformHint(transform)
+        // Reference-aware turns use the reference-specific transform
+        // wording — the plain transformHint references "the cleanup
+        // rules above", which don't exist in this system prompt.
+        let transformAddendum = asRefine ? "" : SystemPrompts.referenceTransformHint(transform)
         var refSystem = PromptBuilder.referenceAwareSystem
         if !dictHint.isEmpty { refSystem += "\n\n" + dictHint }
         if !transformAddendum.isEmpty { refSystem += "\n\n" + transformAddendum }

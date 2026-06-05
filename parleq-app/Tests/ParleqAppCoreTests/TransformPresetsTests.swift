@@ -126,15 +126,29 @@ final class TransformPresetsTests: XCTestCase {
     }
 
     func test_transformHint_carries_instruction_for_valid_transform() {
-        // The reference-aware cleanup path in streamCleanupOrRefine
-        // builds its transform addendum from this same helper (it
-        // appends transformHint to the reference system prompt rather
-        // than going through cleanup(dictionary:transform:)), so this
-        // pins the building block both paths rely on: a valid transform
-        // yields a non-empty hint containing the instruction verbatim.
         let hint = SystemPrompts.transformHint("Rewrite as a tight bulleted list.")
         XCTAssertFalse(hint.isEmpty)
         XCTAssertTrue(hint.contains("Rewrite as a tight bulleted list."))
+    }
+
+    func test_referenceTransformHint_wording_fits_the_reference_prompt() {
+        // The reference-aware cleanup path appends its OWN transform
+        // addendum to the reference system prompt. That prompt has no
+        // "cleanup rules", and the utterance there is an instruction
+        // over references — so the addendum must NOT borrow the plain
+        // hint's wording (which could steer the model into transforming
+        // the spoken instruction instead of fulfilling it).
+        let hint = SystemPrompts.referenceTransformHint("Make this formal.")
+        XCTAssertFalse(hint.isEmpty)
+        XCTAssertTrue(hint.contains("Make this formal."))
+        XCTAssertTrue(hint.contains("fulfilling the user's instruction"),
+                      "Reference variant must scope the transform to the fulfilled output")
+        XCTAssertFalse(hint.contains("cleanup rules"),
+                       "Reference prompt has no cleanup rules to refer to")
+        // Same empty-for-nil/blank contract as the plain hint, so the
+        // call site can append unconditionally.
+        XCTAssertEqual(SystemPrompts.referenceTransformHint(nil), "")
+        XCTAssertEqual(SystemPrompts.referenceTransformHint("  "), "")
     }
 
     // MARK: - SettingsModel.save() filtering — testability note

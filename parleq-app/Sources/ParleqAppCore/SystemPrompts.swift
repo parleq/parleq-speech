@@ -100,6 +100,23 @@ enum SystemPrompts {
             """
     }
 
+    /// The reference-aware sibling of `transformHint(_:)`. The plain
+    /// hint's wording ("the cleanup rules above", "the cleaned text")
+    /// assumes the cleanup system prompt; on a reference-aware turn the
+    /// system message is the self-contained reference prompt, where the
+    /// utterance is an INSTRUCTION over the attached references — naive
+    /// wording could steer the model into transforming the spoken
+    /// instruction instead of fulfilling it and styling the result.
+    /// Empty string for nil/blank so callers can append unconditionally.
+    static func referenceTransformHint(_ transform: String?) -> String {
+        guard let t = transform?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !t.isEmpty else { return "" }
+        return """
+            After fulfilling the user's instruction using the references, apply this transformation to your output, and reply with only the transformed result:
+            \(t)
+            """
+    }
+
     /// Build the smart-vocabulary addendum. Empty string when the
     /// dictionary is empty — caller appends only when non-empty.
     private static func vocabularyHint(dictionary: [DictionaryEntry]) -> String {
