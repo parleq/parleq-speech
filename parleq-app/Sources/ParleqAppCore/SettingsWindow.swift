@@ -205,6 +205,61 @@ final class SettingsModel: ObservableObject {
     /// keys render as `.disabled(true)` with the ManagedIndicator badge.
     @Published var managedKeys: Set<String>
 
+    // MARK: - Enterprise OIDC federation (Company Account)
+
+    /// OIDC issuer URL (mirror of Config.oidcIssuer). Edited in the
+    /// Company Account section's self-configuration group when NOT
+    /// MDM-pinned. Provider construction reads this at launch, so a
+    /// change is restart-required.
+    @Published var oidcIssuer: String
+    /// OIDC client ID (mirror of Config.oidcClientID). Restart-required
+    /// for the same reason as the issuer.
+    @Published var oidcClientID: String
+
+    /// IAM role ARN federated into via AssumeRoleWithWebIdentity when the
+    /// Bedrock auth mode is "oidc" (mirror of Config.awsRoleArn). Baked
+    /// into the exchanger at launch → restart-required.
+    @Published var awsRoleArn: String
+    /// Requested STS session duration in seconds for the AWS web-identity
+    /// federation (mirror of Config.awsSessionDurationSeconds). Launch-
+    /// read by the exchanger → restart-required.
+    @Published var awsSessionDurationSeconds: Int
+    /// GCP workforce identity provider resource name used for the Vertex
+    /// federation when the auth mode is "oidcFederation" (mirror of
+    /// Config.vertexWorkforceProvider). Launch-read → restart-required.
+    @Published var vertexWorkforceProvider: String
+
+    /// SwiftUI mirror of the running OIDCSession's state, wired by
+    /// main.swift at launch (only when an OIDC auth mode is active).
+    /// The Company Account section observes this. nil when no session
+    /// was constructed (non-enterprise launch) — the section is hidden
+    /// in that case anyway, but the handle stays optional so the model
+    /// has no enterprise dependency at construction time.
+    var oidcSessionModel: OIDCSessionModel?
+    /// Closures bridging the Company Account UI to the AppState-owned
+    /// session + exchange caches. Set together with oidcSessionModel by
+    /// main.swift via ParleqAppWindowController.setOIDCCompanyAccount.
+    /// All nil for a non-enterprise launch.
+    var oidcSignIn: (() -> Void)?
+    var oidcSignOut: (() -> Void)?
+    /// Token-free connection test: silent refresh + each configured
+    /// exchange's warm(), returning the fresh (aws, gcp) hop snapshots.
+    var oidcTestConnection: (() async -> (FederationHopStatus, FederationHopStatus))?
+    /// Whether each federation leg is configured (drives doctor-row
+    /// visibility). Snapshotted from the launch config by main.swift.
+    var oidcAWSConfigured = false
+    var oidcGCPConfigured = false
+
+    /// True when the Company Account section should appear in the
+    /// sidebar: the issuer is configured OR a provider is in an OIDC
+    /// auth mode. Zero-config users see nothing.
+    var companyAccountVisible: Bool {
+        !oidcIssuer.trimmingCharacters(in: .whitespaces).isEmpty
+            || awsAuthMode == "oidc"
+            || vertexAuthMode == "oidcFederation"
+            || vertexAuthMode == "googleOAuth"
+    }
+
     /// Callback wired by `parleq-app/main.swift` to the bundled
     /// LocalASRClient's `reset()` method. Settings → Advanced
     /// exposes this as a "Reset speech model" button; the same
@@ -278,6 +333,11 @@ final class SettingsModel: ObservableObject {
     private let initialAzureApiVersion: String
     private let initialAzureAuthMode: String
     private let initialContextModel: ModelIdentifier?
+    private let initialOidcIssuer: String
+    private let initialOidcClientID: String
+    private let initialAwsRoleArn: String
+    private let initialAwsSessionDurationSeconds: Int
+    private let initialVertexWorkforceProvider: String
 
     init() {
         let (config, _) = Config.load()
@@ -346,6 +406,16 @@ final class SettingsModel: ObservableObject {
         self.learnedCorrectionsMaxEntries = config.learnedCorrectionsMaxEntries
         self.learnedCorrectionsRetentionHours = config.learnedCorrectionsRetentionHours
         self.managedKeys = config.managedKeys
+        self.oidcIssuer = config.oidcIssuer
+        self.oidcClientID = config.oidcClientID
+        self.awsRoleArn = config.awsRoleArn
+        self.awsSessionDurationSeconds = config.awsSessionDurationSeconds
+        self.vertexWorkforceProvider = config.vertexWorkforceProvider
+        self.initialOidcIssuer = config.oidcIssuer
+        self.initialOidcClientID = config.oidcClientID
+        self.initialAwsRoleArn = config.awsRoleArn
+        self.initialAwsSessionDurationSeconds = config.awsSessionDurationSeconds
+        self.initialVertexWorkforceProvider = config.vertexWorkforceProvider
         self.initialHotkeyBinding = config.hotkeyBinding
         self.initialLlmModel = config.llmModel
         self.initialContinueOtherAudio = config.continueOtherAudio
@@ -454,6 +524,11 @@ final class SettingsModel: ObservableObject {
         self.learnedCorrectionsMaxEntries = config.learnedCorrectionsMaxEntries
         self.learnedCorrectionsRetentionHours = config.learnedCorrectionsRetentionHours
         self.managedKeys = config.managedKeys
+        self.oidcIssuer = config.oidcIssuer
+        self.oidcClientID = config.oidcClientID
+        self.awsRoleArn = config.awsRoleArn
+        self.awsSessionDurationSeconds = config.awsSessionDurationSeconds
+        self.vertexWorkforceProvider = config.vertexWorkforceProvider
         refreshUsage()
     }
 
@@ -494,6 +569,17 @@ final class SettingsModel: ObservableObject {
             || azureDeployment != initialAzureDeployment
             || azureApiVersion != initialAzureApiVersion
             || azureAuthMode != initialAzureAuthMode
+            // OIDC issuer / client ID are baked into the OIDCSession at
+            // launch; a self-serve org editing them in Company Account
+            // needs a relaunch for the new sign-in config to take effect.
+            || oidcIssuer != initialOidcIssuer
+            || oidcClientID != initialOidcClientID
+            // Role ARN / session duration / workforce provider are baked
+            // into the cloud exchangers at launch alongside the auth modes,
+            // so editing any of them needs a relaunch to take effect.
+            || awsRoleArn != initialAwsRoleArn
+            || awsSessionDurationSeconds != initialAwsSessionDurationSeconds
+            || vertexWorkforceProvider != initialVertexWorkforceProvider
     }
 
     /// Persist current model values to ~/.parleq/config.json. Other
@@ -536,11 +622,11 @@ final class SettingsModel: ObservableObject {
         if c.awsRegion.isEmpty { c.awsRegion = "us-east-2" }
         let trimmedProfile = awsProfile.trimmingCharacters(in: .whitespaces)
         c.awsProfile = trimmedProfile.isEmpty ? nil : trimmedProfile
-        c.awsAuthMode = ["sso", "static", "bedrockApiKey"].contains(awsAuthMode) ? awsAuthMode : "sso"
+        c.awsAuthMode = ["sso", "static", "bedrockApiKey", "oidc"].contains(awsAuthMode) ? awsAuthMode : "sso"
         c.vertexProject = vertexProject.trimmingCharacters(in: .whitespacesAndNewlines)
         c.vertexRegion = vertexRegion.trimmingCharacters(in: .whitespacesAndNewlines)
         if c.vertexRegion.isEmpty { c.vertexRegion = "us-central1" }
-        c.vertexAuthMode = ["adc", "serviceAccount"].contains(vertexAuthMode) ? vertexAuthMode : "adc"
+        c.vertexAuthMode = ["adc", "serviceAccount", "oidcFederation", "googleOAuth"].contains(vertexAuthMode) ? vertexAuthMode : "adc"
         c.vertexAnthropicRegion = vertexAnthropicRegion.trimmingCharacters(in: .whitespacesAndNewlines)
         if c.vertexAnthropicRegion.isEmpty { c.vertexAnthropicRegion = "us-east5" }
         c.azureResource = azureResource.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -598,6 +684,18 @@ final class SettingsModel: ObservableObject {
         c.learnFromCorrectionsEnabled = learnFromCorrectionsEnabled
         c.learnedCorrectionsMaxEntries = learnedCorrectionsMaxEntries
         c.learnedCorrectionsRetentionHours = learnedCorrectionsRetentionHours
+        // Enterprise OIDC self-configuration. When MDM-pinned these
+        // fields are non-editable in the UI; Config.save() additionally
+        // preserves the pinned on-disk value for any key in managedKeys,
+        // so setting them unconditionally here is safe.
+        c.oidcIssuer = oidcIssuer.trimmingCharacters(in: .whitespacesAndNewlines)
+        c.oidcClientID = oidcClientID.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Federation targets. Like the OIDC issuer/client ID, these round
+        // trip unconditionally — Config.save() preserves the pinned on-disk
+        // value for any key in managedKeys, so writing them here is safe.
+        c.awsRoleArn = awsRoleArn.trimmingCharacters(in: .whitespacesAndNewlines)
+        c.awsSessionDurationSeconds = awsSessionDurationSeconds
+        c.vertexWorkforceProvider = vertexWorkforceProvider.trimmingCharacters(in: .whitespacesAndNewlines)
         c.managedKeys = managedKeys
         do {
             try Config.save(c)
@@ -1113,7 +1211,7 @@ struct SettingsView: View {
     // longer owns a sidebar; it renders the pane for whichever section
     // the app-shell selection points at.
     enum SettingsSection: String, Hashable, CaseIterable, Identifiable {
-        case hotkey, audio, behavior, paste, cleanup, dictionary, presets, usage, permissions, privacyFeatures, updates, advanced
+        case hotkey, audio, behavior, paste, cleanup, dictionary, presets, usage, permissions, privacyFeatures, companyAccount, updates, advanced
         var id: String { rawValue }
         var label: String {
             switch self {
@@ -1127,6 +1225,7 @@ struct SettingsView: View {
             case .usage:           return "Usage"
             case .permissions:     return "Permissions"
             case .privacyFeatures: return "Privacy & Features"
+            case .companyAccount:  return "Company Account"
             case .updates:         return "Updates"
             case .advanced:        return "Advanced"
             }
@@ -1143,6 +1242,7 @@ struct SettingsView: View {
             case .usage:           return "chart.bar"
             case .permissions:     return "lock.shield"
             case .privacyFeatures: return "person.badge.shield.checkmark"
+            case .companyAccount:  return "person.badge.key"
             case .updates:         return "arrow.down.circle"
             case .advanced:        return "gearshape.2"
             }
@@ -1244,6 +1344,7 @@ struct SettingsView: View {
                 case .usage:           usageSection
                 case .permissions:     permissionsSection
                 case .privacyFeatures: privacyFeaturesSection
+                case .companyAccount:  companyAccountSection
                 case .updates:         updatesSection
                 case .advanced:        advancedSection
                 }
@@ -1920,6 +2021,53 @@ struct SettingsView: View {
         }
     }
 
+    /// Shared corporate-sign-in (OIDC) status line for the AWS + Vertex
+    /// cleanup cards. Reads the wired `oidcSessionModel` to show "Signed
+    /// in as <email> ✓" when a live session exists and is signed in;
+    /// otherwise a button that deep-links to the Company Account section
+    /// (the ONLY place sign-in actually happens — providers construct the
+    /// session at launch, so a freshly-saved OIDC mode needs a relaunch
+    /// before the session exists). No tokens or identity beyond the
+    /// already-displayed email cross this view.
+    @ViewBuilder
+    private func oidcSessionStatusLine() -> some View {
+        if let sessionModel = model.oidcSessionModel {
+            switch sessionModel.state {
+            case .signedIn(let identity):
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.green)
+                    Text("Signed in as \(identity.displayName)")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+            case .signedOut, .needsInteractive:
+                oidcOpenCompanyAccountButton(prompt: "Not signed in.")
+            }
+        } else {
+            // No session constructed yet — the OIDC mode hasn't been saved
+            // + relaunched. Point the user at Company Account to finish
+            // configuring and (after restart) sign in.
+            oidcOpenCompanyAccountButton(prompt: "Restart Parleq, then sign in.")
+        }
+    }
+
+    @ViewBuilder
+    private func oidcOpenCompanyAccountButton(prompt: String) -> some View {
+        HStack(spacing: 8) {
+            Text(prompt)
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+            Button("Open Company Account") {
+                NotificationCenter.default.post(name: .parleqOpenCompanyAccount, object: nil)
+            }
+            .controlSize(.small)
+            Spacer()
+        }
+    }
+
     /// Context" / "Used for Cleanup + Context" label rendered inline
     /// with the provider title when the provider is actively selected
     /// for at least one tier.
@@ -2124,9 +2272,12 @@ struct SettingsView: View {
                         // stored value (case 1), always show ADC.
                         // Otherwise show whichever mode is pinned.
                         if apiKeysBlocked { return "gcloud (ADC)" }
-                        return model.vertexAuthMode == "serviceAccount"
-                            ? "Service account JSON"
-                            : "gcloud (ADC)"
+                        switch model.vertexAuthMode {
+                        case "serviceAccount":  return "Service account JSON"
+                        case "oidcFederation":  return "Corporate sign-in (OIDC)"
+                        case "googleOAuth":     return "Google account (OAuth)"
+                        default:                return "gcloud (ADC)"
+                        }
                     }()
                     Text(pinnedLabel)
                         .font(.callout)
@@ -2142,14 +2293,26 @@ struct SettingsView: View {
                     Picker("", selection: bind(\.vertexAuthMode)) {
                         Text("gcloud (ADC)").tag("adc")
                         Text("Service account JSON").tag("serviceAccount")
+                        Text("Corporate sign-in (OIDC)").tag("oidcFederation")
+                        Text("Google account (OAuth)").tag("googleOAuth")
                     }
                     .labelsHidden()
-                    .pickerStyle(.segmented)
                     .frame(maxWidth: 320)
                 }
                 Spacer()
             }
-            if model.vertexAuthMode == "serviceAccount" && !apiKeysBlocked {
+            if model.vertexAuthMode == "oidcFederation" && !apiKeysBlocked {
+                let workforceProviderManaged = model.managedKeys.contains("vertexWorkforceProvider")
+                labeledField(label: "Workforce provider",
+                             placeholder: "locations/global/workforcePools/POOL/providers/PROVIDER",
+                             binding: bind(\.vertexWorkforceProvider),
+                             isManaged: workforceProviderManaged)
+                oidcSessionStatusLine()
+                SettingsCaption("Signs in with your organization's identity provider once, then federates into Google Cloud via Workforce Identity Federation — no service-account key on this device. Configure the issuer and client ID under Company Account. Restart to apply.")
+            } else if model.vertexAuthMode == "googleOAuth" && !apiKeysBlocked {
+                oidcSessionStatusLine()
+                SettingsCaption("Signs in with your Google account (via the Company Account sign-in) and uses the resulting OAuth access token as the Vertex bearer directly — no broker, no service-account key, no Workforce Identity Federation (and no GCP organization required). Same trust model as `gcloud` Application Default Credentials. Configure the issuer/client ID under Company Account, request the `cloud-platform` scope, and set the Project below. Restart to apply.")
+            } else if model.vertexAuthMode == "serviceAccount" && !apiKeysBlocked {
                 VertexServiceAccountRow(model: model)
                 SettingsCaption("Paste the JSON key file you downloaded from GCP IAM → Service Accounts → Keys → Add Key. The whole JSON is stored in the macOS Keychain, never in `~/.parleq/config.json`. Parleq mints short-lived OAuth tokens directly via the SA's RSA private key — no `gcloud` CLI required. Grant the SA the Vertex AI User role on this project.")
             } else {
@@ -2204,6 +2367,7 @@ struct SettingsView: View {
                         switch model.awsAuthMode {
                         case "bedrockApiKey": return "Bedrock API key"
                         case "static":        return "Static credentials"
+                        case "oidc":          return "Corporate sign-in (OIDC)"
                         default:              return "AWS CLI session (SSO)"
                         }
                     }()
@@ -2219,6 +2383,7 @@ struct SettingsView: View {
                         Text("Bedrock API key").tag("bedrockApiKey")
                         Text("AWS CLI session").tag("sso")
                         Text("Static credentials").tag("static")
+                        Text("Corporate sign-in (OIDC)").tag("oidc")
                     }
                     .labelsHidden()
                     .frame(maxWidth: 280)
@@ -2255,6 +2420,14 @@ struct SettingsView: View {
                     AWSStaticCredentialsRow(model: model)
                 }
                 SettingsCaption("Long-lived AWS access keys stored in the macOS Keychain. Pasted keys never appear in `~/.parleq/config.json` or any plaintext file. Restart to apply.")
+            case "oidc":
+                let roleArnManaged = model.managedKeys.contains("awsRoleArn")
+                labeledField(label: "IAM role ARN",
+                             placeholder: "e.g. arn:aws:iam::123456789012:role/parleq-bedrock",
+                             binding: bind(\.awsRoleArn),
+                             isManaged: roleArnManaged)
+                oidcSessionStatusLine()
+                SettingsCaption("Signs in with your organization's identity provider once, then federates into this IAM role via AssumeRoleWithWebIdentity — no AWS keys stored on this device. Configure the issuer and client ID under Company Account. Restart to apply.")
             default: // "sso"
                 labeledField(label: "AWS profile (optional)",
                              placeholder: "e.g. work — leave empty to use AWS_PROFILE or default",
@@ -2504,6 +2677,11 @@ struct SettingsView: View {
     @ViewBuilder
     private var privacyFeaturesSection: some View {
         PrivacyFeaturesSectionContent(model: model)
+    }
+
+    @ViewBuilder
+    private var companyAccountSection: some View {
+        CompanyAccountSectionContent(model: model)
     }
 
     @ViewBuilder

@@ -54,6 +54,7 @@ let package = Package(
             name: "ParleqAppCore",
             dependencies: [
                 .product(name: "SotoBedrockRuntime", package: "soto"),
+                .product(name: "SotoSTS", package: "soto"),
                 .product(name: "FluidAudio", package: "FluidAudio"),
                 .product(name: "Sparkle", package: "Sparkle"),
             ],

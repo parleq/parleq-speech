@@ -48,7 +48,7 @@ was added in v0.10.0 for auto-updates.
 
 | Package | Version | License | Source | Used for |
 |---|---|---|---|---|
-| Soto | 7.14.0 | Apache-2.0 | https://github.com/soto-project/soto | AWS Bedrock Runtime client (ConverseStream against Anthropic Claude / OpenAI GPT-OSS) |
+| Soto | 7.14.0 | Apache-2.0 | https://github.com/soto-project/soto | AWS Bedrock Runtime client (ConverseStream against Anthropic Claude / OpenAI GPT-OSS) + STS client (AssumeRoleWithWebIdentity for corporate OIDC sign-in) |
 | Soto Core | 7.13.0 | Apache-2.0 | https://github.com/soto-project/soto-core | Soto's SigV4 signer + eventstream parsing |
 
 The Gemini provider talks to Google's HTTP API directly with no SDK,

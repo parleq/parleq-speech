@@ -64,8 +64,13 @@ enum AuditSource {
 /// Called on every view appear so the dialog reflects live state.
 func buildAuditRows() -> [AuditRow] {
     let (config, _) = Config.load()
-    let defaults = Config.default
+    return buildAuditRows(config: config)
+}
 
+/// Injectable variant: tests pass a synthetic Config so assertions never
+/// depend on the developer's live ~/.parleq/config.json.
+func buildAuditRows(config: Config) -> [AuditRow] {
+    let defaults = Config.default
     return ManagedConfig.allKeys.map { key in
         let (displayValue, source) = resolveAuditRow(key: key, config: config, defaults: defaults)
         return AuditRow(key: key, displayValue: displayValue, source: source)
@@ -328,6 +333,39 @@ private func resolveAuditRow(key: String, config: Config, defaults: Config) -> (
         return formatString(config.azureResource, managed: isManaged, defaultVal: defaults.azureResource)
     case "azureDeployment":
         return formatString(config.azureDeployment, managed: isManaged, defaultVal: defaults.azureDeployment)
+
+    // MARK: Enterprise OIDC federation
+    case "oidcIssuer":
+        return formatString(config.oidcIssuer, managed: isManaged, defaultVal: defaults.oidcIssuer)
+    case "oidcClientID":
+        return formatString(config.oidcClientID, managed: isManaged, defaultVal: defaults.oidcClientID)
+    case "oidcScopes":
+        // Array of scope strings. "(not set)" can't happen (a non-empty
+        // default list always applies); compare against the default list
+        // to classify User vs Default.
+        let display = "[\(config.oidcScopes.joined(separator: ", "))]"
+        if isManaged { return (display, .managed) }
+        return (display, config.oidcScopes != defaults.oidcScopes ? .user : .default)
+    case "oidcEphemeralBrowserSession":
+        return formatBool(config.oidcEphemeralBrowser, managed: isManaged, defaultVal: defaults.oidcEphemeralBrowser)
+    case "oidcRedirectURI":
+        return formatString(config.oidcRedirectURI, managed: isManaged, defaultVal: defaults.oidcRedirectURI)
+    case "oidcExtraAuthParams":
+        // Dictionary of extra authorization-request params. Render the param
+        // NAMES only (not values) — same redaction discipline as the startup
+        // log. "(none)" when empty (the default).
+        let names = config.oidcExtraAuthParams.keys.sorted()
+        let display = names.isEmpty ? "(none)" : "{\(names.joined(separator: ", "))}"
+        if isManaged { return (display, .managed) }
+        return (display, config.oidcExtraAuthParams != defaults.oidcExtraAuthParams ? .user : .default)
+    case "awsRoleArn":
+        return formatString(config.awsRoleArn, managed: isManaged, defaultVal: defaults.awsRoleArn)
+    case "awsSessionDurationSeconds":
+        let display = "\(config.awsSessionDurationSeconds)"
+        if isManaged { return (display, .managed) }
+        return (display, config.awsSessionDurationSeconds != defaults.awsSessionDurationSeconds ? .user : .default)
+    case "vertexWorkforceProvider":
+        return formatString(config.vertexWorkforceProvider, managed: isManaged, defaultVal: defaults.vertexWorkforceProvider)
 
     default:
         return ("(unknown key)", .default)

@@ -49,6 +49,21 @@ public final class AppState {
     /// the higher-capability model services reference-aware calls
     /// without changing the default cleanup provider.
     private let contextLLM: (any LLMProvider)?
+    /// Enterprise OIDC federation handles. All optional and nil for
+    /// non-enterprise users. The session is retained for the Company
+    /// Account UI (Task 8); the two exchange caches are pre-warmed at
+    /// capture start (the ONLY hot-path addition this feature makes)
+    /// so the boundary-hour credential exchange overlaps recording +
+    /// ASR instead of delaying cleanup. Failures are swallowed by
+    /// warm() and surface fail-closed when cleanup actually runs.
+    private let oidcSession: OIDCSession?
+    private let oidcAWSExchange: CachedExchange<AWSWebIdentityExchanger>?
+    private let oidcGCPExchange: CachedExchange<GCPWorkforceExchanger>?
+    /// True in the Vertex `googleOAuth` mode, where there is NO exchange
+    /// cache to warm — the session's access token IS the Vertex bearer.
+    /// When set, capture-start pre-warms `oidcSession.accessToken()` instead
+    /// (fire-and-forget; the refresh-if-needed overlaps recording + ASR).
+    private let oidcPrewarmSessionAccessToken: Bool
     private let overlay: OverlayWindow
     /// Near-transparent floating pulse shown while a quick (double-tap-
     /// hold) dictation records — the visual stand-in for the start
@@ -502,12 +517,20 @@ public final class AppState {
         overlay: OverlayWindow,
         autoAcceptSeconds: TimeInterval = 0,  // 0 = never auto-accept
         trailingSpaceEnabled: Bool = true,
-        noTrailingSpaceAppBundleIDs: [String] = []
+        noTrailingSpaceAppBundleIDs: [String] = [],
+        oidcSession: OIDCSession? = nil,
+        oidcAWSExchange: CachedExchange<AWSWebIdentityExchanger>? = nil,
+        oidcGCPExchange: CachedExchange<GCPWorkforceExchanger>? = nil,
+        oidcPrewarmSessionAccessToken: Bool = false
     ) {
         self.recorder = recorder
         self.asr = asr
         self.llm = llm
         self.contextLLM = contextLLM
+        self.oidcSession = oidcSession
+        self.oidcAWSExchange = oidcAWSExchange
+        self.oidcGCPExchange = oidcGCPExchange
+        self.oidcPrewarmSessionAccessToken = oidcPrewarmSessionAccessToken
         self.overlay = overlay
         self.autoAcceptInterval = autoAcceptSeconds
         self.trailingSpaceEnabled = trailingSpaceEnabled
@@ -2164,6 +2187,18 @@ public final class AppState {
             log("recorder start failed: \(error)")
             recorder.levelHandler = nil
             return false
+        }
+        // OIDC pre-warm: refresh-if-needed overlaps recording + ASR so
+        // the boundary-hour exchange never delays cleanup. Fire-and-
+        // forget; failures surface fail-closed when cleanup runs.
+        if let aws = oidcAWSExchange { Task { await aws.warm() } }
+        if let gcp = oidcGCPExchange { Task { await gcp.warm() } }
+        // googleOAuth Vertex mode has no exchange cache — pre-warm the
+        // session's access token directly so a boundary-hour silent refresh
+        // overlaps recording + ASR. Fire-and-forget; errors surface
+        // fail-closed when cleanup runs.
+        if oidcPrewarmSessionAccessToken, let session = oidcSession {
+            Task { _ = try? await session.accessToken() }
         }
         return true
     }

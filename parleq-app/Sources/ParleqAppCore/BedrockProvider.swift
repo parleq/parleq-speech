@@ -49,12 +49,26 @@ public final class BedrockProvider: LLMProvider, @unchecked Sendable {
         /// Use access keys + secret + optional session token stored
         /// in the macOS Keychain (`KeychainStore.AWSStaticCredentials`).
         case `static`
+        /// Enterprise OIDC federation. Credentials are rotating
+        /// AssumeRoleWithWebIdentity temporary credentials minted from
+        /// the corporate OIDC ID token via `CachedExchange`. No
+        /// AWS-side config / SSO cache is consulted — the user signs in
+        /// once under Settings → Company Account and the cache supplies
+        /// fresh credentials per request (with refresh-ahead).
+        case oidc
     }
 
     public let model: String
     public let region: String
     public let profileName: String?
     public let authMode: AuthMode
+
+    /// Enterprise OIDC federation: the per-request source of rotating
+    /// AWS temporary credentials. Non-nil only in `.oidc` mode. The
+    /// Soto credential provider (`OIDCSotoCredentialProvider`) reads
+    /// from this cache on every ConverseStream call, so the cache's
+    /// TTL + refresh-ahead drive credential rotation.
+    private let oidcExchange: CachedExchange<AWSWebIdentityExchanger>?
 
     public var providerName: String { "bedrock" }
 
@@ -115,15 +129,21 @@ public final class BedrockProvider: LLMProvider, @unchecked Sendable {
     ///     - `.static`: use access key + secret + optional session
     ///       token from the Keychain (#21 step 3 — AWS_PROFILE / env
     ///       vars not consulted in this mode).
+    ///   - oidcExchange: Enterprise OIDC federation credential cache.
+    ///     Required (and only consulted) when `authMode == .oidc`;
+    ///     ignored otherwise. Supplies rotating
+    ///     AssumeRoleWithWebIdentity temporary credentials per request.
     public init(
         model: String,
         region: String,
         profileName: String?,
-        authMode: AuthMode = .sso
+        authMode: AuthMode = .sso,
+        oidcExchange: CachedExchange<AWSWebIdentityExchanger>? = nil
     ) throws {
         self.model = model
         self.region = region
         self.authMode = authMode
+        self.oidcExchange = oidcExchange
 
         // Resolve the effective profile. Settings field wins; if
         // empty, fall through to the AWS_PROFILE env var (matches
@@ -179,6 +199,7 @@ public final class BedrockProvider: LLMProvider, @unchecked Sendable {
             authMode: authMode,
             effectiveProfile: effectiveProfile,
             sotoRegion: sotoRegion,
+            oidcExchange: oidcExchange,
             logger: lg
         )
         self.awsClient = client
@@ -204,6 +225,7 @@ public final class BedrockProvider: LLMProvider, @unchecked Sendable {
         authMode: AuthMode,
         effectiveProfile: String?,
         sotoRegion: Region,
+        oidcExchange: CachedExchange<AWSWebIdentityExchanger>?,
         logger: Logger
     ) throws -> (AWSClient, BedrockRuntime) {
         let credentialProvider: CredentialProviderFactory
@@ -241,6 +263,28 @@ public final class BedrockProvider: LLMProvider, @unchecked Sendable {
                 )
             } else {
                 credentialProvider = .default
+            }
+        case .oidc:
+            // Enterprise OIDC federation. Fail closed at init if the
+            // cache wasn't wired (e.g. issuer/client/role not yet
+            // configured) so the launch path surfaces a clear error
+            // and falls through to "no LLM cleanup" rather than
+            // issuing unauthenticated SigV4 requests.
+            guard let exchange = oidcExchange else {
+                throw LLMError.missingCredentials(
+                    "Sign in to your organization in Settings \u{2192} Company Account."
+                )
+            }
+            // Soto resolves credentials per request (AWSClient calls
+            // getCredential on every ConverseStream), so the bridge
+            // reads rotating temporary credentials from the cache —
+            // the cache's TTL + refresh-ahead handle rotation. The
+            // `.custom` factory is NOT wrapped in Soto's
+            // RotatingCredentialProvider, which is exactly what we
+            // want here: our own CachedExchange owns the freshness
+            // policy.
+            credentialProvider = .custom { _ in
+                OIDCSotoCredentialProvider(exchange: exchange)
             }
         }
 
@@ -289,6 +333,7 @@ public final class BedrockProvider: LLMProvider, @unchecked Sendable {
                 authMode: authMode,
                 effectiveProfile: effectiveProfile,
                 sotoRegion: sotoRegion,
+                oidcExchange: oidcExchange,
                 logger: logger
             )
             awsClient = newClient
@@ -392,10 +437,20 @@ public final class BedrockProvider: LLMProvider, @unchecked Sendable {
             )
         } catch let firstError as LLMError where Self.isAuthFailure(firstError) {
             FileHandle.standardError.write(
-                "[parleq] bedrock: auth failure on first attempt (\(firstError.description)); rebuilding Soto client to pick up refreshed credentials and retrying once.\n"
+                "[parleq] bedrock: auth failure on first attempt (\(firstError.logSafeDescription)); rebuilding Soto client to pick up refreshed credentials and retrying once.\n"
                     .data(using: .utf8) ?? Data()
             )
-            rebuildClient(failedClient: clientForAttempt1)
+            // In OIDC mode credentials come from CachedExchange, not
+            // the on-disk SSO cache / Keychain that rebuildClient
+            // re-reads — rebuilding the Soto client there is pure
+            // waste (it reattaches the same exchange). The retry below
+            // still re-hits the cache, which is what recovers a
+            // transient exchange failure. SSO / static modes keep the
+            // rebuild (it's how a post-`aws sso login` refresh is
+            // picked up).
+            if authMode != .oidc {
+                rebuildClient(failedClient: clientForAttempt1)
+            }
             // Fresh snapshot for the retry — whether we did the
             // rebuild ourselves or a parallel caller had already
             // done it, this picks up the live post-rebuild client.
@@ -483,6 +538,15 @@ public final class BedrockProvider: LLMProvider, @unchecked Sendable {
                 system: [.text(systemPrompt)],
                 logger: logger
             )
+        } catch let error as LLMError {
+            // OIDC mode: the custom credential provider throws an
+            // already-shaped LLMError (fail-closed Company Account
+            // copy) from inside Soto's getCredential. Re-throw it
+            // unchanged — otherwise the generic catch below double-
+            // wraps it (the LLMError description "credentials unavailable: …"
+            // matches the "credential" substring guard) and appends a spurious
+            // `aws sso login` hint that's meaningless under OIDC.
+            throw error
         } catch let error as AWSClientError where error == .invalidSignature
             || error == .accessDenied
             || error == .missingAuthenticationToken {
@@ -539,6 +603,8 @@ public final class BedrockProvider: LLMProvider, @unchecked Sendable {
                 return "AWS session expired or unavailable. Run `aws sso login\(profileFragment)` and try again."
             case .static:
                 return "AWS credentials rejected. Open Settings → LLM → Set AWS Credentials."
+            case .oidc:
+                return "Sign in to your organization in Settings → Company Account."
             }
         case .badStatus(let code, _):
             // Most auth-shaped 403s from Bedrock get caught by the
@@ -561,6 +627,43 @@ public final class BedrockProvider: LLMProvider, @unchecked Sendable {
             return nil
         case .authPathBlocked(let msg):
             return msg
+        }
+    }
+}
+
+/// Bridges `CachedExchange<AWSWebIdentityExchanger>` into Soto's
+/// `CredentialProvider` protocol. Soto calls `getCredential` per
+/// request, so each ConverseStream pulls the current (cached or
+/// refreshed-ahead) AssumeRoleWithWebIdentity temporary credentials.
+///
+/// Fail-closed: an `OIDCAuthFailure` from the cache (session expired,
+/// trust-policy denial, etc.) maps to `LLMError.missingCredentials`
+/// with the taxonomy's user-facing copy plus the Company Account
+/// pointer, which AppState's existing cleanup-failure path renders.
+/// No token, claim, or identity value is ever placed in the error
+/// string or logged here.
+struct OIDCSotoCredentialProvider: CredentialProvider {
+    let exchange: CachedExchange<AWSWebIdentityExchanger>
+
+    func getCredential(logger: Logger) async throws -> Credential {
+        do {
+            let c = try await exchange.credentials()
+            return StaticCredential(
+                accessKeyId: c.accessKeyID,
+                secretAccessKey: c.secretAccessKey,
+                sessionToken: c.sessionToken
+            )
+        // Differentiated copy surfaces via the Company Account doctor
+        // (hopStatus); the overlay banner shows the generic
+        // cleanupFailureHint pointer.
+        } catch let f as OIDCAuthFailure {
+            throw LLMError.missingCredentials(
+                f.userCopy + " (Settings \u{2192} Company Account)"
+            )
+        } catch {
+            throw LLMError.missingCredentials(
+                "Sign in to your organization in Settings \u{2192} Company Account."
+            )
         }
     }
 }

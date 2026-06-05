@@ -1,0 +1,12 @@
+# Parleq OIDC dev rig — Keycloak with a pre-imported realm.
+# Usage: docker compose up   →  issuer http://localhost:8080/realms/parleq
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command: start-dev --import-realm
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+    ports: ["127.0.0.1:8080:8080"]
+    volumes:
+      - ./realm-parleq.json:/opt/keycloak/data/import/realm-parleq.json:ro

@@ -172,6 +172,82 @@ struct ParleqApp {
             local = nil
         }
         let asr = ASRClient(endpoint: asrEndpointURL, local: local)
+
+        // Enterprise OIDC federation: one shared OIDCSession serves
+        // every configured cloud exchange (AWS + GCP). Constructed only
+        // when an active provider (cleanup OR context tier) uses an OIDC
+        // auth mode AND the issuer + client ID are configured — so
+        // non-enterprise users pay nothing (no session, no Keychain
+        // read, no exchangers). The auth mode is per-provider
+        // (config.awsAuthMode / config.vertexAuthMode), shared across
+        // tiers, so a context tier pointing at the same provider rides
+        // the same cache.
+        let contextProvider = config.contextModel?.provider.lowercased()
+        let bedrockOIDCActive = config.awsAuthMode == "oidc"
+            && (config.llmProvider == "bedrock" || contextProvider == "bedrock")
+        // Vertex OIDC modes: "oidcFederation" (Workforce Identity Federation,
+        // wires a GCP exchanger) and "googleOAuth" (native Google sign-in, NO
+        // exchanger — the session's access token is the Vertex bearer). Both
+        // construct the shared OIDCSession; only oidcFederation builds gcpExchange.
+        let vertexFederationActive = config.vertexAuthMode == "oidcFederation"
+            && (config.llmProvider == "vertex" || contextProvider == "vertex")
+        let vertexGoogleOAuthActive = config.vertexAuthMode == "googleOAuth"
+            && (config.llmProvider == "vertex" || contextProvider == "vertex")
+        let vertexOIDCActive = vertexFederationActive || vertexGoogleOAuthActive
+        let oidcModeActive = bedrockOIDCActive || vertexOIDCActive
+        var oidcSession: OIDCSession? = nil
+        var awsExchange: CachedExchange<AWSWebIdentityExchanger>? = nil
+        var gcpExchange: CachedExchange<GCPWorkforceExchanger>? = nil
+        if oidcModeActive, !config.oidcIssuer.isEmpty, !config.oidcClientID.isEmpty {
+            let session = OIDCSession(
+                config: OIDCClientConfig(
+                    issuer: config.oidcIssuer,
+                    clientID: config.oidcClientID,
+                    scopes: config.oidcScopes,
+                    ephemeralBrowser: config.oidcEphemeralBrowser,
+                    redirectURI: config.oidcRedirectURI,
+                    extraAuthParams: config.oidcExtraAuthParams
+                ),
+                httpClient: urlSessionOIDCHTTPClient(),
+                tokenStore: KeychainOIDCTokenStore(),
+                authenticator: webAuthSessionAuthenticator(ephemeral: config.oidcEphemeralBrowser)
+            )
+            if bedrockOIDCActive, !config.awsRoleArn.isEmpty {
+                awsExchange = CachedExchange(
+                    exchanger: AWSWebIdentityExchanger(
+                        roleArn: config.awsRoleArn,
+                        region: config.awsRegion,
+                        // Read the signed-in email live at each STS call so
+                        // CloudTrail attribution reflects whoever is signed in
+                        // at exchange time, not a stale snapshot from launch.
+                        userEmailProvider: { KeychainOIDCTokenStore().loadIdentity()?.email },
+                        durationSeconds: config.awsSessionDurationSeconds
+                    ),
+                    session: session, leg: .aws
+                )
+                logStderr("[parleq] oidc: AWS web-identity exchange wired (region=\(config.awsRegion))")
+            }
+            if vertexFederationActive, !config.vertexWorkforceProvider.isEmpty {
+                gcpExchange = CachedExchange(
+                    exchanger: GCPWorkforceExchanger(
+                        workforceProvider: config.vertexWorkforceProvider,
+                        userProject: config.vertexProject,
+                        httpClient: urlSessionOIDCHTTPClient()
+                    ),
+                    session: session, leg: .gcp
+                )
+                logStderr("[parleq] oidc: GCP workforce exchange wired (project=\(config.vertexProject))")
+            }
+            if vertexGoogleOAuthActive {
+                // No exchanger: the session's access token is the Vertex
+                // bearer directly. VertexProvider reads session.accessToken().
+                logStderr("[parleq] oidc: Vertex googleOAuth wired (no exchanger; project=\(config.vertexProject))")
+            }
+            oidcSession = session
+        } else if oidcModeActive {
+            logStderr("[parleq] oidc: an OIDC auth mode is selected but oidc.issuer/client_id are not configured — Company Account is inactive; cleanup will fail closed until configured")
+        }
+
         // LLM cleanup is best-effort. If GEMINI_API_KEY isn't
         // available or any call fails, AppState falls back to
         // pasting the raw ASR transcript. The app must keep working
@@ -224,16 +300,26 @@ struct ParleqApp {
                     logStderr("[parleq] LLM \(label) (bedrock model=\(id.model) region=\(config.awsRegion) auth=bedrock-api-key)")
                     return p
                 }
-                let mode: BedrockProvider.AuthMode = (config.awsAuthMode.lowercased() == "static")
-                    ? .static : .sso
+                let mode: BedrockProvider.AuthMode
+                switch config.awsAuthMode.lowercased() {
+                case "static": mode = .static
+                case "oidc":   mode = .oidc
+                default:       mode = .sso
+                }
                 do {
                     let p = try BedrockProvider(
                         model: id.model,
                         region: config.awsRegion,
                         profileName: config.awsProfile,
-                        authMode: mode
+                        authMode: mode,
+                        oidcExchange: mode == .oidc ? awsExchange : nil
                     )
-                    let modeLabel = (mode == .static) ? "static-keychain" : "sso"
+                    let modeLabel: String
+                    switch mode {
+                    case .static: modeLabel = "static-keychain"
+                    case .oidc:   modeLabel = "oidc-federation"
+                    case .sso:    modeLabel = "sso"
+                    }
                     logStderr("[parleq] LLM \(label) (bedrock model=\(id.model) region=\(config.awsRegion) profile=\(config.awsProfile ?? "<default>") auth=\(modeLabel))")
                     return p
                 } catch {
@@ -246,8 +332,13 @@ struct ParleqApp {
                     logStderr("[parleq] LLM \(label) disabled (vertex provider selected but no GCP project configured — set Settings → LLM → Project). Will paste raw ASR.")
                     return nil
                 }
-                let mode: VertexProvider.AuthMode = (config.vertexAuthMode == "serviceAccount")
-                    ? .serviceAccount : .adc
+                let mode: VertexProvider.AuthMode
+                switch config.vertexAuthMode {
+                case "serviceAccount":  mode = .serviceAccount
+                case "oidcFederation":  mode = .oidcFederation
+                case "googleOAuth":     mode = .googleOAuth
+                default:                mode = .adc
+                }
                 if mode == .serviceAccount, !KeychainStore.hasVertexServiceAccountJSON {
                     logStderr("[parleq] vertex: no service-account JSON set yet — set one in Settings → LLM → Set Service Account JSON… (no restart needed)")
                 }
@@ -256,9 +347,20 @@ struct ParleqApp {
                     project: project,
                     region: config.vertexRegion,
                     anthropicRegion: config.vertexAnthropicRegion,
-                    authMode: mode
+                    authMode: mode,
+                    oidcExchange: mode == .oidcFederation ? gcpExchange : nil,
+                    // googleOAuth sources the bearer from the session's access
+                    // token directly (no exchanger). The session is the same
+                    // shared OIDCSession AppState pre-warms.
+                    oidcSession: mode == .googleOAuth ? oidcSession : nil
                 )
-                let modeLabel = (mode == .serviceAccount) ? "service-account-jwt" : "gcloud-adc"
+                let modeLabel: String
+                switch mode {
+                case .serviceAccount:  modeLabel = "service-account-jwt"
+                case .oidcFederation:  modeLabel = "oidc-federation"
+                case .googleOAuth:     modeLabel = "google-oauth"
+                case .adc:             modeLabel = "gcloud-adc"
+                }
                 logStderr("[parleq] LLM \(label) (vertex model=\(id.model) project=\(project) region=\(config.vertexRegion) anthropic_region=\(config.vertexAnthropicRegion) auth=\(modeLabel))")
                 return p
             case "azure":
@@ -366,8 +468,78 @@ struct ParleqApp {
                 overlay: overlay,
                 autoAcceptSeconds: config.autoAcceptSeconds,
                 trailingSpaceEnabled: config.trailingSpace,
-                noTrailingSpaceAppBundleIDs: config.noTrailingSpaceAppBundleIDs
+                noTrailingSpaceAppBundleIDs: config.noTrailingSpaceAppBundleIDs,
+                oidcSession: oidcSession,
+                oidcAWSExchange: awsExchange,
+                oidcGCPExchange: gcpExchange,
+                oidcPrewarmSessionAccessToken: vertexGoogleOAuthActive
             )
+        }
+
+        // Enterprise OIDC: wire the Company Account section. Only when a
+        // session was actually constructed (OIDC mode active AND issuer/
+        // client configured). The SwiftUI session model mirrors the
+        // actor's state; the closures are the UI's only channel to drive
+        // sign-in / sign-out / connection-test against the SAME session +
+        // exchange caches AppState pre-warms — no token or identity
+        // content crosses into the Settings layer (state + closures only).
+        if let session = oidcSession {
+            MainActor.assumeIsolated {
+                let sessionModel = OIDCSessionModel()
+                // bind(to:) is async (it registers an observer on the
+                // actor). Kick it off; the observer fires the current
+                // state immediately on registration, so the UI reflects
+                // reality as soon as the bind completes.
+                Task { await sessionModel.bind(to: session) }
+                let awsCfg = awsExchange != nil
+                let gcpCfg = gcpExchange != nil
+                ParleqAppWindowController.shared.setOIDCCompanyAccount(
+                    sessionModel: sessionModel,
+                    signIn: {
+                        // The ONLY trigger of the browser sheet — never
+                        // automatic. Cancellation is swallowed silently
+                        // inside OIDCSessionModel.signIn().
+                        Task { await sessionModel.signIn() }
+                    },
+                    signOut: {
+                        // Sign-out must revoke cloud-credential ACCESS, not
+                        // just the IdP session: after the session signs out
+                        // (which bumps its generation and clears tokens), drop
+                        // every cloud exchange's cached credentials so the next
+                        // dictation can't reuse a still-warm federated/STS
+                        // credential. invalidate() also cancels any in-flight
+                        // exchange; the generation re-check in exchangeNow()
+                        // discards a late result so it can't repopulate.
+                        //
+                        // signOut() now clears local IdP state SYNCHRONOUSLY and
+                        // fires revocation off in a detached Task, so it returns
+                        // immediately — these cache invalidations no longer wait
+                        // on a (possibly stalled) IdP revocation round-trip.
+                        Task {
+                            await sessionModel.signOut()
+                            if let aws = awsExchange { await aws.invalidate() }
+                            if let gcp = gcpExchange { await gcp.invalidate() }
+                        }
+                    },
+                    testConnection: {
+                        // Token-free: force a silent refresh (re-validates
+                        // the session against the IdP, updates state), then
+                        // warm each configured exchange so its hopStatus
+                        // reflects a fresh exchange attempt. warm() swallows
+                        // errors — the doctor reads the resulting hopStatus,
+                        // not a throw. Read the per-leg status back for the UI.
+                        await sessionModel.refreshSession()
+                        if let aws = awsExchange { await aws.warm() }
+                        if let gcp = gcpExchange { await gcp.warm() }
+                        let awsHop = await awsExchange?.hopStatus ?? FederationHopStatus()
+                        let gcpHop = await gcpExchange?.hopStatus ?? FederationHopStatus()
+                        return (awsHop, gcpHop)
+                    },
+                    awsConfigured: awsCfg,
+                    gcpConfigured: gcpCfg
+                )
+            }
+            logStderr("[parleq] oidc: Company Account section wired")
         }
 
         // Resolve the hotkey binding from config. Unknown bindings

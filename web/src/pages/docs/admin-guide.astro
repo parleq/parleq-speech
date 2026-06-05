@@ -1,24 +1,12 @@
 ---
 import Layout from '../../layouts/Layout.astro';
-import Logo from '../../components/Logo.astro';
+import SiteHeader from '../../components/SiteHeader.astro';
 
 const repoUrl = 'https://github.com/parleq/parleq-speech';
 ---
 
 <Layout title="Admin Guide — Parleq MDM Deployment" description="Step-by-step guide for IT administrators deploying Parleq via MDM (Jamf, Kandji, Mosyle, Intune, and others). Covers deployment workflow, common patterns, verification, and signed-app posture.">
-  <header class="mx-auto flex max-w-5xl items-center justify-between px-6 pt-8">
-    <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/'} class="inline-flex items-center">
-      <Logo height="36" />
-    </a>
-    <nav class="flex items-center gap-6 text-sm font-medium text-[color:var(--color-text-muted)]">
-      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/'} class="transition-colors hover:text-[color:var(--color-text)]">Home</a>
-      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/how-it-works/'} class="transition-colors hover:text-[color:var(--color-text)]">How it works</a>
-      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/'} class="text-[color:var(--color-text)]">Docs</a>
-      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/faq/'} class="transition-colors hover:text-[color:var(--color-text)]">FAQ</a>
-      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/about/'} class="transition-colors hover:text-[color:var(--color-text)]">About</a>
-      <a href={repoUrl} class="transition-colors hover:text-[color:var(--color-text)]">GitHub &rarr;</a>
-    </nav>
-  </header>
+  <SiteHeader active="docs" />
 
   <article class="mx-auto max-w-2xl px-6 pt-16 pb-24">
     <p class="text-sm">
@@ -94,7 +82,7 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
       Common deployment patterns
     </h2>
 
-    <h3 class="mt-8 font-display text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Azure-only org</h3>
+    <h3 class="mt-8 text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Azure-only org</h3>
     <p class="mt-3 text-[15px] leading-[1.7] text-[color:var(--color-text-muted)]">
       You have an Azure OpenAI deployment and want all Parleq traffic to go there. Pin the provider, restrict the model list to the deployments you have provisioned, and disable the custom model entry so users can&rsquo;t route around the list.
     </p>
@@ -110,7 +98,7 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
 &lt;false/&gt;</code></pre>
     </div>
 
-    <h3 class="mt-8 font-display text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Bedrock-only org</h3>
+    <h3 class="mt-8 text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Bedrock-only org</h3>
     <p class="mt-3 text-[15px] leading-[1.7] text-[color:var(--color-text-muted)]">
       Your org uses AWS and routes LLM calls through Bedrock for data-residency and IAM auditability. Pin to Bedrock, restrict to the Claude family, and (optionally) disable the reference-window feature if screenshot-to-LLM is not in scope.
     </p>
@@ -128,7 +116,7 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
 &lt;false/&gt;</code></pre>
     </div>
 
-    <h3 class="mt-8 font-display text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Auth-mode lockdown</h3>
+    <h3 class="mt-8 text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Auth-mode lockdown</h3>
     <p class="mt-3 text-[15px] leading-[1.7] text-[color:var(--color-text-muted)]">
       Your security policy requires federated identity throughout &mdash; no static API keys on developer laptops. Force Entra ID for Azure and AWS SSO for Bedrock, and globally disable all API-key auth paths so users cannot use personal credentials even if they were previously stored in the Keychain.
     </p>
@@ -172,7 +160,7 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
       </tbody>
     </table>
 
-    <h3 class="mt-8 font-display text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Compliance-first lockdown</h3>
+    <h3 class="mt-8 text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Compliance-first lockdown</h3>
     <p class="mt-3 text-[15px] leading-[1.7] text-[color:var(--color-text-muted)]">
       Maximally locked: no screenshots, no file references, no custom models, auto-update managed centrally, logging policy documented for auditors, and updates fetched from an internal mirror after your security team&rsquo;s review.
     </p>

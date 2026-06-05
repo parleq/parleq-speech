@@ -19,7 +19,7 @@
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.19.0</string>
+    <string>0.20.0</string>
     <key>CFBundleSignature</key>
     <string>????</string>
     <key>CFBundleVersion</key>
@@ -51,6 +51,23 @@
     <true/>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
+    <!-- Enterprise OIDC federation: the custom URL scheme that the
+         IdP redirects back to after an ASWebAuthenticationSession
+         sign-in (parleq-auth://oidc/callback). Registering it here
+         lets the OS route the redirect back into Parleq. The scheme
+         is consumed only inside ASWebAuthenticationSession's
+         callback handler; no AppKit URL-open handler is installed. -->
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>com.parleq.app.oidc</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>parleq-auth</string>
+            </array>
+        </dict>
+    </array>
     <!-- Mic permission prompt copy. Shown on first capture. -->
     <key>NSMicrophoneUsageDescription</key>
     <string>Parleq listens to your voice when you press the configured hotkey, transcribes locally, and pastes the result into the active app.</string>

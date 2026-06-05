@@ -1,12 +1,14 @@
 ---
 import Layout from '../layouts/Layout.astro';
-import Logo from '../components/Logo.astro';
+import SiteHeader from '../components/SiteHeader.astro';
+import OverlayMockup from '../components/OverlayMockup.astro';
 
 const repoUrl = 'https://github.com/parleq/parleq-speech';
 
 const stages = [
   {
     n: '1',
+    slug: 'capture',
     title: 'Capture',
     where: 'on-device',
     summary:
@@ -19,6 +21,7 @@ const stages = [
   },
   {
     n: '2',
+    slug: 'transcribe',
     title: 'Transcribe',
     where: 'on-device · Apple Neural Engine',
     summary:
@@ -31,6 +34,7 @@ const stages = [
   },
   {
     n: '3',
+    slug: 'cleanup',
     title: 'Clean up',
     where: 'cloud LLM (or skipped)',
     summary:
@@ -40,12 +44,14 @@ const stages = [
       ['Auth flexibility per provider', 'Each cloud supports both pasted API keys (stored in the macOS Keychain) and your existing CLI session — gcloud Application Default Credentials for Vertex (or service-account JSON), AWS SSO / static IAM keys / scoped Bedrock API keys for Bedrock, az login or resource keys for Azure. Parleq never stores long-lived cloud session tokens directly; the AWS/GCP/Azure CLIs handle refresh through their own caches.'],
       ['Skippable', 'Pick "None — paste raw ASR (skip cleanup)" from the Settings provider list. Parleq will paste the raw transcript exactly as the on-device speech model emitted it. Useful when transcript content must never leave the device.'],
       ['Custom dictionary hint', 'Your dictionary feeds a smart-vocabulary addendum to the cleanup prompt — terms with optional context blurbs and aliases. The LLM judges topic alignment and prefers your canonical spellings without force-correcting genuine homophones.'],
+      ['Learns from your corrections', 'When you repeatedly fix the same name or phrase, Parleq notices. The opt-in "Learn from corrections" feature keeps short correction snippets in memory (never written to disk) and occasionally asks your already-configured cleanup model to suggest dictionary improvements — no new service, no new network destination. High-confidence spelling fixes apply automatically (and are revertible); the rest appear as suggestions to accept or dismiss.'],
       ['Catches self-corrections and spelled-out words', 'Say "scratch that", "no wait", or "I mean Rob" and Parleq drops the retracted words, keeping only your final intent (conservatively — when it can\'t tell whether you\'re correcting or listing both, it leaves your words alone). Spell a word aloud — "M I R A" — and it assembles the letters into the single word and capitalizes it correctly: a name stays a name, an acronym like URL stays all-caps. Most useful for fixing a name the speech model misheard.'],
       ['Refinement', 'When the overlay is already open, the next hotkey press re-runs this stage with a different system prompt that takes your speech as an edit instruction over the existing text. Walked through in detail in the section below.'],
     ],
   },
   {
     n: '4',
+    slug: 'paste',
     title: 'Paste',
     where: 'on-device',
     summary:
@@ -98,21 +104,7 @@ const gestures = [
   title="How Parleq works — local-first AI dictation"
   description="The four stages of a Parleq dictation: capture, transcribe, clean up, paste. What happens locally vs in the cloud. What gets stored vs what doesn't."
 >
-  <!-- Header. Same layout as the landing page header, with one extra
-       nav link active so the user knows where they are. -->
-  <header class="mx-auto flex max-w-5xl items-center justify-between px-6 pt-8">
-    <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/'} class="inline-flex items-center">
-      <Logo height="36" />
-    </a>
-    <nav class="flex items-center gap-6 text-sm font-medium text-[color:var(--color-text-muted)]">
-      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/'} class="transition-colors hover:text-[color:var(--color-text)]">Home</a>
-      <span class="text-[color:var(--color-text)]">How it works</span>
-      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/'} class="transition-colors hover:text-[color:var(--color-text)]">Docs</a>
-      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/faq/'} class="transition-colors hover:text-[color:var(--color-text)]">FAQ</a>
-      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/about/'} class="transition-colors hover:text-[color:var(--color-text)]">About</a>
-      <a href={repoUrl} class="transition-colors hover:text-[color:var(--color-text)]">GitHub →</a>
-    </nav>
-  </header>
+  <SiteHeader active="how-it-works" />
 
   <!-- Page intro. -->
   <section class="mx-auto max-w-3xl px-6 pt-20 pb-12 sm:pt-24">
@@ -130,38 +122,168 @@ const gestures = [
     </p>
   </section>
 
-  <!-- Pipeline overview: a concrete data-transformation strip. The
-       monospace boxes show what's actually flowing between stages,
-       with a real example utterance — gives the reader something
-       solid to pin the abstract pipeline to. -->
-  <section class="mx-auto max-w-4xl px-6 pb-16">
-    <div class="rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6 sm:p-8">
+  <!-- Pipeline stepper. The example-flow strip (Audio → Transcript →
+       Cleaned → Pasted) is now the STAGE NAVIGATION: each box is a
+       button that activates the matching stage panel below (Audio↔1
+       Capture, Transcript↔2 Transcribe, Cleaned↔3 Clean up, Pasted↔4
+       Paste). Below it, one stage panel shows at a time.
+
+       Progressive enhancement: the server renders all four panels
+       VISIBLE and stacked (today's reading experience) and the nav
+       boxes as plain links to the panel anchors. The inline script at
+       the bottom upgrades this into a swap-pager — it hides inactive
+       panels, turns the nav links into aria-current buttons, wires
+       prev/next, and syncs the location.hash via replaceState. A no-JS
+       visitor keeps the full stacked page. A11y: plain
+       buttons-with-aria-current pattern (matching the homepage
+       carousel), not the APG tabs pattern. -->
+  <section data-reveal class="mx-auto max-w-4xl px-6 pb-16">
+    <div
+      id="pipeline-stepper"
+      class="rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6 sm:p-8"
+    >
       <p class="text-xs font-medium uppercase tracking-[0.16em] text-[color:var(--color-text-subtle)]">
-        Example flow
+        The pipeline
       </p>
-      <div class="mt-4 grid gap-4 text-sm sm:grid-cols-[1fr_auto_1fr_auto_1fr_auto_1fr] sm:items-center sm:gap-3">
-        <div class="rounded-lg border border-[color:var(--color-border-subtle)] bg-[color:var(--color-bg)] p-3">
-          <p class="text-[10px] font-medium uppercase tracking-wider text-[color:var(--color-text-subtle)]">Audio</p>
+
+      <!-- Stage navigation: the data-transformation strip. Each box maps
+           1:1 to a stage panel below. Server-rendered as anchor links
+           (no-JS deep jump to the visible panel); the script swaps them
+           to buttons that page between panels. The mono example utterance
+           gives the reader something concrete to pin each stage to. -->
+      <nav
+        id="stepper-nav"
+        aria-label="Pipeline stages"
+        class="mt-4 grid gap-4 text-sm sm:grid-cols-[1fr_auto_1fr_auto_1fr_auto_1fr] sm:items-center sm:gap-3"
+      >
+        <a
+          href="#stage-capture"
+          data-stage-nav="0"
+          class="stepper-box rounded-lg border border-[color:var(--color-border-subtle)] bg-[color:var(--color-bg)] p-3 text-left transition-colors hover:border-[color:var(--color-border)]"
+        >
+          <p class="text-[10px] font-medium uppercase tracking-wider text-[color:var(--color-text-subtle)]">1 · Audio</p>
           <p class="mt-1 font-mono text-[12px] text-[color:var(--color-text-muted)]">~3 s WAV<br/>16 kHz mono</p>
-        </div>
+        </a>
         <span class="hidden text-[color:var(--color-text-subtle)] sm:inline" aria-hidden="true">→</span>
 
-        <div class="rounded-lg border border-[color:var(--color-border-subtle)] bg-[color:var(--color-bg)] p-3">
-          <p class="text-[10px] font-medium uppercase tracking-wider text-[color:var(--color-text-subtle)]">Transcript</p>
+        <a
+          href="#stage-transcribe"
+          data-stage-nav="1"
+          class="stepper-box rounded-lg border border-[color:var(--color-border-subtle)] bg-[color:var(--color-bg)] p-3 text-left transition-colors hover:border-[color:var(--color-border)]"
+        >
+          <p class="text-[10px] font-medium uppercase tracking-wider text-[color:var(--color-text-subtle)]">2 · Transcript</p>
           <p class="mt-1 font-mono text-[12px] text-[color:var(--color-text)]">"lets go to the beach this weekend"</p>
-        </div>
+        </a>
         <span class="hidden text-[color:var(--color-text-subtle)] sm:inline" aria-hidden="true">→</span>
 
-        <div class="rounded-lg border border-[color:var(--color-border-subtle)] bg-[color:var(--color-bg)] p-3">
-          <p class="text-[10px] font-medium uppercase tracking-wider text-[color:var(--color-text-subtle)]">Cleaned</p>
+        <a
+          href="#stage-cleanup"
+          data-stage-nav="2"
+          class="stepper-box rounded-lg border border-[color:var(--color-border-subtle)] bg-[color:var(--color-bg)] p-3 text-left transition-colors hover:border-[color:var(--color-border)]"
+        >
+          <p class="text-[10px] font-medium uppercase tracking-wider text-[color:var(--color-text-subtle)]">3 · Cleaned</p>
           <p class="mt-1 font-mono text-[12px] text-[color:var(--color-text)]">"Let's go to the beach this weekend."</p>
-        </div>
+        </a>
         <span class="hidden text-[color:var(--color-text-subtle)] sm:inline" aria-hidden="true">→</span>
 
-        <div class="rounded-lg border border-[color:var(--color-accent-soft)] bg-[color:var(--color-accent-soft)]/30 p-3">
-          <p class="text-[10px] font-medium uppercase tracking-wider text-[color:var(--color-accent)]">Pasted</p>
+        <a
+          href="#stage-paste"
+          data-stage-nav="3"
+          class="stepper-box rounded-lg border border-[color:var(--color-accent-soft)] bg-[color:var(--color-accent-soft)]/30 p-3 text-left transition-colors"
+        >
+          <p class="text-[10px] font-medium uppercase tracking-wider text-[color:var(--color-accent)]">4 · Pasted</p>
           <p class="mt-1 font-mono text-[12px] text-[color:var(--color-text)]">into the focused app</p>
-        </div>
+        </a>
+      </nav>
+
+      <!-- Visually-hidden polite live region: announces the active stage
+           name when the script swaps panels, so screen-reader users hear
+           that new content rendered (the activating control keeps focus).
+           Same pattern as the homepage carousel's announce region. -->
+      <div id="stepper-announce" class="sr-only" aria-live="polite"></div>
+
+      <!-- Stage panels. All four are server-rendered VISIBLE and stacked
+           below the strip — that's the no-JS reading experience. The
+           script hides the inactive ones and pages between them. Each
+           panel = the old stage card (big serif number, title, where-chip,
+           summary, then the detail rows as native <details> accordions). -->
+      <div id="stepper-panels" class="mt-8 space-y-12 sm:space-y-16">
+        {stages.map((stage, i) => (
+          <article
+            id={`stage-${stage.slug}`}
+            class="stepper-panel scroll-mt-20"
+            data-stage-panel={String(i)}
+          >
+            <div class="grid gap-6 sm:grid-cols-[auto_1fr] sm:gap-8">
+              <div class="font-display text-5xl font-semibold tabular-nums text-[color:var(--color-accent)] leading-none sm:text-6xl">
+                {stage.n}
+              </div>
+              <div>
+                <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                  <h2 class="font-display text-2xl font-semibold tracking-tight sm:text-3xl">
+                    {stage.title}
+                  </h2>
+                  <span class="font-mono text-xs uppercase tracking-wider text-[color:var(--color-text-subtle)]">
+                    {stage.where}
+                  </span>
+                </div>
+                <p class="mt-4 leading-relaxed text-[color:var(--color-text-muted)]">
+                  {stage.summary}
+                </p>
+                <!-- Detail rows as native <details>/<summary> accordions,
+                     closed by default. Native because Chromium auto-expands
+                     them on find-in-page — a reimplemented accordion would
+                     hide matches from Ctrl-F. -->
+                <div class="mt-6 space-y-2 border-l border-[color:var(--color-border)] pl-5">
+                  {stage.detail.map(([term, body]) => (
+                    <details class="stage-detail group">
+                      <summary class="flex cursor-pointer items-center gap-2 text-sm font-semibold text-[color:var(--color-text)]">
+                        <svg
+                          aria-hidden="true"
+                          class="stage-detail-chevron h-3.5 w-3.5 shrink-0 text-[color:var(--color-accent)] transition-transform"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2.5"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                        >
+                          <path d="m9 18 6-6-6-6" />
+                        </svg>
+                        <span>{term}</span>
+                      </summary>
+                      <div class="mt-1 pl-[1.375rem] text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
+                        {body}
+                      </div>
+                    </details>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <!-- Per-panel prev/next pager controls. Hidden until the
+                 script enables paging (no-JS visitors read the stacked
+                 panels top-to-bottom, so these would be redundant). -->
+            <div class="stepper-pager mt-8 hidden items-center justify-between gap-4 sm:pl-[calc(3.75rem+2rem)]">
+              <button
+                type="button"
+                data-stepper-prev
+                class="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3.5 py-1.5 text-[13px] font-medium text-[color:var(--color-text-muted)] transition-colors hover:border-[color:var(--color-text-muted)] hover:text-[color:var(--color-text)] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <span aria-hidden="true">‹</span>
+                <span data-stepper-prev-label>Previous stage</span>
+              </button>
+              <button
+                type="button"
+                data-stepper-next
+                class="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3.5 py-1.5 text-[13px] font-medium text-[color:var(--color-text-muted)] transition-colors hover:border-[color:var(--color-text-muted)] hover:text-[color:var(--color-text)] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <span data-stepper-next-label>Next stage</span>
+                <span aria-hidden="true">›</span>
+              </button>
+            </div>
+          </article>
+        ))}
       </div>
     </div>
   </section>
@@ -170,7 +292,8 @@ const gestures = [
        overlay shows, grouped the same way. Placed high with its own
        anchor (#gestures) so it's reachable in a single jump, for
        readers who'd otherwise get lost in the verbose stage cards. -->
-  <section id="gestures" class="mx-auto max-w-3xl scroll-mt-8 px-6 pb-16">
+  <section id="gestures" data-reveal class="scroll-mt-20 border-t border-[color:var(--color-border-subtle)] bg-[color:var(--color-section-tint)]">
+    <div class="mx-auto max-w-3xl px-6 py-16">
     <div class="rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6 sm:p-8">
       <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">
         Keyboard gestures
@@ -208,53 +331,17 @@ const gestures = [
         ))}
       </div>
     </div>
-  </section>
-
-  <!-- Stage cards. Numbered down the left in display serif, each card
-       a self-contained explanation of what happens at that stage,
-       where it runs, and the secondary details that matter for trust
-       (why is it on-device, what gets sent to the cloud, etc.). -->
-  <section class="mx-auto max-w-3xl px-6 pb-20">
-    <ol class="space-y-12 sm:space-y-16">
-      {stages.map((stage) => (
-        <li class="grid gap-6 sm:grid-cols-[auto_1fr] sm:gap-8">
-          <div class="font-display text-5xl font-semibold tabular-nums text-[color:var(--color-accent)] leading-none sm:text-6xl">
-            {stage.n}
-          </div>
-          <div>
-            <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-              <h2 class="font-display text-2xl font-semibold tracking-tight sm:text-3xl">
-                {stage.title}
-              </h2>
-              <span class="font-mono text-xs uppercase tracking-wider text-[color:var(--color-text-subtle)]">
-                {stage.where}
-              </span>
-            </div>
-            <p class="mt-4 leading-relaxed text-[color:var(--color-text-muted)]">
-              {stage.summary}
-            </p>
-            <dl class="mt-6 space-y-4 border-l border-[color:var(--color-border)] pl-5">
-              {stage.detail.map(([term, body]) => (
-                <div>
-                  <dt class="text-sm font-semibold text-[color:var(--color-text)]">
-                    {term}
-                  </dt>
-                  <dd class="mt-1 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
-                    {body}
-                  </dd>
-                </div>
-              ))}
-            </dl>
-          </div>
-        </li>
-      ))}
-    </ol>
+    </div>
   </section>
 
   <!-- Reference Windows. Explain the feature before the refinement
-       loop because references feed into cleanup + refinement turns. -->
-  <section class="border-t border-[color:var(--color-border-subtle)]">
-    <div class="mx-auto max-w-3xl px-6 py-20">
+       loop because references feed into cleanup + refinement turns.
+       Tinted band; copy-left / overlay-mockup-right on lg, stacked on
+       mobile. The mockup reuses OverlayMockup with the prominent hint
+       row + an attached-window pill, the anatomy this section describes. -->
+  <section id="reference-windows" data-reveal class="scroll-mt-20 border-t border-[color:var(--color-border-subtle)] bg-[color:var(--color-section-tint)]">
+    <div class="mx-auto grid max-w-5xl items-start gap-10 px-6 py-20 lg:grid-cols-2 lg:gap-14">
+      <div>
       <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">
         Reference Windows
       </p>
@@ -309,6 +396,22 @@ const gestures = [
           </dd>
         </div>
       </dl>
+      </div>
+
+      <!-- Mockup column: the overlay with the prominent reference hint
+           row + an attached-window pill, mirroring what this section
+           describes. Sticky on lg so it tracks alongside the tall copy. -->
+      <div class="flex justify-center lg:sticky lg:top-16 lg:justify-end">
+        <OverlayMockup
+          pastingTo="Mail"
+          model="2.5 Flash"
+          hint="Dictating with a reference window"
+          hintProminent={true}
+          attachment="Calendar — window attached"
+        >
+          "Looks like Thursday at 2pm is open on your calendar — does that work for the check-in?"
+        </OverlayMockup>
+      </div>
     </div>
   </section>
 
@@ -317,9 +420,14 @@ const gestures = [
        stage 3 with a different system prompt that treats your speech
        as an edit instruction over the existing text. Stage 4 only
        fires when you tap to accept. The chain below shows what that
-       looks like in practice. -->
-  <section class="border-t border-[color:var(--color-border-subtle)]">
-    <div class="mx-auto max-w-3xl px-6 py-20">
+       looks like in practice. Base band; the intro is copy-left /
+       overlay-mockup-right on lg (stacked on mobile), the mockup showing
+       a transcript with a refine-instruction quote line — the move this
+       section is about. The step-by-step chain stays full width below. -->
+  <section id="refine-loop" data-reveal class="scroll-mt-20 border-t border-[color:var(--color-border-subtle)] bg-[color:var(--color-bg)]">
+    <div class="mx-auto max-w-5xl px-6 py-20">
+      <div class="grid items-start gap-10 lg:grid-cols-2 lg:gap-14">
+        <div>
       <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">
         The loop
       </p>
@@ -335,6 +443,20 @@ const gestures = [
       <p class="mt-4 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
         Edits you make often are worth saving: a <strong>transform preset</strong> is a named, stored refine instruction ("Rewrite as a tight bulleted list", "Make this formal") that appears as a one-tap chip on the review overlay — same refine pass, no speaking required. A preset can also be assigned as an app's default, in which case its instruction folds into that app's stage-3 cleanup prompt — one LLM call, the text arrives already styled, and the overlay shows a one-tap Undo that re-runs plain cleanup.
       </p>
+        </div>
+
+        <!-- Mockup column: a transcript mid-refine, with the spoken edit
+             instruction shown as the accent-barred refine line. -->
+        <div class="flex justify-center lg:sticky lg:top-16 lg:justify-end">
+          <OverlayMockup
+            pastingTo="Mail"
+            model="2.5 Flash"
+            refine={`"make it more professional"`}
+          >
+            "Yeah, we should probably move the meeting to next Thursday because too many people are out this week."
+          </OverlayMockup>
+        </div>
+      </div>
 
       <div class="mt-12 space-y-3">
         <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5">
@@ -350,7 +472,7 @@ const gestures = [
           <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">
             You press ⌥ and say
           </p>
-          <p class="mt-2 font-display italic text-[16px] leading-relaxed text-[color:var(--color-text)]">
+          <p class="mt-2 font-medium text-[15px] leading-relaxed text-[color:var(--color-text)]">
             "make it more professional"
           </p>
         </div>
@@ -368,7 +490,7 @@ const gestures = [
           <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">
             You press ⌥ and say
           </p>
-          <p class="mt-2 font-display italic text-[16px] leading-relaxed text-[color:var(--color-text)]">
+          <p class="mt-2 font-medium text-[15px] leading-relaxed text-[color:var(--color-text)]">
             "shorter, end with a question mark"
           </p>
         </div>
@@ -383,7 +505,7 @@ const gestures = [
           <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">
             You press ⌥ and say
           </p>
-          <p class="mt-2 font-display italic text-[16px] leading-relaxed text-[color:var(--color-text)]">
+          <p class="mt-2 font-medium text-[15px] leading-relaxed text-[color:var(--color-text)]">
             "add 'attendance has been thin lately' as the reason"
           </p>
         </div>
@@ -407,49 +529,233 @@ const gestures = [
   <!-- Privacy posture: an explicit kept/not-kept table. This is the
        part testers and security-reviewers usually want to skim, so
        it's its own section with a clear visual rhythm rather than
-       being buried in stage 4's detail. -->
-  <section class="border-t border-[color:var(--color-border-subtle)]">
+       being buried in stage 4's detail. Rendered as the page's DARK
+       TRUST BAND — same near-black slate gradient family as the
+       homepage #enterprise band — to read as the trust centerpiece.
+       Text + cards are restyled for the dark ground: light slate body,
+       white emphasis, amber accents, white/10 borders and inline-code
+       chips that all clear contrast on the dark surface. -->
+  <section data-reveal class="bg-gradient-to-br from-[#272d35] to-[#15181d] text-[#cbd5e1]">
     <div class="mx-auto max-w-3xl px-6 py-20">
       <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">
         Privacy posture
       </p>
-      <h2 class="mt-4 font-display text-3xl font-medium tracking-tight sm:text-4xl">
+      <h2 class="mt-4 font-display text-3xl font-medium tracking-tight text-white sm:text-4xl">
         What stays on your Mac.
       </h2>
 
-      <div class="mt-10 grid gap-8 sm:grid-cols-2">
-        <div>
-          <h3 class="font-display text-lg font-semibold">Persisted</h3>
-          <ul class="mt-3 space-y-3 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
-            <li><code class="rounded bg-[color:var(--color-border-subtle)] px-1.5 py-0.5 font-mono text-[13px] text-[color:var(--color-text)]">~/.parleq/config.json</code> — settings + custom dictionary, user-authored.</li>
-            <li><code class="rounded bg-[color:var(--color-border-subtle)] px-1.5 py-0.5 font-mono text-[13px] text-[color:var(--color-text)]">~/.parleq/usage.jsonl</code> — one line per LLM call: timestamp, model, token counts, latency. <strong class="font-semibold text-[color:var(--color-text)]">Metadata only.</strong></li>
-            <li><code class="rounded bg-[color:var(--color-border-subtle)] px-1.5 py-0.5 font-mono text-[13px] text-[color:var(--color-text)]">~/.parleq/app.log</code> — diagnostic log. ASR/LLM metrics are length-only ("post-utterance 87 ms, 142 chars / 28 words"); never the transcript itself.</li>
-            <li><code class="rounded bg-[color:var(--color-border-subtle)] px-1.5 py-0.5 font-mono text-[13px] text-[color:var(--color-text)]">~/.parleq/metrics.jsonl</code> — one text-free record per dictation (duration, ASR/LLM latency, token counts, ref-attached + cleanup-failed flags) so the Stats dashboard spans sessions. <strong class="font-semibold text-[color:var(--color-text)]">No transcript text</strong>; bounded to the last 30 days. Disabled entirely when history retention is set to 0.</li>
-            <li>Provider secrets in the macOS <strong class="font-semibold text-[color:var(--color-text)]">Keychain</strong> — Gemini API key, OpenAI API key, Bedrock API key, AWS static credentials, Vertex service-account JSON, Azure resource API key. Whichever you've configured.</li>
+      <div class="mt-10 grid gap-6 sm:grid-cols-2">
+        <div class="rounded-2xl border border-white/10 bg-white/[0.04] p-6">
+          <h3 class="text-lg font-semibold text-white">Persisted</h3>
+          <ul class="mt-3 space-y-3 text-[15px] leading-relaxed text-[#cbd5e1]">
+            <li><code class="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[13px] text-white">~/.parleq/config.json</code> — settings + custom dictionary, user-authored.</li>
+            <li><code class="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[13px] text-white">~/.parleq/usage.jsonl</code> — one line per LLM call: timestamp, model, token counts, latency. <strong class="font-semibold text-white">Metadata only.</strong></li>
+            <li><code class="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[13px] text-white">~/.parleq/app.log</code> — diagnostic log. ASR/LLM metrics are length-only ("post-utterance 87 ms, 142 chars / 28 words"); never the transcript itself.</li>
+            <li><code class="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[13px] text-white">~/.parleq/metrics.jsonl</code> — one text-free record per dictation (duration, ASR/LLM latency, token counts, ref-attached + cleanup-failed flags) so the Stats dashboard spans sessions. <strong class="font-semibold text-white">No transcript text</strong>; bounded to the last 30 days. Disabled entirely when history retention is set to 0.</li>
+            <li>Provider secrets in the macOS <strong class="font-semibold text-white">Keychain</strong> — Gemini API key, OpenAI API key, Bedrock API key, AWS static credentials, Vertex service-account JSON, Azure resource API key. Whichever you've configured.</li>
           </ul>
         </div>
-        <div>
-          <h3 class="font-display text-lg font-semibold">Never on disk</h3>
-          <ul class="mt-3 space-y-3 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
-            <li><strong class="font-semibold text-[color:var(--color-text)]">Audio bytes.</strong> WAV / PCM stays in process memory only. The Parakeet model is called directly as a Swift function call — there's no IPC, no listening sockets, no <code class="rounded bg-[color:var(--color-border-subtle)] px-1.5 py-0.5 font-mono text-[13px] text-[color:var(--color-text)]">/tmp/parleq-*.wav</code>.</li>
-            <li><strong class="font-semibold text-[color:var(--color-text)]">Transcripts.</strong> Raw ASR output stays in memory.</li>
-            <li><strong class="font-semibold text-[color:var(--color-text)]">Cleaned text.</strong> Held in the overlay during cleanup, then in an in-memory ring backing the Parleq window's Recent Dictations section, then gone on app quit. Never serialized. (Only the text-free per-dictation metrics in <code class="rounded bg-[color:var(--color-border-subtle)] px-1.5 py-0.5 font-mono text-[13px] text-[color:var(--color-text)]">metrics.jsonl</code> persist — never the words.)</li>
-            <li><strong class="font-semibold text-[color:var(--color-text)]">Reference captures.</strong> PNG screenshots and OCR'd text from Reference Windows stay in process memory for the duration of a single dictation session. Released on accept or cancel — never written to disk and never cached between sessions.</li>
-            <li><strong class="font-semibold text-[color:var(--color-text)]">Cloud session tokens (AWS / GCP / Azure).</strong> CLI-session auth modes delegate token refresh to the official AWS / gcloud / az CLI caches at <code class="rounded bg-[color:var(--color-border-subtle)] px-1.5 py-0.5 font-mono text-[13px] text-[color:var(--color-text)]">~/.aws/sso/cache/</code>, <code class="rounded bg-[color:var(--color-border-subtle)] px-1.5 py-0.5 font-mono text-[13px] text-[color:var(--color-text)]">~/.config/gcloud/</code>, and <code class="rounded bg-[color:var(--color-border-subtle)] px-1.5 py-0.5 font-mono text-[13px] text-[color:var(--color-text)]">~/.azure/</code>. Parleq stores no long-lived session tokens directly.</li>
+        <div class="rounded-2xl border border-[color:var(--color-accent)]/30 bg-white/[0.04] p-6">
+          <h3 class="text-lg font-semibold text-white">Never on disk</h3>
+          <ul class="mt-3 space-y-3 text-[15px] leading-relaxed text-[#cbd5e1]">
+            <li><strong class="font-semibold text-white">Audio bytes.</strong> WAV / PCM stays in process memory only. The Parakeet model is called directly as a Swift function call — there's no IPC, no listening sockets, no <code class="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[13px] text-white">/tmp/parleq-*.wav</code>.</li>
+            <li><strong class="font-semibold text-white">Transcripts.</strong> Raw ASR output stays in memory.</li>
+            <li><strong class="font-semibold text-white">Cleaned text.</strong> Held in the overlay during cleanup, then in an in-memory ring backing the Parleq window's Recent Dictations section, then gone on app quit. Never serialized. (Only the text-free per-dictation metrics in <code class="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[13px] text-white">metrics.jsonl</code> persist — never the words.)</li>
+            <li><strong class="font-semibold text-white">Reference captures.</strong> PNG screenshots and OCR'd text from Reference Windows stay in process memory for the duration of a single dictation session. Released on accept or cancel — never written to disk and never cached between sessions.</li>
+            <li><strong class="font-semibold text-white">Cloud session tokens (AWS / GCP / Azure).</strong> CLI-session auth modes delegate token refresh to the official AWS / gcloud / az CLI caches at <code class="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[13px] text-white">~/.aws/sso/cache/</code>, <code class="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[13px] text-white">~/.config/gcloud/</code>, and <code class="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[13px] text-white">~/.azure/</code>. Parleq stores no long-lived session tokens directly.</li>
           </ul>
         </div>
       </div>
 
-      <p class="mt-10 text-sm text-[color:var(--color-text-subtle)]">
+      <p class="mt-10 text-sm text-[#94a3b8]">
         Read the full enterprise-review packet in <a href={`${repoUrl}/blob/main/docs/SECURITY_REVIEW.md`} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">SECURITY_REVIEW.md</a>.
       </p>
     </div>
   </section>
 
+  <!-- Reveal-on-scroll + pipeline-stepper behavior. is:inline so it
+       runs immediately (it touches only this page's DOM, needs no
+       bundling, and must apply .reveal before first paint of the
+       below-the-fold sections). The reveal block is copied verbatim
+       from the homepage so the reduced-motion no-op ordering and the
+       same-frame fix for already-in-view elements stay identical. -->
+  <script is:inline>
+    document.addEventListener('DOMContentLoaded', () => {
+      // Reveal-on-scroll. If the visitor prefers reduced motion we do
+      // NOTHING — content stays fully visible, never gets .reveal. This
+      // ordering matters: applying .reveal first would hide content for
+      // a reduced-motion user.
+      if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        const targets = document.querySelectorAll('[data-reveal]');
+        const observer = new IntersectionObserver(
+          (entries, obs) => {
+            entries.forEach((entry) => {
+              if (entry.isIntersecting) {
+                entry.target.classList.add('reveal-visible');
+                obs.unobserve(entry.target); // once-only
+              }
+            });
+          },
+          { threshold: 0, rootMargin: '0px' }
+        );
+        // Hide only elements that start BELOW the viewport: anything
+        // already in view on load keeps both classes in the same frame
+        // (no one-frame blank flash); the observer's async first
+        // callback then no-ops on them via the once-only unobserve.
+        targets.forEach((el) => {
+          el.classList.add('reveal');
+          if (el.getBoundingClientRect().top < window.innerHeight) {
+            el.classList.add('reveal-visible');
+          }
+          observer.observe(el);
+        });
+      }
+
+      // Pipeline stepper. Progressive enhancement over the server-
+      // rendered stacked panels: hide all but one, mark the active nav
+      // anchor with aria-current and page between panels on click, wire
+      // each panel's prev/next pager, and keep the location.hash in sync
+      // (replaceState, no scroll jump). No-JS visitors keep the full
+      // stacked page untouched.
+      const stepper = document.getElementById('pipeline-stepper');
+      const navBoxes = stepper
+        ? Array.from(stepper.querySelectorAll('[data-stage-nav]'))
+        : [];
+      const panels = stepper
+        ? Array.from(stepper.querySelectorAll('[data-stage-panel]'))
+        : [];
+      if (stepper && navBoxes.length > 0 && navBoxes.length === panels.length) {
+        const N = panels.length;
+        const announce = document.getElementById('stepper-announce');
+        // Suppresses the announcement on the initial go() at load, so a
+        // plain page visit doesn't fire an unsolicited screen-reader read.
+        let initialized = false;
+
+        // Per-stage label "N Title" for the prev/next controls, pulled
+        // from each panel's serif number + heading so the script needs
+        // no duplicated copy.
+        const labels = panels.map((panel) => {
+          const num = panel.querySelector('.font-display.tabular-nums');
+          const title = panel.querySelector('h2');
+          const n = num ? num.textContent.trim() : '';
+          const t = title ? title.textContent.trim() : '';
+          return (n + ' ' + t).trim();
+        });
+        const slugs = panels.map((panel) => (panel.id || '').replace(/^stage-/, ''));
+
+        // The nav boxes stay native <a> elements pointing at the panel
+        // anchors — fully accessible as-is (Enter + click activate, the
+        // href stays in the a11y tree, aria-current marks the active
+        // one). We don't promote them to role="button" (that ARIA
+        // anti-pattern would mask the href and demand a hand-rolled
+        // Space contract). We only intercept the click to page in place
+        // instead of taking the native jump-to-anchor scroll.
+        navBoxes.forEach((box, i) => {
+          box.addEventListener('click', (e) => {
+            e.preventDefault();
+            go(i, true);
+          });
+        });
+
+        // Pager buttons live inside each panel; reveal the row (it ships
+        // hidden so no-JS readers don't see dead controls) and wire it.
+        panels.forEach((panel, i) => {
+          const pager = panel.querySelector('.stepper-pager');
+          if (pager) {
+            pager.classList.remove('hidden');
+            pager.classList.add('flex');
+          }
+          const prev = panel.querySelector('[data-stepper-prev]');
+          const next = panel.querySelector('[data-stepper-next]');
+          // Pass the click direction so go() can move focus into the
+          // newly-shown panel's matching pager button — the clicked
+          // button is about to be hidden (its panel hides), so without
+          // this, focus would fall back to <body> and lose the keyboard
+          // user's place.
+          if (prev) prev.addEventListener('click', () => go(i - 1, true, 'prev'));
+          if (next) next.addEventListener('click', () => go(i + 1, true, 'next'));
+        });
+
+        function go(i, updateHash, focusHint) {
+          // Clamp, don't wrap: a linear pipeline has dead ends at stage
+          // 1 and stage N, so the terminal pager buttons disable rather
+          // than loop. (The nav strip can still jump to any stage.)
+          const index = Math.max(0, Math.min(N - 1, i));
+          panels.forEach((panel, j) => {
+            if (j === index) {
+              panel.removeAttribute('hidden');
+            } else {
+              panel.setAttribute('hidden', '');
+            }
+          });
+          navBoxes.forEach((box, j) => {
+            if (j === index) {
+              // "step" is the semantic token for the current item in a
+              // step/stage sequence; CSS keys the active style off it.
+              box.setAttribute('aria-current', 'step');
+            } else {
+              box.removeAttribute('aria-current');
+            }
+          });
+          // Prev/next labels + disabled state for the active panel's
+          // pager. At a boundary the terminal button is disabled (its
+          // disabled: styling then applies) and keeps the current
+          // stage's label rather than pointing at a nonexistent step.
+          const active = panels[index];
+          const prevBtn = active.querySelector('[data-stepper-prev]');
+          const nextBtn = active.querySelector('[data-stepper-next]');
+          const prevLabel = active.querySelector('[data-stepper-prev-label]');
+          const nextLabel = active.querySelector('[data-stepper-next-label]');
+          const atStart = index === 0;
+          const atEnd = index === N - 1;
+          if (prevBtn) prevBtn.disabled = atStart;
+          if (nextBtn) nextBtn.disabled = atEnd;
+          if (prevLabel) prevLabel.textContent = labels[atStart ? index : index - 1];
+          if (nextLabel) nextLabel.textContent = labels[atEnd ? index : index + 1];
+
+          // Restore focus into the new panel for keyboard pager users.
+          // Prefer the button matching the direction just clicked; if it
+          // landed disabled (a boundary), fall back to the still-enabled
+          // sibling so focus never gets dropped onto <body>.
+          if (focusHint === 'prev' || focusHint === 'next') {
+            const wanted = focusHint === 'prev' ? prevBtn : nextBtn;
+            const sibling = focusHint === 'prev' ? nextBtn : prevBtn;
+            const target = wanted && !wanted.disabled ? wanted : sibling;
+            if (target && !target.disabled) target.focus();
+          }
+
+          if (updateHash && slugs[index]) {
+            // replaceState keeps the URL shareable without adding a
+            // history entry per click and without the scroll jump a
+            // raw hash assignment would trigger.
+            history.replaceState(null, '', '#stage-' + slugs[index]);
+          }
+
+          // Announce the now-visible stage to AT — but only on real
+          // swaps, not the initial load paint.
+          if (announce && initialized) {
+            announce.textContent = labels[index];
+          }
+        }
+
+        // Initial stage: honor a matching deep-link hash, else stage 1.
+        // Don't rewrite the hash on load (updateHash=false) so a plain
+        // /how-it-works visit keeps a clean URL.
+        const hash = (location.hash || '').replace(/^#/, '');
+        let initial = 0;
+        const hashIdx = slugs.indexOf(hash.replace(/^stage-/, ''));
+        if (hash.startsWith('stage-') && hashIdx !== -1) initial = hashIdx;
+        go(initial, false);
+        // From here on, swaps announce; the initial paint above did not.
+        initialized = true;
+      }
+    });
+  </script>
+
   <footer class="border-t border-[color:var(--color-border-subtle)]">
     <div class="mx-auto flex max-w-5xl flex-col items-start justify-between gap-4 px-6 py-10 text-sm text-[color:var(--color-text-subtle)] sm:flex-row sm:items-center">
       <div class="flex items-center gap-3">
-        <span class="font-display text-base font-semibold text-[color:var(--color-text)]">Parleq</span>
+        <span class="text-base font-semibold text-[color:var(--color-text)]">Parleq</span>
         <span>·</span>
         <span>Apache-2.0</span>
       </div>

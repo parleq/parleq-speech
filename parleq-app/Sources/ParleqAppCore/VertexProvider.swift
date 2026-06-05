@@ -38,6 +38,25 @@ public final class VertexProvider: LLMProvider, Sendable {
         /// JSON is stored in the macOS Keychain (see
         /// `KeychainStore.readVertexServiceAccountJSON`).
         case serviceAccount
+        /// Enterprise OIDC federation (Workforce Identity Federation).
+        /// The OAuth bearer is a federated access token minted from the
+        /// corporate OIDC ID token via `CachedExchange`. Every request
+        /// in this mode also carries `x-goog-user-project` so GCP bills
+        /// / quotas the federated call against the configured project
+        /// (workforce principals have no implicit project).
+        case oidcFederation
+        /// Native Google sign-in via the OIDC engine ("Sign in with
+        /// Google, dictate with Gemini" — no broker). The OAuth ACCESS
+        /// token from the OIDC sign-in (granted the
+        /// `https://www.googleapis.com/auth/cloud-platform` scope) is a
+        /// valid Vertex bearer DIRECTLY — exactly what gcloud ADC produces,
+        /// done in-app. No exchanger, no STS/workforce hop: the bearer is
+        /// `session.accessToken()`. GCP federation can't use Google as a
+        /// workforce IdP, so this sidesteps federation entirely. Like
+        /// `.oidcFederation`, every request carries `x-goog-user-project`
+        /// (user-credential quota attribution against the configured
+        /// project).
+        case googleOAuth
     }
 
     public let model: String
@@ -51,7 +70,34 @@ public final class VertexProvider: LLMProvider, Sendable {
     public let anthropicRegion: String
     public let authMode: AuthMode
     public let session: URLSession
-    private let tokenCache: TokenCache
+    /// gcloud-ADC / service-account token cache. nil in `.oidcFederation`
+    /// mode: there the `CachedExchange` IS the cache (it owns the federated
+    /// token's TTL, refresh-ahead, and single-flight), so layering a second
+    /// TokenCache on top would be a redundant cache that sign-out's
+    /// `CachedExchange.invalidate()` couldn't reach — letting a signed-out
+    /// federated token keep serving. We read through `oidcExchange` directly
+    /// every call instead (see `getAccessToken`).
+    private let tokenCache: TokenCache?
+    /// Enterprise OIDC federation: the per-request source of a
+    /// Workforce Identity Federation access token. Non-nil only in
+    /// `.oidcFederation` mode. When set, every Vertex REST call also
+    /// emits `x-goog-user-project`.
+    private let oidcExchange: CachedExchange<GCPWorkforceExchanger>?
+    /// Native Google sign-in session for `.googleOAuth` mode. Non-nil only
+    /// in that mode. The bearer is `session.accessToken()` — no exchanger,
+    /// no STS hop. The session owns the token cache (TTL + refresh-ahead +
+    /// single-flight), so sign-out's clear of the session is the single
+    /// source of truth for "this access is gone"; there's no second layer.
+    private let oidcSession: OIDCSession?
+
+    /// True when this provider must add `x-goog-user-project` to every
+    /// request. Federated workforce principals (`.oidcFederation`) carry no
+    /// implicit quota/billing project; native Google user credentials
+    /// (`.googleOAuth`) attribute quota/billing to the configured project
+    /// rather than the token's home project — both want the explicit header.
+    private var usesUserProjectHeader: Bool {
+        authMode == .oidcFederation || authMode == .googleOAuth
+    }
 
     public var providerName: String { "vertex" }
 
@@ -85,13 +131,17 @@ public final class VertexProvider: LLMProvider, Sendable {
         project: String,
         region: String,
         anthropicRegion: String = "us-east5",
-        authMode: AuthMode = .adc
+        authMode: AuthMode = .adc,
+        oidcExchange: CachedExchange<GCPWorkforceExchanger>? = nil,
+        oidcSession: OIDCSession? = nil
     ) {
         self.model = model
         self.project = project
         self.region = region
         self.anthropicRegion = anthropicRegion
         self.authMode = authMode
+        self.oidcExchange = oidcExchange
+        self.oidcSession = oidcSession
         self.session = URLSession.shared
         // Build the per-mode token-mint closure once and hand it to
         // the cache. The cache itself is mode-agnostic — it just
@@ -119,6 +169,73 @@ public final class VertexProvider: LLMProvider, Sendable {
                 let result = try await mintAccessTokenFromServiceAccount(key)
                 return (token: result.token, expiresIn: result.expiresIn)
             })
+        case .oidcFederation:
+            // No TokenCache: the CachedExchange IS the cache (TTL +
+            // refresh-ahead + single-flight all live there). `getAccessToken`
+            // reads through `oidcExchange.credentials()` every call so
+            // sign-out's `CachedExchange.invalidate()` is the single source of
+            // truth for "this federated access is gone" — no redundant layer
+            // to clear.
+            self.tokenCache = nil
+        case .googleOAuth:
+            // No TokenCache: the OIDCSession owns the access-token cache
+            // (TTL + refresh-ahead + single-flight all live in the session).
+            // `getAccessToken` reads through `session.accessToken()` every
+            // call, so a sign-out that clears the session's cached tokens is
+            // the single source of truth — no redundant layer to clear.
+            self.tokenCache = nil
+        }
+    }
+
+    /// Resolve the OAuth bearer for the current auth mode. ADC and
+    /// service-account read through the per-mode `TokenCache`; oidcFederation
+    /// reads through the `CachedExchange` directly (it owns the cache), so a
+    /// sign-out that invalidates the exchange takes effect on the next call.
+    private func getAccessToken() async throws -> String {
+        if authMode == .oidcFederation {
+            guard let exchange = oidcExchange else {
+                throw LLMError.missingCredentials(
+                    "Sign in to your organization in Settings \u{2192} Company Account."
+                )
+            }
+            return try await exchange.credentials().token
+        }
+        if authMode == .googleOAuth {
+            // The OAuth access token from the Google sign-in IS the Vertex
+            // bearer (cloud-platform scope) — no exchange. The session's
+            // accessToken() owns freshness + single-flight refresh and
+            // throws the OIDC taxonomy, which the catch in attemptStreaming
+            // maps to fail-closed missingCredentials with the Company
+            // Account copy.
+            guard let session = oidcSession else {
+                throw LLMError.missingCredentials(
+                    "Sign in to your organization in Settings \u{2192} Company Account."
+                )
+            }
+            return try await session.accessToken()
+        }
+        guard let tokenCache else {
+            throw LLMError.missingCredentials("No token cache for auth mode \(authMode).")
+        }
+        return try await tokenCache.getToken()
+    }
+
+    /// Invalidate the active token cache for the current auth mode. ADC /
+    /// service-account clear the `TokenCache`; oidcFederation invalidates the
+    /// `CachedExchange` (its only cache) so the next call re-exchanges.
+    private func invalidateToken() async {
+        if authMode == .oidcFederation {
+            await oidcExchange?.invalidate()
+        } else if authMode == .googleOAuth {
+            // The OIDCSession owns the access-token cache. Drop ONLY the cached
+            // access token so the retry's getAccessToken() forces a silent
+            // refresh that mints a fresh token — covering the rare case where a
+            // still-fresh-by-TTL token was revoked server-side and Vertex 401s
+            // it. This is a pure cache-drop: id_token / refresh token / epoch
+            // are untouched, so the session stays validly signed in.
+            await oidcSession?.invalidateAccessToken()
+        } else {
+            await tokenCache?.invalidate()
         }
     }
 
@@ -150,10 +267,10 @@ public final class VertexProvider: LLMProvider, Sendable {
             )
         } catch let firstError as LLMError where Self.isAuthFailure(firstError) {
             FileHandle.standardError.write(
-                "[parleq] vertex: auth failure on first attempt (\(firstError.description)); invalidating token cache and retrying once.\n"
+                "[parleq] vertex: auth failure on first attempt (\(firstError.logSafeDescription)); invalidating token cache and retrying once.\n"
                     .data(using: .utf8) ?? Data()
             )
-            await tokenCache.invalidate()
+            await invalidateToken()
             try await attemptStreaming(
                 systemPrompt: systemPrompt,
                 messages: messages,
@@ -173,14 +290,32 @@ public final class VertexProvider: LLMProvider, Sendable {
     ) async throws {
         let token: String
         do {
-            token = try await tokenCache.getToken()
+            token = try await getAccessToken()
         } catch {
+            // Enterprise OIDC federation fails closed with the Company
+            // Account pointer (and the taxonomy copy when the cache
+            // surfaced an OIDCAuthFailure), not a gcloud/SA hint.
+            // Differentiated copy surfaces via the Company Account doctor
+            // (hopStatus); the overlay banner shows the generic
+            // cleanupFailureHint pointer.
+            if authMode == .oidcFederation || authMode == .googleOAuth {
+                if let f = error as? OIDCAuthFailure {
+                    throw LLMError.missingCredentials(
+                        f.userCopy + " (Settings \u{2192} Company Account)"
+                    )
+                }
+                throw LLMError.missingCredentials(
+                    "Sign in to your organization in Settings \u{2192} Company Account."
+                )
+            }
             let hint: String
             switch authMode {
             case .adc:
                 hint = "Run `gcloud auth application-default login` and retry."
             case .serviceAccount:
                 hint = "Verify the service-account JSON in Settings → LLM is valid and the SA has Vertex AI User role on the configured project."
+            case .oidcFederation, .googleOAuth:
+                hint = ""   // handled above
             }
             throw LLMError.missingCredentials(
                 "Could not obtain a Vertex AI access token: \(error). \(hint)"
@@ -235,6 +370,14 @@ public final class VertexProvider: LLMProvider, Sendable {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        // Workforce Identity Federation principals carry no implicit
+        // quota/billing project, and native Google user credentials must
+        // attribute quota/billing to the configured project — so both the
+        // .oidcFederation and .googleOAuth modes name it explicitly. ADC and
+        // service-account principals already resolve a project.
+        if usesUserProjectHeader {
+            request.setValue(project, forHTTPHeaderField: "x-goog-user-project")
+        }
         request.timeoutInterval = 60
         do {
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -263,7 +406,7 @@ public final class VertexProvider: LLMProvider, Sendable {
             // still bubble up the original error so the user sees
             // the actual API response.
             if http.statusCode == 401 {
-                await tokenCache.invalidate()
+                await invalidateToken()
             }
             throw LLMError.badStatus(http.statusCode, String(snippet.prefix(400)))
         }
@@ -336,6 +479,12 @@ public final class VertexProvider: LLMProvider, Sendable {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        // See attemptGeminiStreaming: federated workforce principals and
+        // native Google user credentials both need the explicit
+        // quota/billing project header.
+        if usesUserProjectHeader {
+            request.setValue(project, forHTTPHeaderField: "x-goog-user-project")
+        }
         request.timeoutInterval = 60
         do {
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -360,7 +509,7 @@ public final class VertexProvider: LLMProvider, Sendable {
             }
             let snippet = String(data: buf, encoding: .utf8) ?? "<\(buf.count) bytes>"
             if http.statusCode == 401 {
-                await tokenCache.invalidate()
+                await invalidateToken()
             }
             throw LLMError.badStatus(http.statusCode, String(snippet.prefix(400)))
         }
@@ -558,6 +707,8 @@ public final class VertexProvider: LLMProvider, Sendable {
             return "Vertex rejected gcloud credentials for project `\(project)`. Re-run `gcloud auth application-default login`, confirm the principal has the `aiplatform.user` role, and check that `gcloud config get-value project` matches."
         case .serviceAccount:
             return "Vertex rejected the service-account credentials for project `\(project)`. Open Settings → LLM → Set Service Account JSON… (and confirm the service account has the `aiplatform.user` role in this project)."
+        case .oidcFederation, .googleOAuth:
+            return "Sign in to your organization in Settings → Company Account."
         }
     }
 

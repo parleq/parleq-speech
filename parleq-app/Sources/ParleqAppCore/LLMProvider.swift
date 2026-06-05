@@ -93,7 +93,14 @@ public enum LLMError: Error, CustomStringConvertible {
         case .missingAPIKey:
             return "GEMINI_API_KEY not set — set it in Settings → LLM (stored in macOS Keychain) or via the GEMINI_API_KEY environment variable"
         case .missingCredentials(let detail):
-            return "AWS credentials unavailable: \(detail)"
+            // Cloud-neutral: this case is thrown by both Bedrock (AWS) and the
+            // Vertex googleOAuth/oidcFederation paths (GCP), so the shared enum
+            // description must not say "AWS". Provider-specific recovery hints
+            // (e.g. Bedrock's `aws sso login`) live in the `detail` string each
+            // provider passes in, and stay cloud-specific there. NOTE: keep the
+            // word "credential" in here — BedrockProvider's catch matches the
+            // "credential" substring of this rendering to avoid double-wrapping.
+            return "credentials unavailable: \(detail)"
         case .badStatus(let code, let body):
             return "LLM HTTP \(code): \(body)"
         case .malformedResponse(let detail):

@@ -70,6 +70,19 @@ public enum KeychainStore {
     /// pastes it into Settings. Stored as a single opaque string.
     public static let openAIAPIKeyAccount = "openai-api-key"
 
+    /// Account name for the OIDC refresh token (enterprise federation).
+    /// The long-lived refresh token minted during corporate sign-in;
+    /// rotated tokens overwrite the prior value. Stored as a single
+    /// opaque string — never written to config.json or any plain file.
+    public static let oidcRefreshTokenAccount = "oidc-refresh-token"
+
+    /// Account name for the OIDC identity snapshot (enterprise
+    /// federation). A JSON-encoded `OIDCIdentity` (issuer, client id,
+    /// sub, email, name, obtainedAt) used for display/attribution only.
+    /// Stored in the Keychain — NOT config.json — so the email/name PII
+    /// never lands in a plaintext file.
+    public static let oidcIdentityAccount = "oidc-identity"
+
     // MARK: - Public API
 
     /// Store the user's Gemini API key. Replaces any prior value
@@ -252,6 +265,50 @@ public enum KeychainStore {
         readOpenAIAPIKey() != nil
     }
 
+    // MARK: - OIDC (enterprise federation)
+
+    @discardableResult
+    public static func setOIDCRefreshToken(_ token: String) -> Bool {
+        set(account: oidcRefreshTokenAccount, value: token)
+    }
+
+    @discardableResult
+    public static func removeOIDCRefreshToken() -> Bool {
+        delete(account: oidcRefreshTokenAccount)
+    }
+
+    /// Part of the uniform set/remove/has surface; not yet consumed —
+    /// the Company Account UI reads session state from OIDCSessionModel instead.
+    /// Reads the token to memory momentarily but does not expose it to callers.
+    public static var hasOIDCRefreshToken: Bool {
+        readOIDCRefreshToken() != nil
+    }
+
+    public static func readOIDCRefreshToken() -> String? {
+        read(account: oidcRefreshTokenAccount)
+    }
+
+    @discardableResult
+    public static func setOIDCIdentityJSON(_ json: String) -> Bool {
+        set(account: oidcIdentityAccount, value: json)
+    }
+
+    @discardableResult
+    public static func removeOIDCIdentityJSON() -> Bool {
+        delete(account: oidcIdentityAccount)
+    }
+
+    public static func readOIDCIdentityJSON() -> String? {
+        read(account: oidcIdentityAccount)
+    }
+
+    /// Part of the uniform set/remove/has surface; not yet consumed —
+    /// the Company Account UI reads session state from OIDCSessionModel instead.
+    /// Reads the identity JSON to memory momentarily but does not expose it to callers.
+    public static var hasOIDCIdentityJSON: Bool {
+        readOIDCIdentityJSON() != nil
+    }
+
     // MARK: - Internals
 
     private static func set(account: String, value: String) -> Bool {
@@ -322,5 +379,31 @@ public enum KeychainStore {
         let msg = SecCopyErrorMessageString(status, nil) as String? ?? "OSStatus \(status)"
         let line = "[parleq] keychain: \(operation) failed: \(msg)\n"
         FileHandle.standardError.write(line.data(using: .utf8) ?? Data())
+    }
+}
+
+/// KeychainStore-backed `OIDCTokenStore`. Identity is stored as JSON in
+/// the Keychain — NOT config.json — so the email/name PII never lands in
+/// a plain file. The refresh token is the long-lived federation secret;
+/// rotated tokens overwrite the prior value.
+public struct KeychainOIDCTokenStore: OIDCTokenStore {
+    public init() {}
+    public func loadRefreshToken() -> String? { KeychainStore.readOIDCRefreshToken() }
+    @discardableResult
+    public func saveRefreshToken(_ token: String) -> Bool { KeychainStore.setOIDCRefreshToken(token) }
+    public func loadIdentity() -> OIDCIdentity? {
+        guard let json = KeychainStore.readOIDCIdentityJSON(),
+              let data = json.data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(OIDCIdentity.self, from: data)
+    }
+    @discardableResult
+    public func saveIdentity(_ identity: OIDCIdentity) -> Bool {
+        guard let data = try? JSONEncoder().encode(identity),
+              let json = String(data: data, encoding: .utf8) else { return false }
+        return KeychainStore.setOIDCIdentityJSON(json)
+    }
+    public func clear() {
+        _ = KeychainStore.removeOIDCRefreshToken()
+        _ = KeychainStore.removeOIDCIdentityJSON()
     }
 }

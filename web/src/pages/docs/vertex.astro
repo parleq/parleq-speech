@@ -1,24 +1,12 @@
 ---
 import Layout from '../../layouts/Layout.astro';
-import Logo from '../../components/Logo.astro';
+import SiteHeader from '../../components/SiteHeader.astro';
 
 const repoUrl = 'https://github.com/parleq/parleq-speech';
 ---
 
 <Layout title="Vertex AI setup — Parleq" description="Set up Google Vertex AI as Parleq's cleanup provider. Two auth modes: gcloud ADC, or service-account JSON.">
-  <header class="mx-auto flex max-w-5xl items-center justify-between px-6 pt-8">
-    <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/'} class="inline-flex items-center">
-      <Logo height="36" />
-    </a>
-    <nav class="flex items-center gap-6 text-sm font-medium text-[color:var(--color-text-muted)]">
-      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/'} class="transition-colors hover:text-[color:var(--color-text)]">Home</a>
-      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/how-it-works/'} class="transition-colors hover:text-[color:var(--color-text)]">How it works</a>
-      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/'} class="text-[color:var(--color-text)]">Docs</a>
-      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/faq/'} class="transition-colors hover:text-[color:var(--color-text)]">FAQ</a>
-      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/about/'} class="transition-colors hover:text-[color:var(--color-text)]">About</a>
-      <a href={repoUrl} class="transition-colors hover:text-[color:var(--color-text)]">GitHub →</a>
-    </nav>
-  </header>
+  <SiteHeader active="docs" />
 
   <article class="mx-auto max-w-2xl px-6 pt-16 pb-24">
     <p class="text-sm">
@@ -224,7 +212,7 @@ gcloud auth application-default set-quota-project my-team-prod-1234`}</code></pr
   <footer class="border-t border-[color:var(--color-border-subtle)]">
     <div class="mx-auto flex max-w-5xl flex-col items-start justify-between gap-4 px-6 py-10 text-sm text-[color:var(--color-text-subtle)] sm:flex-row sm:items-center">
       <div class="flex items-center gap-3">
-        <span class="font-display text-base font-semibold text-[color:var(--color-text)]">Parleq</span>
+        <span class="text-base font-semibold text-[color:var(--color-text)]">Parleq</span>
         <span>·</span>
         <span>Apache-2.0</span>
       </div>

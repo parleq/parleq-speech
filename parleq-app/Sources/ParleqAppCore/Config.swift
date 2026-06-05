@@ -17,7 +17,26 @@
 //                    "provider": "gemini",
 //                    "model": "gemini-2.5-flash" },
 //     "aws":       { "region": "us-east-2",
-//                    "profile": "work" },
+//                    "profile": "work",
+//                    // Enterprise OIDC federation (omit-when-default):
+//                    "role_arn": "arn:aws:iam::1:role/Parleq",
+//                    "session_duration_seconds": 3600 },
+//     "vertex":    { "project": "my-proj", "region": "us-central1",
+//                    // Enterprise OIDC federation (omit-when-default):
+//                    "workforce_provider":
+//                      "locations/global/workforcePools/p/providers/v" },
+//     // Enterprise OIDC federation — shared corporate sign-in. The
+//     // whole section is omitted when every field is default; the AWS
+//     // leg (aws.role_arn + aws.auth_mode="oidc") and the GCP leg
+//     // (vertex.workforce_provider + vertex.auth_mode="oidcFederation")
+//     // both ride this single sign-in:
+//     "oidc":      { "issuer": "https://acme.okta.com",
+//                    "client_id": "0oa1",
+//                    "scopes": ["openid","profile","email","offline_access"],
+//                    "ephemeral_browser": false,
+//                    // generic-OP knobs (omit-when-default):
+//                    "redirect_uri": "parleq-auth://oidc/callback",
+//                    "extra_auth_params": {} },
 //     "paste":     { "trailing_space": true,
 //                    "no_trailing_space_apps": [
 //                      "com.googlecode.iterm2",
@@ -250,6 +269,52 @@ public struct Config: Sendable {
     /// a Microsoft Entra ID OAuth bearer via the user's `az login`
     /// session and sends it in `Authorization: Bearer <token>`.
     public var azureAuthMode: String
+
+    // MARK: - Enterprise OIDC federation (Company Account)
+    //
+    // A single corporate sign-in (ASWebAuthenticationSession against the
+    // org's OIDC IdP) that federates into the configured cloud provider:
+    // AWS via AssumeRoleWithWebIdentity, GCP via Workforce Identity. The
+    // fields below are all org-config strings safe to keep in
+    // ~/.parleq/config.json; the identity snapshot (name/email) and the
+    // refresh token stay Keychain-only and never touch this struct.
+
+    /// OIDC issuer URL (e.g. "https://acme.okta.com"). Empty when the
+    /// Company Account feature isn't configured. Drives OIDC discovery.
+    public var oidcIssuer: String
+    /// OIDC public client ID registered with the IdP for Parleq.
+    public var oidcClientID: String
+    /// Scopes requested at sign-in. Defaults include offline_access so a
+    /// refresh token is issued for silent re-authentication.
+    public var oidcScopes: [String]
+    /// When true, the sign-in web session uses an ephemeral browser
+    /// (no shared cookies / persistent session). Default false.
+    public var oidcEphemeralBrowser: Bool
+    /// OAuth redirect URI used in the authorization request and the
+    /// token-exchange `redirect_uri`. The browser callback scheme is
+    /// derived from this URL's scheme. Default the fixed custom scheme
+    /// `parleq-auth://oidc/callback`; generic OPs (e.g. a Google native
+    /// client) need their own reversed-client-ID scheme. Parse rejects a
+    /// value that doesn't parse as a URL with a non-empty scheme.
+    public var oidcRedirectURI: String
+    /// Extra query parameters appended to the authorization request (e.g.
+    /// `access_type=offline`, `prompt=consent` to force a refresh token on
+    /// every interactive sign-in). Reserved OIDC params are ignored. Default
+    /// empty.
+    public var oidcExtraAuthParams: [String: String]
+    /// AWS IAM role ARN assumed via AssumeRoleWithWebIdentity when
+    /// `awsAuthMode == "oidc"`. Empty disables the AWS federation leg.
+    public var awsRoleArn: String
+    /// Requested STS session duration in seconds for the federated AWS
+    /// credentials. Default 3600 (1 h). Parse clamps to STS's
+    /// 900...43200 (15 min … 12 h) window.
+    public var awsSessionDurationSeconds: Int
+    /// GCP Workforce Identity provider resource name
+    /// ("locations/global/workforcePools/<pool>/providers/<provider>")
+    /// used when `vertexAuthMode == "oidcFederation"`. Empty disables
+    /// the GCP federation leg.
+    public var vertexWorkforceProvider: String
+
     /// True after the user has finished (or explicitly skipped) the
     /// first-run setup wizard (#21 step 6). Drives whether the
     /// wizard auto-launches on app start. The user can re-run the
@@ -464,6 +529,15 @@ public struct Config: Sendable {
         azureDeployment: "",
         azureApiVersion: "2025-04-01-preview",
         azureAuthMode: "apiKey",
+        oidcIssuer: "",
+        oidcClientID: "",
+        oidcScopes: ["openid", "profile", "email", "offline_access"],
+        oidcEphemeralBrowser: false,
+        oidcRedirectURI: "parleq-auth://oidc/callback",
+        oidcExtraAuthParams: [:],
+        awsRoleArn: "",
+        awsSessionDurationSeconds: 3600,
+        vertexWorkforceProvider: "",
         wizardCompleted: false,
         trailingSpace: true,
         noTrailingSpaceAppBundleIDs: [],
@@ -489,6 +563,12 @@ public struct Config: Sendable {
         transformPresetsEnabled: true,
         managedKeys: []
     )
+
+    /// Alias for `default`. The built-in member name `default` is a Swift
+    /// keyword requiring backticks at the call site; `defaults` reads more
+    /// naturally in test code and matches the convention used by the
+    /// enterprise-OIDC test suite.
+    public static let defaults = Config.default
 
     public static func load() -> (config: Config, source: String) {
         let path = (NSHomeDirectory() as NSString).appendingPathComponent(".parleq/config.json")
@@ -687,7 +767,7 @@ public struct Config: Sendable {
         // uses bedrockApiKey auth exclusively and is covered by
         // staticApiKeysAllowed instead.
         if let rawBedrockAuthMode = ManagedConfig.managedString(forKey: "bedrockAuthMode") {
-            let recognized = ["sso", "static", "bedrockApiKey"]
+            let recognized = ["sso", "static", "bedrockApiKey", "oidc"]
             if recognized.contains(rawBedrockAuthMode) {
                 c.awsAuthMode = rawBedrockAuthMode
                 managedKeys.insert("bedrockAuthMode")
@@ -705,11 +785,14 @@ public struct Config: Sendable {
         // later if a deployment asks for it.
         //
         // vertexAuthMode (String) — symmetric with azureAuthMode + bedrockAuthMode.
-        // Recognized values: "adc" (default), "serviceAccount".
+        // Recognized values: "adc" (default), "serviceAccount",
+        // "oidcFederation" (Workforce Identity Federation), "googleOAuth"
+        // (native Google sign-in via the OIDC engine; the access token is a
+        // direct Vertex bearer — no exchanger/STS hop).
         // Unrecognized values rejected (key NOT added to
         // managedKeys) so a typo doesn't silently lock the user out.
         if let rawVertexAuthMode = ManagedConfig.managedString(forKey: "vertexAuthMode") {
-            let recognized = ["adc", "serviceAccount"]
+            let recognized = ["adc", "serviceAccount", "oidcFederation", "googleOAuth"]
             if recognized.contains(rawVertexAuthMode) {
                 c.vertexAuthMode = rawVertexAuthMode
                 managedKeys.insert("vertexAuthMode")
@@ -838,6 +921,79 @@ public struct Config: Sendable {
                 managedKeys.insert("azureDeployment")
             } else {
                 configLogStderr("[parleq] azureDeployment: rejected managed value — empty string is not a valid deployment name; treating as unmanaged")
+            }
+        }
+
+        // Enterprise OIDC federation — destination/identity pins. The
+        // issuer + client ID + role ARN + workforce provider are all
+        // org-config strings an admin pins fleet-wide; scopes is an
+        // array; ephemeral-browser is a Bool; session duration is an
+        // Int clamped to STS's 900...43200 window (mirrors the parse
+        // clamp). Each empty/invalid value is treated as unmanaged with
+        // a fail-open log, matching the other destination pins above.
+        if let raw = ManagedConfig.managedString(forKey: "oidcIssuer") {
+            if let validated = ManagedConfig.validateOIDCIssuer(raw) {
+                c.oidcIssuer = validated
+                managedKeys.insert("oidcIssuer")
+            } else {
+                configLogStderr("[parleq] oidcIssuer: rejected managed value — must be an https:// URL (or http:// loopback for dev); empty or non-HTTPS non-loopback values are not valid OIDC issuers; treating as unmanaged")
+            }
+        }
+        if let raw = ManagedConfig.managedString(forKey: "oidcClientID") {
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                c.oidcClientID = trimmed
+                managedKeys.insert("oidcClientID")
+            } else {
+                configLogStderr("[parleq] oidcClientID: rejected managed value — empty string is not a valid OIDC client ID; treating as unmanaged")
+            }
+        }
+        if let raw = ManagedConfig.managedStringArray(forKey: "oidcScopes") {
+            // managedStringArray already returns nil for an empty array,
+            // so a non-nil result here is a non-empty scope list.
+            c.oidcScopes = raw
+            managedKeys.insert("oidcScopes")
+        }
+        if let v = ManagedConfig.managedBool(forKey: "oidcEphemeralBrowserSession") {
+            c.oidcEphemeralBrowser = v
+            managedKeys.insert("oidcEphemeralBrowserSession")
+        }
+        if let raw = ManagedConfig.managedString(forKey: "oidcRedirectURI") {
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let scheme = URL(string: trimmed)?.scheme, !scheme.isEmpty {
+                c.oidcRedirectURI = trimmed
+                managedKeys.insert("oidcRedirectURI")
+            } else {
+                configLogStderr("[parleq] oidcRedirectURI: rejected managed value — not a URL with a scheme; treating as unmanaged")
+            }
+        }
+        if let dict = ManagedConfig.managedStringDict(forKey: "oidcExtraAuthParams") {
+            // managedStringDict returns nil for an empty/unusable dict, so a
+            // non-nil result here is a non-empty [String: String] of extra
+            // authorization-request params.
+            c.oidcExtraAuthParams = dict
+            managedKeys.insert("oidcExtraAuthParams")
+        }
+        if let raw = ManagedConfig.managedString(forKey: "awsRoleArn") {
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                c.awsRoleArn = trimmed
+                managedKeys.insert("awsRoleArn")
+            } else {
+                configLogStderr("[parleq] awsRoleArn: rejected managed value — empty string is not a valid IAM role ARN; treating as unmanaged")
+            }
+        }
+        if let v = ManagedConfig.managedInt(forKey: "awsSessionDurationSeconds") {
+            c.awsSessionDurationSeconds = min(max(v, 900), 43200)
+            managedKeys.insert("awsSessionDurationSeconds")
+        }
+        if let raw = ManagedConfig.managedString(forKey: "vertexWorkforceProvider") {
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                c.vertexWorkforceProvider = trimmed
+                managedKeys.insert("vertexWorkforceProvider")
+            } else {
+                configLogStderr("[parleq] vertexWorkforceProvider: rejected managed value — empty string is not a valid workforce provider resource name; treating as unmanaged")
             }
         }
 
@@ -1131,7 +1287,14 @@ public struct Config: Sendable {
                 c.awsProfile = t.isEmpty ? nil : t
             }
             if let v = aws["auth_mode"] as? String,
-               ["sso", "static", "bedrockApiKey"].contains(v) { c.awsAuthMode = v }
+               ["sso", "static", "bedrockApiKey", "oidc"].contains(v) { c.awsAuthMode = v }
+            // Enterprise OIDC federation — AWS leg.
+            if let v = aws["role_arn"] as? String {
+                c.awsRoleArn = v.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            if let v = aws["session_duration_seconds"] as? Int {
+                c.awsSessionDurationSeconds = min(max(v, 900), 43200)
+            }
         }
         if let vertex = parsed["vertex"] as? [String: Any] {
             if let v = vertex["project"] as? String {
@@ -1139,9 +1302,45 @@ public struct Config: Sendable {
             }
             if let v = vertex["region"] as? String, !v.isEmpty { c.vertexRegion = v }
             if let v = vertex["auth_mode"] as? String,
-               ["adc", "serviceAccount"].contains(v) { c.vertexAuthMode = v }
+               ["adc", "serviceAccount", "oidcFederation", "googleOAuth"].contains(v) { c.vertexAuthMode = v }
             if let v = vertex["anthropic_region"] as? String, !v.isEmpty {
                 c.vertexAnthropicRegion = v
+            }
+            // Enterprise OIDC federation — GCP leg.
+            if let v = vertex["workforce_provider"] as? String {
+                c.vertexWorkforceProvider = v.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+        // Enterprise OIDC federation — top-level "oidc" section (the
+        // shared corporate sign-in shared by the AWS + GCP federation legs).
+        if let oidc = parsed["oidc"] as? [String: Any] {
+            if let v = oidc["issuer"] as? String {
+                c.oidcIssuer = v.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            if let v = oidc["client_id"] as? String {
+                c.oidcClientID = v.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            if let v = oidc["scopes"] as? [String], !v.isEmpty { c.oidcScopes = v }
+            if let v = oidc["ephemeral_browser"] as? Bool { c.oidcEphemeralBrowser = v }
+            // redirect_uri must parse as a URL with a non-empty scheme — the
+            // callback scheme is derived from it (URL(string:)?.scheme), so a
+            // schemeless value would silently break browser interception.
+            // Reject (keep the default) with a count-only log.
+            if let v = oidc["redirect_uri"] as? String {
+                let trimmed = v.trimmingCharacters(in: .whitespacesAndNewlines)
+                if let scheme = URL(string: trimmed)?.scheme, !scheme.isEmpty {
+                    c.oidcRedirectURI = trimmed
+                } else {
+                    configLogStderr("[parleq] oidc.redirect_uri: rejected — value does not parse as a URL with a scheme; keeping default")
+                }
+            }
+            // extra_auth_params: a flat [String: String] of additional
+            // authorization-request query params. Non-String values are
+            // dropped element-wise; an all-default (empty) map is the default.
+            if let v = oidc["extra_auth_params"] as? [String: Any] {
+                var params: [String: String] = [:]
+                for (k, val) in v { if let s = val as? String { params[k] = s } }
+                c.oidcExtraAuthParams = params
             }
         }
         if let azure = parsed["azure"] as? [String: Any] {
@@ -1300,6 +1499,29 @@ public struct Config: Sendable {
         if let v = config.learnedCorrectionsMaxEntries { featuresDict["learned_corrections_max_entries"] = v }
         if let v = config.learnedCorrectionsRetentionHours { featuresDict["learned_corrections_retention_hours"] = v }
 
+        // Enterprise OIDC federation — assemble the aws/vertex sub-dicts
+        // with the OIDC fields appended only when non-default (omit-when-
+        // default house style). The base region/profile/auth-mode fields
+        // are always present, matching the prior literal shape.
+        var awsDict: [String: Any] = [
+            "region": config.awsRegion,
+            "profile": config.awsProfile ?? "",
+            "auth_mode": config.awsAuthMode,
+        ]
+        if !config.awsRoleArn.isEmpty { awsDict["role_arn"] = config.awsRoleArn }
+        if config.awsSessionDurationSeconds != Config.default.awsSessionDurationSeconds {
+            awsDict["session_duration_seconds"] = config.awsSessionDurationSeconds
+        }
+        var vertexDict: [String: Any] = [
+            "project": config.vertexProject,
+            "region": config.vertexRegion,
+            "auth_mode": config.vertexAuthMode,
+            "anthropic_region": config.vertexAnthropicRegion,
+        ]
+        if !config.vertexWorkforceProvider.isEmpty {
+            vertexDict["workforce_provider"] = config.vertexWorkforceProvider
+        }
+
         var dict: [String: Any] = [
             "hotkey": ["binding": config.hotkeyBinding],
             "ui": [
@@ -1316,13 +1538,8 @@ public struct Config: Sendable {
             ],
             "asr": ["mode": config.asrMode, "endpoint": config.asrEndpoint],
             "llm": ["mode": config.llmMode, "provider": config.llmProvider, "model": config.llmModel],
-            "aws": ["region": config.awsRegion, "profile": config.awsProfile ?? "", "auth_mode": config.awsAuthMode],
-            "vertex": [
-                "project": config.vertexProject,
-                "region": config.vertexRegion,
-                "auth_mode": config.vertexAuthMode,
-                "anthropic_region": config.vertexAnthropicRegion,
-            ],
+            "aws": awsDict,
+            "vertex": vertexDict,
             "azure": [
                 "resource": config.azureResource,
                 "deployment": config.azureDeployment,
@@ -1358,6 +1575,31 @@ public struct Config: Sendable {
         if !config.presetAppDefaults.isEmpty {
             dict["preset_app_defaults"] = config.presetAppDefaults
         }
+        // Enterprise OIDC federation — emit the top-level "oidc" section
+        // only when at least one of its fields is non-default. `scopes` is
+        // itself omitted when it equals the default list, matching the
+        // omit-when-default house style used throughout this serializer.
+        let scopesAreDefault = config.oidcScopes == Config.default.oidcScopes
+        let redirectURIIsDefault = config.oidcRedirectURI == Config.default.oidcRedirectURI
+        let extraAuthParamsAreDefault = config.oidcExtraAuthParams.isEmpty
+        let oidcIsDefault = config.oidcIssuer.isEmpty
+            && config.oidcClientID.isEmpty
+            && scopesAreDefault
+            && config.oidcEphemeralBrowser == Config.default.oidcEphemeralBrowser
+            && redirectURIIsDefault
+            && extraAuthParamsAreDefault
+        if !oidcIsDefault {
+            var oidcDict: [String: Any] = [:]
+            if !config.oidcIssuer.isEmpty { oidcDict["issuer"] = config.oidcIssuer }
+            if !config.oidcClientID.isEmpty { oidcDict["client_id"] = config.oidcClientID }
+            if !scopesAreDefault { oidcDict["scopes"] = config.oidcScopes }
+            if config.oidcEphemeralBrowser != Config.default.oidcEphemeralBrowser {
+                oidcDict["ephemeral_browser"] = config.oidcEphemeralBrowser
+            }
+            if !redirectURIIsDefault { oidcDict["redirect_uri"] = config.oidcRedirectURI }
+            if !extraAuthParamsAreDefault { oidcDict["extra_auth_params"] = config.oidcExtraAuthParams }
+            dict["oidc"] = oidcDict
+        }
         return dict
     }
 
@@ -1392,6 +1634,25 @@ public struct Config: Sendable {
             }
             return dict
         }()
+
+        // The managed-key preservation/merge is pure (no disk I/O), so it
+        // lives in `mergeForSave(_:existing:)` where tests can drive it with a
+        // synthetic existing dict — following the reconcileDictionary
+        // precedent of extracting the testable core out of the I/O wrapper.
+        let dict = mergeForSave(config, existing: existingDict)
+        let data = try JSONSerialization.data(
+            withJSONObject: dict, options: [.prettyPrinted, .sortedKeys]
+        )
+        try data.write(to: URL(fileURLWithPath: path), options: .atomic)
+    }
+
+    /// Pure merge step of `save()`: given the in-memory `config` and the
+    /// existing on-disk dict, produce the dict to serialize — applying MDM
+    /// managed-key preservation (so removing an MDM profile restores the
+    /// user's pre-MDM choice) and the OIDC-federation omit-when-default /
+    /// never-materialize rules. No disk I/O; `save()` reads/writes, this
+    /// transforms. Exposed for tests.
+    static func mergeForSave(_ config: Config, existing existingDict: [String: Any]) -> [String: Any] {
         let existingLLM = (existingDict["llm"] as? [String: Any]) ?? [:]
         let existingContextModel = (existingDict["context_model"] as? [String: Any]) ?? [:]
 
@@ -1412,17 +1673,32 @@ public struct Config: Sendable {
         let llmProviderToWrite: String = providerPinned
             ? ((existingLLM["provider"] as? String) ?? config.llmProvider)
             : config.llmProvider
-        // Model preservation logic:
-        // - modelPinned → preserve on-disk (user can't change anyway).
-        // - providerPinned + model totally unmanaged → preserve on-disk
-        //   (pair-as-unit; user has no agency over model and the
-        //   in-memory value is a runtime auto-snap, not their choice).
-        // - providerPinned + model has ALLOWLIST → write user's choice
-        //   (user actively picks within the allowed set; that choice
-        //   must persist). This is the case I missed initially —
-        //   under provider pin + model allowlist, my preservation was
-        //   silently clobbering the user's picker choice.
-        let preserveModelOnDisk = modelPinned || (providerPinned && !modelAllowlist)
+        // Model preservation logic — three cases:
+        // (a) modelPinned → always preserve on-disk (user can't change
+        //     it anyway; writing the effective MDM value would clobber
+        //     their pre-MDM fallback).
+        // (b) providerPinned + model unmanaged + on-disk model is
+        //     FOREIGN to the pinned provider (e.g. an openai model under
+        //     a vertex pin) → preserve it. That foreign value is the
+        //     user's pre-MDM fallback for some OTHER provider; the
+        //     in-memory model is just a runtime auto-snap into the
+        //     pinned world. Preserving it means removing the profile
+        //     restores their original choice.
+        // (c) providerPinned + model unmanaged + on-disk model is
+        //     already CANONICAL for the pinned provider → the user is
+        //     picking within the pinned world (e.g. flash → flash-lite
+        //     under a vertex pin). WRITE the in-memory choice so it
+        //     persists across restarts. (allowlist also lands here:
+        //     user actively picks within the allowed set.)
+        let onDiskModel = existingLLM["model"] as? String
+        // Empty-string guard mirrors the context tier: a degenerate ""
+        // on-disk model is not a foreign fallback worth preserving —
+        // preserving it would write "" (non-nil, so the ?? never fires).
+        let onDiskModelForeign = onDiskModel.map {
+            !$0.isEmpty && !ModelCatalog.isCanonical(provider: llmProviderToWrite, model: $0)
+        } ?? false
+        let preserveModelOnDisk = modelPinned
+            || (providerPinned && !modelAllowlist && onDiskModelForeign)
         let llmModelToWrite: String = preserveModelOnDisk
             ? ((existingLLM["model"] as? String) ?? config.llmModel)
             : config.llmModel
@@ -1561,6 +1837,60 @@ public struct Config: Sendable {
             ? ((existingAzure["deployment"] as? String) ?? config.azureDeployment)
             : config.azureDeployment
 
+        // Enterprise OIDC federation preservation. Each of the seven
+        // org-config fields can be MDM-pinned and is OMIT-WHEN-DEFAULT in
+        // the JSON. The preservation rule differs from azureResource et al.
+        // above precisely BECAUSE these fields are omit-when-default:
+        //
+        //  - PINNED + present on disk  → preserve the existing on-disk value
+        //    (removing the MDM profile later restores the user's pre-MDM
+        //    choice).
+        //  - PINNED + ABSENT from disk → write NOTHING. Falling back to the
+        //    effective managed value (the old `?? config.X`) would
+        //    materialize the org's pinned value into ~/.parleq/config.json,
+        //    where it would SURVIVE MDM-profile removal — leaking org config
+        //    onto the user's disk. Absent-on-disk must stay absent.
+        //  - UNPINNED → the effective in-memory value, still subject to the
+        //    omit-when-default check at the emission sites below.
+        //
+        // So each computed value is an Optional<…> whose `nil` means "omit
+        // this key entirely". The MDM key names differ from the JSON field
+        // names where the plan dictates (oidcEphemeralBrowserSession ↔
+        // ephemeral_browser). `preservedOrEffective` encodes the rule once.
+        let existingOIDC = (existingDict["oidc"] as? [String: Any]) ?? [:]
+        func preservedOrEffective<T>(_ key: String, _ onDisk: T?, _ effective: T) -> T? {
+            // Pinned: keep only an actually-present on-disk value (nil → omit).
+            // Unpinned: the effective value (emission site applies omit-when-default).
+            config.managedKeys.contains(key) ? onDisk : effective
+        }
+        let oidcIssuerToWrite = preservedOrEffective(
+            "oidcIssuer", existingOIDC["issuer"] as? String, config.oidcIssuer)
+        let oidcClientIDToWrite = preservedOrEffective(
+            "oidcClientID", existingOIDC["client_id"] as? String, config.oidcClientID)
+        let oidcScopesToWrite = preservedOrEffective(
+            "oidcScopes", existingOIDC["scopes"] as? [String], config.oidcScopes)
+        let oidcEphemeralToWrite = preservedOrEffective(
+            "oidcEphemeralBrowserSession", existingOIDC["ephemeral_browser"] as? Bool,
+            config.oidcEphemeralBrowser)
+        let oidcRedirectURIToWrite = preservedOrEffective(
+            "oidcRedirectURI", existingOIDC["redirect_uri"] as? String, config.oidcRedirectURI)
+        // extra_auth_params is [String: String] on disk; cast through
+        // [String: Any] (JSONSerialization's bridged shape) then narrow,
+        // mirroring how oidcScopes casts its [String]. nil on-disk → omit.
+        let oidcExtraAuthParamsToWrite: [String: String]? = preservedOrEffective(
+            "oidcExtraAuthParams",
+            (existingOIDC["extra_auth_params"] as? [String: Any])
+                .map { $0.compactMapValues { $0 as? String } },
+            config.oidcExtraAuthParams)
+        let awsRoleArnToWrite = preservedOrEffective(
+            "awsRoleArn", existingAWS["role_arn"] as? String, config.awsRoleArn)
+        let awsSessionDurationToWrite = preservedOrEffective(
+            "awsSessionDurationSeconds", existingAWS["session_duration_seconds"] as? Int,
+            config.awsSessionDurationSeconds)
+        let vertexWorkforceProviderToWrite = preservedOrEffective(
+            "vertexWorkforceProvider", existingVertex["workforce_provider"] as? String,
+            config.vertexWorkforceProvider)
+
         // Start from the single-source-of-truth base serialization, then
         // apply save()'s extra semantics on top: MDM managed-key
         // preservation and the context_model CTX-pinning logic.
@@ -1578,7 +1908,7 @@ public struct Config: Sendable {
             "provider": llmProviderToWrite,
             "model": llmModelToWrite,
         ]
-        dict["aws"] = [
+        var awsToWrite: [String: Any] = [
             "region": awsRegionToWrite,
             "profile": awsProfileToWrite,
             // Phase 5: when bedrockAuthMode is managed, preserve the
@@ -1589,12 +1919,28 @@ public struct Config: Sendable {
                 ? ((existingAWS["auth_mode"] as? String) ?? config.awsAuthMode)
                 : config.awsAuthMode,
         ]
-        dict["vertex"] = [
+        // Enterprise OIDC federation — AWS leg fields, omit-when-default.
+        // A nil *ToWrite means "pinned but absent on disk" → omit entirely
+        // (don't materialize the org's managed value onto disk).
+        if let roleArn = awsRoleArnToWrite, !roleArn.isEmpty {
+            awsToWrite["role_arn"] = roleArn
+        }
+        if let dur = awsSessionDurationToWrite, dur != Config.default.awsSessionDurationSeconds {
+            awsToWrite["session_duration_seconds"] = dur
+        }
+        dict["aws"] = awsToWrite
+        var vertexToWrite: [String: Any] = [
             "project": vertexProjectToWrite,
             "region": vertexRegionToWrite,
             "auth_mode": vertexAuthModeToWrite,
             "anthropic_region": vertexAnthropicRegionToWrite,
         ]
+        // Enterprise OIDC federation — GCP leg field, omit-when-default.
+        // nil (pinned but absent on disk) → omit, never materialize.
+        if let wp = vertexWorkforceProviderToWrite, !wp.isEmpty {
+            vertexToWrite["workforce_provider"] = wp
+        }
+        dict["vertex"] = vertexToWrite
         dict["azure"] = [
             "resource": azureResourceToWrite,
             "deployment": azureDeploymentToWrite,
@@ -1609,6 +1955,39 @@ public struct Config: Sendable {
         // Patch features with the MDM-aware featuresDict computed above.
         dict["features"] = featuresDict
 
+        // Enterprise OIDC federation — patch the top-level "oidc" section
+        // with the MDM-preserved issuer/client_id/scopes/ephemeral values
+        // computed above (serializeToDictionary emitted the effective
+        // values; this overwrites them so a pinned field round-trips the
+        // user's on-disk value). Each *ToWrite is optional: nil means
+        // "pinned but absent on disk" → omit the key (never materialize the
+        // managed value). Omit-when-default also applies to non-nil values,
+        // so a default config writes no "oidc" key.
+        var oidcToWrite: [String: Any] = [:]
+        if let issuer = oidcIssuerToWrite, !issuer.isEmpty {
+            oidcToWrite["issuer"] = issuer
+        }
+        if let clientID = oidcClientIDToWrite, !clientID.isEmpty {
+            oidcToWrite["client_id"] = clientID
+        }
+        if let scopes = oidcScopesToWrite, scopes != Config.default.oidcScopes {
+            oidcToWrite["scopes"] = scopes
+        }
+        if let ephemeral = oidcEphemeralToWrite, ephemeral != Config.default.oidcEphemeralBrowser {
+            oidcToWrite["ephemeral_browser"] = ephemeral
+        }
+        if let redirectURI = oidcRedirectURIToWrite, redirectURI != Config.default.oidcRedirectURI {
+            oidcToWrite["redirect_uri"] = redirectURI
+        }
+        if let extraParams = oidcExtraAuthParamsToWrite, !extraParams.isEmpty {
+            oidcToWrite["extra_auth_params"] = extraParams
+        }
+        if oidcToWrite.isEmpty {
+            dict.removeValue(forKey: "oidc")
+        } else {
+            dict["oidc"] = oidcToWrite
+        }
+
         // Patch context_model: preserve on-disk when context tier is
         // PINNED (single value forced). Under allowlist the user can
         // pick among allowed values so the chosen value must persist.
@@ -1622,12 +2001,21 @@ public struct Config: Sendable {
             let provider = ctxProviderPinned && !existingProvider.isEmpty
                 ? existingProvider
                 : (config.contextModel?.provider ?? "")
-            // Model preservation: pinned → preserve. Provider pinned
-            // + model totally unmanaged → preserve (pair-as-unit).
-            // Provider pinned + model allowlist → write user's
-            // current choice (allowlist lets user pick within set).
+            // Model preservation — three cases (mirrors the cleanup
+            // tier above):
+            // (a) ctxModelPinned → always preserve (user can't change).
+            // (b) provider pinned + model unmanaged + on-disk model
+            //     FOREIGN to the pinned context provider → preserve it
+            //     (pre-MDM fallback for another provider; restored when
+            //     the profile is removed).
+            // (c) provider pinned + model unmanaged + on-disk model
+            //     already CANONICAL for the pinned provider → user is
+            //     picking within the pinned world: write the in-memory
+            //     choice so it persists. (allowlist lands here too.)
+            let ctxOnDiskModelForeign = !existingModel.isEmpty
+                && !ModelCatalog.isCanonical(provider: provider, model: existingModel)
             let preserveModel = ctxModelPinned
-                || (ctxProviderPinned && !ctxModelAllowlist)
+                || (ctxProviderPinned && !ctxModelAllowlist && ctxOnDiskModelForeign)
             let model = preserveModel && !existingModel.isEmpty
                 ? existingModel
                 : (config.contextModel?.model ?? "")
@@ -1640,10 +2028,7 @@ public struct Config: Sendable {
         // (No else branch needed: dict comes fresh from
         // serializeToDictionary, which omits context_model when nil —
         // the key can't be present outside the pinned branch above.)
-        let data = try JSONSerialization.data(
-            withJSONObject: dict, options: [.prettyPrinted, .sortedKeys]
-        )
-        try data.write(to: URL(fileURLWithPath: path), options: .atomic)
+        return dict
     }
 }
 

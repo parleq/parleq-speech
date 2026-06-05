@@ -75,6 +75,13 @@ extension Notification.Name {
     /// the stale `false` back on its next save, silently re-disabling the
     /// feature. The app view observes this and syncs the single field.
     public static let parleqLearnFeatureEnabledExternally = Notification.Name("ParleqLearnFeatureEnabledExternally")
+
+    /// Posted by the AWS/Vertex cleanup cards' "Open Company Account"
+    /// button (the corporate-sign-in auth modes) when the user isn't
+    /// signed in yet. The app shell observes it and selects the
+    /// `.companyAccount` settings section so the user lands on the
+    /// sign-in surface. Carries no payload.
+    public static let parleqOpenCompanyAccount = Notification.Name("ParleqOpenCompanyAccount")
 }
 
 /// Controller that owns the wizard NSWindow + SwiftUI hosting.
@@ -169,6 +176,47 @@ private final class WizardModel: ObservableObject {
     @Published var pendingVertexServiceAccountJSON = ""
     @Published var pendingAwsRegion = "us-east-2"
     @Published var pendingAwsProfile = ""
+    /// "sso" (default) or "oidc" (corporate sign-in / federation).
+    /// Static-credential + Bedrock-API-key modes still live only in
+    /// Settings; the wizard offers the AWS CLI session path and the
+    /// federated corporate-sign-in path.
+    @Published var pendingAwsAuthMode = "sso"
+    /// IAM role ARN federated into when pendingAwsAuthMode == "oidc".
+    @Published var pendingAwsRoleArn = ""
+    /// "adc"/"serviceAccount"/"oidcFederation" — extends the Vertex
+    /// auth modes with corporate sign-in (Workforce Identity Federation).
+    /// GCP workforce provider resource name for "oidcFederation".
+    @Published var pendingVertexWorkforceProvider = ""
+
+    // MARK: OIDC corporate sign-in (shared across providers)
+
+    /// OIDC issuer + client ID. The wizard may be the FIRST surface where
+    /// these are configured, so they're collected here when a corporate
+    /// sign-in mode is picked. Prefilled from the loaded config (so a
+    /// re-run, or an MDM-pinned org, shows existing values) and disabled
+    /// when MDM-pinned. The actual sign-in happens after relaunch under
+    /// Company Account — the wizard only writes config.
+    @Published var pendingOidcIssuer = ""
+    @Published var pendingOidcClientID = ""
+    /// MDM-pinned key set snapshotted at init so the wizard renders
+    /// pinned OIDC fields read-only with the org note.
+    let managedKeys: Set<String>
+
+    init() {
+        let (config, _) = Config.load()
+        self.managedKeys = config.managedKeys
+        self.pendingOidcIssuer = config.oidcIssuer
+        self.pendingOidcClientID = config.oidcClientID
+        self.pendingAwsRoleArn = config.awsRoleArn
+        self.pendingVertexWorkforceProvider = config.vertexWorkforceProvider
+        // Seed auth-mode pickers from the persisted config so a wizard
+        // re-run can't silently revert federation modes back to the
+        // hard-coded defaults. Allowlist guards against unknown values.
+        self.pendingAwsAuthMode = ["sso", "oidc"].contains(config.awsAuthMode)
+            ? config.awsAuthMode : "sso"
+        self.pendingVertexAuthMode = ["adc", "serviceAccount", "oidcFederation", "googleOAuth"].contains(config.vertexAuthMode)
+            ? config.vertexAuthMode : "adc"
+    }
 
     // MARK: Advanced step state
 
@@ -211,20 +259,34 @@ private final class WizardModel: ObservableObject {
             c.vertexProject = pendingVertexProject.trimmingCharacters(in: .whitespacesAndNewlines)
             c.vertexRegion = pendingVertexRegion.trimmingCharacters(in: .whitespacesAndNewlines)
             if c.vertexRegion.isEmpty { c.vertexRegion = "us-central1" }
-            c.vertexAuthMode = ["adc", "serviceAccount"].contains(pendingVertexAuthMode)
+            c.vertexAuthMode = ["adc", "serviceAccount", "oidcFederation", "googleOAuth"].contains(pendingVertexAuthMode)
                 ? pendingVertexAuthMode : "adc"
+            if pendingVertexAuthMode == "oidcFederation" {
+                applyWizardOIDC(&c)
+                c.vertexWorkforceProvider = pendingVertexWorkforceProvider
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+            } else if pendingVertexAuthMode == "googleOAuth" {
+                // No workforce provider: the Google sign-in's access token is
+                // the Vertex bearer directly. Seed only the shared OIDC config
+                // (issuer/client ID/scopes/extra params).
+                applyWizardOIDC(&c)
+            }
         case "bedrock":
             c.llmModel = "openai.gpt-oss-120b-1:0"
             c.awsRegion = pendingAwsRegion.trimmingCharacters(in: .whitespacesAndNewlines)
             if c.awsRegion.isEmpty { c.awsRegion = "us-east-2" }
             let trimmed = pendingAwsProfile.trimmingCharacters(in: .whitespacesAndNewlines)
             c.awsProfile = trimmed.isEmpty ? nil : trimmed
-            // Wizard hardcodes Bedrock to SSO. Bedrock API keys
-            // (Bearer-token path) and static IAM creds need
-            // explicit secret-paste sheets that don't fit the
-            // wizard's flow well — those live in the Settings
-            // window. New users get the SSO path here.
-            c.awsAuthMode = "sso"
+            // The wizard offers two Bedrock auth paths: the AWS CLI
+            // session (SSO) path for new individual users, and the
+            // federated corporate-sign-in (OIDC) path for enterprise.
+            // Static IAM creds + Bedrock API keys need secret-paste
+            // sheets that live in the Settings window.
+            c.awsAuthMode = ["sso", "oidc"].contains(pendingAwsAuthMode) ? pendingAwsAuthMode : "sso"
+            if pendingAwsAuthMode == "oidc" {
+                applyWizardOIDC(&c)
+                c.awsRoleArn = pendingAwsRoleArn.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
         case "azure":
             c.llmModel = "gpt-4o-mini"
             c.azureResource = pendingAzureResource.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -284,6 +346,20 @@ private final class WizardModel: ObservableObject {
         pendingGeminiKey = ""
         pendingAzureKey = ""
         pendingVertexServiceAccountJSON = ""
+    }
+
+    /// Write the OIDC issuer + client ID collected on a corporate-sign-in
+    /// card, unless they're MDM-pinned (in which case Config.save() would
+    /// preserve the on-disk value anyway, but we skip writing to avoid any
+    /// churn). No tokens or identity are involved — the actual sign-in
+    /// happens after relaunch under Company Account.
+    private func applyWizardOIDC(_ c: inout Config) {
+        if !managedKeys.contains("oidcIssuer") {
+            c.oidcIssuer = pendingOidcIssuer.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        if !managedKeys.contains("oidcClientID") {
+            c.oidcClientID = pendingOidcClientID.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
     }
 }
 
@@ -441,6 +517,17 @@ private struct SetupWizardView: View {
         return "Continue"
     }
 
+    /// Issuer + client ID are both present (or MDM-pinned). Gates the
+    /// corporate-sign-in wizard cards — without them the federation can't
+    /// be constructed at the next launch.
+    private var wizardOIDCConfigComplete: Bool {
+        let issuerOK = model.managedKeys.contains("oidcIssuer")
+            || !model.pendingOidcIssuer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let clientOK = model.managedKeys.contains("oidcClientID")
+            || !model.pendingOidcClientID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return issuerOK && clientOK
+    }
+
     private var canAdvance: Bool {
         switch model.step {
         case .welcome: return true
@@ -469,7 +556,28 @@ private struct SetupWizardView: View {
                         .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     return projectOK && jsonOK
                 }
+                if model.pendingVertexAuthMode == "oidcFederation" {
+                    let workforceOK = model.managedKeys.contains("vertexWorkforceProvider")
+                        || !model.pendingVertexWorkforceProvider
+                            .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    return projectOK && workforceOK && wizardOIDCConfigComplete
+                }
+                if model.pendingVertexAuthMode == "googleOAuth" {
+                    // Native Google sign-in: needs issuer + client ID (the
+                    // shared OIDC config) and a project — but NO workforce
+                    // provider (no federation hop; the access token is the
+                    // Vertex bearer directly).
+                    return projectOK && wizardOIDCConfigComplete
+                }
                 return projectOK
+            case "bedrock":
+                if model.pendingAwsAuthMode == "oidc" {
+                    let roleOK = model.managedKeys.contains("awsRoleArn")
+                        || !model.pendingAwsRoleArn
+                            .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    return roleOK && wizardOIDCConfigComplete
+                }
+                return true
             case "azure":
                 return !model.pendingAzureResource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     && !model.pendingAzureDeployment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -717,13 +825,12 @@ private struct ConfigureProviderStep: View {
 
     private var bedrockPanel: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Sign in via the AWS CLI (one time): `aws configure sso` then `aws sso login --profile <name>`. Make sure you've enabled Bedrock model access in the AWS console for the region you're using.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            Link("Bedrock setup walkthrough →",
-                 destination: URL(string: "https://parleq.app/docs/bedrock/")!)
-                .font(.callout)
+            Picker("Auth mode", selection: $model.pendingAwsAuthMode) {
+                Text("AWS CLI session").tag("sso")
+                Text("Corporate sign-in").tag("oidc")
+            }
+            .pickerStyle(.segmented)
+
             HStack {
                 Text("Region:")
                     .frame(width: 70, alignment: .trailing)
@@ -731,17 +838,44 @@ private struct ConfigureProviderStep: View {
                     .textFieldStyle(.roundedBorder)
                     .frame(maxWidth: 200)
             }
-            HStack {
-                Text("Profile:")
-                    .frame(width: 70, alignment: .trailing)
-                TextField("(optional, e.g. work)", text: $model.pendingAwsProfile)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(maxWidth: 280)
+
+            if model.pendingAwsAuthMode == "oidc" {
+                bedrockOIDCFields
+            } else {
+                Text("Sign in via the AWS CLI (one time): `aws configure sso` then `aws sso login --profile <name>`. Make sure you've enabled Bedrock model access in the AWS console for the region you're using.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Link("Bedrock setup walkthrough →",
+                     destination: URL(string: "https://parleq.app/docs/bedrock/")!)
+                    .font(.callout)
+                HStack {
+                    Text("Profile:")
+                        .frame(width: 70, alignment: .trailing)
+                    TextField("(optional, e.g. work)", text: $model.pendingAwsProfile)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(maxWidth: 280)
+                }
+                Text("Static-credential mode (paste access keys directly) is available in Settings after setup. The AWS CLI session path is the recommended starting point.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            Text("Static-credential mode (paste access keys directly) is available in Settings after setup. The AWS CLI session path is the recommended starting point.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// Corporate-sign-in (OIDC) fields for the Bedrock wizard card:
+    /// the shared issuer/client-ID config plus the IAM role ARN, then
+    /// the honest restart-then-sign-in explainer.
+    private var bedrockOIDCFields: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            wizardOIDCConfigFields
+            wizardLabeledField(label: "Role ARN:",
+                               placeholder: "arn:aws:iam::123456789012:role/parleq-bedrock",
+                               text: $model.pendingAwsRoleArn,
+                               maxWidth: 380,
+                               pinnedKey: "awsRoleArn")
+            corporateSignInExplainer
         }
     }
 
@@ -750,10 +884,15 @@ private struct ConfigureProviderStep: View {
             Picker("Auth mode", selection: $model.pendingVertexAuthMode) {
                 Text("gcloud (ADC)").tag("adc")
                 Text("Service account JSON").tag("serviceAccount")
+                Text("Corporate sign-in").tag("oidcFederation")
+                Text("Google account (OAuth)").tag("googleOAuth")
             }
-            .pickerStyle(.segmented)
 
-            if model.pendingVertexAuthMode == "serviceAccount" {
+            if model.pendingVertexAuthMode == "oidcFederation" {
+                vertexOIDCFields
+            } else if model.pendingVertexAuthMode == "googleOAuth" {
+                vertexGoogleOAuthFields
+            } else if model.pendingVertexAuthMode == "serviceAccount" {
                 Text("Paste the JSON key from GCP IAM → Service Accounts → your SA → Keys → Add Key → JSON. The SA needs the `Vertex AI User` role on this project. Stored in the macOS Keychain.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
@@ -807,6 +946,100 @@ private struct ConfigureProviderStep: View {
                         .frame(height: 120)
                         .border(Color.secondary.opacity(0.3))
                 }
+            }
+        }
+    }
+
+    /// Corporate-sign-in (OIDC) fields for the Vertex wizard card: the
+    /// shared issuer/client-ID config plus the GCP workforce provider,
+    /// then the honest restart-then-sign-in explainer. Project + region
+    /// are still collected by the unconditional fields below the picker.
+    private var vertexOIDCFields: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            wizardOIDCConfigFields
+            wizardLabeledField(label: "Workforce provider:",
+                               placeholder: "locations/global/workforcePools/POOL/providers/PROVIDER",
+                               text: $model.pendingVertexWorkforceProvider,
+                               maxWidth: 420,
+                               pinnedKey: "vertexWorkforceProvider")
+            corporateSignInExplainer
+        }
+    }
+
+    /// Native Google sign-in (OAuth) fields for the Vertex wizard card.
+    /// Just the shared issuer/client-ID config — NO workforce provider
+    /// (there's no federation hop; the Google sign-in's access token is the
+    /// Vertex bearer directly, the same trust model as gcloud ADC). Project
+    /// + region come from the unconditional fields below the picker. No GCP
+    /// organization is required.
+    private var vertexGoogleOAuthFields: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            wizardOIDCConfigFields
+            Text("Sign in with your Google account; the resulting OAuth access token (with the `cloud-platform` scope) is used as the Vertex bearer directly — no broker, no Workforce Identity Federation, no GCP organization required. Use an iOS-type OAuth client; request scopes `openid`, `email`, and `https://www.googleapis.com/auth/cloud-platform`. Restart, then sign in under Company Account.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    // MARK: - Shared corporate sign-in (OIDC) wizard helpers
+
+    /// Issuer + client ID fields shared by the Bedrock + Vertex corporate
+    /// sign-in cards. The wizard may be the FIRST surface to configure
+    /// these; they render read-only with the org note when MDM-pinned.
+    private var wizardOIDCConfigFields: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            wizardLabeledField(label: "Issuer URL:",
+                               placeholder: "https://example.okta.com/oauth2/default",
+                               text: $model.pendingOidcIssuer,
+                               maxWidth: 380,
+                               pinnedKey: "oidcIssuer")
+            wizardLabeledField(label: "Client ID:",
+                               placeholder: "0oaXXXXXXXXXXXX",
+                               text: $model.pendingOidcClientID,
+                               maxWidth: 280,
+                               pinnedKey: "oidcClientID")
+        }
+    }
+
+    /// Honest explainer for the wizard's corporate-sign-in path: the
+    /// providers construct the OIDC session at launch, so the actual
+    /// sign-in only becomes available after Parleq relaunches. The wizard
+    /// saves config; sign-in lands under Settings → Company Account.
+    private var corporateSignInExplainer: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "info.circle")
+                .foregroundStyle(.secondary)
+            Text("Parleq will save this configuration. After you finish and restart, open Settings → Company Account to sign in with your organization — that's where the one-time corporate sign-in happens. No keys are stored on this device; access is federated from your sign-in.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// A labeled wizard text field that disables itself + shows the org
+    /// note when its `pinnedKey` is MDM-managed (mirrors the Settings
+    /// read-only treatment).
+    @ViewBuilder
+    private func wizardLabeledField(label: String, placeholder: String,
+                                    text: Binding<String>, maxWidth: CGFloat,
+                                    pinnedKey: String) -> some View {
+        let pinned = model.managedKeys.contains(pinnedKey)
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .center, spacing: 6) {
+                Text(label)
+                    .frame(width: 130, alignment: .trailing)
+                TextField(placeholder, text: text)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(maxWidth: maxWidth)
+                    .disabled(pinned)
+                ManagedIndicator(isManaged: pinned)
+            }
+            if pinned {
+                Text("Set by your organization.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .padding(.leading, 136)
             }
         }
     }
