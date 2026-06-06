@@ -14,6 +14,22 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
 // download in the fallback case.
 const downloadUrl = release.downloadUrl;
 
+// JSON-LD: SoftwareApplication schema for search rich results.
+// Static fields only — release-specific values would go stale in
+// search caches between releases anyway.
+const softwareSchema = {
+  '@context': 'https://schema.org',
+  '@type': 'SoftwareApplication',
+  name: 'Parleq',
+  operatingSystem: 'macOS 14 or later (Apple Silicon)',
+  applicationCategory: 'UtilitiesApplication',
+  description:
+    'Local-first AI dictation for macOS. Press a hotkey, speak, and watch your words appear cleaned up — speech recognition runs on-device, audio never leaves your Mac.',
+  url: 'https://parleq.app/',
+  downloadUrl: releasesUrl,
+  offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+};
+
 // All eleven capabilities, flattened into a single uniform grid. Each
 // card is glyph + title + ONE distilled sentence, and links to where the
 // full story lives (how-it-works stage/section anchors, or /enterprise).
@@ -93,6 +109,7 @@ const capabilities = [
 ---
 
 <Layout title="Parleq — Local-first AI dictation for macOS">
+  <script type="application/ld+json" slot="head" set:html={JSON.stringify(softwareSchema)} />
   <SiteHeader active="home" />
 
   <!-- Hero. Centered headline + waveform motif + dual CTA. The wave
