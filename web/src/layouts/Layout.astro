@@ -52,6 +52,15 @@ const ogImageURL = new URL('og-image.png', Astro.site);
     <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:image" content={ogImageURL} />
+
+    <!-- GoatCounter web analytics: no cookies, no consent banner needed,
+         open-source — chosen over GA4 deliberately for congruence with
+         the privacy-first product. Counts only pageview + referrer.
+         GoatCounter ignores localhost, so dev/preview visits don't count. -->
+    <script
+      data-goatcounter="https://parleq.goatcounter.com/count"
+      async
+      src="https://gc.zgo.at/count.js"></script>
   </head>
   <body>
     <slot />
