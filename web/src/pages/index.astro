@@ -170,6 +170,7 @@ const capabilities = [
     <div class="mt-6 flex flex-col items-center justify-center gap-3 sm:flex-row sm:gap-4">
       <a
         href={downloadUrl}
+        data-goatcounter-click="download-hero"
         class="inline-flex items-center gap-2 rounded-full bg-[color:var(--color-accent)] px-7 py-3 text-base font-semibold text-white shadow-sm transition-colors hover:bg-[color:var(--color-accent-hover)]"
       >
         Download for macOS{release.version && ` ${release.version}`}
@@ -575,7 +576,7 @@ const capabilities = [
         <li class="flex gap-4">
           <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums">1.</span>
           <div>
-            <a href={downloadUrl} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Download Parleq{release.version && ` ${release.version}`}</a>{release.sha256Url ? (
+            <a href={downloadUrl} data-goatcounter-click="download-get-parleq" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Download Parleq{release.version && ` ${release.version}`}</a>{release.sha256Url ? (
               <>{' '}— <a href={release.sha256Url} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">SHA-256</a> available alongside for verification.</>
             ) : (
               <>{' '}from the <a href={releasesUrl} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">releases page</a>.</>
