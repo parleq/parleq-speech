@@ -10,6 +10,13 @@ const {
   title,
   description = 'Parleq is a local-first AI dictation app for macOS. Press a hotkey, speak, see your words cleaned up and pasted into whatever app you were using.',
 } = Astro.props;
+
+// Canonical URL for this page. `Astro.site` comes from astro.config.mjs;
+// the build uses Astro's default "directory" format, so built page paths
+// end in "/" — matching exactly what GitHub Pages serves and preventing
+// /faq vs /faq/ from splitting into two indexed URLs.
+const canonicalURL = new URL(Astro.url.pathname, Astro.site);
+const ogImageURL = new URL('og-image.png', Astro.site);
 ---
 
 <!doctype html>
@@ -21,6 +28,7 @@ const {
 
     <title>{title}</title>
     <meta name="description" content={description} />
+    <link rel="canonical" href={canonicalURL} />
 
     <link rel="icon" type="image/svg+xml" href={`${import.meta.env.BASE_URL}favicon.svg`.replace('//', '/')} />
 
@@ -33,12 +41,29 @@ const {
       href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap"
     />
 
-    <!-- Open Graph / social card. Image is a placeholder until we cut
-         a real OG image; the site URL still produces a clean preview. -->
+    <!-- Open Graph / social card. og-image.png is rendered from
+         og-image-src/og-image.html via scripts/make-og-image.sh. -->
     <meta property="og:type" content="website" />
+    <meta property="og:url" content={canonicalURL} />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
+    <meta property="og:image" content={ogImageURL} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content={ogImageURL} />
+
+    <!-- Per-page head extras (JSON-LD structured data, etc.) -->
+    <slot name="head" />
+
+    <!-- GoatCounter web analytics: no cookies, no consent banner needed,
+         open-source — chosen over GA4 deliberately for congruence with
+         the privacy-first product. Counts only pageview + referrer.
+         GoatCounter ignores localhost, so dev/preview visits don't count. -->
+    <script
+      data-goatcounter="https://parleq.goatcounter.com/count"
+      async
+      src="https://gc.zgo.at/count.js"></script>
   </head>
   <body>
     <slot />

@@ -9,10 +9,13 @@
 // transparent — BASE_URL becomes "/" on the new domain.
 
 import { defineConfig } from 'astro/config';
+import sitemap from '@astrojs/sitemap';
 import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
   site: 'https://parleq.app',
+  // `site` above is what makes the sitemap URLs absolute.
+  integrations: [sitemap()],
   vite: {
     plugins: [tailwindcss()],
   },
