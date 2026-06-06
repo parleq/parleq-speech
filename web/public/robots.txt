@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://parleq.app/sitemap-index.xml
