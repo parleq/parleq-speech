@@ -200,6 +200,34 @@ const sections = [
   },
 ];
 
+// FAQPage JSON-LD built from the same `sections` array the page
+// renders, so schema and visible content can't drift. Answers are
+// plain-texted: Google requires schema text to match what users see,
+// and embedded <a> tags / markdown markers don't belong in
+// acceptedAnswer text. Non-string answers (if any entry ever becomes
+// JSX) are skipped rather than serialized wrong.
+const plainText = (s) =>
+  s
+    .replace(/<[^>]*>/g, '')
+    .replace(/\*\*/g, '')
+    .replace(/`/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const faqSchema = {
+  '@context': 'https://schema.org',
+  '@type': 'FAQPage',
+  mainEntity: sections.flatMap((section) =>
+    section.items
+      .filter((item) => typeof item.a === 'string')
+      .map((item) => ({
+        '@type': 'Question',
+        name: item.q,
+        acceptedAnswer: { '@type': 'Answer', text: plainText(item.a) },
+      }))
+  ),
+};
+
 // Slugify a question into a stable, URL-safe anchor id. Lowercase,
 // strip anything that isn't a word char or space, collapse runs of
 // whitespace/hyphens into a single hyphen. Used for the section-chip
@@ -253,6 +281,7 @@ function renderInline(text: string): string {
 ---
 
 <Layout title="FAQ — Parleq" description="Common questions about Parleq's privacy posture, provider choice, hardware support, customization, cost, and workplace use.">
+  <script type="application/ld+json" slot="head" set:html={JSON.stringify(faqSchema)} />
   <SiteHeader active="faq" />
 
   <article class="mx-auto max-w-3xl px-6 pt-20 pb-24">
