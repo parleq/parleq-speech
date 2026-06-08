@@ -4,6 +4,14 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-06-08
+
+When your organization sign-in expires mid-session, Parleq falls back to pasting the raw transcript. Until now, getting cleanup working again meant digging through Settings to sign back in. This release lets you do it right from the overlay.
+
+### Added
+
+- **Sign back in without leaving the overlay.** When cleanup falls back to the raw transcript because your company sign-in expired, the notice in the overlay is now tappable: tap it to sign in with your organization right there, in your browser. Once you're back in, the notice becomes "Signed in — clean up this dictation" — tap it to re-run cleanup on what you just said, so you don't have to re-dictate or hunt through Settings. This appears only for the corporate-federation sign-in case (AWS Bedrock and Google Vertex via your organization); every other cleanup message is unchanged, and re-cleaning is always your choice — nothing runs automatically.
+
 ## [0.21.0] - 2026-06-08
 
 This release is about the moment right after you stop talking. The overlay now shows your words the instant they're transcribed and holds rock-steady while the AI cleans them up — no more jumpy panel, no waiting on a blank box. You can accept what you see at any time, talk to it again before it's even finished, and watch a calm "thinking" animation while it works.

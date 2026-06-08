@@ -549,14 +549,16 @@ public final class OverlayWindow {
         text: String,
         downloadProgress: ASRDownloadProgress? = nil,
         microphoneName: String? = nil,
-        cleanupFailureMessage: String? = nil
+        cleanupFailureMessage: String? = nil,
+        cleanupFailureReauthable: Bool = false
     ) {
         model.update(
             state: state,
             text: text,
             downloadProgress: downloadProgress,
             microphoneName: microphoneName,
-            cleanupFailureMessage: cleanupFailureMessage
+            cleanupFailureMessage: cleanupFailureMessage,
+            cleanupFailureReauthable: cleanupFailureReauthable
         )
         // Deferred-shrink settle point: a shrink that was held back
         // during the streaming states (see resizePanelToHeight) is
@@ -1013,6 +1015,30 @@ public final class OverlayModel: ObservableObject {
     /// the prior turn's failure annotation.
     @Published var cleanupFailureMessage: String?
 
+    /// Drives the signed-out notice's tappable behavior when the
+    /// cleanup failure is org-sign-in-recoverable (enterprise OIDC
+    /// federation fail-closed). False for every other failure — those
+    /// render the static hint exactly as before. Gated to
+    /// `.awaitingAccept` like `cleanupFailureMessage`.
+    @Published var cleanupFailureReauthable: Bool = false
+
+    /// Re-auth interaction state for the signed-out notice. Only
+    /// meaningful while `cleanupFailureReauthable` is true. Reset to
+    /// `.signedOut` whenever a fresh failure message is applied.
+    @Published var reauthState: ReauthState = .signedOut
+
+    public enum ReauthState { case signedOut, signingIn, signedIn }
+
+    /// Invoked when the user taps the signed-out notice. AppState runs
+    /// interactive sign-in. Set in AppState init (model-level callback,
+    /// matching `onTrackCaptureTask`).
+    var onReauthSignIn: (() -> Void)?
+
+    /// Invoked when the user taps the post-sign-in "clean up this
+    /// dictation" affordance (↻). AppState re-runs cleanup from the
+    /// retained raw transcript.
+    var onReauthReclean: (() -> Void)?
+
     /// Name of the per-app default preset folded into the current
     /// dictation's cleanup, nil when none. Drives the review state's
     /// "Styled with <name> · Undo" chip.
@@ -1151,7 +1177,8 @@ public final class OverlayModel: ObservableObject {
         text: String,
         downloadProgress: ASRDownloadProgress? = nil,
         microphoneName: String? = nil,
-        cleanupFailureMessage: String? = nil
+        cleanupFailureMessage: String? = nil,
+        cleanupFailureReauthable: Bool = false
     ) {
         self.state = state
         self.text = text
@@ -1175,6 +1202,13 @@ public final class OverlayModel: ObservableObject {
         // text + decides whether to paste raw. Cleared elsewhere
         // so stale messages don't follow a successful cleanup turn.
         self.cleanupFailureMessage = (state == .awaitingAccept) ? cleanupFailureMessage : nil
+        // Reauth affordance follows the same .awaitingAccept gating. A
+        // fresh failure resets the interaction to .signedOut; reauthState
+        // is only read while the flag is true, so clearing the flag off
+        // .awaitingAccept is sufficient teardown.
+        let reauthableNow = (state == .awaitingAccept) ? cleanupFailureReauthable : false
+        self.cleanupFailureReauthable = reauthableNow
+        if reauthableNow { self.reauthState = .signedOut }
         // Every full update ends a provisional display: raw-first shows
         // set the flag explicitly AFTER calling update (see
         // OverlayWindow.showProvisionalCleaning); the first streamed
@@ -2525,6 +2559,59 @@ private struct OverlayContent: View {
     }
 
     /// Error / permission-prompt banner. Tapping it clears the message.
+    /// The org-sign-in notice. Reuses the failure-row visual (orange
+    /// triangle + 12pt secondary text) but is a single tappable control
+    /// whose icon, copy, and action follow `model.reauthState`. The
+    /// whole row is the hit target; a pointing-hand cursor on hover
+    /// signals clickability (minimal-change affordance, no chevron).
+    @ViewBuilder
+    private func reauthNoticeRow() -> some View {
+        let signingIn = (model.reauthState == .signingIn)
+        Button {
+            switch model.reauthState {
+            case .signedOut: model.onReauthSignIn?()
+            case .signingIn: break // no-op while in flight
+            case .signedIn:  model.onReauthReclean?()
+            }
+        } label: {
+            HStack(alignment: .top, spacing: 8) {
+                switch model.reauthState {
+                case .signedOut:
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundColor(.orange)
+                        .font(.system(size: 12))
+                        .padding(.top, 2)
+                case .signingIn:
+                    ProgressView()
+                        .controlSize(.small)
+                        .padding(.top, 1)
+                case .signedIn:
+                    Image(systemName: "arrow.clockwise")
+                        .foregroundColor(.orange)
+                        .font(.system(size: 12))
+                        .padding(.top, 2)
+                }
+                Text(reauthNoticeCopy)
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(signingIn)
+        .pointingHandCursor()
+    }
+
+    private var reauthNoticeCopy: String {
+        switch model.reauthState {
+        case .signedOut: return "Sign in to your organization"
+        case .signingIn: return "Signing in…"
+        case .signedIn:  return "Signed in — clean up this dictation"
+        }
+    }
+
     @ViewBuilder
     private var errorBanner: some View {
         let message = model.errorMessage ?? model.permissionPrompt
@@ -2691,16 +2778,25 @@ private struct OverlayContent: View {
                     // it. Provider-specific hint comes from each
                     // LLMProvider's `cleanupFailureHint`.
                     if let failure = model.cleanupFailureMessage {
-                        HStack(alignment: .top, spacing: 8) {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundColor(.orange)
-                                .font(.system(size: 12))
-                                .padding(.top, 2)
-                            Text(failure)
-                                .font(.system(size: 12))
-                                .foregroundColor(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                        if model.cleanupFailureReauthable {
+                            // Org-sign-in-recoverable fail-closed: the row
+                            // is a single tappable control (see
+                            // reauthNoticeRow). Reuses the same visual.
+                            reauthNoticeRow()
+                        } else {
+                            // Unchanged static decoration for every
+                            // non-reauthable failure.
+                            HStack(alignment: .top, spacing: 8) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundColor(.orange)
+                                    .font(.system(size: 12))
+                                    .padding(.top, 2)
+                                Text(failure)
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
                         }
                     }
                 }
@@ -2917,5 +3013,22 @@ struct ParleqListeningIndicator: View {
     /// vertically centered in a stable region regardless of level.
     private var peakHeight: CGFloat {
         ((idlePattern.max() ?? 14) + levelBoost) * scale
+    }
+}
+
+private extension View {
+    /// Shows the macOS pointing-hand cursor while hovering. Used by the
+    /// tappable signed-out re-auth notice so the minimal-change row reads
+    /// as clickable. The `.onHover` is ALWAYS attached (never
+    /// conditionally removed) so every push on enter is balanced by a pop
+    /// on exit — conditionally dropping the modifier mid-hover would tear
+    /// down the tracking area without a balancing pop and strand the
+    /// pushed cursor. The hand briefly showing over the transient
+    /// "Signing in…" state is an accepted cosmetic tradeoff for that
+    /// balance.
+    func pointingHandCursor() -> some View {
+        self.onHover { inside in
+            if inside { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+        }
     }
 }

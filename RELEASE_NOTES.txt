@@ -1,69 +1,19 @@
-Parleq 0.21.0
+Parleq 0.22.0
 
-This release is about the moment right after you stop talking. The
-overlay now shows your words the instant they're transcribed and holds
-rock-steady while the AI cleans them up — no more jumpy panel, no
-waiting on a blank box. You can accept what you see at any time, talk
-to it again before it's even finished, and watch a calm "thinking"
-animation while it works.
+When your organization sign-in expires mid-session, Parleq falls back
+to pasting the raw transcript. Until now, getting cleanup working again
+meant digging through Settings to sign back in. This release lets you
+do it right from the overlay.
 
 ### Added
 
-- Your words appear immediately, and you can accept them any time. The
-  raw transcript shows in the overlay the moment speech recognition
-  finishes, dimmed, and is replaced in place by the cleaned version as
-  it streams. Press Enter whenever you like — if cleanup hasn't
-  finished, Parleq pastes what's on screen and stops the cleanup. A
-  distinct multi-color "thinking" animation (vs. the orange listening
-  bars) shows when the AI is working.
-- Refine before cleanup even finishes. Give a follow-up instruction
-  while the first cleanup is still running and Parleq queues it: the
-  cleanup completes, then your refinement applies to the finished text
-  instead of starting over.
-- Switch models from the overlay. The model badge during review now
-  lists your provider's model catalog, so you can re-run a
-  dictation on a different model with one tap (a per-dictation choice;
-  your configuration is untouched).
-- Preset suggestions and a Learned activity log. When you keep refining
-  things the same way, Parleq can suggest a one-tap preset; when you
-  keep using a preset in one app, it can suggest making it that app's
-  default. Every suggestion is yours to accept or dismiss — nothing is
-  applied automatically — and the Learned section keeps an activity log
-  so you can restore a dismissed suggestion or revert an accepted one.
-  (Usage is stored as metadata only — counts and app names, never your
-  dictation text.)
-- Browser-based loopback sign-in. Corporate sign-in now supports the
-  loopback redirect that desktop OAuth clients use (Google "Desktop
-  app" clients, and Microsoft Entra ID, which requires it) — Parleq
-  opens your real browser and listens on a local-only port just for
-  the few seconds of sign-in. New playbooks for Entra ID join the
-  existing Okta and Cognito guides. An optional client-secret field
-  covers IdPs that require one.
-- Tune request parameters from the config file. A new llm.tuning
-  section lets advanced users set the thinking budget, max output
-  tokens, temperature, request timeout, and the time-to-first-token
-  watchdog deadlines. Defaults are unchanged; long dictations get more
-  headroom so lengthy text no longer truncates.
-
-### Fixed
-
-- Tapping the hotkey to paste no longer occasionally drops the paste.
-  The synthesized paste could inherit a still-held modifier and be
-  ignored by the target app, closing the overlay with nothing pasted.
-  Parleq now sends a clean paste and waits for the modifier to release.
-- The overlay holds its size through the whole dictation. Capture,
-  cleanup, result, and refinement no longer make the panel jump, dip,
-  or drift; it changes height only when your text genuinely needs more
-  room, and settles once at the end.
-- Cleanup that stalls now recovers gracefully. A time-to-first-token
-  watchdog retries (or, for slow "thinking" models like Gemini Pro,
-  waits a single generous beat) instead of leaving you on a spinner —
-  and the raw text is acceptable the whole time. Gemini Pro is also
-  markedly faster now (its thinking budget is capped, not unbounded).
-- Security and privacy hardening. A reconfigured OIDC client can no
-  longer send a previous client's secret to a different identity
-  provider. The new usage journal and activity log store metadata
-  only — never transcript text. The loopback sign-in listener is bound
-  to localhost only, exists only during sign-in, and is fully
-  suppressible by pinning the redirect URI via managed configuration.
-  An inert, unused telemetry config key was removed.
+- Sign back in without leaving the overlay. When cleanup falls back to
+  the raw transcript because your company sign-in expired, the notice
+  in the overlay is now tappable: tap it to sign in with your
+  organization right there, in your browser. Once you're back in, the
+  notice becomes "Signed in — clean up this dictation" — tap it to
+  re-run cleanup on what you just said, so you don't have to re-dictate
+  or hunt through Settings. This appears only for the corporate-
+  federation sign-in case (AWS Bedrock and Google Vertex via your
+  organization); every other cleanup message is unchanged, and
+  re-cleaning is always your choice — nothing runs automatically.

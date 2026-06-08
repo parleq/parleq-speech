@@ -793,24 +793,33 @@ public final class OIDCSessionModel: ObservableObject {
     /// session itself already flips to `.needsInteractive` on a failed
     /// *silent* refresh, but interactive sign-in leaves the surface to
     /// the caller). No token or identity content is logged here.
-    public func signIn() async {
-        guard let session else { return }
+    @discardableResult
+    public func signIn() async -> Bool {
+        guard let session else { return false }
         // Capture the generation before the flow so a sign-out/sign-in that
         // supersedes this attempt mid-exchange suppresses a stale failure
         // banner (surfaceInteractiveFailure is generation-guarded).
         let gen = await session.currentGeneration()
-        do { _ = try await session.signIn() }
-        catch let f as OIDCAuthFailure where f.isSilent { /* user cancelled — silent */ }
+        do {
+            _ = try await session.signIn()
+            return true
+        }
+        catch let f as OIDCAuthFailure where f.isSilent {
+            // user cancelled — silent, not a success
+            return false
+        }
         catch let f as OIDCAuthFailure {
             // signIn() doesn't flip state mid-flow — without this the failure
             // would be invisible. Ask the session to surface it as a banner.
             await session.surfaceInteractiveFailure(f, gen: gen)
+            return false
         }
         catch {
             // Non-OIDC error (e.g. a thrown URLError from the browser bridge):
             // wrap as discoveryFailed so the UI still gets a banner.
             await session.surfaceInteractiveFailure(
                 .discoveryFailed(detail: error.localizedDescription), gen: gen)
+            return false
         }
     }
     public func signOut() async {

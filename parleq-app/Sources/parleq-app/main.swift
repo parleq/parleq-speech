@@ -555,6 +555,14 @@ struct ParleqApp {
                     awsConfigured: awsCfg,
                     gcpConfigured: gcpCfg
                 )
+                // Overlay clickable re-auth: the overlay drives the SAME
+                // interactive sign-in the Company Account button does
+                // (shared sessionModel → one session + exchange-cache
+                // lifecycle). Returns whether the session ended signed in
+                // so the overlay can offer its opt-in re-clean affordance.
+                stateBox.value?.oidcInteractiveSignIn = {
+                    await sessionModel.signIn()
+                }
             }
             logStderr("[parleq] oidc: Company Account section wired")
         }
