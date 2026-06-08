@@ -665,9 +665,28 @@ final class ManagedConfigTests: XCTestCase {
         XCTAssertNil(ManagedConfig.validateOIDCRedirectURI("HTTPS://example.com/callback"))
     }
 
-    func test_validateOIDCRedirectURI_rejects_http() {
-        XCTAssertNil(ManagedConfig.validateOIDCRedirectURI("http://localhost/callback"))
-        XCTAssertNil(ManagedConfig.validateOIDCRedirectURI("HTTP://localhost/callback"))
+    func test_validateOIDCRedirectURI_accepts_http_loopback() {
+        // Google "Desktop app" loopback redirect — answered by a transient
+        // 127.0.0.1-only listener (the configured port is ignored at runtime).
+        XCTAssertEqual(
+            ManagedConfig.validateOIDCRedirectURI("http://127.0.0.1/oauth2redirect"),
+            "http://127.0.0.1/oauth2redirect")
+        XCTAssertEqual(
+            ManagedConfig.validateOIDCRedirectURI("http://localhost:8080/callback"),
+            "http://localhost:8080/callback")
+        XCTAssertEqual(
+            ManagedConfig.validateOIDCRedirectURI("http://[::1]/oauth2redirect"),
+            "http://[::1]/oauth2redirect")
+        // Case-insensitive scheme.
+        XCTAssertEqual(
+            ManagedConfig.validateOIDCRedirectURI("HTTP://127.0.0.1/cb"),
+            "HTTP://127.0.0.1/cb")
+    }
+
+    func test_validateOIDCRedirectURI_rejects_http_non_loopback() {
+        // http on a non-loopback host could be answered by a network attacker.
+        XCTAssertNil(ManagedConfig.validateOIDCRedirectURI("http://example.com/callback"))
+        XCTAssertNil(ManagedConfig.validateOIDCRedirectURI("http://192.168.1.5/callback"))
     }
 
     func test_validateOIDCRedirectURI_rejects_schemeless_and_empty() {

@@ -378,7 +378,7 @@ public final class VertexProvider: LLMProvider, Sendable {
         if usesUserProjectHeader {
             request.setValue(project, forHTTPHeaderField: "x-goog-user-project")
         }
-        request.timeoutInterval = 60
+        request.timeoutInterval = LLMTuning.current.requestTimeoutSeconds  // #55
         do {
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
         } catch {
@@ -485,7 +485,7 @@ public final class VertexProvider: LLMProvider, Sendable {
         if usesUserProjectHeader {
             request.setValue(project, forHTTPHeaderField: "x-goog-user-project")
         }
-        request.timeoutInterval = 60
+        request.timeoutInterval = LLMTuning.current.requestTimeoutSeconds  // #55
         do {
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
         } catch {
@@ -590,7 +590,9 @@ public final class VertexProvider: LLMProvider, Sendable {
             "anthropic_version": "vertex-2023-10-16",
             "system": systemPrompt,
             "messages": buildAnthropicNativeMessages(messages),
-            "max_tokens": 1024,
+            // #55: max output tokens (temperature deliberately NOT sent
+            // on the Anthropic native path — preserving prior behavior).
+            "max_tokens": LLMTuning.current.maxOutputTokens,
             "stream": true,
         ]
     }
@@ -625,20 +627,25 @@ public final class VertexProvider: LLMProvider, Sendable {
     /// endpoint (publishers/google/models/<model>:streamGenerateContent).
     private func buildGeminiRequestBody(systemPrompt: String, messages: [LLMMessage]) -> [String: Any] {
         let contents: [[String: Any]] = buildVertexContents(messages: messages)
+        let tuning = LLMTuning.current
         var generationConfig: [String: Any] = [
-            "temperature": 0,
-            "maxOutputTokens": 1024,
+            "temperature": tuning.temperature,
+            "maxOutputTokens": tuning.maxOutputTokens,
         ]
         // Gemini 2.5 Flash and Flash-Lite accept thinkingBudget=0 to
         // disable chain-of-thought tokens — cheaper and faster for the
-        // short-output cleanup task Parleq runs. Gemini 2.5 Pro requires
-        // thinking to be enabled and rejects thinkingBudget=0 with a 400.
-        // Omit thinkingConfig entirely for Pro so it uses the model
-        // default (thinking enabled). Flash/Flash-Lite keep the explicit
-        // zero to suppress thinking overhead.
-        if !model.lowercased().contains("pro") {
-            generationConfig["thinkingConfig"] = ["thinkingBudget": 0]
-        }
+        // short-output cleanup task Parleq runs (invariant #3). Gemini
+        // 2.5 Pro requires thinking (rejects 0 with a 400) but accepts
+        // its 128-token FLOOR — without an explicit budget Pro uses the
+        // dynamic default and routinely burns thousands of thinking
+        // tokens (10-20s TTFT) deliberating over a punctuation task.
+        // The floor keeps Pro legal while cutting deliberation to the
+        // minimum the model allows.
+        // #55: thinkingBudget override sent verbatim when set; otherwise
+        // the built-in Flash(0)/Pro(128) split.
+        generationConfig["thinkingConfig"] = [
+            "thinkingBudget": tuning.resolvedThinkingBudget(forModel: model)
+        ]
         return [
             "systemInstruction": ["parts": [["text": systemPrompt]]],
             "contents": contents,

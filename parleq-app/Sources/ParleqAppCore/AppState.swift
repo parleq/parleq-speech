@@ -225,6 +225,26 @@ public final class AppState {
     /// short-circuited, or the user cancels.
     private var pendingOverlayShowTimer: Timer?
     private var inFlightTask: Task<Void, Never>?  // cleanup or refine task — cancel on abort
+    /// The FIRST cleanup's task, captured when the user presses the
+    /// hotkey to refine while that cleanup is still streaming
+    /// (phase == .cleaning). Held separately from `inFlightTask` so the
+    /// refine's own `inFlightTask` reassignment can't lose the handle —
+    /// teardown (Esc / accept) must still be able to cancel the cleanup.
+    /// nil except during the chained-refine window.
+    private var chainedCleanupTask: Task<Void, Never>?
+    /// Resolves with the first cleanup's FINAL text (cleaned output, or
+    /// the raw fallback on failure) so the chained refine can await the
+    /// baseline before building its messages. Created when entering
+    /// refine from .cleaning; resolved by applyResult; cleared after the
+    /// refine reads it (or on teardown). See BaselineGate.swift.
+    private var chainedBaselineGate: BaselineGate?
+    /// True while a refine captured during .cleaning is pending — the
+    /// first cleanup is running in the background and the refine owns the
+    /// next terminal transition. Suppresses the first cleanup's
+    /// applyResult from transitioning to .awaitingAccept / arming
+    /// auto-accept. Cleared after the refine consumes the baseline or on
+    /// teardown.
+    private var refineChainedDuringCleanup = false
     /// Low-frequency timer that flushes a small correction-journal
     /// backlog (below the per-capture threshold) to the analyzer when
     /// the user is idle. Rate-capped inside LearningAnalyzer.
@@ -235,6 +255,16 @@ public final class AppState {
     /// already-cleaned text. Reset at the start of each fresh capture
     /// and cleared in closeAndReset().
     private var lastRawTranscript: String = ""
+    /// Whether the most recent LLM turn was a REFINE — drives
+    /// switchModelAndRecleanup's re-run shape (task #41): after a
+    /// refine, lastRawTranscript holds the refine INSTRUCTION, and
+    /// re-cleaning it as a dictation produced garbage. The switch
+    /// re-runs the refine instead (same instruction, same prior text,
+    /// new model).
+    private var lastTurnWasRefine: Bool = false
+    /// The prior text the most recent refine turn operated on — what a
+    /// model-switch refine re-run feeds as priorText.
+    private var lastRefinePriorText: String = ""
 
     /// The per-app default preset folded into the CURRENT dictation's
     /// cleanup, if any. Drives the overlay chip, is reused by the
@@ -855,7 +885,12 @@ public final class AppState {
             // refinement — the core Phase 1 feature.
             schedulePendingRefine()
         case .cleaning:
-            startRefineCapture()
+            // The first cleanup is still streaming. Capture the refine
+            // INSTRUCTION immediately WITHOUT cancelling that cleanup —
+            // it runs to completion in the background and becomes the
+            // baseline the refine applies to. (Contrast startRefineCapture,
+            // used from .awaitingAccept, which cancels the prior turn.)
+            startChainedRefineCapture()
         case .capturing, .refining, .pasting:
             // Already capturing or in transient state — ignore the
             // re-trigger.
@@ -1550,7 +1585,7 @@ public final class AppState {
     /// reaches the target. Verified the hard way after M3 broke
     /// what M1 had working.
     public func accept() {
-        guard phase == .awaitingAccept else { return }
+        guard phase == .awaitingAccept || phase == .cleaning else { return }
         // Don't accept/paste while the help overlay is up — the user is
         // reading help, not finishing. Covers the case where the auto-
         // accept timer gets (re)armed by the cleaning→awaitingAccept
@@ -1567,6 +1602,37 @@ public final class AppState {
         if hasUnresolvedConflict() {
             NSSound.beep()
             return
+        }
+        // Raw-first live accept (task #53, maintainer-specified
+        // kill-it semantics): accepting during .cleaning takes
+        // whatever is visible — the provisional raw transcript, or a
+        // partially streamed cleanup — and CANCELS the in-flight LLM
+        // stream (the user chose not to wait; no background completion,
+        // no resurrection). The visible text becomes currentText, and
+        // history records it as not-cleaned when it was the raw
+        // provisional. Empty text (no ASR result yet) beeps instead of
+        // pasting nothing.
+        if phase == .cleaning {
+            let visible = overlay.model.text
+            guard !visible.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                NSSound.beep()
+                return
+            }
+            inFlightTask?.cancel()
+            inFlightTask = nil
+            // Kill-it semantics extend to a chained refine still awaiting
+            // its baseline: cancel the background first cleanup and
+            // release the gate so the suspended refine task wakes and
+            // bails. The visible text (the refine view's current content)
+            // is what gets pasted. No-op outside the chained window.
+            teardownChainedRefine()
+            currentText = visible
+            lastCleanupFailed = overlay.model.provisionalText
+            // The cancelled stream never reported latency — don't let
+            // the PREVIOUS dictation's value leak into this entry's
+            // stats metadata.
+            lastLLMLatencyMs = nil
+            log("accept during cleaning: \(overlay.model.provisionalText ? "provisional raw" : "partial stream") accepted, LLM stream cancelled")
         }
         phase = .pasting
         cancelAutoAcceptTimer()
@@ -1651,6 +1717,14 @@ public final class AppState {
         }
         inFlightTask?.cancel()
         inFlightTask = nil
+        // Tear down a chained-refine-during-cleanup window if one is
+        // active: cancel the still-running first cleanup, release any
+        // awaiter on the baseline gate (so the refine task — if it was
+        // suspended on the gate — wakes, sees Task.isCancelled, and
+        // bails cleanly), and clear the chain state. No awaiting task
+        // leaks. Done unconditionally; all three are nil/false outside
+        // the chained window.
+        teardownChainedRefine()
         cancelAutoAcceptTimer()
         cancelPendingOverlayShow()
         cancelPendingRefine()
@@ -2009,6 +2083,8 @@ public final class AppState {
         chosenDestination = nil
         currentText = ""
         lastRawTranscript = ""
+        lastTurnWasRefine = false
+        lastRefinePriorText = ""
         appliedPreset = nil
         intendedDefaultPreset = nil
         styledRawTranscript = ""
@@ -2128,6 +2204,10 @@ public final class AppState {
         // we overwrite currentText with a refined version.
         inFlightTask?.cancel()
         inFlightTask = nil
+        // Defense-in-depth: this path is the .awaitingAccept refine,
+        // mutually exclusive with the chained-during-cleaning flow. Clear
+        // any chain state so a prior chained turn can't leak its gate.
+        teardownChainedRefine()
         cancelAutoAcceptTimer()
         guard openRecorder() else { return }
         phase = .refining
@@ -2146,6 +2226,90 @@ public final class AppState {
             text: currentText,
             microphoneName: activeMicrophoneName()
         )
+    }
+
+    /// Enter refine capture while the FIRST cleanup is still streaming
+    /// (hotkey pressed during .cleaning). Unlike startRefineCapture this
+    /// does NOT cancel the in-flight cleanup: we hand its task off to
+    /// `chainedCleanupTask` (so the refine's later inFlightTask
+    /// reassignment can't lose the handle), create a BaselineGate the
+    /// cleanup will resolve with its final text, and set
+    /// `refineChainedDuringCleanup` so applyResult suppresses the
+    /// cleanup's terminal transition — the refine owns the next one.
+    /// The refine execution (finalizeCapture's asRefine task) awaits the
+    /// gate before reading the baseline.
+    private func startChainedRefineCapture() {
+        // Quick mode can't reach here — the overlay (required for the
+        // hotkey-press-during-cleaning window) is suppressed in quick
+        // mode, which pastes directly with no review. Guard defensively:
+        // if somehow chained while quick, fall back to the cancel-and-
+        // refine behavior so we never strand a background cleanup with
+        // no consumer.
+        guard !quickMode else {
+            startRefineCapture()
+            return
+        }
+        guard openRecorder() else { return }
+        // Hand the in-flight cleanup off to the dedicated handle BEFORE
+        // the refine reassigns inFlightTask below. Do NOT cancel it.
+        chainedCleanupTask = inFlightTask
+        let gate = BaselineGate()
+        chainedBaselineGate = gate
+        refineChainedDuringCleanup = true
+        // Clear inFlightTask so the refine's finalize path starts a
+        // fresh refine task without touching the cleanup we just moved.
+        inFlightTask = nil
+        cancelAutoAcceptTimer()
+        phase = .refining
+        // Symmetric with startRefineCapture: advance the latched-compose
+        // state machine so press-Space-during-hold works in this refine
+        // hold too.
+        composeState = nextComposeState(composeState, event: .hotkeyDown)
+        // Show the refine view with the best-available current text. The
+        // first cleanup may still be streaming into `assembled`, but once
+        // we leave .cleaning its chunk handler stops writing to the
+        // overlay (gated in streamCleanupOrRefine), so it can't clobber
+        // this refine view. currentText may be empty here (cleanup hasn't
+        // resolved) — that's fine; the overlay reflects the live stream's
+        // last frame already, and the FINAL baseline arrives via the gate.
+        overlay.show(
+            state: .refining,
+            text: overlay.model.text,
+            microphoneName: activeMicrophoneName()
+        )
+        log("hotkeyDown during cleaning → chained refine capture; first cleanup left running")
+    }
+
+    /// Whether a streaming cleanup/refine pass may write its chunks to
+    /// the overlay right now. Phase fact this relies on: finalizeCapture
+    /// sets `phase = .cleaning` for BOTH a fresh cleanup AND a voice
+    /// refine before spawning the stream — `.refining` covers only the
+    /// audio hold, not the LLM pass. So a NORMAL cleanup or refine (no
+    /// chain) streams under .cleaning and renders normally. The one case
+    /// suppressed is the first cleanup AFTER the user chained a refine
+    /// onto it (`refineChainedDuringCleanup` true): it keeps assembling
+    /// its text in the background but must not paint over the .refining
+    /// capture / the chained refine's own stream. The chained refine
+    /// clears the flag before IT streams (also under .cleaning), so its
+    /// own chunks render.
+    private func shouldStreamRenderToOverlay() -> Bool {
+        return chainedRefineShouldRender(
+            phase: phase,
+            refineChainedDuringCleanup: refineChainedDuringCleanup
+        )
+    }
+
+    /// Tear down the chained-refine-during-cleanup coordination. Cancels
+    /// the background first-cleanup task, releases the baseline gate (so
+    /// a refine task suspended on it wakes and bails on Task.isCancelled
+    /// rather than hanging), and clears the chain state. Safe to call
+    /// unconditionally — a no-op when no chain is active.
+    private func teardownChainedRefine() {
+        chainedCleanupTask?.cancel()
+        chainedCleanupTask = nil
+        chainedBaselineGate?.cancel()
+        chainedBaselineGate = nil
+        refineChainedDuringCleanup = false
     }
 
     /// Start the audio recorder. Returns false (and logs) if the
@@ -2303,15 +2467,26 @@ public final class AppState {
             // only feedback.
             log("quick-mode cleaning (no overlay)")
         } else {
-            // For cleanup we start with an empty overlay (text
-            // streams in). For refinement we show the prior text
-            // faded; the overlay's appendText starts replacing it
-            // as the LLM streams the refined version.
-            overlay.show(state: .cleaning, text: asRefine ? currentText : "")
+            // For cleanup we start with an empty overlay (the raw
+            // transcript shows provisionally once ASR returns). For
+            // refinement the prior text is ALREADY the provisional
+            // content — show it dimmed from the first frame, so the
+            // dim level carries straight through from .refining with
+            // no opaque flash between release and the LLM stream
+            // (maintainer finding).
+            if asRefine {
+                overlay.showProvisionalCleaning(text: currentText, isRefine: true)
+            } else {
+                overlay.show(state: .cleaning, text: "")
+            }
         }
 
         let overlay = self.overlay
-        let priorText = currentText
+        // `var` because a chained refine (issued during .cleaning)
+        // re-reads the baseline AFTER awaiting the first cleanup below —
+        // at finalize time `currentText` is still empty/stale, so the
+        // captured value here is only the seed.
+        var priorText = currentText
         let asrClient = self.asr
         let wavBytes = capture.wavData
         inFlightTask = Task { @MainActor [weak self] in
@@ -2375,6 +2550,26 @@ public final class AppState {
                 if Task.isCancelled { return }
                 let asrResult = (text: asrResultRaw.text, latency: asrLatency)
 
+                // Chained-refine baseline await. When this refine was
+                // captured WHILE the first cleanup was still streaming,
+                // its final text is the baseline we refine against. Wait
+                // for it here — after ASR, before we read priorText for
+                // either the empty-transcript fallback or the refine
+                // pass. Common case (cleanup already finished): the gate
+                // is already resolved, so this returns immediately and
+                // adds ZERO latency. The await ONLY suspends when the
+                // user released the refine hotkey before the first
+                // cleanup completed. Cleared after consumption so a later
+                // turn doesn't re-await a stale gate.
+                if asRefine, let gate = self?.chainedBaselineGate {
+                    let baseline = await gate.value
+                    if Task.isCancelled { return }
+                    priorText = baseline
+                    self?.chainedBaselineGate = nil
+                    self?.chainedCleanupTask = nil
+                    self?.refineChainedDuringCleanup = false
+                }
+
                 // Empty-transcript guard: if the recording was long
                 // enough to pass the duration check but ASR returned
                 // nothing (silence, room noise, mic muted), don't
@@ -2402,6 +2597,10 @@ public final class AppState {
                 // (M2 fix: Switch button re-runs cleanup, not just
                 // flips the badge).
                 self?.lastRawTranscript = asrResult.text
+                // Task #41: remember the SHAPE of this turn so a model
+                // switch can re-run the same thing with the new model.
+                self?.lastTurnWasRefine = asRefine
+                self?.lastRefinePriorText = asRefine ? priorText : ""
                 // Resolve which provider to use for this dictation:
                 // override > context > cleanup, honoring the
                 // pickedModelOverride the user may have set via the
@@ -2453,7 +2652,10 @@ public final class AppState {
                     customDictionary: dictionary,
                     references: effectiveRefs,
                     pasteDestinationLabel: pasteDestLabel,
-                    transform: asRefine ? nil : defaultPreset?.prompt
+                    transform: asRefine ? nil : defaultPreset?.prompt,
+                    shouldRenderToOverlay: { [weak self] in
+                        self?.shouldStreamRenderToOverlay() ?? false
+                    }
                 )
                 if Task.isCancelled { return }
 
@@ -2462,8 +2664,21 @@ public final class AppState {
                 // include it in the TranscriptEntry. nil when no
                 // LLM ran (no-LLM-configured / empty-transcript).
                 self?.lastLLMLatencyMs = outcome.llmLatencyMs
+                // Read the chain flag BEFORE applyResult — it's still true
+                // for the cleanup half of a chained refine (the refine
+                // task clears it only after consuming the gate). applyResult
+                // resolves the gate and returns early in that case, so this
+                // is the cleanup that the user has already chained a refine
+                // onto: its styled-state bookkeeping and correction-journal
+                // write below must be SUPPRESSED. The refine half owns the
+                // styled provenance (it clears any chip) and records its own
+                // correction signal; doing it here too would flash a
+                // "Styled with X" chip on the .cleaning overlay during the
+                // refine stream and feed the learning analyzer a spurious
+                // cleanup-only record. False on every non-chained turn.
+                let wasChainedCleanup = self?.refineChainedDuringCleanup ?? false
                 self?.applyResult(outcome.text, cleanupFailureMessage: outcome.failureMessage)
-                if !asRefine {
+                if !asRefine, !wasChainedCleanup {
                     // "Styled" requires the LLM to have actually used its output —
                     // usedLLMOutput is false on every fallback path (no-LLM-configured,
                     // empty-transcript, empty-stream, cancellation, error) so the chip
@@ -2471,6 +2686,15 @@ public final class AppState {
                     let applied = outcome.usedLLMOutput ? defaultPreset : nil
                     self?.appliedPreset = applied
                     self?.overlay.model.appliedPresetName = applied?.name
+                    // Bridge 2: record the successful DEFAULT-styled use
+                    // (metadata only). Source "default" so it does NOT count
+                    // toward the dominance rule — only manual chip taps drive
+                    // a suggestion to set a default the user hasn't set.
+                    if let applied {
+                        PresetUsageJournal.shared.record(
+                            presetID: applied.id, presetName: applied.name,
+                            appBundleID: targetBundleID, source: "default")
+                    }
                     // Snapshot the dictation the style was applied to — plus
                     // the references and destination label of THIS call — so
                     // undoStyle() can replay plain cleanup of the same
@@ -2484,10 +2708,14 @@ public final class AppState {
                     // model-switch re-run (e.g. after an image-refs-on-
                     // non-vision-model failure) can still apply it.
                     self?.intendedDefaultPreset = defaultPreset
-                } else if outcome.usedLLMOutput {
+                } else if asRefine, outcome.usedLLMOutput {
                     // A voice refine supersedes the styled provenance, same
                     // rule as a manual chip tap (see runPreset): the text is
                     // no longer just "Styled with X". Clear the stash + chip.
+                    // Gated on `asRefine` (not just the `else`) so the
+                    // cleanup half of a chained refine — which also lands
+                    // here, asRefine=false but wasChainedCleanup=true — does
+                    // NOT touch styled state; the refine half owns it.
                     // On refine FAILURE the prior (still-styled) text is kept,
                     // so the chip stays — and its Undo stays faithful, because
                     // undoStyle replays from styledRawTranscript, not the
@@ -2499,25 +2727,31 @@ public final class AppState {
                     self?.styledPasteDestLabel = nil
                     self?.overlay.model.appliedPresetName = nil
                 }
-                let learnEnabled = self?.captureCorrectionSignals(
-                    asRefine: asRefine,
-                    rawInstruction: asrResult.text,
-                    before: priorText,
-                    outcome: outcome,
-                    // Same condition that set the "Styled with X" chip
-                    // above: the transform only shaped outcome.text when
-                    // a default resolved AND the LLM output was used.
-                    transformApplied: !asRefine && defaultPreset != nil && outcome.usedLLMOutput
-                ) ?? false
-                // Only spawn the off-path analysis trigger when the
-                // feature is on — otherwise we'd allocate a detached
-                // Task on every dictation that immediately no-ops.
-                // Use the cleanup-tier provider (`llm`), not the
-                // per-invocation `resolvedLLM` (which may be the context
-                // or picker-override model) — analysis reuses the
-                // configured cleanup model, matching the idle path.
-                if learnEnabled, let provider = self?.llm {
-                    Task { await LearningAnalyzer.shared.runIfDue(provider: provider, threshold: LearningAnalyzer.triggerThreshold) }
+                // Skip correction capture + analysis trigger for the
+                // cleanup half of a chained refine: the spell-out signal
+                // would carry the soon-to-be-superseded pre-refine text,
+                // and the refine half records its own (correct) signal.
+                if !wasChainedCleanup {
+                    let learnEnabled = self?.captureCorrectionSignals(
+                        asRefine: asRefine,
+                        rawInstruction: asrResult.text,
+                        before: priorText,
+                        outcome: outcome,
+                        // Same condition that set the "Styled with X" chip
+                        // above: the transform only shaped outcome.text when
+                        // a default resolved AND the LLM output was used.
+                        transformApplied: !asRefine && defaultPreset != nil && outcome.usedLLMOutput
+                    ) ?? false
+                    // Only spawn the off-path analysis trigger when the
+                    // feature is on — otherwise we'd allocate a detached
+                    // Task on every dictation that immediately no-ops.
+                    // Use the cleanup-tier provider (`llm`), not the
+                    // per-invocation `resolvedLLM` (which may be the context
+                    // or picker-override model) — analysis reuses the
+                    // configured cleanup model, matching the idle path.
+                    if learnEnabled, let provider = self?.llm {
+                        Task { await LearningAnalyzer.shared.runIfDue(provider: provider, threshold: LearningAnalyzer.triggerThreshold) }
+                    }
                 }
             } catch {
                 // Render log-safely: ASRError.badStatus and LLMError can
@@ -2601,6 +2835,21 @@ public final class AppState {
         // automatically clears the menu badge even if the user
         // didn't dismiss it manually.
         onCleanupResult?(cleanupFailureMessage)
+        // Chained-refine baseline: this applyResult is the FIRST cleanup
+        // completing while a refine is already pending. Update currentText
+        // + failure bookkeeping (done above) and hand the FINAL text to
+        // the refine via the gate — but do NOT transition to
+        // .awaitingAccept or arm auto-accept. The chained refine owns the
+        // next terminal transition. The text resolved here is whatever
+        // the cleanup produced, including the raw fallback on failure, so
+        // the refine always gets a valid baseline. Quick mode can't reach
+        // this (the chained path requires the overlay), but the guard
+        // keeps quick-mode's direct-paste branch below correct.
+        if refineChainedDuringCleanup, !quickMode {
+            chainedBaselineGate?.resolve(text)
+            log("first cleanup done during chained refine: baseline resolved, terminal transition deferred to refine")
+            return
+        }
         if quickMode {
             // Skip the review step entirely. Transition straight to
             // .pasting and paste right away — same flow as accept()
@@ -2673,6 +2922,10 @@ public final class AppState {
         resetPerDictationOverlayState()
         cancelPendingOverlayShow()
         cancelPendingRefine()
+        // Tear down any chained-refine coordination so a cancelled or
+        // completed session never leaves the background cleanup task or
+        // its baseline gate dangling into the next dictation.
+        teardownChainedRefine()
         // Force-hide the help overlay without resuming the recorder —
         // this is a teardown path (cancel / accept / done), so there's
         // nothing to resume into.
@@ -2683,6 +2936,8 @@ public final class AppState {
         helpOverlay.hide()
         currentText = ""
         lastRawTranscript = ""
+        lastTurnWasRefine = false
+        lastRefinePriorText = ""
         appliedPreset = nil
         intendedDefaultPreset = nil
         styledRawTranscript = ""
@@ -3086,6 +3341,13 @@ public final class AppState {
 
         let overlay = self.overlay
         let rawTranscript = lastRawTranscript
+        // Task #41: after a refine turn, lastRawTranscript is the
+        // refine INSTRUCTION — re-cleaning it as a dictation produced
+        // garbage ("make it more formal" cleaned up as prose). Re-run
+        // the same SHAPE the user last ran: a refine re-runs as a
+        // refine (same instruction, same prior text) on the new model.
+        let asRefineRerun = lastTurnWasRefine
+        let refinePriorText = lastRefinePriorText
         let targetBundleID = pasteTarget?.bundleID
         let recleanConfig = Config.load().config
         let dictionary = recleanConfig.customDictionaryEnabled
@@ -3132,14 +3394,16 @@ public final class AppState {
                 llm: resolvedLLM,
                 overlay: overlay,
                 useOverlay: true,
-                asRefine: false,
+                asRefine: asRefineRerun,
                 rawTranscript: rawTranscript,
-                priorText: "",
+                priorText: refinePriorText,
                 targetBundleID: targetBundleID,
                 customDictionary: dictionary,
                 references: effectiveRefs,
                 pasteDestinationLabel: pasteDestLabel,
-                transform: intendedPreset?.prompt
+                // Refine re-runs never fold a preset (mirrors the main
+                // pipeline: the text being refined is already styled).
+                transform: asRefineRerun ? nil : intendedPreset?.prompt
             )
             if Task.isCancelled { return }
             // 0.14.0 PR 4 (#219): the model-switch path runs its
@@ -3148,7 +3412,17 @@ public final class AppState {
             // actually accepted, not the original pre-switch run.
             self?.lastLLMLatencyMs = outcome.llmLatencyMs
             self?.applyResult(outcome.text, cleanupFailureMessage: outcome.failureMessage)
-            if outcome.usedLLMOutput {
+            if outcome.usedLLMOutput, asRefineRerun {
+                // A refine re-run supersedes styled provenance exactly
+                // like a voice refine does in the main pipeline: the
+                // text is no longer just "Styled with X".
+                self?.appliedPreset = nil
+                self?.intendedDefaultPreset = nil
+                self?.styledRawTranscript = ""
+                self?.styledReferences = []
+                self?.styledPasteDestLabel = nil
+                self?.overlay.model.appliedPresetName = nil
+            } else if outcome.usedLLMOutput {
                 // Same rule as the primary cleanup path: a successful
                 // styled run sets the chip + the snapshots Undo replays
                 // from (the transcript/references/label THIS run used).
@@ -3245,6 +3519,18 @@ public final class AppState {
                 self.styledReferences = []
                 self.styledPasteDestLabel = nil
                 self.overlay.model.appliedPresetName = nil
+                // Task #41 (review finding): a chip tap IS the last LLM
+                // turn — record its shape so a model switch re-runs THIS
+                // preset refine on the new model, not a stale prior turn.
+                self.lastRawTranscript = preset.prompt
+                self.lastTurnWasRefine = true
+                self.lastRefinePriorText = current
+                // Bridge 2: record the successful MANUAL preset use (metadata
+                // only — id/name/bundle/timestamp, no dictation text) so the
+                // off-hot-path dominance rule can suggest a per-app default.
+                PresetUsageJournal.shared.record(
+                    presetID: preset.id, presetName: preset.name,
+                    appBundleID: targetBundleID, source: "manual")
             }
         }
     }
@@ -3275,6 +3561,10 @@ public final class AppState {
         // restores: a failed refine may have left it holding the spoken
         // refine instruction, and a later model-switch re-clean reads it.
         lastRawTranscript = raw
+        // The undo replay is a fresh-cleanup shape — a model switch
+        // after it must re-clean, not re-refine (task #41).
+        lastTurnWasRefine = false
+        lastRefinePriorText = ""
         appliedPreset = nil
         intendedDefaultPreset = nil
         styledRawTranscript = ""
@@ -3448,6 +3738,26 @@ struct CleanupOutcome {
     }
 }
 
+/// Pure decision for whether an in-flight cleanup/refine stream may
+/// paint its chunks onto the overlay. Extracted from AppState so the
+/// chained-refine render-suppression logic is unit-testable without the
+/// full state machine (which needs AppKit windows + the audio engine).
+///
+/// Every LLM pass (cleanup AND refine) streams under phase == .cleaning
+/// — finalizeCapture sets that before spawning the task; `.refining`
+/// covers only the audio hold. So a normal cleanup or refine renders
+/// (chain flag false). The chain flag is true ONLY for the first cleanup
+/// after the user has chained a refine onto it: it keeps accumulating
+/// text in the background but must stop painting so it can't clobber the
+/// .refining capture / the chained refine's stream. The chained refine
+/// clears the flag before it streams, so its own chunks render.
+func chainedRefineShouldRender(
+    phase: AppState.Phase,
+    refineChainedDuringCleanup: Bool
+) -> Bool {
+    return phase == .cleaning && !refineChainedDuringCleanup
+}
+
 /// Stream a cleanup or refine call into the overlay — chunks are
 /// appended to the overlay text as they arrive (so the user sees
 /// text grow incrementally), and the final assembled text is
@@ -3476,7 +3786,16 @@ private func streamCleanupOrRefine(
     customDictionary: [DictionaryEntry] = [],
     references: [Reference] = [],
     pasteDestinationLabel: String? = nil,
-    transform: String? = nil
+    transform: String? = nil,
+    // Gate for the per-chunk overlay writes. Evaluated on the MainActor
+    // before each streamed chunk renders. When it returns false the
+    // chunk text still accumulates into `assembled` (so the final
+    // CleanupOutcome is correct) but is NOT written to the overlay —
+    // this is how a cleanup that the user has already chained a refine
+    // onto stops clobbering the .refining view while it finishes in the
+    // background. Default always-true preserves the normal raw-first
+    // streaming behavior for every other call site.
+    shouldRenderToOverlay: @escaping @MainActor @Sendable () -> Bool = { true }
 ) async -> CleanupOutcome {
     let fallback = asRefine ? priorText : rawTranscript
     guard let llm = llm else {
@@ -3485,13 +3804,13 @@ private func streamCleanupOrRefine(
         // Render the fallback without any failure decoration —
         // there's no error here, just an intentional no-cleanup
         // posture.
-        if useOverlay {
+        if useOverlay, shouldRenderToOverlay() {
             overlay.show(state: .cleaning, text: fallback)
         }
         return CleanupOutcome(text: fallback, failureMessage: nil)
     }
     if rawTranscript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-        if useOverlay {
+        if useOverlay, shouldRenderToOverlay() {
             overlay.show(state: .cleaning, text: fallback)
         }
         return CleanupOutcome(text: fallback, failureMessage: nil)
@@ -3559,31 +3878,63 @@ private func streamCleanupOrRefine(
         messages = [LLMMessage(role: "user", content: "Transcript to clean up:\n\n\(rawTranscript)")]
     }
 
-    // Reset the overlay text before streaming begins so the new
-    // content fully replaces any prior text (especially important on
-    // refinement, where we showed the prior text faded). Skip in
-    // quick mode — there's no overlay to update.
-    if useOverlay {
-        overlay.show(state: .cleaning, text: "")
+    // Raw-first display (task #53): instead of blanking the overlay
+    // while the LLM warms up, show the fallback text (the raw ASR
+    // transcript on fresh turns; the prior text on refines) marked
+    // provisional — dimmed, with the footer noting that Enter accepts
+    // it as-is. The first streamed chunk replaces it. Skip in quick
+    // mode — there's no overlay to update.
+    if useOverlay, shouldRenderToOverlay() {
+        overlay.showProvisionalCleaning(text: fallback, isRefine: asRefine)
     }
 
     let assembled = AssembledTextBox()
     let latencyBox = LatencyBox()
 
     do {
-        try await llm.generateStreaming(
-            systemPrompt: systemPrompt,
-            messages: messages
-        ) { event in
+        // TTFT watchdog + retry (task #53): if no first token arrives
+        // within the deadline, cancel the attempt and retry once with a
+        // longer leash — a fresh request often lands on a faster serving
+        // path. A second stall throws to the failure path below; the
+        // raw-first text is already on screen and acceptable, so the
+        // user is never stuck staring at nothing. The watchdog covers
+        // TIME-TO-FIRST-TOKEN only; once tokens flow, mid-stream stalls
+        // remain covered by the providers' 60s idle timeouts. Stall
+        // detection keys off assembled.value (chunks land there before
+        // the overlay hop), so a retry can only happen while the stream
+        // has produced nothing — no duplicate text risk.
+        // Thinking-class models (Gemini Pro, reasoning families) get one
+        // generous deadline instead of the fast retry ladder — see
+        // ModelCapability.expectsExtendedTTFT.
+        // #55: the watchdog ladders are configurable via llm.tuning
+        // (ttft_deadline_seconds / ttft_deadline_thinking_seconds).
+        let ttftDeadlines: [TimeInterval] =
+            ModelCapability.expectsExtendedTTFT(provider: llm.providerName, model: llm.model)
+            ? LLMTuning.current.ttftDeadlineThinkingSeconds
+            : LLMTuning.current.ttftDeadlineSeconds
+        let streamOnce: @Sendable (LLMStreamEvent) -> Void = { event in
             // The streaming callback fires on URLSession's queue, not
             // MainActor. Hop to the main actor for any overlay
             // mutation.
             switch event {
             case .chunk(let text):
-                assembled.append(text)
+                let wasFirst = assembled.appendReturningWasFirst(text)
                 if useOverlay {
                     Task { @MainActor in
-                        overlay.appendText(text)
+                        // Drop the overlay write if the caller has moved
+                        // on (e.g. a chained refine switched the overlay
+                        // to .refining). The chunk already landed in
+                        // `assembled`, so the final outcome stays correct
+                        // — we just don't paint a stale cleanup stream
+                        // over the refine view.
+                        guard shouldRenderToOverlay() else { return }
+                        if wasFirst {
+                            // Replace the provisional raw-first text
+                            // (show() clears the provisional flag).
+                            overlay.show(state: .cleaning, text: text)
+                        } else {
+                            overlay.appendText(text)
+                        }
                     }
                 }
             case .done(let summary):
@@ -3609,6 +3960,47 @@ private func streamCleanupOrRefine(
                 ))
             }
         }
+
+        for (attemptIndex, deadline) in ttftDeadlines.enumerated() {
+            do {
+                try await withThrowingTaskGroup(of: Bool.self) { group in
+                    // true = the stream task; false = the watchdog.
+                    group.addTask {
+                        try await llm.generateStreaming(
+                            systemPrompt: systemPrompt,
+                            messages: messages,
+                            onEvent: streamOnce
+                        )
+                        return true
+                    }
+                    group.addTask {
+                        try await Task.sleep(nanoseconds: UInt64(deadline * 1_000_000_000))
+                        if assembled.value.isEmpty { throw TTFTStallError() }
+                        return false
+                    }
+                    while let isStream = try await group.next() {
+                        if isStream {
+                            // Stream finished — don't keep the watchdog
+                            // sleeping out its deadline.
+                            group.cancelAll()
+                            break
+                        }
+                        // Watchdog returned benignly (token already
+                        // arrived) — keep waiting for the stream.
+                    }
+                }
+                break // attempt succeeded
+            } catch is TTFTStallError {
+                let attempt = attemptIndex + 1
+                FileHandle.standardError.write(
+                    "[parleq] \(asRefine ? "refine" : "cleanup") ttft watchdog: attempt \(attempt) produced no token in \(deadline)s\(attempt < ttftDeadlines.count ? " — retrying" : " — falling back")\n"
+                        .data(using: .utf8) ?? Data())
+                if attemptIndex == ttftDeadlines.count - 1 {
+                    throw LLMError.requestFailed(TTFTTimeoutError(attempts: ttftDeadlines.count))
+                }
+                // loop to retry
+            }
+        }
         let final = assembled.value
         if final.isEmpty {
             // Stream produced nothing visible — paste the fallback
@@ -3622,7 +4014,7 @@ private func streamCleanupOrRefine(
             // and re-showing here races against it, leaving the
             // overlay stuck in a fake "processing" state that only
             // the user pressing the hotkey can dismiss.
-            if useOverlay, !Task.isCancelled {
+            if useOverlay, !Task.isCancelled, shouldRenderToOverlay() {
                 overlay.show(state: .cleaning, text: fallback)
             }
             return CleanupOutcome(text: fallback, failureMessage: nil, llmLatencyMs: latencyBox.value)
@@ -3698,7 +4090,7 @@ private func streamCleanupOrRefine(
         } else {
             failureMessage = genericHint
         }
-        if useOverlay {
+        if useOverlay, shouldRenderToOverlay() {
             overlay.show(state: .cleaning, text: fallback)
         }
         return CleanupOutcome(text: fallback, failureMessage: failureMessage)
@@ -3714,12 +4106,45 @@ private func streamCleanupOrRefine(
 /// chunk write phase and the post-stream read. We mark the class
 /// `@unchecked Sendable` to signal that to the Swift 6 concurrency
 /// model.
+/// Surfaces past the retry loop when EVERY attempt stalled — wrapped in
+/// LLMError.requestFailed so the existing failure path renders it.
+private struct TTFTTimeoutError: Error, CustomStringConvertible {
+    let attempts: Int
+    var description: String {
+        "cleanup produced no response after \(attempts) attempts — the provider may be slow or unreachable"
+    }
+}
+
+/// Thrown by the TTFT watchdog when an LLM stream produced no first
+/// token within its deadline (task #53) — caught by the retry loop in
+/// streamCleanupOrRefine, never surfaces past it.
+private struct TTFTStallError: Error {}
+
 private final class AssembledTextBox: @unchecked Sendable {
+    // NSLock guard (review finding): historically single-queue
+    // (URLSession delivery wrote, post-stream code read after
+    // completion), but the TTFT watchdog now reads `value` from a
+    // concurrent task WHILE the stream may be writing — an actual
+    // data race without synchronization. Lock is per-chunk and cheap.
+    private let lock = NSLock()
     private var _value: String = ""
     func append(_ chunk: String) {
+        lock.lock(); defer { lock.unlock() }
         _value.append(chunk)
     }
-    var value: String { _value }
+    /// Appends and reports whether this was the FIRST content for the
+    /// stream — the raw-first display uses it to replace the
+    /// provisional text instead of appending to it (task #53).
+    func appendReturningWasFirst(_ chunk: String) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        let wasFirst = _value.isEmpty
+        _value.append(chunk)
+        return wasFirst
+    }
+    var value: String {
+        lock.lock(); defer { lock.unlock() }
+        return _value
+    }
 }
 
 /// Reference-typed holder for the LLM stream's total latency in

@@ -6,10 +6,13 @@ public struct OIDCClientConfig: Sendable, Equatable {
     public let scopes: [String]
     public let ephemeralBrowser: Bool
     /// The OAuth redirect URI sent in the authorization request and the
-    /// token-exchange `redirect_uri`. The browser callback scheme is derived
-    /// from this (URL scheme component). Defaults to the fixed custom scheme
-    /// `parleq-auth://oidc/callback`; generic OPs (e.g. a Google native client)
-    /// require their own reversed-client-ID scheme, set via `oidc.redirect_uri`.
+    /// token-exchange `redirect_uri`. Either a custom scheme (browser callback
+    /// scheme derived from the URL scheme component; intercepted by
+    /// ASWebAuthenticationSession) or an http:// loopback redirect (Google
+    /// "Desktop app"; answered by a transient 127.0.0.1-only listener — the
+    /// configured port is ignored, an ephemeral one is bound). Defaults to the
+    /// fixed custom scheme `parleq-auth://oidc/callback`; generic OPs (e.g. a
+    /// Google native client) set their own value via `oidc.redirect_uri`.
     public let redirectURI: String
     /// Extra query parameters appended to the authorization request (e.g.
     /// `access_type=offline`, `prompt=consent` so a refresh token is granted
@@ -33,16 +36,55 @@ public protocol OIDCTokenStore: Sendable {
     func loadIdentity() -> OIDCIdentity?
     @discardableResult func saveIdentity(_ identity: OIDCIdentity) -> Bool
     func clear()
+    /// The OPTIONAL OAuth client secret to include on the token exchange and
+    /// refresh grant. Needed only for Google "Desktop app" clients, which
+    /// REQUIRE a client_secret even with PKCE; nil for every other client type
+    /// (custom-scheme / iOS-type clients have no secret). It is CLIENT config,
+    /// not a user credential, so `clear()` (sign-out) does NOT remove it.
+    /// Defaulted to nil so existing conformers (test fakes) need no change.
+    func oidcClientSecret() -> String?
 }
 
-/// Browser seam: (authorizationURL, callbackScheme) → callback URL.
-/// Production: ASWebAuthenticationSession (CompanyAccount wiring task).
-public typealias OIDCAuthenticator = @Sendable (URL, String) async throws -> URL
+public extension OIDCTokenStore {
+    func oidcClientSecret() -> String? { nil }
+}
+
+/// Browser seam. The authenticator drives the interactive sign-in and returns
+/// the redirect callback URL.
+///
+/// It receives a `buildAuthorizationURL` closure (NOT a finished URL) because
+/// the EFFECTIVE redirect URI may not be known until the authenticator has run:
+/// the loopback flow binds an ephemeral 127.0.0.1 port and only then knows the
+/// real `http://127.0.0.1:<port>/...` redirect. Pass `nil` to build with the
+/// CONFIGURED redirect (custom-scheme / ASWebAuthenticationSession path); pass a
+/// concrete override to build with the loopback redirect. signIn captures the
+/// effective redirect the closure was invoked with and uses it (port included)
+/// for the token-exchange `redirect_uri` — so the two always match.
+///
+/// `callbackScheme` is the custom URL scheme ASWebAuthenticationSession should
+/// intercept (derived from the configured redirect). It is `nil`/unused for the
+/// loopback authenticator, which uses the system default browser instead.
+public typealias OIDCAuthenticator =
+    @Sendable (_ buildAuthorizationURL: @Sendable (_ redirectOverride: String?) -> URL,
+               _ callbackScheme: String?) async throws -> URL
 
 public enum OIDCSessionState: Sendable {
     case signedOut
     case signedIn(OIDCIdentity)
     case needsInteractive(OIDCAuthFailure)
+}
+
+/// Thread-safe one-slot box recording the redirect URI the authorization URL
+/// was built with. The build closure runs synchronously inside the (possibly
+/// off-actor) authenticator, so signIn can't read an actor-isolated var from
+/// it; this NSLock-backed box bridges the value back. Falls back to the
+/// configured redirect if the closure is never invoked.
+private final class EffectiveRedirectBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: String
+    init(default value: String) { self.stored = value }
+    func set(_ v: String) { lock.lock(); stored = v; lock.unlock() }
+    var value: String { lock.lock(); defer { lock.unlock() }; return stored }
 }
 
 public actor OIDCSession {
@@ -209,37 +251,55 @@ public actor OIDCSession {
         // unparseable — validation at the config layer keeps that from
         // happening, but a defaulted OIDCClientConfig (tests, callers that omit
         // the field) deliberately carries the static redirect/scheme.
-        let redirectURI = config.redirectURI
-        let callbackScheme = URL(string: redirectURI)?.scheme ?? Self.callbackScheme
-        var comps = URLComponents(url: d.authorizationEndpoint, resolvingAgainstBaseURL: false)!
-        comps.queryItems = (comps.queryItems ?? []) + [
-            .init(name: "response_type", value: "code"),
-            .init(name: "client_id", value: config.clientID),
-            .init(name: "redirect_uri", value: redirectURI),
-            .init(name: "scope", value: config.scopes.joined(separator: " ")),
-            .init(name: "state", value: oidcState),
-            .init(name: "nonce", value: nonce),
-            .init(name: "code_challenge", value: pkce.challenge),
-            .init(name: "code_challenge_method", value: "S256"),
-        ]
-        // Append configured extra auth params (e.g. Google's access_type=offline
-        // + prompt=consent). RESERVED params are protected — Parleq controls
-        // them above and an override would break the flow's security properties
-        // (PKCE / state / nonce binding) or its identity (client_id / scope /
-        // redirect_uri). Drop any reserved key with a count-only log line; the
-        // remainder are appended in deterministic key order for a stable URL.
+        let configuredRedirect = config.redirectURI
+        let callbackScheme = URL(string: configuredRedirect)?.scheme ?? Self.callbackScheme
+        // RESERVED params are protected — Parleq controls them and an override
+        // would break the flow's security properties (PKCE / state / nonce
+        // binding) or its identity (client_id / scope / redirect_uri).
         let reservedAuthParams: Set<String> = [
             "response_type", "client_id", "redirect_uri", "scope",
             "state", "nonce", "code_challenge", "code_challenge_method",
         ]
-        for key in config.extraAuthParams.keys.sorted() {
-            guard !reservedAuthParams.contains(key) else {
-                logStderrOIDC("oidc extra-auth-param ignored (reserved)")
-                continue
+        let authConfig = config  // capture for the @Sendable build closure
+        // The build closure produces the authorization URL for whatever redirect
+        // the authenticator chooses. `redirectOverride == nil` → the configured
+        // redirect (custom-scheme path); a concrete value → the loopback
+        // redirect (ephemeral port). The closure records the redirect it used so
+        // the token exchange below can send the SAME value as `redirect_uri`.
+        let effectiveRedirectBox = EffectiveRedirectBox(default: configuredRedirect)
+        let authEndpoint = d.authorizationEndpoint
+        let buildAuthorizationURL: @Sendable (String?) -> URL = { redirectOverride in
+            let redirectURI = redirectOverride ?? configuredRedirect
+            effectiveRedirectBox.set(redirectURI)
+            var comps = URLComponents(url: authEndpoint, resolvingAgainstBaseURL: false)!
+            comps.queryItems = (comps.queryItems ?? []) + [
+                .init(name: "response_type", value: "code"),
+                .init(name: "client_id", value: authConfig.clientID),
+                .init(name: "redirect_uri", value: redirectURI),
+                .init(name: "scope", value: authConfig.scopes.joined(separator: " ")),
+                .init(name: "state", value: oidcState),
+                .init(name: "nonce", value: nonce),
+                .init(name: "code_challenge", value: pkce.challenge),
+                .init(name: "code_challenge_method", value: "S256"),
+            ]
+            // Append configured extra auth params (e.g. Google's
+            // access_type=offline + prompt=consent). Drop any reserved key with
+            // a count-only log line; the remainder are appended in deterministic
+            // key order for a stable URL.
+            for key in authConfig.extraAuthParams.keys.sorted() {
+                guard !reservedAuthParams.contains(key) else {
+                    logStderrOIDC("oidc extra-auth-param ignored (reserved)")
+                    continue
+                }
+                comps.queryItems?.append(.init(name: key, value: authConfig.extraAuthParams[key]))
             }
-            comps.queryItems?.append(.init(name: key, value: config.extraAuthParams[key]))
+            return comps.url!
         }
-        let callback = try await authenticator(comps.url!, callbackScheme)
+        let callback = try await authenticator(buildAuthorizationURL, callbackScheme)
+        // The redirect the authorization URL was actually built with — the
+        // loopback flow's ephemeral-port value, or the configured redirect on
+        // the custom-scheme path. The token exchange MUST echo this exact value.
+        let redirectURI = effectiveRedirectBox.value
         let items = URLComponents(url: callback, resolvingAgainstBaseURL: false)?.queryItems ?? []
         // STATE VALIDATION FIRST — a forged/CSRF redirect must NOT be able to
         // dress itself up as a diagnosable IdP error. A mismatched (or absent)
@@ -486,7 +546,19 @@ public actor OIDCSession {
         var req = URLRequest(url: d.tokenEndpoint)
         req.httpMethod = "POST"
         req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        req.httpBody = body.map { k, v in "\(k)=\(formEncode(v))" }
+        // Add the OPTIONAL client_secret to BOTH the authorization-code exchange
+        // and the refresh grant (the only two callers): Google "Desktop app"
+        // clients reject a token request without it (invalid_request) even though
+        // PKCE is in use. When the store returns nil (the common case) the key is
+        // omitted entirely — the form body is byte-identical to before. The secret
+        // is percent-encoded by formEncode (conservative `.alphanumerics`) exactly
+        // like every other field, so arbitrary chars round-trip safely; it is
+        // never logged (the body is never logged).
+        var fullBody = body
+        if let secret = tokenStore.oidcClientSecret() {
+            fullBody["client_secret"] = secret
+        }
+        req.httpBody = fullBody.map { k, v in "\(k)=\(formEncode(v))" }
             .joined(separator: "&").data(using: .utf8)
         let (data, resp) = try await httpClient(req)
         guard resp.statusCode == 200 else {

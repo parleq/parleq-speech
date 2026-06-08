@@ -280,7 +280,8 @@ final class CloudExchangerTests: XCTestCase {
                 return (data, HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
             },
             tokenStore: store,
-            authenticator: { url, _ in
+            authenticator: { buildAuthorizationURL, _ in
+                let url = buildAuthorizationURL(nil)
                 let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
                 let state = items.first { $0.name == "state" }?.value ?? ""
                 let nonce = items.first { $0.name == "nonce" }?.value ?? ""

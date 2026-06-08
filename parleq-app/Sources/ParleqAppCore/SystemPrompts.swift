@@ -189,7 +189,16 @@ enum SystemPrompts {
     /// (Style-preference proposals are a future slice; this prompt asks
     /// only for term proposals so it doesn't advertise an unimplemented
     /// path — `LearningProposal.style` / `route` keep the plumbing ready.)
-    static func learningAnalysis(currentDictionary: [DictionaryEntry]) -> String {
+    ///
+    /// When `proposePresets` is true (Bridge 1: the presets feature is
+    /// on), the prompt ALSO invites a second proposal kind — a transform
+    /// PRESET distilled from a recurring refine pattern. The prompt is
+    /// strict that the preset's instruction must be GENERALIZED (reusable
+    /// on any text, never echoing one dictation's content) and only
+    /// proposed when the same kind of refine recurs (≥3 across distinct
+    /// dictations). With `proposePresets` false the output is the
+    /// terms-only prompt, byte-identical to the pre-Bridge-1 behavior.
+    static func learningAnalysis(currentDictionary: [DictionaryEntry], proposePresets: Bool = false) -> String {
         let dictLines: String
         if currentDictionary.isEmpty {
             dictLines = "(empty)"
@@ -203,6 +212,20 @@ enum SystemPrompts {
                 return line
             }.joined(separator: "\n")
         }
+        let presetGuidance = proposePresets ? """
+
+
+            You may ALSO propose "preset" changes — a reusable transform the user can apply to future dictations with one tap. Propose one ONLY when the REFINE corrections show the SAME KIND of rewrite instruction recurring across at least three distinct dictations (e.g. repeatedly asking to "make this more concise", "shorten this", "tighten this up" — all the same intent). A one-off or two-off refine is NOT a preset. Fields: name (a short chip label, e.g. "Concise"), prompt (the GENERALIZED instruction).
+
+            The preset prompt MUST be generalized so it works on ANY future text. NEVER copy or paraphrase the content of any specific dictation, name, topic, or wording from the corrections — distill only the recurring INSTRUCTION into a standalone directive (e.g. "Rewrite the text to be as concise as possible while preserving all key information."). A preset prompt that mentions any specifics from the user's actual dictations is wrong — write it as if for a stranger's text.
+            """ : ""
+
+        let presetProposalKindNote = proposePresets ? " or \"preset\"" : ""
+        let presetShapeLine = proposePresets ? """
+
+            A preset proposal looks like: {"kind":"preset","op":"add","confidence":0.0,"rationale":"...","name":"...","prompt":"..."}
+            """ : ""
+
         return """
             You analyze a user's recent dictation corrections and propose updates to their personal cleanup configuration. You are NOT cleaning text here — you are spotting recurring patterns worth remembering.
 
@@ -212,15 +235,15 @@ enum SystemPrompts {
 
             Propose changes ONLY when a pattern recurs or is clearly intentional. Be conservative — a one-off is not a pattern. Prefer tweaking/merging an existing entry over adding a near-duplicate. Never propose retiring or modifying a [user] entry's term spelling; you may propose merging an alias into one.
 
-            Propose "term" changes only — a dictionary spelling/alias the cleanup pass should bias toward (from SPELLOUT candidates or repeated misrecognitions visible in refines). Fields: term (canonical spelling), optional context, optional aliases (array).
+            Propose "term" changes — a dictionary spelling/alias the cleanup pass should bias toward (from SPELLOUT candidates or repeated misrecognitions visible in refines). Fields: term (canonical spelling), optional context, optional aliases (array).\(presetGuidance)
 
-            Each proposal has: kind ("term"), op ("add"|"modify"|"merge"|"retire"), confidence (0.0–1.0; how sure you are this is a real recurring preference), rationale (one short sentence).
+            Each proposal has: kind ("term"\(presetProposalKindNote)), op ("add"|"modify"|"merge"|"retire"), confidence (0.0–1.0; how sure you are this is a real recurring preference), rationale (one short sentence).
 
             Current dictionary:
             \(dictLines)
 
             Output ONLY a JSON object, optionally inside a ```json fence, of exactly this shape — no prose before or after:
-            {"proposals":[{"kind":"term","op":"add","confidence":0.0,"rationale":"...","term":"...","context":"...","aliases":["..."]}]}
+            {"proposals":[{"kind":"term","op":"add","confidence":0.0,"rationale":"...","term":"...","context":"...","aliases":["..."]}]}\(presetShapeLine)
             If there is nothing worth proposing, output {"proposals":[]}.
             """
     }

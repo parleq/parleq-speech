@@ -84,7 +84,7 @@ public final class BedrockBearerProvider: LLMProvider, Sendable {
         // a JSON one-shot.
         request.setValue("application/vnd.amazon.eventstream", forHTTPHeaderField: "Accept")
         request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
-        request.timeoutInterval = 60
+        request.timeoutInterval = LLMTuning.current.requestTimeoutSeconds  // #55
         do {
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
         } catch {
@@ -177,9 +177,12 @@ public final class BedrockBearerProvider: LLMProvider, Sendable {
         var body: [String: Any] = [
             "messages": convo,
             "system": [["text": systemPrompt]],
+            // #55: configurable max-tokens + temperature (matches the
+            // Soto path in BedrockProvider). reasoning_effort stays
+            // hardcoded below (invariant #4) — not a tuning knob.
             "inferenceConfig": [
-                "maxTokens": 1024,
-                "temperature": 0,
+                "maxTokens": LLMTuning.current.maxOutputTokens,
+                "temperature": LLMTuning.current.temperature,
             ],
         ]
         // Per-model tweaks — match BedrockProvider.additionalFields.

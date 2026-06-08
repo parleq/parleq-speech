@@ -106,7 +106,7 @@ public final class OpenAIProvider: LLMProvider, Sendable {
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
         // OpenAI direct uses Bearer auth, not the Azure-style api-key header.
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        request.timeoutInterval = 60
+        request.timeoutInterval = LLMTuning.current.requestTimeoutSeconds  // #55
 
         do {
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -205,14 +205,21 @@ public final class OpenAIProvider: LLMProvider, Sendable {
             // the visible cleanup output, which is well above any real cleanup
             // response. Mirrors the existing Bedrock GPT-OSS treatment where
             // reasoning_effort:"low" is already set (CLAUDE.md hard invariant #4).
-            body["max_completion_tokens"] = 4096
+            //
+            // #55: the maxOutputTokens knob can RAISE this for users who
+            // need more visible output, but never below the 4096 reasoning
+            // floor (a smaller cap would starve reasoning and truncate to
+            // empty). Default 2048 < 4096 → floor wins, prior behavior kept.
+            body["max_completion_tokens"] = max(4096, LLMTuning.current.maxOutputTokens)
             // low effort is appropriate for cleanup-style tasks (short
             // utterances); users who want medium/high can pick a non-reasoning
             // model. Omit temperature — reasoning models only accept 1.0.
             body["reasoning_effort"] = "low"
         } else {
-            body["max_tokens"] = 1024
-            body["temperature"] = 0
+            // #55: configurable max-tokens + temperature for the standard
+            // family (reasoning models above reject non-1.0 temperature).
+            body["max_tokens"] = LLMTuning.current.maxOutputTokens
+            body["temperature"] = LLMTuning.current.temperature
         }
         return body
     }

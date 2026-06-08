@@ -7,6 +7,7 @@
 // rest of the file into the full Company Account settings section +
 // connection doctor view.
 
+import AppKit
 import AuthenticationServices
 import SwiftUI
 
@@ -60,7 +61,12 @@ private actor AsyncGate {
 /// or throws `OIDCAuthFailure.signInCancelled` when the user dismisses
 /// the sheet (rendered silently by the taxonomy).
 public func webAuthSessionAuthenticator(ephemeral: Bool = false) -> OIDCAuthenticator {
-    { url, scheme in
+    { buildAuthorizationURL, scheme in
+        // Custom-scheme path: build the authorization URL with the CONFIGURED
+        // redirect (no override) and let ASWebAuthenticationSession intercept the
+        // custom-scheme callback. signIn captures the same (configured) redirect
+        // for the token exchange.
+        let url = buildAuthorizationURL(nil)
         // Box the live session so the cancellation handler can reach it to
         // cancel(). MainActor-confined: only the start Task and onCancel hop
         // touch it, both on the main actor. ASWebAuthenticationSession is not
@@ -144,6 +150,85 @@ public func webAuthSessionAuthenticator(ephemeral: Bool = false) -> OIDCAuthenti
             Task { await started.wait(); await MainActor.run { box.session?.cancel() } }
         }
     }
+}
+
+/// Build the loopback-redirect `OIDCAuthenticator` for the Google "Desktop app"
+/// client type (and any OAuth client using an `http://127.0.0.1:<port>/<path>`
+/// redirect). ASWebAuthenticationSession cannot intercept a loopback redirect,
+/// so this flow instead:
+///   1. binds a transient 127.0.0.1-only listener on an EPHEMERAL port,
+///   2. builds the authorization URL with the listener's real redirect URI,
+///   3. opens the URL in the user's DEFAULT system browser (NSWorkspace.open),
+///   4. awaits the single callback the browser delivers to the listener,
+///   5. tears the listener down.
+///
+/// The configured redirect URI's PORT (if any) is IGNORED — the kernel-assigned
+/// ephemeral port is always used (Google Desktop clients accept any loopback
+/// port). The configured redirect's HOST is also normalized to `127.0.0.1`: the
+/// listener always binds that address, so a configured `localhost` or `[::1]`
+/// loopback host is replaced with `127.0.0.1` in both the authorization request
+/// and the token-exchange redirect_uri. Google accepts any loopback host, so
+/// this is transparent there; an IdP with byte-exact redirect matching should be
+/// configured with `127.0.0.1` directly. The configured PATH is preserved.
+///
+/// `prefersEphemeralWebBrowserSession` is an ASWebAuthenticationSession-only
+/// feature; the loopback flow uses the real default browser, so when ephemeral
+/// mode is requested for a loopback redirect we emit a one-line code-only notice
+/// and proceed (don't fail). The notice is emitted by the selector below.
+public func loopbackRedirectAuthenticator(redirectPath: String) -> OIDCAuthenticator {
+    { buildAuthorizationURL, _ in
+        // Bind FIRST — the redirect URI (and thus the authorization URL) isn't
+        // known until we have an ephemeral port.
+        let server = try await LoopbackRedirectServer.start(path: redirectPath)
+        // Provably close the listener no matter how we leave (success, browser
+        // open failure, callback timeout/cancellation).
+        return try await withTaskCancellationHandler {
+            let authURL = buildAuthorizationURL(server.redirectURI)
+            let opened = await MainActor.run { NSWorkspace.shared.open(authURL) }
+            guard opened else {
+                server.cancel()
+                throw OIDCAuthFailure.signInUnavailable(detail: "couldn't open the default browser")
+            }
+            return try await server.awaitCallback()
+        } onCancel: {
+            server.cancel()
+        }
+    }
+}
+
+/// Select the interactive authenticator for the configured redirect URI. An
+/// `http://` loopback redirect → the loopback-listener flow; any custom scheme
+/// → ASWebAuthenticationSession. The decision mirrors the config validator,
+/// which now ACCEPTS http+loopback redirects (and still rejects https / non-
+/// loopback http).
+///
+/// Loopback control surface (no dedicated disable key exists or is needed):
+/// the loopback listener is selected SOLELY by the redirect_uri — and only
+/// when its scheme is `http` AND its host is loopback (`isLoopbackHost`:
+/// 127.0.0.1 / ::1 / localhost). EVERY other redirect_uri — a custom scheme
+/// (`parleq-auth://oidc/callback`), a reversed-client-ID scheme
+/// (`com.googleusercontent.apps...:`), etc. — falls through to
+/// `webAuthSessionAuthenticator`, which binds NO socket. The redirect_uri is
+/// therefore the complete control: an org that wants the no-local-listener
+/// guarantee on managed Macs pins `oidcRedirectURI` via MDM to its
+/// custom-scheme value — once pinned the user can't change it, so a loopback
+/// redirect can never be configured and this branch can never run. There is
+/// intentionally no separate "disable loopback" MDM key because the
+/// `oidcRedirectURI` pin already fully controls it.
+public func makeOIDCAuthenticator(redirectURI: String, ephemeral: Bool) -> OIDCAuthenticator {
+    if let url = URL(string: redirectURI), url.scheme?.lowercased() == "http",
+       isLoopbackHost(url) {
+        if ephemeral {
+            // Ephemeral browser is an ASWebAuthenticationSession feature; the
+            // loopback flow uses the real default browser. Code-only notice.
+            logStderrOIDC("oidc ephemeral-browser ignored for loopback redirect")
+        }
+        // Preserve the configured PATH (default "/" when absent); the PORT is
+        // always the kernel's ephemeral choice, never the configured one.
+        let path = url.path.isEmpty ? "/" : url.path
+        return loopbackRedirectAuthenticator(redirectPath: path)
+    }
+    return webAuthSessionAuthenticator(ephemeral: ephemeral)
 }
 
 // MARK: - Company Account settings section
@@ -621,6 +706,13 @@ struct CompanyAccountSectionContent: View {
 struct CompanyAccountConfigCard: View {
     @ObservedObject var model: SettingsModel
     @State private var expanded = false
+    /// In-flight Client secret entry. Holds ONLY what the user is currently
+    /// typing — never the stored value (the stored secret is write-only from
+    /// the UI's perspective). Cleared on save / cancel / remove.
+    @State private var pendingSecret = ""
+    /// True while replacing an already-saved secret: swaps the "stored"
+    /// indicator for the entry SecureField without first removing the old value.
+    @State private var replacingSecret = false
 
     /// Issuer / client ID are managed independently: each disables and
     /// lock-notes per its OWN managed key, and the card hides only when BOTH
@@ -644,6 +736,7 @@ struct CompanyAccountConfigCard: View {
                               placeholder: "0oaXXXXXXXXXXXX",
                               text: bind(\.oidcClientID),
                               isManaged: clientIDPinned)
+                        clientSecretField
                         SettingsCaption("Your identity provider's OIDC issuer and the public client ID for Parleq. Changing these requires a restart to take effect.")
                     }
                     .padding(.top, 8)
@@ -655,6 +748,52 @@ struct CompanyAccountConfigCard: View {
                 }
             }
         }
+    }
+
+    /// Optional Client secret, entered via a SecureField. The stored value is
+    /// NEVER displayed back (matches every other Keychain secret in Settings):
+    /// once saved, the field collapses to a "saved" indicator + Replace/Remove,
+    /// and the entry SecureField only ever holds what the user is currently
+    /// typing. A non-empty entry → Keychain set; Remove → Keychain delete.
+    @ViewBuilder
+    private var clientSecretField: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text("Client secret")
+                    .frame(minWidth: 90, alignment: .leading)
+                if model.oidcClientSecretSet && !replacingSecret {
+                    Text("•••• stored in Keychain")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
+                    Button("Replace") { replacingSecret = true }
+                    Button("Remove") {
+                        model.removeOIDCClientSecret()
+                        pendingSecret = ""
+                    }
+                    .foregroundColor(.red)
+                } else {
+                    SecureField("(optional)", text: $pendingSecret)
+                        .textFieldStyle(.roundedBorder)
+                        .autocorrectionDisabled(true)
+                        .onSubmit { saveSecret() }
+                    Button("Save") { saveSecret() }
+                        .disabled(pendingSecret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    if model.oidcClientSecretSet {
+                        Button("Cancel") { replacingSecret = false; pendingSecret = "" }
+                    }
+                }
+            }
+            SettingsCaption("Only needed for Google \u{201C}Desktop app\u{201D} clients — installed-app secrets are not confidential, but Parleq keeps it in the Keychain.")
+        }
+    }
+
+    private func saveSecret() {
+        let trimmed = pendingSecret.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        model.setOIDCClientSecret(trimmed)
+        pendingSecret = ""
+        replacingSecret = false
     }
 
     private func field(label: String, placeholder: String, text: Binding<String>,

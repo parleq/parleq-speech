@@ -62,18 +62,22 @@ struct OverlayHintStrip: View {
                 // is released and the picker actually opens — feels
                 // unresponsive on the dominant fast Space-then-
                 // release path.
+                // Spike note: the strip now renders inside the footer
+                // row, REPLACING the "Release ⌥ when done" hint during
+                // the hold — so the recording copy leads with the
+                // release cue to keep that affordance discoverable.
                 if referenceWindowsEnabled {
                     if spaceArmedDuringHold {
                         Text("Picker opens on release · Esc to cancel")
                     } else {
-                        Text("Space: attach a window · C: current window · P: open Parleq")
+                        Text("Release: done · Space: attach a window · C: this window · P: Parleq")
                     }
                 } else {
                     // Reference windows are off, so there's no Space
                     // gesture to teach — but the hold-hotkey + P gesture
                     // (summon the Parleq window) still works, so keep
                     // that hint visible.
-                    Text("Press P to open Parleq")
+                    Text("Release: done · P: open Parleq")
                 }
 
             case .pickerOpen:

@@ -339,7 +339,8 @@ final class OIDCSessionTests: XCTestCase {
                 data = Self.discoveryJSON()
             }
             return (data, HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
-        }, tokenStore: store, authenticator: { url, _ in
+        }, tokenStore: store, authenticator: { buildAuthorizationURL, _ in
+            let url = buildAuthorizationURL(nil)
             let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
             let state = items.first { $0.name == "state" }?.value ?? ""
             let nonce = items.first { $0.name == "nonce" }?.value ?? ""
@@ -362,7 +363,8 @@ final class OIDCSessionTests: XCTestCase {
                 ? Self.tokenJSONWithNonce("not-the-nonce-we-sent")
                 : Self.discoveryJSON()
             return (data, HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
-        }, tokenStore: store, authenticator: { url, _ in
+        }, tokenStore: store, authenticator: { buildAuthorizationURL, _ in
+            let url = buildAuthorizationURL(nil)
             let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
             let state = items.first { $0.name == "state" }?.value ?? ""
             return URL(string: "parleq-auth://oidc/callback?state=\(state)&code=c1")!
@@ -386,7 +388,8 @@ final class OIDCSessionTests: XCTestCase {
             // before any token call.
             (Self.discoveryJSON(),
              HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
-        }, tokenStore: store, authenticator: { url, _ in
+        }, tokenStore: store, authenticator: { buildAuthorizationURL, _ in
+            let url = buildAuthorizationURL(nil)
             let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
             let state = items.first { $0.name == "state" }?.value ?? ""
             return URL(string: "parleq-auth://oidc/callback?state=\(state)&error=invalid_request&error_description=invalid_scope")!
@@ -465,7 +468,8 @@ final class OIDCSessionTests: XCTestCase {
                 data = Self.discoveryJSON()
             }
             return (data, HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
-        }, tokenStore: store, authenticator: { url, _ in
+        }, tokenStore: store, authenticator: { buildAuthorizationURL, _ in
+            let url = buildAuthorizationURL(nil)
             let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
             let state = items.first { $0.name == "state" }?.value ?? ""
             let nonce = items.first { $0.name == "nonce" }?.value ?? ""
@@ -622,7 +626,8 @@ final class OIDCSessionTests: XCTestCase {
                 data = Self.discoveryJSON()
             }
             return (data, HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
-        }, tokenStore: store, authenticator: { url, _ in
+        }, tokenStore: store, authenticator: { buildAuthorizationURL, _ in
+            let url = buildAuthorizationURL(nil)
             let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
             let state = items.first { $0.name == "state" }?.value ?? ""
             let nonce = items.first { $0.name == "nonce" }?.value ?? ""
@@ -666,7 +671,8 @@ final class OIDCSessionTests: XCTestCase {
                 ? Self.tokenJSONWithNonce(await nonceBox.value, rt: nil)
                 : Self.discoveryJSON()
             return (data, HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
-        }, tokenStore: store, authenticator: { url, _ in
+        }, tokenStore: store, authenticator: { buildAuthorizationURL, _ in
+            let url = buildAuthorizationURL(nil)
             let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
             let state = items.first { $0.name == "state" }?.value ?? ""
             let nonce = items.first { $0.name == "nonce" }?.value ?? ""
@@ -685,6 +691,148 @@ final class OIDCSessionTests: XCTestCase {
         }
     }
 
+    // MARK: - optional client secret (Google "Desktop app" clients)
+
+    /// The REFRESH grant must carry `client_secret` when the token store
+    /// provides one. The value is form-encoded (`.alphanumerics`) like every
+    /// other field; we assert the encoded form is present, not the raw value.
+    func test_refresh_grant_includes_client_secret_when_store_provides_one() async throws {
+        let store = SecretTokenStore()
+        store.refreshToken = "rt1"
+        store.clientSecret = "GOCSPX-secret123"
+        let bodyBox = CapturedBody()
+        let session = OIDCSession(config: Self.config(), httpClient: { req in
+            if req.url!.path.contains("token") {
+                await bodyBox.set(String(data: req.httpBody ?? Data(), encoding: .utf8) ?? "")
+                return (Self.tokenJSON(rt: nil), HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+            }
+            return (Self.discoveryJSON(), HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }, tokenStore: store, authenticator: { _, _ in throw OIDCAuthFailure.signInCancelled })
+        _ = try await session.idToken()
+        let body = await bodyBox.value
+        // "GOCSPX" is all-alphanumeric so it survives encoding verbatim; the
+        // '-' in the value is percent-encoded, so assert on the surviving run.
+        XCTAssertTrue(body.contains("client_secret=GOCSPX"),
+                      "refresh grant must include client_secret: \(body)")
+    }
+
+    /// The AUTHORIZATION-CODE exchange must carry `client_secret` too — Google
+    /// Desktop clients reject the exchange without it even with PKCE.
+    func test_authorization_code_exchange_includes_client_secret() async throws {
+        let store = SecretTokenStore()
+        store.clientSecret = "GOCSPX-secret123"
+        let nonceBox = NonceBox()
+        let bodyBox = CapturedBody()
+        let session = OIDCSession(config: Self.config(), httpClient: { req in
+            if req.url!.path.contains("token") {
+                await bodyBox.set(String(data: req.httpBody ?? Data(), encoding: .utf8) ?? "")
+                return (Self.tokenJSONWithNonce(await nonceBox.value),
+                        HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+            }
+            return (Self.discoveryJSON(), HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }, tokenStore: store, authenticator: { buildAuthorizationURL, _ in
+            let url = buildAuthorizationURL(nil)
+            let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+            let state = items.first { $0.name == "state" }?.value ?? ""
+            let nonce = items.first { $0.name == "nonce" }?.value ?? ""
+            await nonceBox.set(nonce)
+            return URL(string: "parleq-auth://oidc/callback?state=\(state)&code=c1")!
+        })
+        _ = try await session.signIn()
+        let body = await bodyBox.value
+        XCTAssertTrue(body.contains("client_secret=GOCSPX"),
+                      "auth-code exchange must include client_secret: \(body)")
+        XCTAssertTrue(body.contains("grant_type=authorization"),
+                      "this body must be the auth-code exchange: \(body)")
+    }
+
+    /// When the store provides NO client secret (the common case — every
+    /// non-Desktop client), the token body must OMIT the key entirely, so the
+    /// request is byte-identical to the pre-feature behavior.
+    func test_token_body_omits_client_secret_when_store_returns_nil() async throws {
+        let store = SecretTokenStore()
+        store.refreshToken = "rt1"
+        store.clientSecret = nil   // explicit: no secret
+        let bodyBox = CapturedBody()
+        let session = OIDCSession(config: Self.config(), httpClient: { req in
+            if req.url!.path.contains("token") {
+                await bodyBox.set(String(data: req.httpBody ?? Data(), encoding: .utf8) ?? "")
+                return (Self.tokenJSON(rt: nil), HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+            }
+            return (Self.discoveryJSON(), HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }, tokenStore: store, authenticator: { _, _ in throw OIDCAuthFailure.signInCancelled })
+        _ = try await session.idToken()
+        let body = await bodyBox.value
+        XCTAssertFalse(body.contains("client_secret"),
+                      "no client_secret key may appear when the store returns nil: \(body)")
+    }
+
+    /// A FakeTokenStore (which does NOT override oidcClientSecret()) uses the
+    /// protocol default of nil — proving existing conformers compile AND that
+    /// the default path omits the key.
+    func test_default_token_store_omits_client_secret() async throws {
+        let store = FakeTokenStore(); store.refreshToken = "rt1"
+        let bodyBox = CapturedBody()
+        let session = OIDCSession(config: Self.config(), httpClient: { req in
+            if req.url!.path.contains("token") {
+                await bodyBox.set(String(data: req.httpBody ?? Data(), encoding: .utf8) ?? "")
+                return (Self.tokenJSON(rt: nil), HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+            }
+            return (Self.discoveryJSON(), HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }, tokenStore: store, authenticator: { _, _ in throw OIDCAuthFailure.signInCancelled })
+        _ = try await session.idToken()
+        let body = await bodyBox.value
+        XCTAssertFalse(body.contains("client_secret"),
+                       "default-protocol store must omit client_secret: \(body)")
+    }
+
+    /// Arbitrary characters in the secret must round-trip through the form
+    /// encoder safely (no raw reserved bytes leak into the body). Uses a value
+    /// full of reserved chars; assert none of them appear unencoded and the
+    /// '=' count is exactly the key/value-separator count.
+    func test_client_secret_with_reserved_chars_is_form_encoded() async throws {
+        let store = SecretTokenStore()
+        store.refreshToken = "rt1"
+        store.clientSecret = "a+b/c=d&e"
+        let bodyBox = CapturedBody()
+        let session = OIDCSession(config: Self.config(), httpClient: { req in
+            if req.url!.path.contains("token") {
+                await bodyBox.set(String(data: req.httpBody ?? Data(), encoding: .utf8) ?? "")
+                return (Self.tokenJSON(rt: nil), HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+            }
+            return (Self.discoveryJSON(), HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }, tokenStore: store, authenticator: { _, _ in throw OIDCAuthFailure.signInCancelled })
+        _ = try await session.idToken()
+        let body = await bodyBox.value
+        // The secret's reserved chars ('+','/','&') must be percent-encoded.
+        // '&' is the field separator; the encoded secret must not introduce a
+        // spurious one. The body has exactly four fields here
+        // (grant_type=refresh_token, refresh_token=rt1, client_id=c1,
+        // client_secret=...), so count '&' = (fields - 1).
+        let fieldCount = body.split(separator: "&").count
+        // Each field has exactly one '=' separator (values are fully encoded).
+        XCTAssertEqual(body.filter { $0 == "=" }.count, fieldCount,
+                       "every '=' must be a key/value separator, none from the secret: \(body)")
+        XCTAssertFalse(body.contains("a+b"), "raw '+' leaked from the secret: \(body)")
+        XCTAssertFalse(body.contains("c=d"), "raw '=' leaked from the secret: \(body)")
+    }
+
+    /// The OIDCTokenStore seam round-trips the client secret: a store that
+    /// returns a value surfaces it via oidcClientSecret(); the protocol default
+    /// (FakeTokenStore) returns nil. This is the fake-keychain test seam the
+    /// production KeychainOIDCTokenStore conforms to.
+    func test_oidcClientSecret_accessor_round_trips_through_the_store_seam() {
+        let secretStore = SecretTokenStore()
+        XCTAssertNil(secretStore.oidcClientSecret(), "unset secret reads nil")
+        secretStore.clientSecret = "GOCSPX-xyz"
+        XCTAssertEqual(secretStore.oidcClientSecret(), "GOCSPX-xyz", "set secret reads back")
+        secretStore.clear()
+        XCTAssertEqual(secretStore.oidcClientSecret(), "GOCSPX-xyz",
+                       "clear() (sign-out) must NOT remove the client secret — it is client config")
+        // Default-protocol conformer returns nil without overriding.
+        XCTAssertNil(FakeTokenStore().oidcClientSecret(), "default protocol impl is nil")
+    }
+
     func test_signOut_clears_store() async {
         let store = FakeTokenStore(); store.refreshToken = "rt1"
         let session = OIDCSession(config: Self.config(),
@@ -693,6 +841,82 @@ final class OIDCSessionTests: XCTestCase {
                                   authenticator: { _, _ in throw OIDCAuthFailure.signInCancelled })
         await session.signOut()
         XCTAssertTrue(store.log.contains("clear"))
+    }
+
+    // MARK: - client-secret ownership scoping (fix #57)
+    //
+    // The OIDC client secret is one GLOBAL Keychain item that survives sign-out
+    // (it's client config). Before this fix it was a bare string with no record
+    // of WHICH client it belonged to, so reconfiguring issuer/client_id (e.g.
+    // Google Desktop → Okta public client) shipped the prior client's secret to
+    // the NEW IdP. These tests pin the pure ownership-decision logic that scopes
+    // the secret to its owning client. (The Keychain I/O wrapper is a thin
+    // switch over this decision; the real Keychain isn't exercised in unit tests.)
+
+    /// A secret stamped for client A is NOT returned when the config is switched
+    /// to client B — the stale item is scheduled for deletion instead. THE CORE BUG.
+    func test_client_secret_for_client_A_not_returned_after_switch_to_client_B() {
+        let stored = Self.stampedSecret(clientID: "client-A", issuer: "https://a.example", secret: "secretA")
+        let decision = KeychainStore.oidcClientSecretDecision(
+            raw: stored, clientID: "client-B", issuer: "https://b.example")
+        XCTAssertEqual(decision, .deleteStale,
+                       "a secret saved for client A must not be served to client B")
+    }
+
+    /// Same client_id but a DIFFERENT issuer is also a mismatch — both halves of
+    /// the owner stamp must match (a client_id can collide across IdPs).
+    func test_client_secret_mismatch_on_issuer_change_only() {
+        let stored = Self.stampedSecret(clientID: "c1", issuer: "https://old.example", secret: "s")
+        let decision = KeychainStore.oidcClientSecretDecision(
+            raw: stored, clientID: "c1", issuer: "https://new.example")
+        XCTAssertEqual(decision, .deleteStale, "issuer change alone must invalidate the stamp")
+    }
+
+    /// The secret IS returned for the SAME client across sign-out: sign-out does
+    /// not change the client config, so the owner still matches. Models the
+    /// "survives sign-out" guarantee at the ownership layer.
+    func test_client_secret_returned_for_same_client_across_sign_out() {
+        let stored = Self.stampedSecret(clientID: "c1", issuer: "https://idp.example", secret: "keepme")
+        // Sign-out clears refresh token + identity but leaves THIS item untouched,
+        // so a later read for the same client still matches.
+        let decision = KeychainStore.oidcClientSecretDecision(
+            raw: stored, clientID: "c1", issuer: "https://idp.example")
+        XCTAssertEqual(decision, .useStamped("keepme"),
+                       "same-client read must still return the secret after sign-out")
+    }
+
+    /// Explicit clear (absent item) yields the no-op decision — nothing to read,
+    /// nothing to delete.
+    func test_client_secret_absent_yields_none() {
+        let decision = KeychainStore.oidcClientSecretDecision(
+            raw: nil, clientID: "c1", issuer: "https://idp.example")
+        XCTAssertEqual(decision, .none, "a cleared/absent secret reads as none")
+    }
+
+    /// A legacy bare-string value (written before this fix, no owner stamp) is
+    /// adopted by the current client via migration — keeps single-client installs
+    /// working across the upgrade.
+    func test_legacy_bare_string_secret_is_migrated_to_current_owner() {
+        let decision = KeychainStore.oidcClientSecretDecision(
+            raw: "legacy-plain-secret", clientID: "c1", issuer: "https://idp.example")
+        XCTAssertEqual(decision, .migrateLegacy("legacy-plain-secret"),
+                       "a pre-fix bare-string secret must be migrated, not dropped")
+    }
+
+    /// The stamped envelope round-trips through JSON: the value persisted by
+    /// `setOIDCClientSecret` decodes back to a `.useStamped` with the same secret.
+    func test_stamped_envelope_round_trips() {
+        let stored = Self.stampedSecret(clientID: "c1", issuer: "https://idp.example", secret: "round-trip")
+        let decision = KeychainStore.oidcClientSecretDecision(
+            raw: stored, clientID: "c1", issuer: "https://idp.example")
+        XCTAssertEqual(decision, .useStamped("round-trip"))
+    }
+
+    /// Helper: the exact JSON envelope `setOIDCClientSecret` writes, so the
+    /// decision tests feed the same on-disk shape the reader sees in production.
+    nonisolated static func stampedSecret(clientID: String, issuer: String, secret: String) -> String {
+        let env = KeychainStore.OIDCClientSecretEnvelope(clientID: clientID, issuer: issuer, secret: secret)
+        return String(data: try! JSONEncoder().encode(env), encoding: .utf8)!
     }
 
     // MARK: issuer scheme guard
@@ -770,9 +994,11 @@ final class OIDCSessionTests: XCTestCase {
                 data = Self.discoveryJSON()
             }
             return (data, HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
-        }, tokenStore: store, authenticator: { url, scheme in
+        }, tokenStore: store, authenticator: { buildAuthorizationURL, scheme in
+            // Custom-scheme path: build with the configured redirect (no override).
+            let url = buildAuthorizationURL(nil)
             await authURLBox.set(url)
-            await schemeBox.set(scheme)
+            await schemeBox.set(scheme ?? "")
             let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
             let state = items.first { $0.name == "state" }?.value ?? ""
             let nonce = items.first { $0.name == "nonce" }?.value ?? ""
@@ -825,6 +1051,61 @@ final class OIDCSessionTests: XCTestCase {
                       "token call redirect_uri must be the configured value: \(tokenBody)")
         XCTAssertFalse(tokenBody.contains("redirect_uri=parleq"),
                        "token call must not fall back to the default redirect")
+    }
+
+    /// Loopback build-closure shape: an authenticator that builds the
+    /// authorization URL with an EFFECTIVE redirect override (the ephemeral-port
+    /// loopback URI it discovered after binding) must have that exact value —
+    /// PORT included — flow into BOTH the authorization request's `redirect_uri`
+    /// AND the token-exchange body. This is the contract the loopback
+    /// authenticator relies on: the IdP and the token exchange see the same
+    /// port-bearing redirect.
+    func test_loopback_effective_redirect_flows_to_auth_and_token_call() async throws {
+        let store = FakeTokenStore()
+        let nonceBox = NonceBox()
+        let authURLBox = CapturedURL()
+        let tokenBodyBox = CapturedBody()
+        // The effective (ephemeral-port) redirect the "loopback" authenticator
+        // would discover after binding. Configured redirect is a custom scheme;
+        // the override must WIN for both the auth URL and the token body.
+        let effectiveRedirect = "http://127.0.0.1:54321/oauth2redirect"
+        let config = OIDCClientConfig(issuer: "https://idp.example", clientID: "c1",
+                                      scopes: ["openid"], ephemeralBrowser: false,
+                                      redirectURI: "parleq-auth://oidc/callback")
+        let session = OIDCSession(config: config, httpClient: { req in
+            let data: Data
+            if req.url!.path.contains("token") {
+                await tokenBodyBox.set(String(data: req.httpBody ?? Data(), encoding: .utf8) ?? "")
+                data = Self.tokenJSONWithNonce(await nonceBox.value)
+            } else {
+                data = Self.discoveryJSON()
+            }
+            return (data, HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }, tokenStore: store, authenticator: { buildAuthorizationURL, _ in
+            // Loopback path: build with the discovered ephemeral redirect.
+            let url = buildAuthorizationURL(effectiveRedirect)
+            await authURLBox.set(url)
+            let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+            let state = items.first { $0.name == "state" }?.value ?? ""
+            let nonce = items.first { $0.name == "nonce" }?.value ?? ""
+            await nonceBox.set(nonce)
+            // The IdP redirects to the loopback URI; reconstruct it with the query.
+            return URL(string: "\(effectiveRedirect)?state=\(state)&code=c1")!
+        })
+        _ = try await session.signIn()
+
+        let authURL = await authURLBox.value!
+        let authItems = URLComponents(url: authURL, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        XCTAssertEqual(authItems.first { $0.name == "redirect_uri" }?.value, effectiveRedirect,
+                       "auth request redirect_uri must be the effective (port-bearing) loopback URI")
+        // Token body form-encodes via .alphanumerics, so ':'/'/'/'.'/'?' are
+        // escaped; the digits "54321" survive verbatim and uniquely identify the
+        // ephemeral-port redirect.
+        let tokenBody = await tokenBodyBox.value
+        XCTAssertTrue(tokenBody.contains("54321"),
+                      "token call redirect_uri must carry the ephemeral port: \(tokenBody)")
+        XCTAssertFalse(tokenBody.contains("redirect_uri=parleq"),
+                       "token call must NOT fall back to the configured custom-scheme redirect")
     }
 
     /// Configured extra auth params are appended to the authorization request.
@@ -1002,7 +1283,8 @@ final class OIDCSessionTests: XCTestCase {
         let session = OIDCSession(config: Self.config(), httpClient: { req in
             (Self.discoveryJSON(),
              HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
-        }, tokenStore: store, authenticator: { url, _ in
+        }, tokenStore: store, authenticator: { buildAuthorizationURL, _ in
+            let url = buildAuthorizationURL(nil)
             let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
             let state = items.first { $0.name == "state" }?.value ?? ""
             // Prose with spaces + punctuation — not a valid OAuth error code.
@@ -1092,7 +1374,8 @@ final class OIDCSessionTests: XCTestCase {
                 data = Self.discoveryJSON()
             }
             return (data, HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
-        }, tokenStore: store, authenticator: { url, _ in
+        }, tokenStore: store, authenticator: { buildAuthorizationURL, _ in
+            let url = buildAuthorizationURL(nil)
             let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
             let state = items.first { $0.name == "state" }?.value ?? ""
             let nonce = items.first { $0.name == "nonce" }?.value ?? ""
@@ -1247,4 +1530,19 @@ final class FailingSaveTokenStore: OIDCTokenStore, @unchecked Sendable {
     func loadIdentity() -> OIDCIdentity? { identity }
     func saveIdentity(_ i: OIDCIdentity) -> Bool { identity = i; return true }
     func clear() { log.append("clear"); refreshToken = nil; identity = nil }
+}
+
+/// Token store that ALSO provides an optional client secret (Google "Desktop
+/// app" clients). When `clientSecret` is nil, `oidcClientSecret()` returns nil
+/// and the token call must omit the key entirely (default-protocol behavior).
+final class SecretTokenStore: OIDCTokenStore, @unchecked Sendable {
+    var refreshToken: String?
+    var identity: OIDCIdentity?
+    var clientSecret: String?
+    func loadRefreshToken() -> String? { refreshToken }
+    func saveRefreshToken(_ t: String) -> Bool { refreshToken = t; return true }
+    func loadIdentity() -> OIDCIdentity? { identity }
+    func saveIdentity(_ i: OIDCIdentity) -> Bool { identity = i; return true }
+    func clear() { refreshToken = nil; identity = nil }   // does NOT touch clientSecret (client config)
+    func oidcClientSecret() -> String? { clientSecret }
 }
