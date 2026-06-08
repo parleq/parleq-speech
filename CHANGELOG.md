@@ -4,6 +4,26 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-06-08
+
+This release is about the moment right after you stop talking. The overlay now shows your words the instant they're transcribed and holds rock-steady while the AI cleans them up — no more jumpy panel, no waiting on a blank box. You can accept what you see at any time, talk to it again before it's even finished, and watch a calm "thinking" animation while it works.
+
+### Added
+
+- **Your words appear immediately, and you can accept them any time.** The raw transcript now shows in the overlay the moment speech recognition finishes, dimmed, and is replaced in place by the cleaned version as it streams. Press Enter whenever you like — if cleanup hasn't finished, Parleq pastes what's on screen and stops the cleanup. A distinct multi-color "thinking" animation (vs. the orange listening bars) shows when the AI is working, so you always know which phase you're in.
+- **Refine before cleanup even finishes.** Press the hotkey to give a follow-up instruction while the first cleanup is still running, and Parleq now queues it: the cleanup completes, then your refinement applies to the finished text — instead of starting over.
+- **Switch models from the overlay.** The model badge during review now lists your provider's model catalog, not just your two configured models, so you can re-run a dictation on a different model with one tap (a per-dictation choice; your configuration is untouched). Switching after a refine correctly re-runs the refinement, not the original cleanup.
+- **Preset suggestions and a Learned activity log.** When you keep refining things the same way, Parleq can suggest turning it into a one-tap preset; when you keep using a preset in one app, it can suggest making it that app's default. Every suggestion is yours to accept or dismiss — nothing is applied automatically. The Learned section now keeps a tidy activity log so you can restore a dismissed suggestion or revert an accepted one. (Usage patterns are stored as metadata only — counts and app names, never your dictation text.)
+- **Sign in with a browser-based loopback redirect.** Corporate sign-in now supports the loopback redirect that desktop OAuth clients use (Google "Desktop app" clients, and **Microsoft Entra ID**, which requires it) — Parleq opens your real browser and listens on a local-only port just for the few seconds of sign-in. New playbooks for Entra ID (live-validated against AWS Bedrock) join the existing Okta and Cognito guides. An optional client-secret field covers IdPs that require one.
+- **Tune request parameters from the config file.** A new `llm.tuning` section lets advanced users set the thinking budget, max output tokens, temperature, request timeout, and the time-to-first-token watchdog deadlines. Sensible defaults are unchanged; long dictations get more headroom (the default output cap was raised so lengthy text no longer truncates).
+
+### Fixed
+
+- **Tapping the hotkey to paste no longer occasionally drops the paste.** When you tapped your modifier hotkey to accept (instead of pressing Enter), the synthesized paste could inherit the still-held modifier and be ignored by the target app — the overlay would close with nothing pasted. Parleq now sends a clean paste and waits for the modifier to release.
+- **The overlay holds its size through the whole dictation.** Capture, cleanup, result, and refinement no longer make the panel jump, dip, or drift up the screen; it changes height only when your text genuinely needs more room, and settles once at the end.
+- **Cleanup that stalls now recovers gracefully.** A time-to-first-token watchdog retries (or, for slow "thinking" models like Gemini Pro, waits a single generous beat) instead of leaving you staring at a spinner — and the raw text is acceptable the whole time. Gemini Pro is also markedly faster now (its thinking budget is capped instead of running unbounded).
+- **Security and privacy hardening.** A reconfigured OIDC client can no longer send a previous client's secret to a different identity provider (the secret is stamped with its owning client). The new usage journal and activity log store metadata only — never transcript text. The loopback sign-in listener is bound to localhost only, exists only during sign-in, and is fully suppressible by pinning the redirect URI via managed configuration. An inert, unused `telemetry` config key was removed.
+
 ## [0.20.0] - 2026-06-05
 
 This release brings corporate sign-in to Parleq. One "Sign in with your company account" button connects every employee — not just the ones with cloud CLIs — to your organization's AWS Bedrock or Google Vertex AI, with no per-user API keys to distribute or rotate. Offboarding flows from your identity provider: disable the user there and their next credential refresh fails closed (already-issued cloud sessions expire on their own — keep session durations short). Personal users get something too: sign in with your Google account and dictate straight into Gemini.

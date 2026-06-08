@@ -13,9 +13,12 @@
 import Foundation
 
 /// A validated proposal from the analysis LLM. `kind` selects the
-/// payload: `.term` -> term/context/aliases; `.style` -> rule.
+/// payload: `.term` -> term/context/aliases; `.style` -> rule;
+/// `.preset` -> presetName/presetPrompt (a GENERALIZED, reusable
+/// transform instruction distilled from a recurring refine pattern —
+/// never echoing any one dictation's content).
 struct LearningProposal: Sendable, Equatable {
-    enum Kind: String, Sendable, Equatable { case term, style }
+    enum Kind: String, Sendable, Equatable { case term, style, preset }
     enum Op: String, Sendable, Equatable { case add, modify, merge, retire }
 
     let kind: Kind
@@ -28,6 +31,24 @@ struct LearningProposal: Sendable, Equatable {
     let aliases: [String]?
     // style payload
     let rule: String?
+    // preset payload (Bridge 1: suggest-to-create transform presets)
+    let presetName: String?
+    let presetPrompt: String?
+
+    init(kind: Kind, op: Op, confidence: Double, rationale: String,
+         term: String? = nil, context: String? = nil, aliases: [String]? = nil,
+         rule: String? = nil, presetName: String? = nil, presetPrompt: String? = nil) {
+        self.kind = kind
+        self.op = op
+        self.confidence = confidence
+        self.rationale = rationale
+        self.term = term
+        self.context = context
+        self.aliases = aliases
+        self.rule = rule
+        self.presetName = presetName
+        self.presetPrompt = presetPrompt
+    }
 }
 
 extension LearningAnalyzer {
@@ -56,6 +77,8 @@ extension LearningAnalyzer {
         let context: String?
         let aliases: [String]?
         let rule: String?
+        let name: String?
+        let prompt: String?
     }
 
     /// Extract + validate proposals from the model's text response.
@@ -89,6 +112,12 @@ extension LearningAnalyzer {
     nonisolated static let maxDurableFieldWords = 5
     nonisolated static let maxDurableAliases = 12
     nonisolated static let maxDurableContextChars = 80
+
+    // Bounds for a proposed transform preset (Bridge 1). The name is a
+    // short chip label; the prompt is a generalized instruction (one or
+    // two sentences) the user reviews + edits before it lands in config.
+    nonisolated static let maxPresetNameChars = 40
+    nonisolated static let maxPresetPromptChars = 400
 
     /// Clause/prose punctuation that has no place in a name or product term —
     /// its presence is a cheap signal the value is dictation text. (Periods,
@@ -156,6 +185,20 @@ extension LearningAnalyzer {
             guard let rule = dto.rule?.trimmingCharacters(in: .whitespacesAndNewlines), !rule.isEmpty else { return nil }
             return LearningProposal(kind: .style, op: op, confidence: confidence, rationale: rationale,
                                     term: nil, context: nil, aliases: nil, rule: rule)
+        case .preset:
+            // Bridge 1: a suggest-to-create transform preset. The name +
+            // prompt are user-reviewable config (the user edits + confirms
+            // before anything lands), so they're not the same privacy
+            // chokepoint as durable dictionary terms — but we still bound
+            // both lengths so a runaway model response can't propose a wall
+            // of text, and require a non-empty prompt of real substance.
+            guard let rawName = dto.name?.trimmingCharacters(in: .whitespacesAndNewlines), !rawName.isEmpty,
+                  let rawPrompt = dto.prompt?.trimmingCharacters(in: .whitespacesAndNewlines), !rawPrompt.isEmpty
+            else { return nil }
+            let name = String(rawName.prefix(maxPresetNameChars))
+            let prompt = String(rawPrompt.prefix(maxPresetPromptChars))
+            return LearningProposal(kind: .preset, op: op, confidence: confidence, rationale: rationale,
+                                    presetName: name, presetPrompt: prompt)
         }
     }
 }
@@ -190,9 +233,21 @@ final class LearningAnalyzer {
     nonisolated static let autoApplyConfidenceThreshold = 0.8
 
     /// Fire analysis once this many new corrections accumulate.
-    nonisolated static let triggerThreshold = 5
+    /// `PARLEQ_LEARN_TRIGGER=<n>` lowers it for live demos (e.g. =1 to run
+    /// after a single correction). Off by default — production uses 5.
+    nonisolated static let triggerThreshold: Int = {
+        if let raw = ProcessInfo.processInfo.environment["PARLEQ_LEARN_TRIGGER"],
+           let n = Int(raw), n > 0 { return n }
+        return 5
+    }()
     /// Don't run analysis more than once per this interval (rate cap).
-    nonisolated static let minIntervalSeconds: TimeInterval = 600
+    /// `PARLEQ_LEARN_MIN_INTERVAL=<seconds>` shortens it for live demos
+    /// (e.g. =0 to allow back-to-back runs). Off by default — 600s.
+    nonisolated static let minIntervalSeconds: TimeInterval = {
+        if let raw = ProcessInfo.processInfo.environment["PARLEQ_LEARN_MIN_INTERVAL"],
+           let n = TimeInterval(raw), n >= 0 { return n }
+        return 600
+    }()
     /// Cap the journal slice handed to the model so token cost is bounded.
     nonisolated static let maxRecordsPerRun = 40
 
@@ -249,7 +304,12 @@ final class LearningAnalyzer {
         // too — don't ship the user's proprietary terms to the LLM behind
         // a feature they've turned off.
         let dictForPrompt = config.customDictionaryEnabled ? config.customDictionary : []
-        let systemPrompt = SystemPrompts.learningAnalysis(currentDictionary: dictForPrompt)
+        // Bridge 1 gate: only invite preset proposals when the presets
+        // feature is on (an MDM pin of either feature kills the bridge).
+        // The terms pipeline is unaffected by this flag.
+        let proposePresets = config.transformPresetsEnabled
+        let systemPrompt = SystemPrompts.learningAnalysis(
+            currentDictionary: dictForPrompt, proposePresets: proposePresets)
         // buildUserMessage may drop records that don't fit the prompt
         // budget; only the `included` ones are actually analyzed, so only
         // those get marked analyzed below (dropped ones stay for next run).
@@ -316,7 +376,11 @@ final class LearningAnalyzer {
             return
         }
 
-        let proposals = Self.parseProposals(from: box.value)
+        var proposals = Self.parseProposals(from: box.value)
+        // Defense-in-depth: drop any preset proposals if the presets
+        // feature isn't on (the prompt didn't invite them, but a model
+        // could volunteer one anyway). The terms pipeline is untouched.
+        if !proposePresets { proposals.removeAll { $0.kind == .preset } }
         let applied = LearnedStore.shared.ingest(proposals)
         // Mark exactly the records that made it into the prompt (by id)
         // so they're never re-analyzed; records dropped for budget or

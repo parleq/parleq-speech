@@ -22,6 +22,82 @@ enum LearnedRoute: String, Sendable, Equatable {
     case deferStyle
 }
 
+/// One row in the unified "Recent activity" history (the bounded,
+/// in-memory ring shown below the actionable pending suggestions). Every
+/// Accept/Dismiss across all three suggestion kinds (term, preset,
+/// per-app default) lands here as a kept entry, newest first, marked by
+/// outcome — so accepting the last pending item shows a tally + history
+/// instead of snapping straight back to "Nothing learned yet", and a
+/// misclicked Dismiss can be Restored.
+///
+/// The entry carries enough to (a) reconstruct the original pending
+/// suggestion for Restore (so Restore still works after the suggestion
+/// itself would have aged out), and (b) revert an accept (delete the
+/// created preset, remove the app-default mapping, or — for terms —
+/// delegate to the existing AppliedChange term-revert path via
+/// `termAppliedChangeID`). In-memory only, wiped on quit, same as the
+/// pending list and correction ring; the durable artifacts an accept
+/// produces (presets / app-defaults / learned terms in config.json)
+/// persist regardless.
+struct ActivityEntry: Sendable, Equatable, Identifiable {
+    enum Kind: String, Sendable, Equatable { case term, preset, appDefault }
+    enum Outcome: String, Sendable, Equatable {
+        case accepted, dismissed, reverted, restored
+    }
+
+    let id: UUID
+    var timestamp: Date
+    let kind: Kind
+    var outcome: Outcome
+    /// Human-readable summary shown in the row (e.g. "Created preset
+    /// 'Concise'", "Set 'Concise' as default for Mail", "Added term
+    /// 'Mira'", "Dismissed: preset 'Concise'").
+    var summary: String
+
+    // --- Restore payload (a dismissed entry carries one of these) ---
+    /// The original pending suggestion (term/preset kinds), so Restore
+    /// re-injects it verbatim — including the editable preset name/prompt.
+    let pendingSuggestion: LearnedStore.PendingSuggestion?
+    /// The original per-app default suggestion, for the appDefault kind.
+    let presetDefaultSuggestion: PresetDefaultSuggestion?
+
+    // --- Revert payload (an accepted entry carries the right one) ---
+    /// For accepted preset: the id of the created TransformPreset to delete.
+    let createdPresetID: String?
+    /// For accepted app-default: the bundle id whose mapping to remove
+    /// (paired with `createdPresetID` so a later, different default isn't
+    /// clobbered).
+    let appDefaultBundleID: String?
+    /// For accepted term: the AppliedChange row id to drive the existing
+    /// term-revert path (reused, not reinvented).
+    let termAppliedChangeID: UUID?
+    /// For preset entries: the ORIGINAL proposal's content hash (the one
+    /// the analyzer suppression keys on), captured before any user edit to
+    /// the name/prompt. Revert clears exactly this hash so re-proposal of
+    /// the original recurring pattern is un-suppressed — the user's edited
+    /// prompt may hash differently, so the restorable suggestion's hash
+    /// can't stand in. nil for non-preset kinds.
+    let originalPresetHash: String?
+
+    init(id: UUID, timestamp: Date, kind: Kind, outcome: Outcome, summary: String,
+         pendingSuggestion: LearnedStore.PendingSuggestion?,
+         presetDefaultSuggestion: PresetDefaultSuggestion?,
+         createdPresetID: String?, appDefaultBundleID: String?,
+         termAppliedChangeID: UUID?, originalPresetHash: String? = nil) {
+        self.id = id
+        self.timestamp = timestamp
+        self.kind = kind
+        self.outcome = outcome
+        self.summary = summary
+        self.pendingSuggestion = pendingSuggestion
+        self.presetDefaultSuggestion = presetDefaultSuggestion
+        self.createdPresetID = createdPresetID
+        self.appDefaultBundleID = appDefaultBundleID
+        self.termAppliedChangeID = termAppliedChangeID
+        self.originalPresetHash = originalPresetHash
+    }
+}
+
 /// A record of an applied change, enough to revert it.
 struct AppliedChange: Sendable, Equatable, Identifiable {
     let id: UUID
@@ -45,6 +121,60 @@ final class LearnedStore: ObservableObject {
     @Published private(set) var pendingSuggestions: [PendingSuggestion] = []
     @Published private(set) var appliedChanges: [AppliedChange] = []
 
+    /// Unified "Recent activity" history: every accept/dismiss/revert/
+    /// restore across all three suggestion kinds, newest first. Bounded
+    /// in-memory ring (see `maxActivityEntries`), wiped on quit. Term
+    /// accepts/reverts also keep their `appliedChanges` row (the existing
+    /// term-revert mechanism) — this log links to it by id rather than
+    /// duplicating the revert logic.
+    @Published private(set) var activityLog: [ActivityEntry] = []
+
+    /// Soft cap on the in-memory activity ring. Oldest entries evict past
+    /// this. Kept small — it's a recovery/recap surface, not an audit log.
+    nonisolated static let maxActivityEntries = 20
+
+    /// Bridge 2: per-app default suggestions computed from the durable
+    /// preset-usage journal. Refreshed off the hot path (on Learned-view
+    /// open) — NOT recomputed per dictation. Independent of the
+    /// learn-from-corrections feature: gated on transformPresetsEnabled
+    /// only, since the journal is plain metadata, not the correction ring.
+    @Published private(set) var presetDefaultSuggestions: [PresetDefaultSuggestion] = []
+
+    /// Injectable journal so tests don't touch the real ~/.parleq path.
+    private let usageJournal: PresetUsageJournal
+
+    /// Cap on concurrently-pending PRESET suggestions (Bridge 1). Term
+    /// suggestions are uncapped (one-per-term dedupe bounds them); preset
+    /// suggestions are capped low so a chatty analyzer can't bury the UI.
+    nonisolated static let maxPendingPresetSuggestions = 3
+
+    /// Content-hashes of preset suggestions the user DISMISSED, so the
+    /// same distilled prompt isn't re-proposed. In-memory only this pass
+    /// (wiped on quit) — a deliberate scope choice: a durable decline
+    /// store would be the only on-disk artifact this bridge adds, and the
+    /// analyzer's rate cap + recurrence threshold already make immediate
+    /// re-proposal unlikely. A dismissed preset can resurface after a
+    /// restart if the pattern keeps recurring; documented in the report.
+    private var dismissedPresetHashes: Set<String> = []
+
+    /// Stable content hash of a preset proposal's distilled prompt (the
+    /// name is editable / cosmetic, so it's excluded). Case/space-folded
+    /// so trivially-different phrasings of the same instruction collapse.
+    nonisolated static func presetContentHash(_ proposal: LearningProposal) -> String {
+        // Fold case, drop punctuation, collapse whitespace so trivially-
+        // different phrasings of the same instruction ("Make it concise."
+        // vs "make it concise") share a hash — this keys both the
+        // dismissal-suppression and restore-bypass logic (review finding,
+        // flagged twice).
+        let folded = (proposal.presetPrompt ?? "")
+            .lowercased()
+            .unicodeScalars
+            .map { CharacterSet.alphanumerics.contains($0) ? Character($0) : " " }
+        return String(folded)
+            .split(separator: " ")
+            .joined(separator: " ")
+    }
+
     /// A suggestion awaiting Accept/Dismiss. Holds the underlying
     /// proposal directly so Accept can apply it through the same path.
     struct PendingSuggestion: Sendable, Identifiable, Equatable {
@@ -58,7 +188,14 @@ final class LearnedStore: ObservableObject {
         let priorAliases: [String]?
     }
 
-    private init() {}
+    private convenience init() { self.init(usageJournal: .shared) }
+
+    /// Designated init — `usageJournal` is injectable to keep Bridge 2
+    /// testable against a temp-dir journal, but kept `private` so the
+    /// singleton stays the only instance (no divergent @Published state).
+    private init(usageJournal: PresetUsageJournal) {
+        self.usageJournal = usageJournal
+    }
 
     /// Delete any legacy on-disk file from an earlier disk-backed build
     /// of this feature. The store is in-memory only now; this removes
@@ -76,6 +213,11 @@ final class LearnedStore: ObservableObject {
     // MARK: - Pure routing (unit-tested)
 
     nonisolated static func route(_ proposal: LearningProposal, against dictionary: [DictionaryEntry]) -> LearnedRoute {
+        // Bridge 1: a preset proposal is NEVER auto-applied — it always
+        // becomes a pending suggestion the user reviews, edits, and
+        // confirms (or dismisses). The presets feature is a creative
+        // surface; silent creation is out of scope by design.
+        if proposal.kind == .preset { return .suggest }
         if proposal.kind == .style { return .deferStyle }
         // Retire is higher-impact — always confirm.
         if proposal.op == .retire { return .suggest }
@@ -167,6 +309,60 @@ final class LearnedStore: ObservableObject {
         ), at: 0)
     }
 
+    // MARK: - Activity log (unified history)
+
+    /// Push a new entry to the front of the activity ring and evict the
+    /// oldest past the cap. Newest-first ordering matches the UI.
+    private func pushActivity(_ entry: ActivityEntry) {
+        activityLog = Self.ringByPrepending(entry, to: activityLog)
+    }
+
+    /// Pure ring insert-and-evict (unit-tested): prepend newest, then drop
+    /// the oldest beyond `maxActivityEntries`.
+    nonisolated static func ringByPrepending(
+        _ entry: ActivityEntry, to log: [ActivityEntry]
+    ) -> [ActivityEntry] {
+        var out = log
+        out.insert(entry, at: 0)
+        if out.count > maxActivityEntries {
+            out.removeLast(out.count - maxActivityEntries)
+        }
+        return out
+    }
+
+    /// A short tally over the activity log for the recap line shown when
+    /// there are no pending suggestions but history exists (e.g.
+    /// "3 presets created · 2 terms learned · 1 dismissed"). Reverted/
+    /// restored outcomes don't add to the "created/learned" counts; an
+    /// active dismissal counts as dismissed. Pure over the log so it's
+    /// unit-testable.
+    nonisolated static func tally(_ log: [ActivityEntry]) -> String {
+        var presets = 0, terms = 0, defaults = 0, dismissed = 0
+        for e in log {
+            switch e.outcome {
+            case .accepted:
+                switch e.kind {
+                case .preset: presets += 1
+                case .term: terms += 1
+                case .appDefault: defaults += 1
+                }
+            case .dismissed:
+                dismissed += 1
+            case .reverted, .restored:
+                break // no longer counts toward an active accept/dismiss
+            }
+        }
+        var parts: [String] = []
+        func plural(_ n: Int, _ singular: String, _ plural: String) -> String {
+            "\(n) \(n == 1 ? singular : plural)"
+        }
+        if presets > 0 { parts.append(plural(presets, "preset created", "presets created")) }
+        if terms > 0 { parts.append(plural(terms, "term learned", "terms learned")) }
+        if defaults > 0 { parts.append(plural(defaults, "app default set", "app defaults set")) }
+        if dismissed > 0 { parts.append(plural(dismissed, "dismissed", "dismissed")) }
+        return parts.joined(separator: " · ")
+    }
+
     /// Insert a pending suggestion at the front, skipping it if one for the
     /// same term is already queued (case-insensitive). Across analysis runs
     /// the LLM can re-propose the same below-threshold term; this keeps one
@@ -183,6 +379,56 @@ final class LearnedStore: ObservableObject {
             $0.proposal.term?.caseInsensitiveCompare(term) == .orderedSame
         }) else { return }
         pendingSuggestions.insert(s, at: 0)
+    }
+
+    /// Count of currently-pending preset suggestions (Bridge 1).
+    var pendingPresetCount: Int {
+        pendingSuggestions.reduce(0) { $0 + ($1.proposal.kind == .preset ? 1 : 0) }
+    }
+
+    /// Pure eligibility gate (unit-tested): is this preset proposal
+    /// admissible given the feature gates, dismissed hashes, the hashes
+    /// already pending, and the remaining headroom under the cap? A blank
+    /// hash, a dismissed hash, a duplicate of a pending one, or no
+    /// remaining slots → not eligible.
+    nonisolated static func presetSuggestionEligible(
+        _ proposal: LearningProposal,
+        learnEnabled: Bool,
+        presetsEnabled: Bool,
+        dismissedHashes: Set<String>,
+        pendingPresetHashes: Set<String>,
+        pendingPresetCount: Int
+    ) -> Bool {
+        guard proposal.kind == .preset, learnEnabled, presetsEnabled else { return false }
+        let hash = presetContentHash(proposal)
+        guard !hash.isEmpty else { return false }
+        guard !dismissedHashes.contains(hash) else { return false }
+        guard !pendingPresetHashes.contains(hash) else { return false }
+        guard pendingPresetCount < maxPendingPresetSuggestions else { return false }
+        return true
+    }
+
+    /// Queue a preset suggestion if it clears the gates (see
+    /// `presetSuggestionEligible`). Inserted at the front like other
+    /// suggestions. Re-reads the feature flags here (not just at the
+    /// analyzer) so a direct ingest still fails closed.
+    private func insertPresetSuggestionIfEligible(_ proposal: LearningProposal) {
+        let config = Config.load().config
+        let pendingHashes = Set(pendingSuggestions
+            .filter { $0.proposal.kind == .preset }
+            .map { Self.presetContentHash($0.proposal) })
+        guard Self.presetSuggestionEligible(
+            proposal,
+            learnEnabled: config.learnFromCorrectionsEnabled,
+            presetsEnabled: config.transformPresetsEnabled,
+            dismissedHashes: dismissedPresetHashes,
+            pendingPresetHashes: pendingHashes,
+            pendingPresetCount: pendingPresetCount
+        ) else { return }
+        pendingSuggestions.insert(PendingSuggestion(
+            id: UUID(), term: nil, rationale: proposal.rationale,
+            proposal: proposal, priorAliases: nil
+        ), at: 0)
     }
 
     // MARK: - Ingest (called by LearningAnalyzer, Task 7 wiring)
@@ -205,6 +451,14 @@ final class LearnedStore: ObservableObject {
                 let appliedEntry = dictionary.first { $0.term.caseInsensitiveCompare(term) == .orderedSame }
                 pendingApplied.append((proposal, prior, appliedEntry))
             case .suggest:
+                if proposal.kind == .preset {
+                    // Bridge 1: preset suggestions take a separate path
+                    // (dismissed-hash filter, content dedupe, low cap).
+                    // They're inserted directly here, not via the term
+                    // collector below, since they have no `term`.
+                    insertPresetSuggestionIfEligible(proposal)
+                    continue
+                }
                 let prior = dictionary.first { $0.term.caseInsensitiveCompare(proposal.term ?? "") == .orderedSame }
                 newSuggestions.append(PendingSuggestion(
                     id: UUID(), term: proposal.term, rationale: proposal.rationale,
@@ -256,8 +510,16 @@ final class LearnedStore: ObservableObject {
     func accept(id: UUID) {
         guard let suggestion = pendingSuggestions.first(where: { $0.id == id }) else { return }
         let proposal = suggestion.proposal
+        // A preset suggestion accepted without an edited name/prompt: apply
+        // the distilled values as-is (the UI's Accept passes edits via
+        // acceptPreset; this covers the no-edit path / programmatic accept).
+        if proposal.kind == .preset {
+            acceptPreset(id: id, name: proposal.presetName ?? "", prompt: proposal.presetPrompt ?? "")
+            return
+        }
         // A non-term (style) suggestion has no slice-1 consumer — just clear
-        // it so it doesn't sit in the list forever.
+        // it so it doesn't sit in the list forever. No activity row: nothing
+        // was actually applied or shown to the user as a learned outcome.
         guard proposal.kind == .term, let term = proposal.term else {
             pendingSuggestions.removeAll { $0.id == id }
             return
@@ -297,10 +559,203 @@ final class LearnedStore: ObservableObject {
         guard (try? Config.save(config)) != nil else { return }
         pendingSuggestions.removeAll { $0.id == id }
         recordApplied(term: term, rationale: proposal.rationale, prior: prior, applied: appliedEntry)
+        // Mirror into the unified activity log, linked to this term's applied
+        // row so Revert can reuse the term path. Look the row up BY TERM (not
+        // `first`) so the link is unambiguous — recordApplied keeps exactly
+        // one row per term, so this is that row.
+        let summary = proposal.op == .retire
+            ? "Removed term '\(term)'" : "Added term '\(term)'"
+        let acID = appliedChanges.first {
+            $0.term.caseInsensitiveCompare(term) == .orderedSame
+        }?.id
+        pushActivity(ActivityEntry(
+            id: UUID(), timestamp: Date(), kind: .term, outcome: .accepted,
+            summary: summary,
+            pendingSuggestion: suggestion, presetDefaultSuggestion: nil,
+            createdPresetID: nil, appDefaultBundleID: nil,
+            termAppliedChangeID: acID
+        ))
+    }
+
+    /// Pure helper (unit-tested): append a new TransformPreset to a
+    /// config, using the user-edited name/prompt. Returns the new config
+    /// and the created preset. Returns nil if the feature is off or the
+    /// name/prompt is blank after trimming — the caller drops the accept.
+    nonisolated static func configByAddingPreset(
+        to config: Config, name: String, prompt: String
+    ) -> (config: Config, preset: TransformPreset)? {
+        guard config.transformPresetsEnabled else { return nil }
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty, !trimmedPrompt.isEmpty else { return nil }
+        var out = config
+        let preset = TransformPreset(name: trimmedName, prompt: trimmedPrompt)
+        out.transformPresets.append(preset)
+        return (out, preset)
+    }
+
+    /// Accept a preset suggestion with the (possibly user-edited) name +
+    /// prompt. Writes a new TransformPreset to config through the same
+    /// path PresetsSettingsView uses. Never auto-applies anything else.
+    /// On a blank/feature-off result the suggestion is left in place.
+    func acceptPreset(id: UUID, name: String, prompt: String) {
+        guard let suggestion = pendingSuggestions.first(where: { $0.id == id }) else { return }
+        let (config, _) = Config.load()
+        guard let result = Self.configByAddingPreset(to: config, name: name, prompt: prompt) else { return }
+        guard (try? Config.save(result.config)) != nil else { return }
+        // Record the dismissed-hash on accept too, so an equivalent
+        // distilled prompt isn't re-proposed once the user already created
+        // a preset from it.
+        let hash = Self.presetContentHash(suggestion.proposal)
+        if !hash.isEmpty { dismissedPresetHashes.insert(hash) }
+        pendingSuggestions.removeAll { $0.id == id }
+        // The restorable suggestion preserves the user's edited name/prompt
+        // so a Restore (after a later Revert) re-seeds exactly those.
+        let edited = LearningProposal(
+            kind: .preset, op: suggestion.proposal.op,
+            confidence: suggestion.proposal.confidence,
+            rationale: suggestion.proposal.rationale,
+            presetName: result.preset.name, presetPrompt: result.preset.prompt)
+        let restorable = PendingSuggestion(
+            id: UUID(), term: nil, rationale: suggestion.rationale,
+            proposal: edited, priorAliases: nil)
+        pushActivity(ActivityEntry(
+            id: UUID(), timestamp: Date(), kind: .preset, outcome: .accepted,
+            summary: "Created preset '\(result.preset.name)'",
+            pendingSuggestion: restorable, presetDefaultSuggestion: nil,
+            createdPresetID: result.preset.id, appDefaultBundleID: nil,
+            termAppliedChangeID: nil,
+            // Capture the ORIGINAL proposal's hash (the suppression key set
+            // just above) so Revert clears the same one even if the user
+            // edited the prompt before accepting.
+            originalPresetHash: hash))
     }
 
     func dismiss(id: UUID) {
+        guard let s = pendingSuggestions.first(where: { $0.id == id }) else { return }
+        // Bridge 1: record a dismissed preset's content hash so the same
+        // distilled prompt isn't re-proposed (in-memory; see field doc).
+        if s.proposal.kind == .preset {
+            let hash = Self.presetContentHash(s.proposal)
+            if !hash.isEmpty { dismissedPresetHashes.insert(hash) }
+        }
         pendingSuggestions.removeAll { $0.id == id }
+        // Only term and preset suggestions become activity rows. A .style
+        // proposal has no slice-1 consumer (mirrors accept()'s early exit);
+        // logging one as kind .term would be a semantically wrong, confusing
+        // "Dismissed: suggestion" row. Drop it silently.
+        guard s.proposal.kind == .term || s.proposal.kind == .preset else { return }
+        // Keep a Restore-able activity row so a misclicked Dismiss is
+        // recoverable. Carries the original suggestion verbatim.
+        let kind: ActivityEntry.Kind = s.proposal.kind == .preset ? .preset : .term
+        let desc: String
+        if s.proposal.kind == .preset {
+            desc = "preset '\(s.proposal.presetName ?? "")'"
+        } else if let term = s.term {
+            desc = "term '\(term)'"
+        } else {
+            desc = "suggestion"
+        }
+        pushActivity(ActivityEntry(
+            id: UUID(), timestamp: Date(), kind: kind, outcome: .dismissed,
+            summary: "Dismissed: \(desc)",
+            pendingSuggestion: s, presetDefaultSuggestion: nil,
+            createdPresetID: nil, appDefaultBundleID: nil,
+            termAppliedChangeID: nil))
+    }
+
+    // MARK: - Bridge 2: per-app default suggestions
+
+    /// Recompute the per-app default suggestions from the durable usage
+    /// journal. Off the hot path — called when the Learned view opens.
+    /// Gated on transformPresetsEnabled only (the journal is independent
+    /// of the correction ring), so it surfaces even when
+    /// learn-from-corrections is off.
+    func refreshPresetDefaultSuggestions() {
+        let config = Config.load().config
+        guard config.transformPresetsEnabled else {
+            presetDefaultSuggestions = []
+            return
+        }
+        presetDefaultSuggestions = usageJournal.suggestions(config: config)
+    }
+
+    /// Pure helper (unit-tested): set a per-app default in a config.
+    /// Returns nil if the feature is off or the preset no longer exists.
+    nonisolated static func configBySettingDefault(
+        to config: Config, appBundleID: String, presetID: String
+    ) -> Config? {
+        guard config.transformPresetsEnabled,
+              config.transformPresets.contains(where: { $0.id == presetID }),
+              !appBundleID.isEmpty else { return nil }
+        var out = config
+        out.presetAppDefaults[appBundleID] = presetID
+        return out
+    }
+
+    /// Pure helper (unit-tested): remove a created preset and any app
+    /// defaults that pointed at it (so config never references a missing
+    /// preset). Used by Revert of an accepted-preset activity entry.
+    nonisolated static func configByRemovingPreset(
+        from config: Config, presetID: String
+    ) -> Config {
+        var out = config
+        out.transformPresets.removeAll { $0.id == presetID }
+        out.presetAppDefaults = out.presetAppDefaults.filter { $0.value != presetID }
+        return out
+    }
+
+    /// Pure helper (unit-tested): remove a per-app default mapping, but only
+    /// if it still points at `presetID` (don't clobber a later, different
+    /// default the user chose meanwhile). Returns nil when the live mapping
+    /// has moved on — the caller leaves config alone.
+    nonisolated static func configByRemovingDefault(
+        from config: Config, appBundleID: String, presetID: String
+    ) -> Config? {
+        guard config.presetAppDefaults[appBundleID] == presetID else { return nil }
+        var out = config
+        out.presetAppDefaults[appBundleID] = nil
+        return out
+    }
+
+    /// Accept a per-app default suggestion: write the mapping through the
+    /// same path the Settings UI uses. Drops the suggestion on success.
+    func acceptPresetDefault(_ suggestion: PresetDefaultSuggestion) {
+        let (config, _) = Config.load()
+        guard let updated = Self.configBySettingDefault(
+            to: config, appBundleID: suggestion.appBundleID, presetID: suggestion.presetID
+        ) else { return }
+        guard (try? Config.save(updated)) != nil else { return }
+        presetDefaultSuggestions.removeAll { $0.id == suggestion.id }
+        pushActivity(ActivityEntry(
+            id: UUID(), timestamp: Date(), kind: .appDefault, outcome: .accepted,
+            summary: "Set '\(suggestion.presetName)' as default for \(Self.appDisplayName(suggestion.appBundleID))",
+            pendingSuggestion: nil, presetDefaultSuggestion: suggestion,
+            createdPresetID: suggestion.presetID,
+            appDefaultBundleID: suggestion.appBundleID,
+            termAppliedChangeID: nil))
+    }
+
+    /// Dismiss a per-app default suggestion: record the (app, preset)
+    /// decline DURABLY so it never re-appears, and drop it from the list.
+    func dismissPresetDefault(_ suggestion: PresetDefaultSuggestion) {
+        usageJournal.recordDecline(appBundleID: suggestion.appBundleID, presetID: suggestion.presetID)
+        presetDefaultSuggestions.removeAll { $0.id == suggestion.id }
+        pushActivity(ActivityEntry(
+            id: UUID(), timestamp: Date(), kind: .appDefault, outcome: .dismissed,
+            summary: "Dismissed: default '\(suggestion.presetName)' for \(Self.appDisplayName(suggestion.appBundleID))",
+            pendingSuggestion: nil, presetDefaultSuggestion: suggestion,
+            createdPresetID: nil, appDefaultBundleID: nil,
+            termAppliedChangeID: nil))
+    }
+
+    /// Best-effort friendly app name for a bundle id (e.g.
+    /// "com.apple.mail" → "Mail"). Falls back to the bundle id. Pure /
+    /// nonisolated so it's usable from anywhere and unit-testable.
+    nonisolated static func appDisplayName(_ bundleID: String) -> String {
+        let last = bundleID.split(separator: ".").last.map(String.init) ?? bundleID
+        guard !last.isEmpty else { return bundleID }
+        return last.prefix(1).uppercased() + last.dropFirst()
     }
 
     func revert(id: UUID) {
@@ -327,9 +782,162 @@ final class LearnedStore: ObservableObject {
         appliedChanges.removeAll { $0.id == id }
     }
 
+    // MARK: - Activity-log actions (Restore / Revert)
+
+    /// Restore a DISMISSED activity entry: re-inject the original pending
+    /// suggestion (or per-app default suggestion) so the user can act on it
+    /// again. An explicit user act, so it bypasses the dismissed-hash
+    /// suppression (Bridge 1) — otherwise the restored preset suggestion
+    /// would be silently filtered back out. The entry stays in history,
+    /// re-marked `.restored` (anti-vanish), so the user can see it worked.
+    func restore(id: UUID) {
+        guard let i = activityLog.firstIndex(where: { $0.id == id }),
+              activityLog[i].outcome == .dismissed else { return }
+        let entry = activityLog[i]
+        if let s = entry.pendingSuggestion {
+            // Clear the dismissed-hash so the restored preset isn't
+            // re-suppressed; reinsert at the front (skip if a fresh
+            // duplicate is already pending).
+            if s.proposal.kind == .preset {
+                let hash = Self.presetContentHash(s.proposal)
+                dismissedPresetHashes.remove(hash)
+                guard !pendingSuggestions.contains(where: {
+                    $0.proposal.kind == .preset
+                        && Self.presetContentHash($0.proposal) == hash
+                }) else { /* already back */ markRestored(i); return }
+                pendingSuggestions.insert(s, at: 0)
+            } else {
+                insertSuggestionIfNew(s)
+            }
+        } else if let d = entry.presetDefaultSuggestion {
+            // Bridge 2 dismiss writes a DURABLE decline; an explicit Restore
+            // must undo that so the suggestion can recompute and re-show.
+            usageJournal.clearDecline(appBundleID: d.appBundleID, presetID: d.presetID)
+            if !presetDefaultSuggestions.contains(where: { $0.id == d.id }) {
+                presetDefaultSuggestions.insert(d, at: 0)
+            }
+        } else {
+            return
+        }
+        markRestored(i)
+    }
+
+    private func markRestored(_ index: Int) {
+        var e = activityLog[index]
+        e.outcome = .restored
+        e.timestamp = Date()
+        e.summary = "Restored: " + e.summary.replacingOccurrences(of: "Dismissed: ", with: "")
+        activityLog[index] = e
+    }
+
+    /// Revert an ACCEPTED activity entry: undo the durable artifact and
+    /// re-mark the row `.reverted` (it stays in history — same anti-vanish
+    /// principle as term Revert). Term accepts delegate to the existing
+    /// `revert(id:)` applied-change path; preset/app-default undo their
+    /// config writes here.
+    func revertActivity(id: UUID) {
+        guard let i = activityLog.firstIndex(where: { $0.id == id }),
+              activityLog[i].outcome == .accepted else { return }
+        let entry = activityLog[i]
+        switch entry.kind {
+        case .term:
+            // Reuse the term-revert path (staleness guard + prior restore).
+            // The linked AppliedChange row can be GONE for two reasons: the
+            // user already reverted it, OR a later re-accept of the same term
+            // superseded it (recordApplied keeps one row per term, with a new
+            // id). In the superseded case the term is still in config and is
+            // revertible via the NEWER entry — so a missing link here is a
+            // no-op, NOT a revert. Bail without marking reverted; only the
+            // newer entry's Revert (or this entry, if it still owns the row)
+            // should flip the row.
+            guard let acID = entry.termAppliedChangeID,
+                  appliedChanges.contains(where: { $0.id == acID }) else { return }
+            revert(id: acID)
+            // `revert(id:)` fails closed on a save failure: it leaves the row
+            // in place so the user can retry. Use the row's removal as the
+            // success proxy — if it's still there, the write failed, so don't
+            // falsely mark the row "Reverted" while the term is still in
+            // config.
+            guard !appliedChanges.contains(where: { $0.id == acID }) else { return }
+        case .preset:
+            guard let presetID = entry.createdPresetID else { return }
+            let (config, _) = Config.load()
+            let updated = Self.configByRemovingPreset(from: config, presetID: presetID)
+            guard (try? Config.save(updated)) != nil else { return }
+            // acceptPreset suppressed re-proposal of the ORIGINAL proposal's
+            // hash; reverting the accept undoes that artifact too, so clear
+            // the same hash (symmetric with restore() on the dismiss path).
+            // Use the captured `originalPresetHash` — NOT the restorable
+            // suggestion's, which carries the user's edited prompt and would
+            // hash differently, leaving the original pattern suppressed.
+            if let hash = entry.originalPresetHash, !hash.isEmpty {
+                dismissedPresetHashes.remove(hash)
+            }
+        case .appDefault:
+            guard let bundle = entry.appDefaultBundleID,
+                  let presetID = entry.createdPresetID else { return }
+            let (config, _) = Config.load()
+            // configByRemovingDefault returns nil when the live default no
+            // longer points at our preset (the user changed it meanwhile) —
+            // in that case leave config alone but still mark the row reverted
+            // (the artifact we created is already gone).
+            guard let updated = Self.configByRemovingDefault(
+                from: config, appBundleID: bundle, presetID: presetID) else {
+                markReverted(i); return
+            }
+            guard (try? Config.save(updated)) != nil else { return }
+        }
+        markReverted(i)
+    }
+
+    private func markReverted(_ index: Int) {
+        var e = activityLog[index]
+        e.outcome = .reverted
+        e.timestamp = Date()
+        // Prefix the original summary so the row reads "Reverted: …" and the
+        // user can still see what it was. Kind-agnostic, so it stays correct
+        // for every summary phrasing.
+        e.summary = "Reverted: " + e.summary
+        activityLog[index] = e
+    }
+
     func clearAll() {
         pendingSuggestions.removeAll()
         appliedChanges.removeAll()
+        activityLog.removeAll()
         Self.purgeLegacyOnDiskFile()
     }
+
+    #if DEBUG
+    /// Test seam: reset all in-memory state without touching disk (the
+    /// production `clearAll` is also disk-safe, but this is explicit about
+    /// intent and also clears the dismissed-hash suppression so tests start
+    /// from a clean slate). NEVER writes to `~/.parleq`.
+    func _resetForTesting() {
+        pendingSuggestions.removeAll()
+        appliedChanges.removeAll()
+        activityLog.removeAll()
+        presetDefaultSuggestions.removeAll()
+        dismissedPresetHashes.removeAll()
+    }
+
+    /// Test seam: directly seed a pending suggestion (in-memory only) so a
+    /// dismiss/restore flow can be exercised without the disk-writing accept
+    /// path. NEVER writes to `~/.parleq`.
+    func _seedPendingForTesting(_ s: PendingSuggestion) {
+        pendingSuggestions.insert(s, at: 0)
+    }
+
+    /// Test seam: directly seed an activity entry (in-memory only). NEVER
+    /// writes to `~/.parleq`.
+    func _seedActivityForTesting(_ e: ActivityEntry) {
+        pushActivity(e)
+    }
+
+    /// Test seam: read whether a preset content hash is currently
+    /// suppressed (dismissed). NEVER touches disk.
+    func _isDismissedHashForTesting(_ hash: String) -> Bool {
+        dismissedPresetHashes.contains(hash)
+    }
+    #endif
 }

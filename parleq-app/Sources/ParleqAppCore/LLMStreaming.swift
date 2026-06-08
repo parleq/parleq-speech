@@ -35,7 +35,7 @@ extension LLMClient {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
         request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
-        request.timeoutInterval = 60
+        request.timeoutInterval = LLMTuning.current.requestTimeoutSeconds  // #55
         do {
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
         } catch {

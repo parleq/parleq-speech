@@ -4,12 +4,13 @@
 // text incrementally; a non-streaming :generateContent variant is
 // kept for tests and headless callers.
 //
-// Operational invariant: `thinkingConfig.thinkingBudget` is set to 0
-// for Flash and Flash-Lite models to suppress chain-of-thought tokens
-// (2-3x latency, 5-8x output tokens, no quality gain on Parleq's
-// short cleanup task). Gemini 2.5 Pro rejects thinkingBudget=0 and
-// requires thinking to be enabled — thinkingConfig is omitted entirely
-// for Pro models so they use the API default (thinking on).
+// Operational invariant: `thinkingConfig.thinkingBudget` is pinned LOW
+// on every Gemini call — 0 on Flash/Flash-Lite (which allow disabling
+// thinking entirely), the 128-token floor on Pro (which mandates
+// thinking and rejects 0 with a 400). Unbounded default thinking is
+// 2-3x latency and 5-8x output tokens with no quality gain on
+// Parleq's short cleanup task; Pro's dynamic default is worse still
+// (thousands of thinking tokens, 10-20s to first token).
 //
 // Auth is a single GEMINI_API_KEY. Loaded from the process
 // environment, falling back to the macOS Keychain (set via the
@@ -105,7 +106,9 @@ public final class LLMClient: LLMProvider, Sendable {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
-        request.timeoutInterval = 30
+        // #55: unified request timeout (was 30s here — the only path that
+        // diverged from the 60s the rest used). Now shares LLMTuning.
+        request.timeoutInterval = LLMTuning.current.requestTimeoutSeconds
         do {
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
         } catch {
@@ -150,21 +153,24 @@ public final class LLMClient: LLMProvider, Sendable {
     /// suppress chain-of-thought tokens — ~2.8x latency savings with no
     /// quality difference on Parleq's short cleanup task. Gemini 2.5 Pro
     /// rejects `thinkingBudget: 0` with a 400 ("Budget 0 is invalid.
-    /// This model only works in thinking mode."), so we omit
-    /// `thinkingConfig` entirely for Pro and let it use its default
-    /// (thinking on).
+    /// This model only works in thinking mode.") but accepts its
+    /// 128-token FLOOR — without an explicit budget Pro's dynamic
+    /// default burns thousands of thinking tokens (10-20s TTFT) on a
+    /// punctuation task. The floor keeps Pro legal at minimum
+    /// deliberation. Mirrors VertexProvider.buildGeminiRequestBody.
     ///
     /// Shared by `buildRequestBody` (non-streaming `:generateContent`)
     /// and `buildStreamingRequestBody` (streaming `:streamGenerateContent`)
     /// so future tweaks happen in one place.
     internal func geminiGenerationConfig() -> [String: Any] {
+        let tuning = LLMTuning.current
         var cfg: [String: Any] = [
-            "temperature": 0,
-            "maxOutputTokens": 1024,
+            "temperature": tuning.temperature,
+            "maxOutputTokens": tuning.maxOutputTokens,
         ]
-        if !model.lowercased().contains("pro") {
-            cfg["thinkingConfig"] = ["thinkingBudget": 0]
-        }
+        // thinkingBudget override (#55) is sent verbatim when set;
+        // otherwise the built-in Flash/Pro 0/128 split applies.
+        cfg["thinkingConfig"] = ["thinkingBudget": tuning.resolvedThinkingBudget(forModel: model)]
         return cfg
     }
 

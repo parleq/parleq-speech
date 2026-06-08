@@ -51,6 +51,26 @@ public final class OverlayWindow {
     /// Floor for the panel height — short utterances still get a
     /// stable shape while the partial transcript streams in.
     private static let minHeight: CGFloat = 140
+    /// Deferred-shrink bookkeeping (see resizePanelToHeight): the most
+    /// recent finite body measurement, and whether a shrink was held
+    /// back during a streaming state awaiting the result-state settle.
+    private var lastFiniteMeasuredHeight: CGFloat = 0
+    private var shrinkDeferredDuringStreaming = false
+    /// Animated-resize coalescing: at most ONE animated setFrame in
+    /// flight. Overlapping animated setFrames (live evidence: a 787→231
+    /// settle with a 231→210 correction fired into it) start from
+    /// mid-flight frames — the animation machinery's private frame
+    /// updates drift the origin off the bottom anchor (panel floats
+    /// mid-screen) and land on stale targets. While one is in flight,
+    /// later measurements queue; the trailing one applies at animation
+    /// end, and the anchor is re-asserted either way.
+    private var animatedResizeUntil: Date = .distantPast
+    private var pendingResizeMeasurement: CGFloat?
+    /// Bumped in hide(): the animation-completion callback captures the
+    /// value at dispatch and early-returns on mismatch, so a stale
+    /// callback from a prior session can't touch the next session's
+    /// panel (180ms back-to-back race; review finding).
+    private var resizeGeneration: UInt = 0
     /// Vertical offset between the bottom of the visible screen and
     /// the bottom of the panel — kept consistent with the anchor
     /// enforced in OverlayPanel.setFrame.
@@ -304,17 +324,34 @@ public final class OverlayWindow {
         let visible = (panel.screen ?? NSScreen.main)?.visibleFrame.height ?? 800
         let maxPanelHeight = OverlayWindow.computeMaxPanelHeight(visibleHeight: visible)
         var frame = panel.frame
-        guard frame.size.height > maxPanelHeight + 0.5 else { return }
-        OverlayWindow.logStderr(
-            "[parleq] overlay panel ballooned externally to \(Int(frame.size.height)) " +
-            "(cap \(Int(maxPanelHeight))) — snapping back"
-        )
-        frame.size.height = maxPanelHeight
-        // Origin needs no correction here even if the external resize
-        // displaced it: this setFrame goes through OverlayPanel's
-        // applyAnchor override, which re-pins origin.y to the armed
-        // anchoredBottomY on every call.
-        panel.setFrame(frame, display: true, animate: false)
+        if frame.size.height > maxPanelHeight + 0.5 {
+            OverlayWindow.logStderr(
+                "[parleq] overlay panel ballooned externally to \(Int(frame.size.height)) " +
+                "(cap \(Int(maxPanelHeight))) — snapping back"
+            )
+            frame.size.height = maxPanelHeight
+            // Origin needs no correction here even if the external resize
+            // displaced it: this setFrame goes through OverlayPanel's
+            // applyAnchor override, which re-pins origin.y to the armed
+            // anchoredBottomY on every call.
+            panel.setFrame(frame, display: true, animate: false)
+            return
+        }
+        // Origin-drift heal (spike): AppKit's private resize paths can
+        // also MOVE the panel off its bottom anchor without exceeding
+        // the cap — observed live as the panel floating mid-screen
+        // after a large animated settle coincided with the
+        // scroll→direct content flip. Whenever a resize lands with
+        // origin.y off the armed anchor, snap it back through
+        // applyAnchor (which re-pins origin on every setFrame).
+        if let anchor = panel.anchoredBottomY,
+           abs(frame.origin.y - anchor) > 1 {
+            OverlayWindow.logStderr(
+                "[parleq] overlay panel drifted off bottom anchor " +
+                "(y=\(Int(frame.origin.y)) anchor=\(Int(anchor))) — snapping back"
+            )
+            panel.setFrame(frame, display: true, animate: false)
+        }
     }
 
     /// Replace the hosting controller's rootView so that the SwiftUI
@@ -355,6 +392,25 @@ public final class OverlayWindow {
     /// rather than installing hc as the panel's contentViewController,
     /// so the controller's viewDidLayout is never called).
     private func resizePanelToHeight(_ measuredHeight: CGFloat) {
+        // Defense-in-depth (live crash, 2026-06-05): a greedy view in the
+        // measured content (Color.clear under an unbounded proposal) can
+        // push an INFINITE height through the preference chain, and
+        // Int(infinity) in the log line below traps. Non-finite or
+        // negative measurements are garbage by definition — drop them
+        // with a count-only log instead of crashing.
+        // Sanity bounds, not just finiteness: greatestFiniteMagnitude IS
+        // finite and reached this path once (a maxHeight:.infinity root
+        // answering the pre-show unbounded proposal) — any measurement
+        // beyond plausible-screen scale is garbage, and Int() on it
+        // traps. 50k pt comfortably exceeds any real display stack.
+        guard measuredHeight.isFinite, measuredHeight >= 0,
+              measuredHeight < 50_000 else {
+            OverlayWindow.logStderr(
+                "[parleq] overlay body-height resize: implausible measurement dropped"
+            )
+            return
+        }
+        lastFiniteMeasuredHeight = measuredHeight
         // Cap against the PANEL's screen (NSScreen.main follows keyboard
         // focus and can be a different display) — same derivation as the
         // external-resize backstop and applyAnchor, so all three clamps
@@ -370,13 +426,95 @@ public final class OverlayWindow {
             min(maxPanelHeight, measuredHeight)
         )
         var frame = panel.frame
-        if abs(frame.size.height - target) < 0.5 { return }
+        if abs(frame.size.height - target) < 0.5 {
+            // Target equals the current frame — panel == card, so a pin
+            // left over from a deferred shrink whose content regrew to
+            // the held height has nothing to pin against. Release it
+            // (review finding: it otherwise sticks until the next
+            // resize or hide; benign but the invariant should be exact).
+            if model.bottomPinned { model.bottomPinned = false }
+            return
+        }
+        // Deferred shrink (maintainer-specified): while a cycle is
+        // STREAMING (cleaning/refining), the panel only ratchets UP.
+        // Between refinements the text resets and re-streams, so the
+        // honest measurement legitimately collapses to the floor and
+        // regrows — letting the panel follow it bounced multi-line
+        // overlays every refine cycle. This is panel-side POLICY, not a
+        // measurement cap (the distinction that broke the reverted
+        // motion arc): lastFiniteMeasuredHeight keeps flowing, and the
+        // held shrink settles exactly once at the result state (the
+        // show(state: .awaitingAccept) hook), animated.
+        if target < frame.size.height,
+           panel.isVisible,
+           model.state == .cleaning || model.state == .refining {
+            shrinkDeferredDuringStreaming = true
+            // Pin the card to the panel bottom for the hold's duration
+            // (the panel is now intentionally taller than the card).
+            model.bottomPinned = true
+            OverlayWindow.logStderr(
+                "[parleq] overlay shrink deferred: target=\(Int(target)) held=\(Int(frame.size.height))"
+            )
+            return
+        }
+        // Spike (state-transition smoothness): animate ONLY outside the
+        // streaming states — state swaps and the end-of-cycle settle.
+        // Streaming growth snaps instantly (the proven engine's
+        // behavior): animating every chunk-sized growth step produced a
+        // storm of overlapping 0.13s window animations (six in ~1s in
+        // live evidence) that fought the bottom-anchor enforcement
+        // through AppKit's private resize paths and left the panel
+        // floating mid-screen. Only animate while visible — the
+        // pre-show sizing pass must land instantly. Duration is the
+        // fixed 0.13s in OverlayPanel.animationResizeTime.
+        let streaming = model.state == .cleaning || model.state == .refining
+        let animate = panel.isVisible && !streaming
+            && abs(frame.size.height - target) >= 24
+        // Coalesce: while an animated resize is in flight, queue this
+        // measurement instead of stacking a second animation on top
+        // (see animatedResizeUntil). The trailing measurement re-enters
+        // this method at animation end with fresh state.
+        if Date() < animatedResizeUntil {
+            pendingResizeMeasurement = measuredHeight
+            return
+        }
         OverlayWindow.logStderr(
             "[parleq] overlay body-height resize: measured=\(Int(measuredHeight)) " +
-            "maxPanel=\(Int(maxPanelHeight)) → target=\(Int(target))"
+            "maxPanel=\(Int(maxPanelHeight)) → target=\(Int(target))" +
+            (animate ? " (animated)" : "")
         )
         frame.size.height = target
-        panel.setFrame(frame, display: true, animate: false)
+        if animate {
+            animatedResizeUntil = Date().addingTimeInterval(0.18)
+            panel.setFrame(frame, display: true, animate: true)
+            let generation = resizeGeneration
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { [weak self] in
+                guard let self, self.resizeGeneration == generation else { return }
+                // Release the bottom pin only AFTER the shrink animation
+                // completes (panel ≈ card again). Releasing before the
+                // window shrank let SwiftUI re-center the card inside
+                // the still-tall panel for a few frames — an upward
+                // "pop" right at the settle (live finding).
+                if self.model.bottomPinned { self.model.bottomPinned = false }
+                if let pending = self.pendingResizeMeasurement {
+                    // A newer measurement arrived mid-animation — apply
+                    // it now (recomputes target/animate from scratch).
+                    self.pendingResizeMeasurement = nil
+                    self.resizePanelToHeight(pending)
+                } else {
+                    // Heal any origin drift the animation machinery left
+                    // behind: re-assert the current frame through
+                    // OverlayPanel.setFrame, whose applyAnchor forces
+                    // origin.y back onto the bottom anchor.
+                    self.panel.setFrame(self.panel.frame, display: true, animate: false)
+                }
+            }
+        } else {
+            // Snap path: panel == card immediately — safe to release the
+            // pin in the same turn (no visual gap to pop in).
+            if model.bottomPinned { model.bottomPinned = false }
+            panel.setFrame(frame, display: true, animate: false)
+        }
     }
 
     /// Show / update the overlay. Called on every state transition;
@@ -420,6 +558,17 @@ public final class OverlayWindow {
             microphoneName: microphoneName,
             cleanupFailureMessage: cleanupFailureMessage
         )
+        // Deferred-shrink settle point: a shrink that was held back
+        // during the streaming states (see resizePanelToHeight) is
+        // applied exactly once when the cycle lands in its result
+        // state. If the result's own measurement already arrived via
+        // the preference chain this re-apply no-ops (same target).
+        if state == .awaitingAccept, shrinkDeferredDuringStreaming {
+            shrinkDeferredDuringStreaming = false
+            if lastFiniteMeasuredHeight > 0 {
+                resizePanelToHeight(lastFiniteMeasuredHeight)
+            }
+        }
         if !panel.isVisible {
             // Pre-size the panel to the SwiftUI intrinsic content
             // height BEFORE making it visible. Without this, the
@@ -543,6 +692,17 @@ public final class OverlayWindow {
         model.append(chunk)
     }
 
+    /// Raw-first display (task #53): enter .cleaning showing the raw
+    /// transcript (or prior text on refine) immediately, marked
+    /// provisional — readable and Enter-acceptable without waiting for
+    /// the LLM. The first streamed chunk replaces it via a plain
+    /// show(), which clears the flag in update().
+    public func showProvisionalCleaning(text: String, isRefine: Bool = false) {
+        show(state: .cleaning, text: text)
+        model.provisionalText = true
+        model.isRefine = isRefine
+    }
+
     /// Push a normalized 0…1 mic level into the overlay so the
     /// .capturing state's sound-wave bars can animate. Cheap no-op
     /// in any other state — the bars view only renders during
@@ -605,6 +765,27 @@ public final class OverlayWindow {
     }
 
     public func hide() {
+        // A shrink held back mid-cycle must not leak into the next
+        // session — the fresh show() pre-sizes from scratch anyway.
+        shrinkDeferredDuringStreaming = false
+        model.bottomPinned = false
+        // A refine accepted during the provisional phase would otherwise
+        // leave isRefine set; the next session's footer would briefly
+        // read "refining…" during its ASR phase (review finding).
+        model.isRefine = false
+        // Also reset the animated-resize coalescing state: a leftover
+        // in-flight window from the prior session's settle would queue
+        // (and thus skip) the next show()'s pre-size call, making the
+        // panel appear at a stale frame and visibly jump (review
+        // finding).
+        animatedResizeUntil = .distantPast
+        pendingResizeMeasurement = nil
+        resizeGeneration &+= 1
+        // Contract hygiene: the field is documented as "the most recent
+        // finite body measurement" — don't let a prior session's value
+        // satisfy that description (review finding; no current reader
+        // is affected, but a future one would be).
+        lastFiniteMeasuredHeight = 0
         panel.orderOut(nil)
     }
 
@@ -655,6 +836,18 @@ private final class OverlayPanel: NSPanel {
 
     override func setFrame(_ frameRect: NSRect, display flag: Bool, animate animateFlag: Bool) {
         super.setFrame(applyAnchor(frameRect), display: flag, animate: animateFlag)
+    }
+
+    /// Spike (state-transition smoothness): fixed, short resize animation
+    /// regardless of delta size. AppKit's default scales duration with the
+    /// frame delta, which makes big state-transition jumps feel slow and
+    /// floaty. Used only when resizePanelToHeight passes animate: true —
+    /// the external-resize backstop and the initial show stay instant.
+    /// NOTE: native setFrame(_:display:animate:) is the proven-safe path
+    /// here; NSAnimationContext + animator() leaves this borderless
+    /// non-activating panel invisible (see overlay sizing lessons).
+    override func animationResizeTime(_ newFrame: NSRect) -> TimeInterval {
+        0.13
     }
 
     private func applyAnchor(_ rect: NSRect) -> NSRect {
@@ -848,6 +1041,26 @@ public final class OverlayModel: ObservableObject {
     /// Whether the overlay is in "key" mode (used by the reference
     /// window feature to control overlay behavior and styling).
     @Published var isKey: Bool = true
+    /// True while a panel shrink is deferred (streaming after a refine
+    /// of long text): the panel is intentionally taller than the card,
+    /// and the card pins to the hosting view's BOTTOM for the duration
+    /// (SwiftUI's default centering floated it mid-screen). Must be
+    /// false whenever panel == card — the expand-to-fill frame this
+    /// drives corrupts the pre-show sizeThatFits query (it answered an
+    /// unbounded proposal with greatestFiniteMagnitude → Int() trap).
+    @Published var bottomPinned: Bool = false
+    /// True while .cleaning displays the RAW transcript (or prior text
+    /// on refine) before any cleaned token arrives — the raw-first
+    /// display (task #53). Rendered dimmed; Enter accepts it as-is and
+    /// kills the in-flight LLM stream. Cleared by the first streamed
+    /// chunk's text replacement (via update()).
+    @Published var provisionalText: Bool = false
+    /// True when the current .cleaning pass is a REFINE (the raw-first
+    /// change made `text.isEmpty` useless as the refine heuristic — the
+    /// provisional transcript populates text immediately, which made
+    /// fresh cleanups read "refining…"; review finding). Set alongside
+    /// the provisional show; cleared when leaving .cleaning.
+    @Published var isRefine: Bool = false
 
     /// Optional screen recording permission prompt message. Surfaced in
     /// the overlay when capture lacks the necessary permissions.
@@ -962,6 +1175,16 @@ public final class OverlayModel: ObservableObject {
         // text + decides whether to paste raw. Cleared elsewhere
         // so stale messages don't follow a successful cleanup turn.
         self.cleanupFailureMessage = (state == .awaitingAccept) ? cleanupFailureMessage : nil
+        // Every full update ends a provisional display: raw-first shows
+        // set the flag explicitly AFTER calling update (see
+        // OverlayWindow.showProvisionalCleaning); the first streamed
+        // chunk replaces the text via a plain show()/update, landing
+        // here and clearing it.
+        self.provisionalText = false
+        // isRefine survives WITHIN .cleaning (the first streamed chunk
+        // re-shows and must not flip the label mid-stream) and clears
+        // on any other state.
+        if state != .cleaning { self.isRefine = false }
     }
 
     public func append(_ chunk: String) {
@@ -1099,6 +1322,28 @@ nonisolated func fittingChipCount(
 }
 
 // MARK: - PresetChip view
+
+// MARK: - ChromeSlotMetrics (spike: state-transition smoothness)
+
+/// Equal-height chrome slots across overlay states, so a state swap
+/// (capture → cleaning → accept) is height-NEUTRAL by construction and
+/// the only thing that ever changes the panel height is the text area
+/// growing — the "one chips-aware minimum height, growth only from the
+/// text area" model. Each constant is a floor (minHeight) on the live
+/// row and an exact height on its Color.clear reservation, so the two
+/// sides agree.
+private enum ChromeSlotMetrics {
+    /// Content slot (listening indicator / transcript text) floor —
+    /// ~2 lines of 17pt transcript.
+    static let contentMin: CGFloat = 52
+    // (A postReleaseContentMin compensation constant lived here briefly;
+    // superseded by rendering the hold-time hint strip as a zero-height
+    // overlay, which removed the asymmetry it compensated for.)
+    /// Preset-chip strip (capsule ≈ 20pt + breathing room).
+    static let chipsRow: CGFloat = 22
+    /// Footer row (Copy/Cancel/Accept buttons or the hint line).
+    static let footerRow: CGFloat = 28
+}
 
 /// One transform-preset capsule for the review strip. Dim at rest; the
 /// gradient border + text brighten on hover (no ambient animation).
@@ -1454,6 +1699,32 @@ private struct OverlayContent: View {
             // intrinsic and the ScrollView scrolls it), so the
             // measurement stays consistent across mode switches.
             contentArea
+                // Spike: the animated listening icon is a CENTERED
+                // OVERLAY on the content slot in both hold states — same
+                // position whether the slot is empty (capture) or holds
+                // the dimmed prior text (refine). Zero layout height, so
+                // entering/leaving a hold never moves the panel; the
+                // refine text dims further (0.35) so the icon reads
+                // clearly on top of it.
+                .overlay {
+                    if model.state == .capturing {
+                        listeningIndicator(label: model.references.isEmpty ? nil : "say what to do with these references…")
+                    } else if model.state == .refining {
+                        // The refine cue: the header carries "Refining on
+                        // <mic>" only when the reference-windows header
+                        // section renders (feature on + no refs attached).
+                        // Everywhere else the label must live under the
+                        // icon or default-config users see a bare icon
+                        // with no explanation (review finding).
+                        let headerCarriesCue = model.referenceWindowsEnabled
+                            && model.references.isEmpty
+                        listeningIndicator(label: headerCarriesCue ? nil
+                            : (model.references.isEmpty
+                                ? (model.microphoneName.map { "listening for refinement on \($0)…" }
+                                    ?? "listening for refinement…")
+                                : "say what to change…"))
+                    }
+                }
 
             Divider().opacity(0.3)
 
@@ -1469,7 +1740,12 @@ private struct OverlayContent: View {
                 // the commit row (text → transform → accept). Fixed chrome
                 // (never inside the scrolling text area). Hover transitions
                 // only; no ambient animation.
+                // Spike: floored to the chips-row slot height so the live
+                // strip and the Color.clear reservation rendered by the
+                // non-accept states agree. (.frame on the EmptyView case
+                // stays zero — no reservation when no chips exist.)
                 presetRow
+                    .frame(minHeight: ChromeSlotMetrics.chipsRow)
 
                 // Single-line footer: Copy on left, then Cancel, the
                 // paste-target inline (so Accept is visually paired
@@ -1497,7 +1773,18 @@ private struct OverlayContent: View {
                     onSwitchToVisionModel: onSwitchToVisionModelAndRecleanup,
                     onDowngrade: { model.userDowngradedConflict = true }
                 )
+                // Spike: common footer-row floor (matches the hint row in
+                // non-accept states) — see ChromeSlotMetrics.
+                .frame(minHeight: ChromeSlotMetrics.footerRow)
             } else {
+                // Spike: reserve the preset-chip strip's slot in
+                // non-accept states (same condition presetRow uses) so
+                // the chips arriving at accept don't change the panel
+                // height. Color.clear, not EmptyView — .frame on
+                // EmptyView is zero (see overlay sizing lessons).
+                if !presetChips.isEmpty || model.appliedPresetName != nil {
+                    Color.clear.frame(height: ChromeSlotMetrics.chipsRow)
+                }
                 // Active-state footer row: paste-target on the left
                 // (same "PASTING TO" treatment as the .awaitingAccept
                 // footer next to Accept — see PastingToLabel) +
@@ -1517,49 +1804,83 @@ private struct OverlayContent: View {
                 // …"), which contradicts itself (the user has
                 // already released, "release" isn't the next
                 // action).
+                // Spike: the latched-compose hint strip lives IN the
+                // footer row during hold/latched states (it was its own
+                // row, which made the panel grow ~34pt for the duration
+                // of every hold; as a floating overlay it covered the
+                // listening icon). At .idle the regular footer renders
+                // as before (paste-target chip left, hint right); in
+                // hold/latched states the strip's copy renders CENTERED
+                // on the full row — the chip yields its width for the
+                // duration of the hold and returns at release.
                 HStack(spacing: 8) {
-                    if showsActiveFooterPasteTarget,
-                       let target = model.pasteTarget {
-                        PastingToLabel(target: target)
-                    }
-                    Spacer(minLength: 8)
-                    if model.composeState == .idle || model.composeState == .recording {
-                        footer
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
+                    if model.composeState == .idle {
+                        if showsActiveFooterPasteTarget,
+                           let target = model.pasteTarget {
+                            PastingToLabel(target: target)
+                        }
+                        Spacer(minLength: 8)
+                        // Spike: while the LLM streams, the status label
+                        // ("cleaning…/refining…", or the named transform)
+                        // lives HERE in the persistent footer slot — as a
+                        // content-area row it bounced the panel height
+                        // for the stream's duration on 2+-line overlays.
+                        if model.state == .cleaning {
+                            HStack(spacing: 6) {
+                                // LLM-processing ripple: the brand bars
+                                // in the AI gradient's colors playing a
+                                // fixed travelling wave — "thinking",
+                                // visually distinct from the orange
+                                // voice-reactive bars ("listening").
+                                // Replaces the BlinkingDots as the
+                                // liveness cue (maintainer-requested).
+                                ParleqListeningIndicator(level: 0, scale: 0.55, processing: true)
+                                if let transform = model.activeTransformName {
+                                    Text("Applying \(transform)…")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.secondary)
+                                        .lineLimit(1)
+                                } else {
+                                    Text(model.isRefine ? "refining…" : "cleaning…")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.secondary)
+                                }
+                                // Raw-first (task #53): the visible text
+                                // is acceptable at any moment — say so.
+                                if !model.text.isEmpty {
+                                    Text("· ⏎ uses what's shown")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(Color.secondary.opacity(0.8))
+                                }
+                            }
+                        } else {
+                            footer
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                        }
+                    } else {
+                        Spacer(minLength: 0)
+                        OverlayHintStrip(
+                            state: model.composeState,
+                            hotkeyDisplayName: model.hotkeyDisplayName,
+                            referenceWindowsEnabled: model.referenceWindowsEnabled,
+                            spaceArmedDuringHold: model.spaceArmedDuringHold
+                        )
+                        Spacer(minLength: 0)
                     }
                 }
+                // Spike: same footer-row floor as the buttons row in
+                // awaitingAccept — hint→buttons swap is height-neutral.
+                .frame(minHeight: ChromeSlotMetrics.footerRow)
             }
 
-            // Reference Windows v2 latched-compose hint strip. Renders
-            // empty (EmptyView) when composeState is .idle so users
-            // who never enter the latched flow see no UI change.
-            OverlayHintStrip(
-                state: model.composeState,
-                hotkeyDisplayName: model.hotkeyDisplayName,
-                referenceWindowsEnabled: model.referenceWindowsEnabled,
-                spaceArmedDuringHold: model.spaceArmedDuringHold
-            )
+            // Reference Windows v2 latched-compose hint strip: renders
+            // inside the footer row (see the bottom-area else branch) so
+            // it never contributes its own layout height.
 
-            // Named status title: name the transform while it
-            // streams, instead of the anonymous cleaning state.
-            if model.state == .cleaning, let transform = model.activeTransformName {
-                HStack(spacing: 6) {
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(OverlayContent.aiGradient)
-                    Text("Applying \(transform)")
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                    // Animated dots instead of a static ellipsis: this row
-                    // REPLACES the anonymous cleaning…/refining… label (and
-                    // its BlinkingDots) during preset runs, so it carries
-                    // the perceived-liveness role too.
-                    BlinkingDots()
-                    Spacer(minLength: 0)
-                }
-            }
+            // Named transform status moved into the footer slot with the
+            // anonymous cleaning…/refining… label (spike): status rows in
+            // the layout flow bounced the panel for the stream's duration.
 
             // One-time "Learn from corrections" nudge with an inline
             // toggle — review state only, below the hint strip.
@@ -1592,6 +1913,19 @@ private struct OverlayContent: View {
         .onPreferenceChange(OverlayBodyHeightKey.self) { newHeight in
             onBodyHeightChange(newHeight)
         }
+        // Spike: pin the card to the BOTTOM of the hosting view while a
+        // shrink is deferred (streaming after a refine of long text) —
+        // the panel is intentionally taller than the card then, and
+        // SwiftUI's default centering floated the card mid-screen
+        // inside the invisible panel, "jumping down" at the settle.
+        // CONDITIONAL on bottomPinned: an unconditional
+        // .frame(maxHeight: .infinity) answers the pre-show
+        // sizeThatFits unbounded proposal with greatestFiniteMagnitude
+        // (finite! → slipped the isFinite guard → Int() trap, live
+        // crash 2026-06-06). When not pinned this is maxHeight: nil —
+        // an identity for sizing. Applied OUTSIDE the height
+        // measurement so the preference always reports the card.
+        .frame(maxHeight: model.bottomPinned ? .infinity : nil, alignment: .bottom)
         // Drag-and-drop: accept file URLs, images, and text onto the
         // overlay surface. Drops are forwarded through the same factory
         // helpers as the + menu items (Task 11). Gated to .staging /
@@ -1744,13 +2078,18 @@ private struct OverlayContent: View {
                 // unfinished UI. Show a tertiary-color affordance hint
                 // instead so the area has visible purpose.
                 if model.references.isEmpty {
-                    if model.state == .capturing {
+                    if model.state == .capturing || model.state == .refining {
                         // During active capture, replace the "Add a
                         // reference window" affordance with the live
                         // microphone label — more useful feedback when
                         // the user is actually speaking. Same font /
                         // styling / position as the hint it replaces.
-                        let listenLabel = model.microphoneName.map { "Listening on \($0)" } ?? "Listening…"
+                        // Spike: .refining shows its cue here too (the
+                        // in-body indicator label moved out so refine
+                        // doesn't change the content slot's height).
+                        let listenLabel = model.state == .refining
+                            ? (model.microphoneName.map { "Refining on \($0)" } ?? "Listening for refinement…")
+                            : (model.microphoneName.map { "Listening on \($0)" } ?? "Listening…")
                         HStack(spacing: 5) {
                             Image(systemName: "mic.fill")
                                 .font(.system(size: 11))
@@ -1900,6 +2239,34 @@ private struct OverlayContent: View {
         var ids: [ModelIdentifier] = [cleanupId]
         if let ctx = cfg.contextModel, ctx != cleanupId {
             ids.append(ctx)
+        }
+        // Task #54: extend the picker with the configured providers'
+        // CURATED CATALOG, so switching models is a picker tap instead
+        // of a config edit. Rules:
+        //   - configured entries stay first (they're what the user set
+        //     up); catalog entries follow in catalog order;
+        //   - only providers already configured for cleanup/context are
+        //     offered (their credentials are known to work);
+        //   - Azure is excluded — its "model" is a user-chosen
+        //     DEPLOYMENT name, so canonical catalog names would 404 on
+        //     most tenants;
+        //   - the MDM cleanupAllowedModels allowlist (when pinned)
+        //     filters catalog entries exactly as it curates Settings;
+        //     configured entries are exempt (they already passed
+        //     config-load policy enforcement).
+        // Selection uses the existing pickedModelOverride semantics: a
+        // one-off override for THIS dictation, never a config write.
+        let managedAllowedModels = ManagedConfig.managedStringArray(forKey: "cleanupAllowedModels")
+        var seenProviders = Set<String>()
+        for provider in ids.map(\.provider) where !seenProviders.contains(provider) {
+            seenProviders.insert(provider)
+            guard provider != "azure" else { continue }
+            for m in ModelCatalog.models(forProvider: provider) {
+                let id = ModelIdentifier(provider: provider, model: m)
+                guard !ids.contains(id) else { continue }
+                if let allowed = managedAllowedModels, !allowed.contains(m) { continue }
+                ids.append(id)
+            }
         }
         let entries = ids.map { id in
             ModelPicker.ModelEntry(
@@ -2212,7 +2579,7 @@ private struct OverlayContent: View {
             //     spinner for 30–60 s on first launch.
             //
             // We still prefer SwiftUI's `ProgressView` over the
-            // custom `BlinkingDots` for the indeterminate case
+            // the ParleqListeningIndicator processing ripple
             // because the custom dot animation has been observed to
             // render statically in this state — likely a
             // SwiftUI-in-NSPanel quirk with repeatForever-on-appear.
@@ -2268,64 +2635,90 @@ private struct OverlayContent: View {
             // When references are attached the header shows the reference
             // chips; pass the teaching hint in that case so there's still
             // a listening cue.
-            listeningIndicator(label: model.references.isEmpty ? nil : "say what to do with these references…")
+            // Spike: the icon itself renders as a centered overlay on the
+            // content slot (see contentArea's .overlay) — the in-flow
+            // body is just the empty slot at the shared floor. Color.clear
+            // (not EmptyView) so the reservation actually has size, and
+            // an EXACT height (not minHeight): Color.clear is greedy, and
+            // under an unbounded proposal a min-only frame reports an
+            // INFINITE ideal height through the measurement preference —
+            // which ballooned the panel and trapped Int(measuredHeight)
+            // in resizePanelToHeight (live crash, 2026-06-05).
+            Color.clear
+                .frame(height: ChromeSlotMetrics.contentMin)
         case .cleaning:
-            VStack(alignment: .leading, spacing: 6) {
-                if !model.text.isEmpty {
+            // Rigid floor: ZStack(max(floor, content)) — NOT
+            // .frame(minHeight:), which is a FLEXIBLE frame that sizes
+            // to the PROPOSAL (clamped), not the child. Under the
+            // panel's bounded proposal that resolved to exactly the
+            // floor and let the fixedSize text overflow invisibly out
+            // the bottom (live evidence: chars=652 measured=52). The
+            // exact-height Color.clear is rigid, so the ZStack reports
+            // max(floor, real text height) and growth flows again.
+            ZStack(alignment: .topLeading) {
+                Color.clear.frame(height: ChromeSlotMetrics.contentMin)
+                VStack(alignment: .leading, spacing: 6) {
+                    if !model.text.isEmpty {
+                        Text(model.text)
+                            .font(.system(size: 17))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            // Raw-first: provisional (uncleaned) text
+                            // reads dimmed so the upgrade to cleaned
+                            // text is visually legible.
+                            .opacity(model.provisionalText ? 0.55 : 1.0)
+                    }
+                    // Spike: the "cleaning…/refining…" status row moved to
+                    // the footer slot (persistent chrome) — in here it added
+                    // ~16pt below the text for the stream's duration and
+                    // bounced any 2+-line overlay on every refine cycle.
+                }
+            }
+        case .awaitingAccept:
+            // Rigid floor — same ZStack pattern as .cleaning (see there).
+            ZStack(alignment: .topLeading) {
+                Color.clear.frame(height: ChromeSlotMetrics.contentMin)
+                VStack(alignment: .leading, spacing: 8) {
                     Text(model.text)
                         .font(.system(size: 17))
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                // During a manual preset run the named "Applying <name>…"
-                // status row (rendered below the hint strip) carries the
-                // progress role — showing the anonymous label too would
-                // duplicate/conflict for one operation.
-                if model.activeTransformName == nil {
-                    HStack(spacing: 8) {
-                        BlinkingDots()
-                        Text(model.text.isEmpty ? "cleaning…" : "refining…")
-                            .font(.system(size: 12))
-                            .foregroundColor(.secondary)
-                    }
-                }
-            }
-        case .awaitingAccept:
-            VStack(alignment: .leading, spacing: 8) {
-                Text(model.text)
-                    .font(.system(size: 17))
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                // Cleanup-failure decoration. AppState passes a
-                // non-nil message when LLM cleanup threw — the user
-                // is being shown the raw ASR transcript (the
-                // fallback) and needs to know that's why it looks
-                // less polished than usual, plus what to do to fix
-                // it. Provider-specific hint comes from each
-                // LLMProvider's `cleanupFailureHint`.
-                if let failure = model.cleanupFailureMessage {
-                    HStack(alignment: .top, spacing: 8) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundColor(.orange)
-                            .font(.system(size: 12))
-                            .padding(.top, 2)
-                        Text(failure)
-                            .font(.system(size: 12))
-                            .foregroundColor(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                    // Cleanup-failure decoration. AppState passes a
+                    // non-nil message when LLM cleanup threw — the user
+                    // is being shown the raw ASR transcript (the
+                    // fallback) and needs to know that's why it looks
+                    // less polished than usual, plus what to do to fix
+                    // it. Provider-specific hint comes from each
+                    // LLMProvider's `cleanupFailureHint`.
+                    if let failure = model.cleanupFailureMessage {
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.orange)
+                                .font(.system(size: 12))
+                                .padding(.top, 2)
+                            Text(failure)
+                                .font(.system(size: 12))
+                                .foregroundColor(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
                     }
                 }
             }
         case .refining:
-            VStack(alignment: .leading, spacing: 12) {
+            // Spike: dimmed text only — the listening icon floats as a
+            // centered overlay on the content slot (see contentArea) and
+            // the refine cue lives in the header strip, so entering
+            // refine doesn't change the content slot's height. 0.35
+            // (down from the old 0.55) so the overlaid icon reads
+            // clearly against the text.
+            ZStack(alignment: .topLeading) {
+                Color.clear.frame(height: ChromeSlotMetrics.contentMin)
                 Text(model.text)
                     .font(.system(size: 17))
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .opacity(0.55)
-                let refineHint = model.microphoneName.map { "listening for refinement on \($0)…" } ?? "listening for refinement…"
-                listeningIndicator(label: refineHint)
+                    .opacity(0.35)
             }
         }
     }
@@ -2336,12 +2729,14 @@ private struct OverlayContent: View {
     /// driven by `model.level` — so it's the static Parleq logo at
     /// rest and an audio-reactive waveform when audio is coming in.
     ///
-    /// `label` is optional. Pass nil for .capturing when no references
-    /// are attached (the header strip already shows "Listening on <mic>"
-    /// — a second label below the icon would duplicate it and inflate
-    /// the capture-state height). Pass a string for .refining, and for
-    /// .capturing when references are attached (the header is then
-    /// occupied by reference chips, so the teaching hint must appear here).
+    /// `label` is optional, and since the spike both call sites are the
+    /// content-slot OVERLAY (zero layout height — see contentArea):
+    /// .capturing passes nil when no references are attached (the header
+    /// strip shows "Listening on <mic>"; a second label would duplicate
+    /// it) and the teaching hint when references occupy the header.
+    /// .refining passes nil only when the header carries the refine cue
+    /// (reference windows enabled + no refs); otherwise the refine hint
+    /// renders here so default-config users aren't left with a bare icon.
     @ViewBuilder
     private func listeningIndicator(label: String?) -> some View {
         VStack(spacing: 10) {
@@ -2392,34 +2787,6 @@ private struct OverlayContent: View {
 
 }
 
-// Three slowly-blinking dots, used as a "listening / processing"
-// indicator. Pure SwiftUI — no animation library dep.
-private struct BlinkingDots: View {
-    @State private var phase: Double = 0
-    private let dotCount = 3
-
-    var body: some View {
-        HStack(spacing: 4) {
-            ForEach(0..<dotCount, id: \.self) { i in
-                Circle()
-                    .fill(Color.secondary)
-                    .frame(width: 6, height: 6)
-                    .opacity(opacity(for: i))
-            }
-        }
-        .onAppear {
-            withAnimation(.linear(duration: 0.9).repeatForever(autoreverses: false)) {
-                phase = Double(dotCount)
-            }
-        }
-    }
-
-    private func opacity(for index: Int) -> Double {
-        let position = phase.truncatingRemainder(dividingBy: Double(dotCount))
-        let distance = abs(Double(index) - position)
-        return 0.3 + 0.7 * max(0, 1 - distance)
-    }
-}
 
 /// Parleq's listening visualization: five vertical rounded-rect
 /// bars rendered in Parleq's brand orange. Each bar tracks a
@@ -2463,21 +2830,73 @@ struct ParleqListeningIndicator: View {
     /// travels across the bars over time.
     @State private var history: [Float] = Array(repeating: 0, count: 5)
 
+    /// LLM-processing mode (task #53 follow-up): the bars stop tracking
+    /// the mic and instead play a fixed self-driven ripple in the AI
+    /// gradient's colors — visually distinct from the voice-reactive
+    /// orange so the user can tell "Parleq is thinking" from "Parleq is
+    /// listening" at a glance.
+    var processing: Bool = false
+
+    /// Per-bar colors for the processing ripple: a ramp through the AI
+    /// gradient's endpoints (brand amber → warm coral) so the five bars
+    /// read as one gradient sweep.
+    private static let processingColors: [Color] = {
+        // Manual RGB lerp (Color.mix needs macOS 15; we target 14):
+        // brandAccent (0xd97706) → aiGradient's warm coral endpoint.
+        let from: (Double, Double, Double) = (0xd9 / 255.0, 0x77 / 255.0, 0x06 / 255.0)
+        let to: (Double, Double, Double) = (0.95, 0.45, 0.50)
+        return (0..<5).map { i in
+            let t = Double(i) / 4.0
+            return Color(
+                red: from.0 + (to.0 - from.0) * t,
+                green: from.1 + (to.1 - from.1) * t,
+                blue: from.2 + (to.2 - from.2) * t
+            )
+        }
+    }()
+
     var body: some View {
-        HStack(alignment: .center, spacing: 1 * scale) {
-            ForEach(0..<5, id: \.self) { i in
-                Capsule(style: .continuous)
-                    .fill(SettingsView.brandAccent)
-                    .frame(width: 2 * scale, height: barHeight(at: i))
+        if processing {
+            // Fixed ripple: a TimelineView-driven travelling sine over
+            // the idle silhouette. No mic input involved.
+            TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
+                let t = context.date.timeIntervalSinceReferenceDate
+                HStack(alignment: .center, spacing: 1 * scale) {
+                    ForEach(0..<5, id: \.self) { i in
+                        Capsule(style: .continuous)
+                            .fill(Self.processingColors[i])
+                            .frame(width: 2 * scale,
+                                   height: processingBarHeight(at: i, time: t))
+                    }
+                }
+                .frame(height: peakHeight)
+            }
+        } else {
+            HStack(alignment: .center, spacing: 1 * scale) {
+                ForEach(0..<5, id: \.self) { i in
+                    Capsule(style: .continuous)
+                        .fill(SettingsView.brandAccent)
+                        .frame(width: 2 * scale, height: barHeight(at: i))
+                }
+            }
+            .frame(height: peakHeight)
+            .onChange(of: level) { _, newValue in
+                withAnimation(.spring(response: 0.14, dampingFraction: 0.6)) {
+                    history.removeFirst()
+                    history.append(newValue)
+                }
             }
         }
-        .frame(height: peakHeight)
-        .onChange(of: level) { _, newValue in
-            withAnimation(.spring(response: 0.14, dampingFraction: 0.6)) {
-                history.removeFirst()
-                history.append(newValue)
-            }
-        }
+    }
+
+    /// Travelling-wave height for the processing ripple: each bar
+    /// oscillates gently above its idle silhouette, phase-offset so a
+    /// crest sweeps left→right about once a second. Amplitude is half
+    /// the voice boost — calm, deliberate, unmistakably "working".
+    private func processingBarHeight(at index: Int, time: TimeInterval) -> CGFloat {
+        let phase = time * 2 * .pi * 0.9 - Double(index) * 0.9
+        let wave = (sin(phase) + 1) / 2  // 0…1
+        return (idlePattern[index] + CGFloat(wave) * (levelBoost * 0.5)) * scale
     }
 
     private func barHeight(at index: Int) -> CGFloat {

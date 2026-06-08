@@ -42,6 +42,37 @@ enum ModelConflict: Equatable, Sendable {
 /// instance. The duplication is intentional and bounded: one switch
 /// per provider family, updated whenever a new model is added.
 enum ModelCapability {
+    /// True for models that THINK before their first token — Gemini Pro
+    /// (cannot disable thinking; routinely 10-20s TTFT) and the
+    /// OpenAI/Azure reasoning families. The TTFT watchdog (task #41
+    /// follow-up) gives these a single generous deadline instead of the
+    /// fast-model retry ladder: retrying a thinking model throws away a
+    /// half-finished think, and the raw-first display means a long
+    /// deadline costs the user nothing (the raw text is acceptable the
+    /// whole time). Conservative default: false (fast deadlines).
+    static func expectsExtendedTTFT(provider: String, model: String) -> Bool {
+        let m = model.lowercased()
+        switch provider.lowercased() {
+        case "gemini", "vertex":
+            // Gemini Pro thinks mandatorily. Flash/Flash-Lite run with
+            // thinkingBudget=0 (invariant #3) — fast.
+            return m.contains("pro")
+        case "openai", "azure":
+            // o-series and gpt-5 family are reasoning models; gpt-4o /
+            // gpt-4.1 are not. Azure routes by deployment name, so the
+            // model string is user-chosen — match the common shapes.
+            return m.hasPrefix("o1") || m.hasPrefix("o3") || m.hasPrefix("o4")
+                || m.contains("gpt-5")
+        case "bedrock":
+            // (BedrockBearerProvider also reports providerName "bedrock".)
+            // GPT-OSS runs with reasoning_effort=low (invariant #4);
+            // Claude models stream promptly without extended thinking.
+            return false
+        default:
+            return false
+        }
+    }
+
     /// Returns true iff the given `ModelIdentifier` corresponds to a
     /// model that can accept image inputs. Conservative default: false.
     static func supportsVision(_ id: ModelIdentifier) -> Bool {

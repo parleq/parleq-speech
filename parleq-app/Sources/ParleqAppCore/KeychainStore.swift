@@ -83,6 +83,19 @@ public enum KeychainStore {
     /// never lands in a plaintext file.
     public static let oidcIdentityAccount = "oidc-identity"
 
+    /// Account name for the OIDC client secret (enterprise federation).
+    /// OPTIONAL — needed ONLY for Google "Desktop app" OAuth clients, which
+    /// REQUIRE a client_secret on the token exchange even with PKCE (the
+    /// installed-app secret is public-by-design per Google's own docs; the iOS
+    /// client type has no secret, which is why the custom-scheme flow never
+    /// needed one). This is CLIENT CONFIGURATION, not a user credential —
+    /// unlike the refresh token + identity, it is NOT cleared on sign-out
+    /// (KeychainOIDCTokenStore.clear() leaves it intact); it lives or dies with
+    /// the issuer / client-ID config the IT admin entered. Kept in the Keychain
+    /// (not config.json) anyway: it's a secret-shaped value and the Settings UI
+    /// is the canonical writer for all such values, never displayed after save.
+    public static let oidcClientSecretAccount = "oidc-client-secret"
+
     // MARK: - Public API
 
     /// Store the user's Gemini API key. Replaces any prior value
@@ -309,6 +322,116 @@ public enum KeychainStore {
         readOIDCIdentityJSON() != nil
     }
 
+    // MARK: - OIDC client secret (Google "Desktop app" clients)
+    //
+    // CLIENT CONFIGURATION, not a user credential: it survives sign-out
+    // (KeychainOIDCTokenStore.clear() deliberately does NOT touch it — see the
+    // account-constant doc above). Same service / accessibility class as the
+    // refresh-token accessors.
+    //
+    // OWNERSHIP STAMP (fix #57): the secret is stored as a JSON envelope that
+    // records the client_id + issuer it was saved against, NOT a bare string.
+    // The reader returns the secret ONLY when the stamped owner matches the
+    // currently-configured client_id + issuer; on a mismatch it deletes the
+    // stale item and returns nil. This stops a secret saved for client A from
+    // being transmitted to a DIFFERENT IdP after the admin reconfigures the
+    // issuer / client_id (which would both break the new exchange AND leak the
+    // prior client's secret to another endpoint). Switching clients is a
+    // CONFIG change, distinct from sign-out — sign-out still keeps the secret.
+    // Neither the secret nor the stamp is ever logged.
+
+    /// JSON envelope persisted under `oidcClientSecretAccount`. The owner fields
+    /// scope the secret to one client config; only `secret` is the sensitive
+    /// value (the owner is non-secret config already present in config.json).
+    struct OIDCClientSecretEnvelope: Codable {
+        var clientID: String
+        var issuer: String
+        var secret: String
+    }
+
+    /// The action `readOIDCClientSecret` should take for a stored raw value and
+    /// a requested owner. Split out as a PURE function so the owner-matching /
+    /// migration logic (the fix #57 core) is unit-testable without the real
+    /// Keychain. `none` means "no value stored / nothing to do".
+    enum OIDCClientSecretDecision: Equatable {
+        /// Stamped envelope whose owner matches → return this secret, no write.
+        case useStamped(String)
+        /// Stamped envelope whose owner DIFFERS → delete the stale item, nil.
+        case deleteStale
+        /// Legacy bare-string value → re-stamp it for the requested owner
+        /// (one-time migration) and return it.
+        case migrateLegacy(String)
+        /// No stored value.
+        case none
+    }
+
+    /// Pure decision for the stored `raw` value (nil = absent) given the
+    /// requested owner. No I/O — see `readOIDCClientSecret` for the I/O wrapper.
+    static func oidcClientSecretDecision(raw: String?,
+                                         clientID: String,
+                                         issuer: String) -> OIDCClientSecretDecision {
+        guard let raw else { return .none }
+        if let data = raw.data(using: .utf8),
+           let env = try? JSONDecoder().decode(OIDCClientSecretEnvelope.self, from: data) {
+            guard env.clientID == clientID, env.issuer == issuer else { return .deleteStale }
+            return .useStamped(env.secret)
+        }
+        // Not a stamped envelope → legacy bare string written before this fix.
+        return .migrateLegacy(raw)
+    }
+
+    /// Persist the OIDC client secret stamped with the client_id + issuer it
+    /// belongs to. Replaces any prior value (including a legacy bare-string one).
+    @discardableResult
+    public static func setOIDCClientSecret(_ secret: String,
+                                           forClientID clientID: String,
+                                           issuer: String) -> Bool {
+        let envelope = OIDCClientSecretEnvelope(clientID: clientID, issuer: issuer, secret: secret)
+        guard let data = try? JSONEncoder().encode(envelope),
+              let json = String(data: data, encoding: .utf8) else {
+            return false
+        }
+        return set(account: oidcClientSecretAccount, value: json)
+    }
+
+    /// Read the OIDC client secret IF it belongs to the given client_id + issuer.
+    ///
+    /// - Stamped envelope, owner matches → returns the secret.
+    /// - Stamped envelope, owner DIFFERS → deletes the stale item, returns nil
+    ///   (so a reconfigured client never ships the prior client's secret).
+    /// - Legacy bare-string value (written before this fix) → adopted by the
+    ///   current client: re-stamped in place with this owner and returned. A
+    ///   single-client install (the common case) keeps working; a later client
+    ///   switch then hits the mismatch path and clears it.
+    public static func readOIDCClientSecret(forClientID clientID: String,
+                                            issuer: String) -> String? {
+        let raw = read(account: oidcClientSecretAccount)
+        switch oidcClientSecretDecision(raw: raw, clientID: clientID, issuer: issuer) {
+        case .none:
+            return nil
+        case .useStamped(let secret):
+            return secret
+        case .deleteStale:
+            _ = delete(account: oidcClientSecretAccount)
+            return nil
+        case .migrateLegacy(let secret):
+            _ = setOIDCClientSecret(secret, forClientID: clientID, issuer: issuer)
+            return secret
+        }
+    }
+
+    @discardableResult
+    public static func removeOIDCClientSecret() -> Bool {
+        delete(account: oidcClientSecretAccount)
+    }
+
+    /// Settings-UI predicate: is a secret stored FOR THE GIVEN client config?
+    /// Owner-aware so the UI badge reflects the current client, not a secret
+    /// left over from a different one. Doesn't expose the secret value.
+    public static func hasOIDCClientSecret(forClientID clientID: String, issuer: String) -> Bool {
+        readOIDCClientSecret(forClientID: clientID, issuer: issuer) != nil
+    }
+
     // MARK: - Internals
 
     private static func set(account: String, value: String) -> Bool {
@@ -387,7 +510,17 @@ public enum KeychainStore {
 /// a plain file. The refresh token is the long-lived federation secret;
 /// rotated tokens overwrite the prior value.
 public struct KeychainOIDCTokenStore: OIDCTokenStore {
-    public init() {}
+    /// The client_id + issuer the live session is configured for. Used to scope
+    /// the OPTIONAL client secret to its owning client (fix #57): the secret is
+    /// returned only when its stored owner matches these. Empty strings (the
+    /// default) mean "no client configured" — `oidcClientSecret()` then always
+    /// returns nil, which is correct (no token call is made without a client).
+    private let clientID: String
+    private let issuer: String
+    public init(clientID: String = "", issuer: String = "") {
+        self.clientID = clientID
+        self.issuer = issuer
+    }
     public func loadRefreshToken() -> String? { KeychainStore.readOIDCRefreshToken() }
     @discardableResult
     public func saveRefreshToken(_ token: String) -> Bool { KeychainStore.setOIDCRefreshToken(token) }
@@ -402,6 +535,20 @@ public struct KeychainOIDCTokenStore: OIDCTokenStore {
               let json = String(data: data, encoding: .utf8) else { return false }
         return KeychainStore.setOIDCIdentityJSON(json)
     }
+    /// The OAuth client secret for Google "Desktop app" clients (optional; nil
+    /// for every other client type). Read fresh from the Keychain on each token
+    /// call so a Settings change takes effect without re-instantiating the
+    /// session. Owner-scoped (fix #57): returns the secret ONLY when it was
+    /// saved for this store's configured client_id + issuer, so a reconfigured
+    /// client never ships a stale secret to a different IdP.
+    public func oidcClientSecret() -> String? {
+        KeychainStore.readOIDCClientSecret(forClientID: clientID, issuer: issuer)
+    }
+    /// Sign-out teardown. Clears ONLY the user-credential pair (refresh token +
+    /// identity). The client secret is CLIENT CONFIGURATION (like the issuer and
+    /// client ID), not a user credential, so it deliberately SURVIVES sign-out —
+    /// signing out then back in must not lose the IT-entered Desktop-client
+    /// secret. It is removed only when the user explicitly clears it in Settings.
     public func clear() {
         _ = KeychainStore.removeOIDCRefreshToken()
         _ = KeychainStore.removeOIDCIdentityJSON()

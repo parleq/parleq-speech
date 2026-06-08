@@ -105,18 +105,29 @@ final class OIDCConfigTests: XCTestCase {
                        "schemeless redirect_uri must keep the default")
     }
 
-    /// An http(s):// redirect_uri is rejected at parse time — the custom-scheme
-    /// callback can never intercept an http(s) URL, so it would fail opaquely at
-    /// sign-in. The default value is kept.
-    func test_https_redirect_uri_is_rejected() {
+    /// An https:// redirect_uri is rejected at parse time (it can be neither
+    /// intercepted by the custom-scheme callback nor served by the loopback
+    /// listener), as is an http:// NON-loopback redirect. The default is kept.
+    func test_https_and_non_loopback_http_redirect_uri_are_rejected() {
         let dict: [String: Any] = ["oidc": ["redirect_uri": "https://example.com/callback"]]
         let parsed = Config.parse(fromDictionary: dict)
         XCTAssertEqual(parsed.oidcRedirectURI, Config.default.oidcRedirectURI,
                        "https redirect_uri must keep the default")
-        let dict2: [String: Any] = ["oidc": ["redirect_uri": "http://localhost/callback"]]
+        let dict2: [String: Any] = ["oidc": ["redirect_uri": "http://example.com/callback"]]
         let parsed2 = Config.parse(fromDictionary: dict2)
         XCTAssertEqual(parsed2.oidcRedirectURI, Config.default.oidcRedirectURI,
-                       "http redirect_uri must keep the default")
+                       "http non-loopback redirect_uri must keep the default")
+    }
+
+    /// An http:// LOOPBACK redirect_uri (Google "Desktop app") is accepted at
+    /// parse time and round-trips.
+    func test_http_loopback_redirect_uri_is_accepted() {
+        let dict: [String: Any] = ["oidc": ["redirect_uri": "http://127.0.0.1/oauth2redirect"]]
+        XCTAssertEqual(Config.parse(fromDictionary: dict).oidcRedirectURI,
+                       "http://127.0.0.1/oauth2redirect")
+        let dict2: [String: Any] = ["oidc": ["redirect_uri": "http://localhost:8765/cb"]]
+        XCTAssertEqual(Config.parse(fromDictionary: dict2).oidcRedirectURI,
+                       "http://localhost:8765/cb")
     }
 
     /// A custom-scheme redirect_uri is accepted at parse time.

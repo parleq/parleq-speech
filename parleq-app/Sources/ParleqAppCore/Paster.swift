@@ -189,8 +189,32 @@ enum Paster {
         // we just stole focus from the activate call.
         try await Task.sleep(nanoseconds: 80_000_000)
 
+        // Tap-accept race fix: when the user TAPS the dictation hotkey
+        // (a modifier — default right Option) to accept, the accept()
+        // path can reach here while that modifier is still PHYSICALLY
+        // down. A synthetic Cmd-V posted to .cghidEventTap is merged
+        // by the window server with the live hardware modifier state,
+        // so the target app would receive Cmd-Option-V (or Cmd-Ctrl-V,
+        // etc.) — which apps ignore, producing the long-standing
+        // "overlay closed, nothing pasted" intermittent drop. The
+        // Enter-accept path holds no modifier, so this wait returns
+        // immediately and is a no-op for it. Best-effort + bounded:
+        // we proceed after the cap regardless so a stuck/held modifier
+        // never wedges the paste.
+        let waitedMs = await waitForModifiersToClear()
+
         do {
+            // Sample the ambient modifier mask BEFORE posting (review
+            // finding): on the cap-expired path the held modifier can
+            // release in the gap between post and trace, masking the very
+            // race we'd want to diagnose. Cheap + gated on the trace flag.
+            let ambientAtPost = Paster.pasteTrace
+                ? Paster.currentSessionModifierFlags().intersection(pasteCorruptingModifiers)
+                : CGEventFlags()
             try postCommandV()
+            if Paster.pasteTrace {
+                emitPasteTrace(waitedMs: waitedMs, ambient: ambientAtPost)
+            }
         } catch {
             restorePasteboard(pb, from: snapshot)
             throw error
@@ -259,9 +283,93 @@ enum Paster {
         else {
             throw PasterError.eventCreateFailed
         }
-        down.flags = .maskCommand
-        up.flags = .maskCommand
+        // Override (never inherit) the event flags so no stray modifier
+        // — Option/Control/Shift/Fn left over from a hotkey tap — can
+        // ride along on the nominal CGEvent flags. Computed by a pure
+        // function (testable) that strips everything and asserts exactly
+        // Command. NB: this guards the event's OWN flags; the physical
+        // hardware modifier merge at .cghidEventTap is handled by the
+        // bounded wait in paste() above.
+        let outgoing = pasteEventFlags()
+        down.flags = outgoing
+        up.flags = outgoing
         down.post(tap: .cghidEventTap)
         up.post(tap: .cghidEventTap)
+    }
+
+    // MARK: - Synthetic-paste flag composition & modifier wait
+    //
+    // Two pure, unit-testable helpers + the production wait that drives
+    // them. The CGEvent post itself can't run headless, but the
+    // flag-composition and "are the modifiers clear?" decisions can be
+    // exercised in tests so the tap-accept race fix can't silently
+    // regress.
+
+    /// Modifiers that, if PHYSICALLY held at the moment we post Cmd-V,
+    /// get merged into the synthetic event by the window server and
+    /// corrupt the paste (Cmd-Option-V, Cmd-Ctrl-V, …). The dictation
+    /// hotkey is one of these (default right Option), so a tap-accept
+    /// can leave one set. Command is included for completeness: a held
+    /// Command is implausible during accept and would only add bounded
+    /// latency, never a wrong result.
+    static let pasteCorruptingModifiers: CGEventFlags =
+        [.maskCommand, .maskAlternate, .maskControl, .maskShift, .maskSecondaryFn]
+
+    /// PURE. The flags the synthetic paste event must carry: EXACTLY
+    /// `.maskCommand`, regardless of whatever ambient state exists.
+    /// Defends against any future caller passing inherited flags.
+    static func pasteEventFlags() -> CGEventFlags { .maskCommand }
+
+    /// PURE. True when none of `mask`'s bits are set in `state` — i.e.
+    /// the corruption-prone modifiers are physically clear and it's
+    /// safe to post Cmd-V now. Drives both the immediate-proceed case
+    /// (Enter accept: nothing held) and the wait loop (tap accept:
+    /// poll until the hotkey modifier lifts).
+    static func modifierMaskClear(state: CGEventFlags, mask: CGEventFlags) -> Bool {
+        state.intersection(mask).isEmpty
+    }
+
+    /// Bounded poll for the corruption-prone modifiers to lift before
+    /// we post Cmd-V. Returns the elapsed wait in milliseconds (0 when
+    /// already clear — the Enter-accept path). Caps at ~150 ms then
+    /// proceeds best-effort so a genuinely stuck modifier can never
+    /// wedge a paste.
+    private static let modifierWaitCapMs = 150
+    private static let modifierPollMs = 5
+
+    private static func waitForModifiersToClear() async -> Int {
+        var elapsedMs = 0
+        while elapsedMs <= modifierWaitCapMs {
+            let state = currentSessionModifierFlags()
+            if modifierMaskClear(state: state, mask: pasteCorruptingModifiers) {
+                return elapsedMs
+            }
+            try? await Task.sleep(nanoseconds: UInt64(modifierPollMs) * 1_000_000)
+            elapsedMs += modifierPollMs
+        }
+        return elapsedMs
+    }
+
+    /// The live session-wide modifier flag state (combined left+right
+    /// for each family). Reads the same source the paste post uses.
+    private static func currentSessionModifierFlags() -> CGEventFlags {
+        CGEventSource.flagsState(.combinedSessionState)
+    }
+
+    // MARK: - Opt-in paste trace (PARLEQ_PASTE_TRACE=1)
+    //
+    // Count/code-only: logs the ambient corruption-prone modifier bits
+    // seen at post time and how long we waited. NEVER any transcript or
+    // pasteboard CONTENT — flags + waited-ms only — so it's safe to
+    // leave wired for live diagnosis of the race fix.
+    private static let pasteTrace: Bool =
+        ProcessInfo.processInfo.environment["PARLEQ_PASTE_TRACE"] == "1"
+
+    private static func emitPasteTrace(waitedMs: Int, ambient: CGEventFlags) {
+        let mask = String(ambient.rawValue, radix: 16)
+        FileHandle.standardError.write(
+            "[parleq] paste post (ambientMods=0x\(mask), waited=\(waitedMs)ms)\n"
+                .data(using: .utf8) ?? Data()
+        )
     }
 }

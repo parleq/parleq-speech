@@ -215,6 +215,12 @@ final class SettingsModel: ObservableObject {
     /// OIDC client ID (mirror of Config.oidcClientID). Restart-required
     /// for the same reason as the issuer.
     @Published var oidcClientID: String
+    /// Mirror of `KeychainStore.hasOIDCClientSecret(forClientID:issuer:)` for
+    /// SwiftUI — presence is scoped to the configured client (fix #57). The
+    /// OPTIONAL client secret needed only for Google "Desktop app" clients. CLIENT
+    /// config, not a user credential — survives sign-out (see KeychainStore).
+    /// The value itself is never held in the model; only this presence flag.
+    @Published var oidcClientSecretSet: Bool
 
     /// IAM role ARN federated into via AssumeRoleWithWebIdentity when the
     /// Bedrock auth mode is "oidc" (mirror of Config.awsRoleArn). Baked
@@ -408,6 +414,9 @@ final class SettingsModel: ObservableObject {
         self.managedKeys = config.managedKeys
         self.oidcIssuer = config.oidcIssuer
         self.oidcClientID = config.oidcClientID
+        self.oidcClientSecretSet = KeychainStore.hasOIDCClientSecret(
+            forClientID: config.oidcClientID.trimmingCharacters(in: .whitespacesAndNewlines),
+            issuer: config.oidcIssuer.trimmingCharacters(in: .whitespacesAndNewlines))
         self.awsRoleArn = config.awsRoleArn
         self.awsSessionDurationSeconds = config.awsSessionDurationSeconds
         self.vertexWorkforceProvider = config.vertexWorkforceProvider
@@ -526,6 +535,9 @@ final class SettingsModel: ObservableObject {
         self.managedKeys = config.managedKeys
         self.oidcIssuer = config.oidcIssuer
         self.oidcClientID = config.oidcClientID
+        self.oidcClientSecretSet = KeychainStore.hasOIDCClientSecret(
+            forClientID: config.oidcClientID.trimmingCharacters(in: .whitespacesAndNewlines),
+            issuer: config.oidcIssuer.trimmingCharacters(in: .whitespacesAndNewlines))
         self.awsRoleArn = config.awsRoleArn
         self.awsSessionDurationSeconds = config.awsSessionDurationSeconds
         self.vertexWorkforceProvider = config.vertexWorkforceProvider
@@ -583,7 +595,7 @@ final class SettingsModel: ObservableObject {
     }
 
     /// Persist current model values to ~/.parleq/config.json. Other
-    /// fields (asr/llm modes, telemetry) are passed through from the
+    /// fields (asr/llm modes) are passed through from the
     /// loaded config so we don't accidentally clobber them when the
     /// user opens Settings on a config that has manual additions.
     func save() {
@@ -971,6 +983,34 @@ final class SettingsModel: ObservableObject {
     func removeOpenAIAPIKey() {
         if KeychainStore.removeOpenAIAPIKey() {
             openAIAPIKeySet = false
+        }
+    }
+
+    /// Persist the OPTIONAL OIDC client secret (Google "Desktop app" clients)
+    /// to the Keychain. Same write-through pattern as the other secrets, but
+    /// this is CLIENT config rather than a user credential — it survives
+    /// sign-out (see KeychainStore). A change takes effect on the next token
+    /// request without a restart: the live session reads the store on each
+    /// token call via `KeychainOIDCTokenStore.oidcClientSecret()` (unlike the
+    /// issuer / client ID, which are baked into the session at construction and
+    /// so ARE restart-required).
+    func setOIDCClientSecret(_ secret: String) {
+        let trimmed = secret.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        // Stamp the secret with the client_id + issuer it belongs to (fix #57)
+        // so it's never sent to a different client after a reconfigure.
+        let clientID = oidcClientID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let issuer = oidcIssuer.trimmingCharacters(in: .whitespacesAndNewlines)
+        if KeychainStore.setOIDCClientSecret(trimmed, forClientID: clientID, issuer: issuer) {
+            oidcClientSecretSet = true
+        }
+    }
+
+    /// Delete the Keychain-stored OIDC client secret. After removal the token
+    /// exchange omits client_secret entirely (correct for non-Desktop clients).
+    func removeOIDCClientSecret() {
+        if KeychainStore.removeOIDCClientSecret() {
+            oidcClientSecretSet = false
         }
     }
 

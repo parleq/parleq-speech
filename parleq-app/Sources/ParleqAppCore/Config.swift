@@ -15,7 +15,22 @@
 //     "asr":       { "mode": "default" },
 //     "llm":       { "mode": "default",
 //                    "provider": "gemini",
-//                    "model": "gemini-2.5-flash" },
+//                    "model": "gemini-2.5-flash",
+//                    // Advanced request tuning (#55) — config-file
+//                    // only, no Settings UI, omit-when-default. All
+//                    // values clamped on load; restart required:
+//                    "tuning": {
+//                      // null = built-in 0/128 split (Flash/Pro);
+//                      // when set, sent verbatim (Pro rejects < 128):
+//                      "thinking_budget": null,        // 0...32768
+//                      // raised from the historical 1024 so long
+//                      // dictations don't truncate at ~750 words:
+//                      "max_output_tokens": 2048,      // 64...65536
+//                      "temperature": 0,               // 0...2
+//                      "ttft_deadline_seconds": [5.5, 8.0],
+//                      "ttft_deadline_thinking_seconds": [25.0],
+//                      "request_timeout_seconds": 60   // 5...300
+//                    } },
 //     "aws":       { "region": "us-east-2",
 //                    "profile": "work",
 //                    // Enterprise OIDC federation (omit-when-default):
@@ -35,6 +50,9 @@
 //                    "scopes": ["openid","profile","email","offline_access"],
 //                    "ephemeral_browser": false,
 //                    // generic-OP knobs (omit-when-default):
+//                    // redirect_uri: custom scheme (ASWebAuthenticationSession)
+//                    // OR http loopback (Google "Desktop app"; port ignored,
+//                    // ephemeral 127.0.0.1 listener answers the callback).
 //                    "redirect_uri": "parleq-auth://oidc/callback",
 //                    "extra_auth_params": {} },
 //     "paste":     { "trailing_space": true,
@@ -49,7 +67,6 @@
 //                        "aliases": ["ackme", "ack me"],
 //                        "biasing": "llmOnly" }
 //                    ] },
-//     "telemetry": { "enabled": false }
 //   }
 //
 // Knobs wired in this round: ui.auto_accept_seconds,
@@ -291,11 +308,16 @@ public struct Config: Sendable {
     /// (no shared cookies / persistent session). Default false.
     public var oidcEphemeralBrowser: Bool
     /// OAuth redirect URI used in the authorization request and the
-    /// token-exchange `redirect_uri`. The browser callback scheme is
-    /// derived from this URL's scheme. Default the fixed custom scheme
-    /// `parleq-auth://oidc/callback`; generic OPs (e.g. a Google native
-    /// client) need their own reversed-client-ID scheme. Parse rejects a
-    /// value that doesn't parse as a URL with a non-empty scheme.
+    /// token-exchange `redirect_uri`. Two shapes are accepted:
+    ///   - A custom scheme (`parleq-auth://oidc/callback`, or a Google native
+    ///     client's reversed-client-ID scheme) — the browser callback scheme is
+    ///     derived from this and intercepted by ASWebAuthenticationSession.
+    ///   - An http:// LOOPBACK redirect (`http://127.0.0.1[:port]/path`) —
+    ///     Google's "Desktop app" client guidance. The configured PORT is
+    ///     IGNORED (a transient 127.0.0.1-only listener binds an ephemeral port
+    ///     at sign-in time); the PATH is preserved.
+    /// Default the fixed custom scheme `parleq-auth://oidc/callback`. Parse
+    /// rejects https:// and non-loopback http:// (keeps the default).
     public var oidcRedirectURI: String
     /// Extra query parameters appended to the authorization request (e.g.
     /// `access_type=offline`, `prompt=consent` to force a refresh token on
@@ -399,7 +421,6 @@ public struct Config: Sendable {
     /// wizard's "Same as cleanup" default and the legacy behavior for
     /// pre-Phase-2 configs.
     public var contextModel: ModelIdentifier?
-    public var telemetryEnabled: Bool
 
     // MARK: - Feature toggles (Phase 5 / Tier 1)
     //
@@ -486,6 +507,16 @@ public struct Config: Sendable {
     /// it off fleet-wide — chips hidden, per-app defaults not applied.
     public var transformPresetsEnabled: Bool
 
+    /// Advanced LLM-request tuning from the `llm.tuning` config section
+    /// (#55): thinking budget, max output tokens, temperature, the TTFT
+    /// watchdog deadlines, and the request timeout. Config-file only —
+    /// no Settings UI, no MDM key. Launch-read: `main.swift` copies this
+    /// into `LLMTuning.current` before any provider is built, so changes
+    /// require a restart. Defaults to `.init()` (built-in behavior,
+    /// modulo the documented maxOutputTokens 1024 → 2048 raise). See
+    /// LLMTuning.swift for field semantics and clamping.
+    public var llmTuning: LLMTuning
+
     /// Keys whose effective values were sourced from MDM
     /// (/Library/Managed Preferences) rather than from the user's
     /// config file. Populated by Config.load(); never persisted to disk.
@@ -548,7 +579,6 @@ public struct Config: Sendable {
         transformPresets: [],
         presetAppDefaults: [:],
         contextModel: nil,
-        telemetryEnabled: false,
         referenceWindowsEnabled: true,
         clipboardReferenceEnabled: true,
         imageReferenceEnabled: true,
@@ -561,6 +591,7 @@ public struct Config: Sendable {
         learnedCorrectionsMaxEntries: nil,
         learnedCorrectionsRetentionHours: nil,
         transformPresetsEnabled: true,
+        llmTuning: LLMTuning(),
         managedKeys: []
     )
 
@@ -963,7 +994,7 @@ public struct Config: Sendable {
                 c.oidcRedirectURI = validated
                 managedKeys.insert("oidcRedirectURI")
             } else {
-                configLogStderr("[parleq] oidcRedirectURI: rejected managed value — must be a URL with a custom (non-http/https) scheme; treating as unmanaged")
+                configLogStderr("[parleq] oidcRedirectURI: rejected managed value — must be a custom-scheme URL or an http:// loopback redirect; treating as unmanaged")
             }
         }
         if let dict = ManagedConfig.managedStringDict(forKey: "oidcExtraAuthParams") {
@@ -1278,6 +1309,14 @@ public struct Config: Sendable {
             if let v = llm["mode"] as? String { c.llmMode = v }
             if let v = llm["model"] as? String { c.llmModel = v }
             if let v = llm["provider"] as? String, !v.isEmpty { c.llmProvider = v }
+            // Advanced LLM-request tuning (#55). Every key is
+            // optional-with-default and clamped here at parse time, so
+            // out-of-range / malformed values land on a safe value
+            // (never an invalid request). An absent "tuning" sub-object
+            // leaves c.llmTuning at its default.
+            if let tuning = llm["tuning"] as? [String: Any] {
+                c.llmTuning = parseLLMTuning(tuning)
+            }
         }
         if let aws = parsed["aws"] as? [String: Any] {
             if let v = aws["region"] as? String, !v.isEmpty { c.awsRegion = v }
@@ -1331,18 +1370,18 @@ public struct Config: Sendable {
             }
             if let v = oidc["scopes"] as? [String], !v.isEmpty { c.oidcScopes = v }
             if let v = oidc["ephemeral_browser"] as? Bool { c.oidcEphemeralBrowser = v }
-            // redirect_uri must parse as a URL with a custom (non-http/https)
-            // scheme — the callback is intercepted by ASWebAuthenticationSession's
-            // custom-scheme handler, so the scheme is derived from this value
-            // (URL(string:)?.scheme). A schemeless value breaks browser
-            // interception; an http(s):// value can never be intercepted by the
-            // custom-scheme callback and would fail opaquely at sign-in. Reject
-            // both (keep the default) with a code-only log.
+            // redirect_uri must be either a custom-scheme URL (intercepted in
+            // process by ASWebAuthenticationSession — scheme derived from this
+            // value) OR an http:// LOOPBACK redirect (the Desktop-app loopback
+            // flow, answered by a transient 127.0.0.1-only listener; the PORT is
+            // ignored, the PATH preserved). https:// (can't be intercepted or
+            // served) and http:// on a non-loopback host (an attacker could
+            // answer it) are rejected — keep the default with a code-only log.
             if let v = oidc["redirect_uri"] as? String {
                 if let validated = ManagedConfig.validateOIDCRedirectURI(v) {
                     c.oidcRedirectURI = validated
                 } else {
-                    configLogStderr("[parleq] oidc.redirect_uri: rejected — must be a URL with a custom (non-http/https) scheme; keeping default")
+                    configLogStderr("[parleq] oidc.redirect_uri: rejected — must be a custom-scheme URL or an http:// loopback redirect; keeping default")
                 }
             }
             // extra_auth_params: a flat [String: String] of additional
@@ -1421,10 +1460,6 @@ public struct Config: Sendable {
                 return nil
             }
         }
-        if let telemetry = parsed["telemetry"] as? [String: Any],
-           let enabled = telemetry["enabled"] as? Bool {
-            c.telemetryEnabled = enabled
-        }
         if let contextModel = parsed["context_model"] as? [String: Any],
            let provider = contextModel["provider"] as? String,
            let model = contextModel["model"] as? String {
@@ -1490,6 +1525,96 @@ public struct Config: Sendable {
         return c
     }
 
+    /// Parse the `llm.tuning` sub-object into an `LLMTuning`, applying
+    /// every clamp from LLMTuning's field docs. Missing keys keep the
+    /// LLMTuning default; out-of-range scalars clamp; the TTFT arrays
+    /// drop invalid entries, cap at 4, and fall back to the default when
+    /// nothing valid survives. Internal so tests can drive it directly.
+    static func parseLLMTuning(_ obj: [String: Any]) -> LLMTuning {
+        var t = LLMTuning()
+        // thinking_budget: null/absent → nil (built-in split). A present
+        // numeric value clamps to 0...32768 and is sent verbatim.
+        if let n = obj["thinking_budget"] as? NSNumber {
+            t.thinkingBudget = min(32768, max(0, n.intValue))
+        }
+        if let n = obj["max_output_tokens"] as? NSNumber {
+            t.maxOutputTokens = min(65536, max(64, n.intValue))
+        }
+        if let n = obj["temperature"] as? NSNumber {
+            t.temperature = min(2.0, max(0.0, n.doubleValue))
+        }
+        if let raw = obj["ttft_deadline_seconds"] as? [Any] {
+            let cleaned = Self.clampTTFTList(raw)
+            if !cleaned.isEmpty { t.ttftDeadlineSeconds = cleaned }
+        }
+        if let raw = obj["ttft_deadline_thinking_seconds"] as? [Any] {
+            let cleaned = Self.clampTTFTList(raw)
+            if !cleaned.isEmpty { t.ttftDeadlineThinkingSeconds = cleaned }
+        }
+        if let n = obj["request_timeout_seconds"] as? NSNumber {
+            t.requestTimeoutSeconds = min(300.0, max(5.0, n.doubleValue))
+        }
+        return t
+    }
+
+    /// Clamp a raw TTFT-deadline array: keep numeric entries clamped to
+    /// 1...120, drop non-numeric / out-of-clampable entries, cap at 4.
+    /// (A value below 1 or above 120 clamps rather than drops — only
+    /// non-numbers are dropped.)
+    private static func clampTTFTList(_ raw: [Any]) -> [Double] {
+        raw.compactMap { item -> Double? in
+            guard let n = item as? NSNumber else { return nil }
+            return min(120.0, max(1.0, n.doubleValue))
+        }
+        .prefix(4)
+        .map { $0 }
+    }
+
+    /// Build the `llm` JSON section, appending the `tuning` sub-object
+    /// only when at least one tuning field differs from its default
+    /// (omit-when-default house style). The base mode/provider/model
+    /// fields are always present.
+    static func serializeLLMSection(_ config: Config) -> [String: Any] {
+        var llm: [String: Any] = [
+            "mode": config.llmMode,
+            "provider": config.llmProvider,
+            "model": config.llmModel,
+        ]
+        if !config.llmTuning.isDefault {
+            llm["tuning"] = Self.serializeLLMTuning(config.llmTuning)
+        }
+        return llm
+    }
+
+    /// Serialize an LLMTuning to a JSON dictionary, emitting ONLY the
+    /// keys that differ from the default (omit-when-default). Used by the
+    /// `llm.tuning` section; tests drive it directly.
+    static func serializeLLMTuning(_ tuning: LLMTuning) -> [String: Any] {
+        let d = LLMTuning()
+        var obj: [String: Any] = [:]
+        // thinking_budget: nil is the default — emit only a non-nil
+        // override (round-trips back to nil when absent).
+        if let budget = tuning.thinkingBudget, budget != d.thinkingBudget {
+            obj["thinking_budget"] = budget
+        }
+        if tuning.maxOutputTokens != d.maxOutputTokens {
+            obj["max_output_tokens"] = tuning.maxOutputTokens
+        }
+        if tuning.temperature != d.temperature {
+            obj["temperature"] = tuning.temperature
+        }
+        if tuning.ttftDeadlineSeconds != d.ttftDeadlineSeconds {
+            obj["ttft_deadline_seconds"] = tuning.ttftDeadlineSeconds
+        }
+        if tuning.ttftDeadlineThinkingSeconds != d.ttftDeadlineThinkingSeconds {
+            obj["ttft_deadline_thinking_seconds"] = tuning.ttftDeadlineThinkingSeconds
+        }
+        if tuning.requestTimeoutSeconds != d.requestTimeoutSeconds {
+            obj["request_timeout_seconds"] = tuning.requestTimeoutSeconds
+        }
+        return obj
+    }
+
     /// Serialize a Config to a JSON dictionary (the same structure that
     /// `save()` writes, minus filesystem I/O and MDM preservation).
     /// Production `save()` delegates here; tests call it directly as a seam.
@@ -1548,7 +1673,7 @@ public struct Config: Sendable {
                 "input_device_uid": config.audioInputDeviceUID,
             ],
             "asr": ["mode": config.asrMode, "endpoint": config.asrEndpoint],
-            "llm": ["mode": config.llmMode, "provider": config.llmProvider, "model": config.llmModel],
+            "llm": Self.serializeLLMSection(config),
             "aws": awsDict,
             "vertex": vertexDict,
             "azure": [
@@ -1572,7 +1697,6 @@ public struct Config: Sendable {
                     return obj
                 },
             ],
-            "telemetry": ["enabled": config.telemetryEnabled],
             "features": featuresDict,
         ]
         if let model = config.contextModel {
@@ -1914,11 +2038,19 @@ public struct Config: Sendable {
             "mode": config.asrMode,
             "endpoint": asrEndpointToWrite,
         ]
-        dict["llm"] = [
+        var llmToWrite: [String: Any] = [
             "mode": config.llmMode,
             "provider": llmProviderToWrite,
             "model": llmModelToWrite,
         ]
+        // Advanced tuning (#55) has no MDM key — it is purely the user's
+        // value. Carry it forward (omit-when-default) so it round-trips
+        // through save() rather than being dropped by the llm-section
+        // rebuild above.
+        if !config.llmTuning.isDefault {
+            llmToWrite["tuning"] = Self.serializeLLMTuning(config.llmTuning)
+        }
+        dict["llm"] = llmToWrite
         var awsToWrite: [String: Any] = [
             "region": awsRegionToWrite,
             "profile": awsProfileToWrite,

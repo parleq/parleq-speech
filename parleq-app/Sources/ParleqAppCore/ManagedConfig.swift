@@ -107,6 +107,12 @@ public enum ManagedConfig {
         // Generic-OP knobs: custom redirect URI (Google reversed-client-ID
         // scheme etc.) and extra authorization-request params (access_type /
         // prompt). Dictionary-typed; see managedStringDict.
+        // `oidcRedirectURI` is also the control for the loopback-listener
+        // carve-out: the loopback flow activates only for an http+loopback
+        // redirect, so pinning a custom-scheme value here means a loopback
+        // redirect can never be configured → the local listener never binds
+        // (no dedicated "disable loopback" key is needed). See
+        // makeOIDCAuthenticator in CompanyAccountView.swift.
         "oidcRedirectURI",
         "oidcExtraAuthParams",
         "awsRoleArn",
@@ -472,22 +478,38 @@ public enum ManagedConfig {
     }
 
     /// Validates an OIDC redirect_uri. Returns the trimmed value if it passes,
-    /// nil otherwise. The callback is intercepted by ASWebAuthenticationSession's
-    /// custom-scheme handler, so the redirect_uri MUST carry a non-http/https
-    /// scheme — a `parleq-auth:` value or a reversed-client-ID
-    /// (`com.googleusercontent.apps.…:`) shape. An http(s):// redirect_uri can
-    /// never be intercepted by the custom-scheme callback and would fail opaquely
-    /// at sign-in, so it is rejected here (and on the JSON path) at load rather
-    /// than surfacing as a confusing runtime failure. Used by the MDM overlay and
-    /// the JSON config-load path so the rule is defined once.
+    /// nil otherwise. Two interception mechanisms are supported, so two redirect
+    /// shapes are accepted:
+    ///   - A NON-http/https custom scheme (`parleq-auth:` or a reversed-client-ID
+    ///     `com.googleusercontent.apps.…:` shape) — intercepted in-process by
+    ///     ASWebAuthenticationSession.
+    ///   - An `http://` LOOPBACK redirect (`http://127.0.0.1[:port]/path`,
+    ///     `http://localhost/…`, `http://[::1]/…`) — Google's CURRENT "Desktop
+    ///     app" client guidance. ASWebAuthenticationSession can't intercept this,
+    ///     so a transient 127.0.0.1-only listener answers the callback. The PORT
+    ///     in the configured value is IGNORED at runtime (an ephemeral port is
+    ///     always bound); the PATH is preserved. The HOST is normalized to
+    ///     `127.0.0.1` at runtime even if configured as `localhost`/`[::1]` (the
+    ///     listener binds 127.0.0.1) — fine for Google (accepts any loopback
+    ///     host); use `127.0.0.1` for IdPs with byte-exact redirect matching.
+    /// `https://` is rejected (can't be intercepted AND can't be served by the
+    /// loopback listener) and `http://` on a NON-loopback host is rejected (a
+    /// network attacker could answer it). Used by the MDM overlay and the JSON
+    /// config-load path so the rule is defined once.
     public static func validateOIDCRedirectURI(_ raw: String) -> String? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty,
-              let scheme = URL(string: trimmed)?.scheme, !scheme.isEmpty,
-              scheme.lowercased() != "http", scheme.lowercased() != "https"
+              let url = URL(string: trimmed),
+              let scheme = url.scheme?.lowercased(), !scheme.isEmpty
         else {
             return nil
         }
+        // https can be neither intercepted nor served — always reject.
+        if scheme == "https" { return nil }
+        // http is accepted for loopback hosts only (the Desktop-app loopback
+        // flow); a non-loopback http redirect is rejected.
+        if scheme == "http" { return isLoopbackHost(url) ? trimmed : nil }
+        // Any other (custom) scheme → ASWebAuthenticationSession path.
         return trimmed
     }
 

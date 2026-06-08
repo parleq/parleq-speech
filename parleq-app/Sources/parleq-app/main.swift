@@ -69,6 +69,18 @@ struct ParleqApp {
         logStderr("[parleq] config: \(configSource)")
         ManagedConfig.logStartupSummary(managedKeys: config.managedKeys)
 
+        // Advanced LLM-request tuning (#55) is launch-read: publish it to
+        // the process-global BEFORE any provider is constructed so every
+        // provider + the TTFT watchdog see the same values. Restart
+        // required to change. Log key NAMES only (the values are
+        // non-sensitive numbers, but key names keep the line terse and
+        // consistent with the count-only logging convention).
+        LLMTuning.current = config.llmTuning
+        let tuningOverrides = config.llmTuning.overriddenKeys
+        if !tuningOverrides.isEmpty {
+            logStderr("[parleq] llm tuning: \(tuningOverrides.count) override(s) active — \(tuningOverrides.joined(separator: ", "))")
+        }
+
         // Kick off a background refresh of the LiteLLM pricing
         // table. No-ops if the on-disk cache is fresh (<24h) or a
         // refresh is already in flight; failure is non-fatal —
@@ -209,8 +221,13 @@ struct ParleqApp {
                     extraAuthParams: config.oidcExtraAuthParams
                 ),
                 httpClient: urlSessionOIDCHTTPClient(),
-                tokenStore: KeychainOIDCTokenStore(),
-                authenticator: webAuthSessionAuthenticator(ephemeral: config.oidcEphemeralBrowser)
+                // Scope the OPTIONAL client secret to this client_id + issuer
+                // (fix #57): a secret saved for a different client is not read.
+                tokenStore: KeychainOIDCTokenStore(
+                    clientID: config.oidcClientID, issuer: config.oidcIssuer),
+                authenticator: makeOIDCAuthenticator(
+                    redirectURI: config.oidcRedirectURI,
+                    ephemeral: config.oidcEphemeralBrowser)
             )
             if bedrockOIDCActive, !config.awsRoleArn.isEmpty {
                 awsExchange = CachedExchange(

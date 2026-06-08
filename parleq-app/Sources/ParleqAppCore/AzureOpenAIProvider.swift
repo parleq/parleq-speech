@@ -223,7 +223,7 @@ public final class AzureOpenAIProvider: LLMProvider, Sendable {
             }
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
-        request.timeoutInterval = 60
+        request.timeoutInterval = LLMTuning.current.requestTimeoutSeconds  // #55
         do {
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
         } catch {
@@ -355,13 +355,18 @@ public final class AzureOpenAIProvider: LLMProvider, Sendable {
             // visible response — often to empty — when hidden reasoning alone
             // hits the ceiling. 4096 gives ample headroom for both reasoning
             // and visible cleanup output. Mirrors the Bedrock GPT-OSS treatment.
-            body["max_completion_tokens"] = 4096
+            //
+            // #55: maxOutputTokens may RAISE this but never below the 4096
+            // reasoning floor (default 2048 < 4096 → floor wins).
+            body["max_completion_tokens"] = max(4096, LLMTuning.current.maxOutputTokens)
             // low effort is appropriate for cleanup-style tasks; omit
             // temperature since the API rejects anything other than 1.0.
             body["reasoning_effort"] = "low"
         } else {
-            body["max_tokens"] = 1024
-            body["temperature"] = 0
+            // #55: configurable max-tokens + temperature for the standard
+            // family (reasoning models above reject non-1.0 temperature).
+            body["max_tokens"] = LLMTuning.current.maxOutputTokens
+            body["temperature"] = LLMTuning.current.temperature
         }
         return body
     }

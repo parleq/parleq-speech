@@ -90,8 +90,9 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
       <li class="flex gap-4">
         <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums shrink-0">2.</span>
         <div>
-          <p class="text-[color:var(--color-text)] font-medium">Create an OAuth client &mdash; of the <em>iOS</em> type.</p>
-          <p class="mt-2">This is the non-obvious one. Parleq&rsquo;s sign-in uses a <strong class="text-[color:var(--color-text)]">custom-scheme redirect</strong>, so create an <strong class="text-[color:var(--color-text)]">iOS</strong>-type OAuth client (public, no secret) and use its <strong class="text-[color:var(--color-text)]">reversed client ID</strong> as the redirect scheme. A Desktop-type client with a loopback redirect is on the roadmap but not the path today.</p>
+          <p class="text-[color:var(--color-text)] font-medium">Create an OAuth client &mdash; of the <em>Desktop app</em> type.</p>
+          <p class="mt-2">In <strong class="text-[color:var(--color-text)]">APIs &amp; Services &rarr; Credentials &rarr; Create credentials &rarr; OAuth client ID</strong>, choose application type <strong class="text-[color:var(--color-text)]">Desktop app</strong>, give it a name, and create. Note both the <strong class="text-[color:var(--color-text)]">client ID</strong> <em>and</em> the <strong class="text-[color:var(--color-text)]">client secret</strong> &mdash; copy the secret too. Google <strong class="text-[color:var(--color-text)]">requires</strong> the client secret on the token exchange for Desktop-app clients even though Parleq also uses PKCE; without it the exchange fails with <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">invalid_request</code>. This secret is <strong class="text-[color:var(--color-text)]">public-by-design</strong> &mdash; per Google&rsquo;s own docs an installed-app secret is not treated as confidential &mdash; but Parleq still stores it in the macOS Keychain rather than in plaintext. Paste it into <strong class="text-[color:var(--color-text)]">Settings &rarr; Company Account &rarr; Configuration &rarr; Client secret</strong>. (An <em>iOS</em>-type client has no secret, which is why the alternate below skips this step.) In your Parleq config set <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">"redirect_uri": "http://127.0.0.1/oauth2redirect"</code> &mdash; Parleq opens your default browser for sign-in and answers the callback on a temporary <strong class="text-[color:var(--color-text)]">127.0.0.1</strong> listener on a random port (Google Desktop clients accept any loopback port, so you don&rsquo;t pin one). The listener exists only while you&rsquo;re signing in.</p>
+          <p class="mt-2 text-[14px]"><strong class="text-[color:var(--color-text)]">Alternate:</strong> an <em>iOS</em>-type client also works &mdash; use its <strong class="text-[color:var(--color-text)]">reversed client ID</strong> as a custom-scheme redirect (<code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">com.googleusercontent.apps.&lt;id&gt;:/oauth2redirect</code>), which Parleq intercepts in-process with no local listener. Pick this if you prefer no loopback socket at all; otherwise the Desktop-app recipe above is Google&rsquo;s current guidance and the simpler setup.</p>
         </div>
       </li>
       <li class="flex gap-4">
@@ -115,7 +116,7 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
     "issuer": "https://accounts.google.com",
     "client_id": "123456789-abc.apps.googleusercontent.com",
     "scopes": ["openid", "email", "https://www.googleapis.com/auth/cloud-platform"],
-    "redirect_uri": "com.googleusercontent.apps.123456789-abc:/oauth2redirect",
+    "redirect_uri": "http://127.0.0.1/oauth2redirect",
     "extra_auth_params": { "access_type": "offline", "prompt": "select_account consent" }
   },
   "vertex": {

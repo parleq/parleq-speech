@@ -39,7 +39,7 @@ const stages = [
     title: 'Clean up',
     where: 'cloud LLM (or skipped)',
     summary:
-      'The raw transcript streams to a configurable AI provider that polishes it into finished text — capitalization, punctuation, filler-word removal, common transcription errors, and spoken numbers turned into digits when the context is technical. Cleaned words stream into the overlay as they arrive.',
+      'The raw transcript streams to a configurable AI provider that polishes it into finished text — capitalization, punctuation, filler-word removal, common transcription errors, and spoken numbers turned into digits when the context is technical. The raw transcript shows in the overlay first, and the cleaned text replaces it progressively as it arrives — so you can press Enter to accept whatever is currently shown at any moment, which also stops the in-flight cleanup.',
     detail: [
       ['Pluggable providers', 'Six options: Google Gemini direct API (default — free tier<sup>†</sup>, ~500–700 ms TTFT), OpenAI direct API (GPT-4o / GPT-4.1 family), Google Vertex AI (Gemini + Claude on GCP with IAM + audit logs), AWS Bedrock (Claude or GPT-OSS via your AWS account), Azure OpenAI (GPT-4o / GPT-4.1 + reasoning models on Microsoft\'s contract), or skip cleanup entirely and paste raw ASR. The choice is made in Settings or via the first-run setup wizard. For IT-deployed Macs, the provider and allowed model list can be pinned centrally via an MDM-managed configuration profile so users cannot change it.'],
       ['Auth flexibility per provider', 'Each cloud supports both pasted API keys (stored in the macOS Keychain) and your existing CLI session — gcloud Application Default Credentials for Vertex (or service-account JSON), AWS SSO / static IAM keys / scoped Bedrock API keys for Bedrock, az login or resource keys for Azure. Parleq never stores long-lived cloud session tokens directly; the AWS/GCP/Azure CLIs handle refresh through their own caches.'],
@@ -383,7 +383,7 @@ const gestures = [
         <div>
           <dt class="text-sm font-semibold text-[color:var(--color-text)]">Per-tier model configuration</dt>
           <dd class="mt-1 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
-            Settings exposes a Cleanup tier and a Context tier, each with its own provider + model dropdown. You can mix providers — for example, Gemini Flash-Lite for fast everyday cleanup and Claude Sonnet on Bedrock for reference-aware turns that benefit from deeper reasoning.
+            Settings exposes a Cleanup tier and a Context tier, each with its own provider + model dropdown. You can mix providers — for example, Gemini Flash-Lite for fast everyday cleanup and Claude Sonnet on Bedrock for reference-aware turns that benefit from deeper reasoning. The model badge on the review overlay opens a picker offering your configured providers' full model catalog, so you can switch models mid-review — a one-off override for that dictation that re-runs the turn, never a config change.
           </dd>
         </div>
         <div>
@@ -444,7 +444,7 @@ const gestures = [
         It's a voice undo/redo loop. The visible text is the working state; each press replaces it with the LLM's edit. Tone, format, length, structure — anything you can describe in a sentence is a valid edit.
       </p>
       <p class="mt-4 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
-        Edits you make often are worth saving: a <strong>transform preset</strong> is a named, stored refine instruction ("Rewrite as a tight bulleted list", "Make this formal") that appears as a one-tap chip on the review overlay — same refine pass, no speaking required. A preset can also be assigned as an app's default, in which case its instruction folds into that app's stage-3 cleanup prompt — one LLM call, the text arrives already styled, and the overlay shows a one-tap Undo that re-runs plain cleanup.
+        Edits you make often are worth saving: a <strong>transform preset</strong> is a named, stored refine instruction ("Rewrite as a tight bulleted list", "Make this formal") that appears as a one-tap chip on the review overlay — same refine pass, no speaking required. A preset can also be assigned as an app's default, in which case its instruction folds into that app's stage-3 cleanup prompt — one LLM call, the text arrives already styled, and the overlay shows a one-tap Undo that re-runs plain cleanup. If you keep making the same kind of edit by voice, Parleq can also <em>suggest</em> a preset for it (you review and edit the wording before it's created); and if you keep tapping the same preset in one app, it can suggest making that preset the app's default. Both suggestions show up in the <strong>Learned</strong> section and are never applied without your confirmation.
       </p>
         </div>
 

@@ -401,9 +401,12 @@ public final class BedrockProvider: LLMProvider, @unchecked Sendable {
             return BedrockRuntime.Message(content: content, role: role)
         }
 
+        // #55: configurable max-tokens + temperature. reasoning_effort
+        // for gpt-oss stays hardcoded "low" elsewhere (invariant #4) —
+        // it is deliberately NOT a tuning knob.
         let inferenceConfig = BedrockRuntime.InferenceConfiguration(
-            maxTokens: 1024,
-            temperature: 0
+            maxTokens: LLMTuning.current.maxOutputTokens,
+            temperature: Float(LLMTuning.current.temperature)
         )
 
         // Try once; on an auth-shaped failure rebuild the Soto client

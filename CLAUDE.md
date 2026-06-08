@@ -97,7 +97,8 @@ parleq-speech/
 | `BedrockProvider.swift` | AWS Bedrock impl via Soto `ConverseStream`. SSO + static-credential auth modes, plus `oidc` mode (federated STS credentials from `CachedExchange`). |
 | `BedrockBearerProvider.swift` + `BedrockEventStream.swift` | Scoped Bedrock-API-key auth path. Plain HTTPS with `Authorization: Bearer <key>`, in-tree event-stream parser — bypasses Soto entirely. |
 | `AzureOpenAIProvider.swift` | Azure OpenAI impl. Two auth modes (resource API key, Microsoft Entra ID via `az login`). Two model families (Standard, Reasoning) since Azure routes by deployment name. |
-| `OIDCSession.swift` | Cloud-ignorant OIDC actor for enterprise federation: discovery, PKCE sign-in (via `ASWebAuthenticationSession`), rotation-safe single-flight refresh (rotated refresh token persisted to Keychain on receipt), published state machine. `OIDCSessionModel` is the MainActor facade for SwiftUI. ID/access tokens are memory-only; only the refresh token + identity snapshot persist (Keychain). |
+| `OIDCSession.swift` | Cloud-ignorant OIDC actor for enterprise federation: discovery, PKCE sign-in, rotation-safe single-flight refresh (rotated refresh token persisted to Keychain on receipt), published state machine. The browser seam (`OIDCAuthenticator`) takes a build-authorization-URL closure so the authenticator can supply the effective redirect URI (loopback flows know it only after binding); the token exchange echoes that exact value. `OIDCSessionModel` is the MainActor facade for SwiftUI. ID/access tokens are memory-only; only the refresh token + identity snapshot persist (Keychain). |
+| `LoopbackRedirectServer.swift` | Transient `NWListener` bound to 127.0.0.1 only on an ephemeral port, for the OIDC loopback-redirect sign-in (Google "Desktop app" client; `http://127.0.0.1:<port>/<path>` redirect that `ASWebAuthenticationSession` can't intercept). One callback, STATIC HTML response (no `code`/`state` reflected), defer-based teardown, no callback URL/query logged. The **one** carve-out to the no-listening-sockets invariant — exists only during an active sign-in. Selected in `CompanyAccountView.makeOIDCAuthenticator` when the configured redirect is http+loopback; custom schemes still use `ASWebAuthenticationSession`. |
 | `CloudCredentialExchangers.swift` | Turns an OIDC ID token into per-cloud credentials behind a single-flight TTL cache (`CachedExchange`, 5-min refresh-ahead, hotkey-down `warm()`). `AWSWebIdentityExchanger` (Soto STS `AssumeRoleWithWebIdentity` → temp credentials; email as role-session name for CloudTrail) and `GCPWorkforceExchanger` (Workforce Identity Federation token exchange → federated bearer). Per-hop status feeds the connection doctor; logs are state+code only. |
 | `CompanyAccountView.swift` | "Company Account" Settings section: corporate sign-in, signed-in identity (renders name/email in UI only — never logged), and a connection doctor (token-free discovery → silent refresh → per-leg AWS/GCP exchange status). Fails closed to raw on-device ASR when federation is unavailable. |
 | `SystemPrompts.swift` | Cleanup + refine prompts. `cleanup(dictionary:)` returns the prompt with an optional smart-vocabulary addendum. |
@@ -124,10 +125,10 @@ These are non-obvious and worth flagging to anyone editing the codebase:
 
 1. **Audio is memory-only end-to-end.** `AudioRecorder.stop()` returns a `Data`. There is no URL-based path. **Do not** add `/tmp/parleq-*.wav` writes or any other audio-on-disk persistence — this is a load-bearing compliance promise.
 2. **Transcript content never lands in stderr / log files.** ASR diagnostic is length-only (`(N chars / W words)`). `LocalASR`'s `[vocab]` log is count-only by default; full per-replacement detail is opt-in via `PARLEQ_VOCAB_TRACE=1` env.
-3. **`thinkingConfig.thinkingBudget = 0`** on every Gemini call (`LLMClient.swift`, `LLMStreaming.swift`). Default-on thinking is 2-3× latency, 5-7× cost, no quality gain on cleanup.
+3. **`thinkingConfig.thinkingBudget` defaults LOW on every Gemini call** (`LLMClient.swift`, `LLMStreaming.swift`, `VertexProvider.swift`): `0` on Flash/Flash-Lite; the `128`-token floor on Pro, which mandates thinking and rejects `0`. These are the DEFAULTS when unset — config-overridable via `llm.tuning.thinking_budget` (config-file only, range `0…32768`; no UI/MDM), so the value isn't hard-pinned, just defaulted low. Default-on/dynamic thinking is 2-3× latency, 5-7× cost, no quality gain on cleanup — Pro's dynamic default is worse still (10-20s to first token).
 4. **`additionalModelRequestFields = {"reasoning_effort": "low"}`** on every Bedrock `openai.gpt-oss-*` call (`BedrockProvider.swift`). Drops the 220-token hidden reasoning channel to ~30 tokens.
 5. **Fresh stateless LLM call per refinement turn.** No server-side conversation history.
-6. **Audio never leaves the device.** In-process FluidAudio is the only ASR path by default; no local listening socket, no IPC. Cleanup payloads (transcript text) go to the configured LLM provider; that's the only network boundary input data crosses. The optional user-configured `asr.endpoint` (Sherpa-ONNX / faster-whisper running locally) is also a localhost endpoint by convention but the user owns its lifecycle.
+6. **Audio never leaves the device.** In-process FluidAudio is the only ASR path by default; no local listening socket on the dictation path, no IPC. Cleanup payloads (transcript text) go to the configured LLM provider; that's the only network boundary input data crosses. The optional user-configured `asr.endpoint` (Sherpa-ONNX / faster-whisper running locally) is also a localhost endpoint by convention but the user owns its lifecycle. **One carve-out to "no local listening socket":** the OIDC loopback-redirect sign-in (`LoopbackRedirectServer.swift`) binds a 127.0.0.1-only ephemeral-port listener for the *duration of an active corporate sign-in only* — single callback, static response, defer-based teardown, never logs the callback URL. It does not carry audio and does not exist during dictation. The carve-out is gated **solely** by the redirect_uri (http+loopback selects it; every custom scheme uses `ASWebAuthenticationSession` and binds nothing), so it is fully suppressible by pinning the `oidcRedirectURI` MDM key to a custom-scheme value — there is intentionally no separate "disable loopback" key. Disclosed in `docs/SECURITY_REVIEW.md` §3.4.1.
 7. **"Learn from corrections" is opt-in, off by default, and never writes dictation-derived text to disk.** When enabled, `CorrectionJournal` holds correction snippets in an **in-memory ring only** (never written to `~/.parleq/` or anywhere else); `LearningAnalyzer` sends those snippets to the **already-configured** cleanup LLM during periodic off-hot-path analysis (no new network boundary). Analysis log output is count-only — no transcript content in logs. The ring has count + age caps (`learnedCorrectionsMaxEntries` / `learnedCorrectionsRetentionHours`); setting either to `0` disables entirely. Disabling the feature from Settings offers to clear the in-memory ring (and it's cleared on quit regardless). The only on-disk artifact is the learned dictionary terms in `config.json`.
 
 ## Active gotchas (will trip new contributors)
@@ -151,7 +152,11 @@ These are non-obvious and worth flagging to anyone editing the codebase:
   "ui":         { "auto_accept_seconds": 0, "acoustic_feedback": true },
   "audio":      { "continue_other_audio": true, "input_device_uid": "" },
   "asr":        { "mode": "default", "endpoint": "http://127.0.0.1:8767/inference" },
-  "llm":        { "mode": "default", "provider": "gemini", "model": "gemini-2.5-flash" },
+  "llm":        { "mode": "default", "provider": "gemini", "model": "gemini-2.5-flash",
+                  "tuning": { "thinking_budget": null, "max_output_tokens": 2048,
+                              "temperature": 0, "ttft_deadline_seconds": [5.5, 8.0],
+                              "ttft_deadline_thinking_seconds": [25.0],
+                              "request_timeout_seconds": 60 } },
   "aws":        { "region": "us-east-2", "profile": "", "auth_mode": "sso",
                   "role_arn": "", "session_duration_seconds": 3600 },
   "vertex":     { "project": "", "region": "us-central1", "auth_mode": "adc",
@@ -169,8 +174,7 @@ These are non-obvious and worth flagging to anyone editing the codebase:
   "preset_app_defaults": { "com.apple.mail": "<preset id>" },
   "features":   { "learn_from_corrections_enabled": false,
                   "learned_corrections_max_entries": null,
-                  "learned_corrections_retention_hours": null },
-  "telemetry":  { "enabled": false }
+                  "learned_corrections_retention_hours": null }
 }
 ```
 
@@ -185,6 +189,9 @@ Schema is documented in source comments at the top of `Config.swift`. The Settin
 | `PARLEQ_VOCAB_TRACE=1` | Opt-in: restores per-replacement detail in the `LocalASR` `[vocab]` log lines (`replaced 'X' → 'Y' [reason]`). Off by default for compliance. |
 | `PARLEQ_HOTKEY_TRACE=1` | Opt-in: hotkey gesture-classifier timing trace (gap/held ms) to stderr. Off by default. |
 | `PARLEQ_BEDROCK_TRACE=1` | Opt-in: enables Soto's debug logger to stderr. Off by default. |
+| `PARLEQ_PASTE_TRACE=1` | Opt-in: at synthetic-paste time logs the ambient corruption-prone modifier mask (hex) + how long Paster waited for it to clear (`paste post (ambientMods=0x…, waited=…ms)`). Flags + ms only — never transcript/pasteboard content. Off by default. |
+| `PARLEQ_LEARN_TRIGGER=<n>` | Demo/debug: lowers the learning analyzer's correction-count trigger threshold (e.g. `=1` to run after a single correction). Default 5. |
+| `PARLEQ_LEARN_MIN_INTERVAL=<seconds>` | Demo/debug: shortens the learning analyzer's minimum interval between runs (e.g. `=0` for back-to-back runs). Default 600. |
 
 ## Commit conventions
 

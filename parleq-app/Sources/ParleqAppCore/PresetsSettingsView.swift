@@ -114,6 +114,13 @@ struct PresetsSettingsView: View {
                     Button(role: .destructive) {
                         model.presetAppDefaults.removeValue(forKey: bundleID)
                         model.save()
+                        // Bridge 2: removing a default the user previously set
+                        // is a signal they DON'T want it — record the decline
+                        // durably so the dominance rule never re-suggests this
+                        // (app, preset) pair (treat existing-then-removed as
+                        // declined). Metadata only.
+                        PresetUsageJournal.shared.recordDecline(
+                            appBundleID: bundleID, presetID: presetID)
                     } label: {
                         Image(systemName: "xmark.circle")
                     }
