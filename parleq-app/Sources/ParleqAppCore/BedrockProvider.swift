@@ -632,6 +632,15 @@ public final class BedrockProvider: LLMProvider, @unchecked Sendable {
             return msg
         }
     }
+
+    public func cleanupFailureIsReauthable(for error: LLMError) -> Bool {
+        // Only the OIDC (Company Account federation) path is recoverable
+        // by an interactive org sign-in. SSO points at `aws sso login`;
+        // static keys point at Settings; neither is a sign-in. A 403 is
+        // model-access, not auth. So: missingCredentials + .oidc only.
+        if case .missingCredentials = error, authMode == .oidc { return true }
+        return false
+    }
 }
 
 /// Bridges `CachedExchange<AWSWebIdentityExchanger>` into Soto's

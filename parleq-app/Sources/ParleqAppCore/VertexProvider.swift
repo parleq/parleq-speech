@@ -704,6 +704,30 @@ public final class VertexProvider: LLMProvider, Sendable {
         }
     }
 
+    public func cleanupFailureIsReauthable(for error: LLMError) -> Bool {
+        // Mirror the exact error shapes authRecoveryHint surfaces the
+        // "Sign in to your organization" copy for, but only in the OIDC
+        // modes (oidcFederation / googleOAuth). ADC + service-account
+        // failures are not recoverable by an org sign-in.
+        guard authMode == .oidcFederation || authMode == .googleOAuth else { return false }
+        switch error {
+        case .missingCredentials:
+            return true
+        case .badStatus(let code, _):
+            // 401 = the IdP token was rejected → a fresh sign-in can
+            // plausibly fix it. 403 is NOT re-authable: a Vertex 403
+            // usually means the federated principal lacks the
+            // `aiplatform.user` role (see isAuthFailure's comment), which
+            // re-minting a token does not change — surfacing a clickable
+            // sign-in there would loop with no progress. The static hint
+            // still points at Company Account; only the tappable
+            // affordance is withheld.
+            return code == 401
+        case .missingAPIKey, .malformedResponse, .requestFailed, .authPathBlocked:
+            return false
+        }
+    }
+
     /// Shared auth-mode-aware copy for the two auth-failure shapes
     /// `cleanupFailureHint` recognizes. Hoisted so the
     /// .missingCredentials and .badStatus(401|403) branches stay in

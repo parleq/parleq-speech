@@ -159,6 +159,17 @@ public protocol LLMProvider: Sendable {
     /// errors the provider doesn't have a specific hint for; the
     /// classifier will fall back to a generic message.
     func cleanupFailureHint(for error: LLMError) -> String?
+
+    /// True when `error` represents a fail-closed condition that an
+    /// interactive *organization sign-in* can recover — i.e. the
+    /// enterprise OIDC federation session expired or the user signed
+    /// out. The overlay uses this (NOT the hint copy) to decide whether
+    /// to render its signed-out notice as a tappable sign-in control.
+    ///
+    /// Only the OIDC auth paths return true; static-credential, API-key,
+    /// 403 model-access, and network errors return false because a
+    /// sign-in does not fix them. Default is false.
+    func cleanupFailureIsReauthable(for error: LLMError) -> Bool
 }
 
 /// Default implementation so providers that don't have any
@@ -166,6 +177,7 @@ public protocol LLMProvider: Sendable {
 /// method) can opt out without a separate empty method definition.
 extension LLMProvider {
     func cleanupFailureHint(for error: LLMError) -> String? { nil }
+    public func cleanupFailureIsReauthable(for error: LLMError) -> Bool { false }
 }
 
 extension LLMError {

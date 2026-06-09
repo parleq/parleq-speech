@@ -64,6 +64,11 @@ public final class AppState {
     /// When set, capture-start pre-warms `oidcSession.accessToken()` instead
     /// (fire-and-forget; the refresh-if-needed overlaps recording + ASR).
     private let oidcPrewarmSessionAccessToken: Bool
+    /// Injected by main.swift when an OIDC session exists. Runs the
+    /// SAME interactive sign-in the Settings → Company Account button
+    /// drives (shared OIDCSessionModel), returning whether the session
+    /// ended signed in. nil in non-enterprise launches.
+    public var oidcInteractiveSignIn: (() async -> Bool)?
     private let overlay: OverlayWindow
     /// Near-transparent floating pulse shown while a quick (double-tap-
     /// hold) dictation records — the visual stand-in for the start
@@ -596,6 +601,8 @@ public final class AppState {
         overlay.model.onTrackCaptureTask = { [weak self] task in
             self?.trackCaptureTask(task)
         }
+        overlay.model.onReauthSignIn = { [weak self] in self?.reauthSignIn() }
+        overlay.model.onReauthReclean = { [weak self] in self?.reauthReclean() }
 
         windowPickerWindow.setCallbacks(
             onPick: { [weak self] entry in
@@ -2677,7 +2684,7 @@ public final class AppState {
                 // refine stream and feed the learning analyzer a spurious
                 // cleanup-only record. False on every non-chained turn.
                 let wasChainedCleanup = self?.refineChainedDuringCleanup ?? false
-                self?.applyResult(outcome.text, cleanupFailureMessage: outcome.failureMessage)
+                self?.applyResult(outcome.text, cleanupFailureMessage: outcome.failureMessage, reauthable: outcome.reauthable)
                 if !asRefine, !wasChainedCleanup {
                     // "Styled" requires the LLM to have actually used its output —
                     // usedLLMOutput is false on every fallback path (no-LLM-configured,
@@ -2822,7 +2829,7 @@ public final class AppState {
         return true
     }
 
-    private func applyResult(_ text: String, cleanupFailureMessage: String? = nil) {
+    private func applyResult(_ text: String, cleanupFailureMessage: String? = nil, reauthable: Bool = false) {
         currentText = text
         lastCleanupFailed = (cleanupFailureMessage != nil)
         // Notify the menu bar of the cleanup outcome regardless of
@@ -2900,7 +2907,8 @@ public final class AppState {
         overlay.show(
             state: .awaitingAccept,
             text: text,
-            cleanupFailureMessage: cleanupFailureMessage
+            cleanupFailureMessage: cleanupFailureMessage,
+            cleanupFailureReauthable: reauthable
         )
         // Reset the "attached context during review" flag at the start
         // of each review cycle. The references subscription sets it on
@@ -3411,7 +3419,7 @@ public final class AppState {
             // accepting after the switch reflects what the user
             // actually accepted, not the original pre-switch run.
             self?.lastLLMLatencyMs = outcome.llmLatencyMs
-            self?.applyResult(outcome.text, cleanupFailureMessage: outcome.failureMessage)
+            self?.applyResult(outcome.text, cleanupFailureMessage: outcome.failureMessage, reauthable: outcome.reauthable)
             if outcome.usedLLMOutput, asRefineRerun {
                 // A refine re-run supersedes styled provenance exactly
                 // like a voice refine does in the main pipeline: the
@@ -3506,7 +3514,7 @@ public final class AppState {
             // Clear before applyResult so the status line disappears at
             // the same moment the result text appears.
             self.overlay.model.activeTransformName = nil
-            self.applyResult(outcome.text, cleanupFailureMessage: outcome.failureMessage)
+            self.applyResult(outcome.text, cleanupFailureMessage: outcome.failureMessage, reauthable: outcome.reauthable)
             if outcome.usedLLMOutput {
                 // A manual transform supersedes the auto-applied default's
                 // provenance — the text is no longer just "Styled with X".
@@ -3531,6 +3539,139 @@ public final class AppState {
                 PresetUsageJournal.shared.record(
                     presetID: preset.id, presetName: preset.name,
                     appBundleID: targetBundleID, source: "manual")
+            }
+        }
+    }
+
+    /// Tapped the overlay's signed-out notice (enterprise OIDC
+    /// fail-closed). Cancel any auto-accept timer so the raw transcript
+    /// can't auto-paste while the browser sign-in is open, flip the
+    /// notice to "signing in…", run the SAME interactive sign-in the
+    /// Settings → Company Account button drives, then reflect the
+    /// result. On success we warm the cloud-credential exchanges so the
+    /// user's subsequent ↻ tap re-cleans against fresh credentials. We
+    /// do NOT auto-re-clean — that's an explicit opt-in via the ↻ tap.
+    @MainActor
+    func reauthSignIn() {
+        guard phase == .awaitingAccept,
+              overlay.model.cleanupFailureReauthable,
+              overlay.model.reauthState == .signedOut,
+              let signIn = oidcInteractiveSignIn else { return }
+        // No auto-resume: the overlay simply stays in awaitingAccept.
+        cancelAutoAcceptTimer()
+        overlay.model.reauthState = .signingIn
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let ok = await signIn()
+            // The overlay may have been dismissed during the browser
+            // round-trip; if so, the sign-in still completed against the
+            // shared session (it benefits the next dictation) and there
+            // is nothing left to update here.
+            guard self.phase == .awaitingAccept,
+                  self.overlay.model.cleanupFailureReauthable else { return }
+            if ok {
+                if let aws = self.oidcAWSExchange { Task { await aws.warm() } }
+                if let gcp = self.oidcGCPExchange { Task { await gcp.warm() } }
+                self.overlay.model.reauthState = .signedIn
+            } else {
+                // Cancelled or failed — restore the tappable signed-out
+                // notice. The session surfaces its own failure banner in
+                // Settings; the overlay just lets the user retry or accept
+                // the raw transcript with Enter.
+                self.overlay.model.reauthState = .signedOut
+            }
+        }
+    }
+
+    /// Tapped "clean up this dictation" (↻) after a successful re-auth.
+    /// Re-runs the cleanup that previously failed closed, with identical
+    /// inputs — the provider now pulls fresh federated credentials from
+    /// the warmed CachedExchange. Mirrors switchModelAndRecleanup's
+    /// faithful re-run (refine-shape awareness, paste-destination label,
+    /// image-reference degradation, intended per-app preset) but keeps
+    /// the current model — auth, not the model, was the failure.
+    @MainActor
+    func reauthReclean() {
+        guard phase == .awaitingAccept,
+              overlay.model.reauthState == .signedIn,
+              !lastRawTranscript.isEmpty else { return }
+        cancelAutoAcceptTimer()
+        phase = .cleaning
+        let overlay = self.overlay
+        let rawTranscript = lastRawTranscript
+        // Task #41: after a refine turn lastRawTranscript holds the
+        // refine INSTRUCTION — re-run the same SHAPE the user last ran.
+        let asRefineRerun = lastTurnWasRefine
+        let refinePriorText = lastRefinePriorText
+        let targetBundleID = pasteTarget?.bundleID
+        let recleanConfig = Config.load().config
+        let dictionary = recleanConfig.customDictionaryEnabled
+            ? recleanConfig.customDictionary
+            : []
+        let resolvedLLM = llmForInvocation()
+        let rawRefs = overlay.model.references
+        let effectiveRefs: [Reference]
+        if recleanConfig.imageReferenceEnabled {
+            effectiveRefs = rawRefs
+        } else {
+            effectiveRefs = rawRefs.map { ref in
+                guard ref.captureMode == .image else { return ref }
+                var degraded = ref
+                degraded.captureMode = .text
+                return degraded
+            }
+        }
+        let intendedPreset = recleanConfig.transformPresetsEnabled
+            ? intendedDefaultPreset
+            : nil
+        let pasteDestLabel: String? = overlay.model.pasteTarget.map { dest in
+            if let title = dest.windowTitle, !title.isEmpty {
+                return "\(dest.appName) — \(title)"
+            }
+            return dest.appName
+        }
+        inFlightTask?.cancel()
+        inFlightTask = Task { @MainActor [weak self] in
+            let outcome = await streamCleanupOrRefine(
+                llm: resolvedLLM,
+                overlay: overlay,
+                useOverlay: true,
+                asRefine: asRefineRerun,
+                rawTranscript: rawTranscript,
+                priorText: refinePriorText,
+                targetBundleID: targetBundleID,
+                customDictionary: dictionary,
+                references: effectiveRefs,
+                pasteDestinationLabel: pasteDestLabel,
+                transform: asRefineRerun ? nil : intendedPreset?.prompt
+            )
+            if Task.isCancelled { return }
+            self?.lastLLMLatencyMs = outcome.llmLatencyMs
+            self?.applyResult(outcome.text, cleanupFailureMessage: outcome.failureMessage, reauthable: outcome.reauthable)
+            // Restore styled provenance exactly like switchModelAndRecleanup:
+            // the original failed-closed cleanup folded the per-app default
+            // preset, so a successful re-clean must set the chip + the
+            // snapshots Undo replays from (or clear any stale claim on a
+            // fallback render).
+            if outcome.usedLLMOutput, asRefineRerun {
+                self?.appliedPreset = nil
+                self?.intendedDefaultPreset = nil
+                self?.styledRawTranscript = ""
+                self?.styledReferences = []
+                self?.styledPasteDestLabel = nil
+                self?.overlay.model.appliedPresetName = nil
+            } else if outcome.usedLLMOutput {
+                self?.appliedPreset = intendedPreset
+                self?.overlay.model.appliedPresetName = intendedPreset?.name
+                self?.styledRawTranscript = intendedPreset != nil ? rawTranscript : ""
+                self?.styledReferences = intendedPreset != nil ? effectiveRefs : []
+                self?.styledPasteDestLabel = intendedPreset != nil ? pasteDestLabel : nil
+            } else {
+                self?.appliedPreset = nil
+                self?.styledRawTranscript = ""
+                self?.styledReferences = []
+                self?.styledPasteDestLabel = nil
+                self?.overlay.model.appliedPresetName = nil
             }
         }
     }
@@ -3626,7 +3767,7 @@ public final class AppState {
             )
             if Task.isCancelled { return }
             self.lastLLMLatencyMs = outcome.llmLatencyMs
-            self.applyResult(outcome.text, cleanupFailureMessage: outcome.failureMessage)
+            self.applyResult(outcome.text, cleanupFailureMessage: outcome.failureMessage, reauthable: outcome.reauthable)
         }
     }
 
@@ -3729,10 +3870,16 @@ struct CleanupOutcome {
     /// empty-stream fallback (which still carries llmLatencyMs from the
     /// completed-but-empty stream) does not incorrectly claim styling.
     public let usedLLMOutput: Bool
+    /// True when `failureMessage` represents an enterprise OIDC
+    /// fail-closed condition recoverable by an interactive org sign-in
+    /// (see `LLMProvider.cleanupFailureIsReauthable`). Drives the
+    /// overlay's tappable signed-out notice. Always false on success.
+    public let reauthable: Bool
 
-    init(text: String, failureMessage: String?, llmLatencyMs: Int? = nil, usedLLMOutput: Bool = false) {
+    init(text: String, failureMessage: String?, reauthable: Bool = false, llmLatencyMs: Int? = nil, usedLLMOutput: Bool = false) {
         self.text = text
         self.failureMessage = failureMessage
+        self.reauthable = reauthable
         self.llmLatencyMs = llmLatencyMs
         self.usedLLMOutput = usedLLMOutput
     }
@@ -4093,7 +4240,8 @@ private func streamCleanupOrRefine(
         if useOverlay, shouldRenderToOverlay() {
             overlay.show(state: .cleaning, text: fallback)
         }
-        return CleanupOutcome(text: fallback, failureMessage: failureMessage)
+        let reauthable = (error as? LLMError).map { llm.cleanupFailureIsReauthable(for: $0) } ?? false
+        return CleanupOutcome(text: fallback, failureMessage: failureMessage, reauthable: reauthable)
     }
 }
 

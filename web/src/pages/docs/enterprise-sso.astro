@@ -59,7 +59,7 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
     </p>
     <ul class="mt-4 space-y-2 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
       <li>&bull; <strong class="text-[color:var(--color-text)]">What crosses which boundary.</strong> Only OIDC tokens reach the identity provider and the cloud STS endpoints (<code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">sts.&lt;region&gt;.amazonaws.com</code>, <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">sts.googleapis.com</code>) &mdash; never transcript text. Transcript text only ever reaches the cleanup LLM endpoint you already configured, exactly as with any other auth mode.</li>
-      <li>&bull; <strong class="text-[color:var(--color-text)]">Fail-closed.</strong> If sign-in, refresh, or the per-cloud exchange fails, Parleq does <em>not</em> silently fall back to a personal credential or a different provider. It fails closed and pastes the raw on-device ASR transcript &mdash; the cleanup pass is skipped, but your dictation is never lost.</li>
+      <li>&bull; <strong class="text-[color:var(--color-text)]">Fail-closed.</strong> If sign-in, refresh, or the per-cloud exchange fails, Parleq does <em>not</em> silently fall back to a personal credential or a different provider. It fails closed and pastes the raw on-device ASR transcript &mdash; the cleanup pass is skipped, but your dictation is never lost. When the failure is just an expired session, the overlay&rsquo;s sign-in notice is tappable &mdash; sign in right there and Parleq offers to re-clean the transcript you just dictated, no trip to Settings required.</li>
     </ul>
     <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
       Refresh tokens are rotated where the IdP supports it: Parleq persists each newly-issued refresh token to the Keychain the instant it arrives, before doing anything else, so a rotated token is never lost. The access and ID tokens stay in process memory only. Offboarding (disabling the user at the IdP) takes effect at Parleq&rsquo;s next token refresh; note that already-issued STS credentials are not revocable and live to their session maximum, so keep the AWS session duration short if you need tight offboarding (see the <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/managed-configuration/'} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">managed-configuration reference</a> and <a href={`${repoUrl}/blob/main/docs/SECURITY_REVIEW.md`} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">security review</a>).
@@ -368,7 +368,7 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
           </tr>
           <tr class="bg-[color:var(--color-bg)]">
             <td class="px-4 py-3">Signed out shortly after signing in (refresh rejected)</td>
-            <td class="px-4 py-3">A rotated refresh token was lost, or the IdP enforces replay detection. Sign in again; for IdPs that rotate on every refresh, ensure nothing else is reusing the token.</td>
+            <td class="px-4 py-3">A rotated refresh token was lost, or the IdP enforces replay detection. Sign in again (from Settings &rarr; Company Account, or by tapping the overlay&rsquo;s sign-in notice after a dictation); for IdPs that rotate on every refresh, ensure nothing else is reusing the token.</td>
           </tr>
         </tbody>
       </table>
