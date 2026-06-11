@@ -83,7 +83,7 @@ const capabilities = [
   },
   {
     title: 'Use the AI you already have',
-    blurb: 'Pick Gemini, OpenAI, Bedrock, Vertex, or Azure — with pasted keys or the CLI sign-in your other tools already use.',
+    blurb: 'Pick Gemini, OpenAI, Bedrock, Vertex, or Azure — with pasted keys or the CLI sign-in your other tools already use. Cleanup can also run entirely on-device (no cloud account, no per-call cost, ~4 GB model download).',
     icon: 'chips',
     href: `${base}/how-it-works/#stage-cleanup`,
   },
@@ -593,7 +593,7 @@ const capabilities = [
         </li>
         <li class="flex gap-4">
           <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums">4.</span>
-          <div>The setup wizard walks you through picking a cleanup provider (or skipping cleanup entirely). Re-runnable from the menu bar's <strong class="font-semibold text-[color:var(--color-text)]">Run Setup…</strong> entry at any time.</div>
+          <div>The setup wizard walks you through picking a cleanup provider (or skipping cleanup entirely), including the on-device option (no cloud account needed). Re-runnable from the menu bar's <strong class="font-semibold text-[color:var(--color-text)]">Run Setup…</strong> entry at any time.</div>
         </li>
         <li class="flex gap-4">
           <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums">5.</span>
@@ -605,21 +605,6 @@ const capabilities = [
       </p>
     </div>
   </section>
-
-  <footer class="border-t border-[color:var(--color-border-subtle)]">
-    <div class="mx-auto flex max-w-5xl flex-col items-start justify-between gap-4 px-6 py-10 text-sm text-[color:var(--color-text-subtle)] sm:flex-row sm:items-center">
-      <div class="flex items-center gap-3">
-        <span class="text-base font-semibold text-[color:var(--color-text)]">Parleq</span>
-        <span>·</span>
-        <span>Apache-2.0</span>
-      </div>
-      <div class="flex items-center gap-6">
-        <a href={repoUrl} class="hover:text-[color:var(--color-text)]">GitHub</a>
-        <a href={releasesUrl} class="hover:text-[color:var(--color-text)]">Releases</a>
-        <a href={`${repoUrl}/blob/main/THIRD_PARTY_LICENSES.md`} class="hover:text-[color:var(--color-text)]">Licenses</a>
-      </div>
-    </div>
-  </footer>
 
   <!-- Scroll cue. Fixed bottom-center nudge toward the Refinement
        showcase; homepage-only, so it lives here rather than in the

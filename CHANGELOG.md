@@ -4,6 +4,19 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-06-10
+
+Parleq can now clean up your dictations entirely on your device — no account, no API key, and no network connection required. If you'd rather keep everything local, this is the option for you.
+
+### Added
+
+- **On-device cleanup — no account or network required.** A new cleanup option runs entirely on your Mac using Apple's Neural Engine. There's nothing to sign up for, no API key to manage, and your transcript text never leaves your device during cleanup. The model downloads once (about 4 GB) and is yours to keep. Available on Macs with 12 GB or more of unified memory; recommended for 24 GB and up.
+- **Download in the background, start dictating immediately.** The setup wizard now asks you to choose a cleanup option up front; if you pick on-device, the model starts downloading straight from the wizard. You can dictate with any other configured provider while it downloads, and the switch to on-device happens automatically once the download completes. A progress line in the menu bar keeps you informed.
+- **Settings card for the on-device model.** A new card in Settings → Cleanup shows the model's download state and size. Download or remove the model with one button; use it or free the space whenever you like. You can also control how long the model stays in memory between dictations — keep it loaded for instant response, or let Parleq release it when you're not dictating.
+- **$0 usage tracking.** On-device runs appear in the usage ledger alongside cloud runs, with token counts and zero cost — so your Usage view stays complete and accurate regardless of which cleanup option you're using.
+
+[0.23.0]: https://github.com/parleq/parleq-speech/releases/tag/v0.23.0
+
 ## [0.22.0] - 2026-06-08
 
 When your organization sign-in expires mid-session, Parleq falls back to pasting the raw transcript. Until now, getting cleanup working again meant digging through Settings to sign back in. This release lets you do it right from the overlay.

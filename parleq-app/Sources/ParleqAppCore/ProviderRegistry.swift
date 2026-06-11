@@ -55,6 +55,11 @@ enum ProviderRegistry {
             return KeychainStore.hasAzureAPIKey
         case "openai":
             return KeychainStore.hasOpenAIAPIKey
+        case "local":
+            // "configured" ≡ the model weights are downloaded and ready.
+            // Uses a nonisolated file-stat helper so this sync, non-isolated
+            // function can call it without a MainActor hop.
+            return LocalModelStore.isReadyOnDisk()
         default:
             return false
         }

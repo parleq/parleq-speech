@@ -34,6 +34,19 @@ public final class MenuBar: NSObject {
     /// dictation automatically clears the badge even when the user
     /// never dismissed an earlier one manually.
     private let cleanupFailureMenuItem: NSMenuItem
+    /// "Downloading cleanup model… N%" — informational (disabled), shown
+    /// while the on-device LLM model is downloading. Cleared once the
+    /// download finishes or fails. Mirrors the "Initializing speech model…"
+    /// pattern for the ASR engine. Hidden by default; driven by
+    /// setLocalModelDownloadProgress(_:).
+    private let localModelDownloadMenuItem: NSMenuItem
+    /// "Finish setup…" — shown when the wizard hasn't been completed AND
+    /// the user hasn't yet made a cleanup provider choice (i.e. both
+    /// wizardCompleted=false and llmProvider is still the empty/default
+    /// state). Clicking fires .parleqRunSetupAgain exactly like "Run Setup…".
+    /// Hidden once the wizard completes or a provider is saved. Driven by
+    /// setNeedsSetupPrompt(_:).
+    private let finishSetupMenuItem: NSMenuItem
     // Recent Dictations submenu removed in 0.14.0 PR 3 (#218).
     // The canonical surface for browsing history is now the Recent
     // Dictations section in the Parleq app window (open via
@@ -119,6 +132,8 @@ public final class MenuBar: NSObject {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusMenuItem = NSMenuItem(title: "Status: Idle", action: nil, keyEquivalent: "")
         cleanupFailureMenuItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        localModelDownloadMenuItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        finishSetupMenuItem = NSMenuItem(title: "Finish setup…", action: nil, keyEquivalent: "")
         microphoneMenuItem = NSMenuItem(
             title: "Microphone",
             action: nil,
@@ -129,6 +144,11 @@ public final class MenuBar: NSObject {
         microphoneMenuItem.submenu = microphoneSubmenu
 
         statusMenuItem.isEnabled = false
+        localModelDownloadMenuItem.isEnabled = false
+        localModelDownloadMenuItem.isHidden = true
+        finishSetupMenuItem.target = self
+        finishSetupMenuItem.action = #selector(runSetup)
+        finishSetupMenuItem.isHidden = true
 
         let hotkeyItem = NSMenuItem(
             title: "Hotkey: \(hotkeyDisplayName)",
@@ -217,6 +237,10 @@ public final class MenuBar: NSObject {
         let menu = NSMenu()
         menu.addItem(statusMenuItem)
         menu.addItem(cleanupFailureMenuItem)
+        // On-device cleanup model download progress (hidden until downloading).
+        menu.addItem(localModelDownloadMenuItem)
+        // First-run prompt: hidden once wizard completed or provider chosen.
+        menu.addItem(finishSetupMenuItem)
         menu.addItem(hotkeyItem)
         menu.addItem(.separator())
         menu.addItem(settingsItem)
@@ -325,6 +349,29 @@ public final class MenuBar: NSObject {
         if oldHadFailure != (message != nil) {
             refresh()
         }
+    }
+
+    /// Called by main.swift's LocalModelStore observation when the on-device
+    /// cleanup model download state changes. Progress in 0…1 → shows the
+    /// "Downloading cleanup model… N%" informational item; nil → hides it.
+    /// Mirrors the setASRReady/setASRLoadFailed pattern for the speech engine.
+    public func setLocalModelDownloadProgress(_ progress: Double?) {
+        if let p = progress {
+            let pct = Int((p * 100).rounded())
+            localModelDownloadMenuItem.title = "Downloading cleanup model… \(pct)%"
+            localModelDownloadMenuItem.isHidden = false
+        } else {
+            localModelDownloadMenuItem.title = ""
+            localModelDownloadMenuItem.isHidden = true
+        }
+    }
+
+    /// Show or hide the "Finish setup…" prompt. Show when the wizard has not
+    /// been completed AND the user has not yet chosen a cleanup provider
+    /// (llmProvider is still empty/unset). Hide once either condition is met.
+    /// Clicking posts .parleqRunSetupAgain via the shared runSetup action.
+    public func setNeedsSetupPrompt(_ show: Bool) {
+        finishSetupMenuItem.isHidden = !show
     }
 
     private var currentPhase: AppState.Phase = .idle

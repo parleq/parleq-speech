@@ -48,6 +48,32 @@ let package = Package(
         // lives in the maintainer's macOS Keychain (and a password-
         // manager backup) and never enters the repository.
         .package(url: "https://github.com/sparkle-project/Sparkle.git", "2.9.0"..<"2.10.0"),
+        // MLX Swift — Apple-maintained on-device ML framework. Used as
+        // the runtime for the on-device LLM cleanup tier (Task 2+).
+        // Pinned exact to 0.31.4 — the version the proof-of-concept was
+        // validated against. Pinning the transitive resolution also keeps
+        // the bundled mlx.metallib (the Metal shader library MLX dlopens
+        // at runtime) matched to the exact MLX version we built/tested.
+        // We now import MLX/MLXNN/MLXFast directly: VendoredGemma4Text.swift
+        // (a KV-shared-aware copy of upstream's Gemma4 text model — see
+        // TODO(upstream-gemma4)) builds the model graph against these APIs.
+        .package(url: "https://github.com/ml-explore/mlx-swift", exact: "0.31.4"),
+        // mlx-swift-lm — LLM inference layer built on MLX Swift. Pinned
+        // to a specific commit (b95dc78) rather than a tagged release
+        // because upstream main contains the Gemma4 QAT loader fixes
+        // (needed for 4-bit quantised weights) that have not yet landed
+        // in a tagged release. Move to the next tagged release once it
+        // ships and contains these fixes.
+        .package(url: "https://github.com/ml-explore/mlx-swift-lm",
+                 revision: "b95dc780b4efbb35c491261bb27a06d3cf2b2e24"),
+        // swift-transformers — tokeniser support (AutoTokenizer, etc.)
+        // required by mlx-swift-lm at call-site. Pinned exact to 1.3.3.
+        .package(url: "https://github.com/huggingface/swift-transformers", exact: "1.3.3"),
+        // swift-huggingface — Hub client (HubClient) used by
+        // MLXHuggingFace macros that expand at call-site; must be a
+        // direct dependency of any target that imports those modules.
+        // Pinned exact to 0.9.0.
+        .package(url: "https://github.com/huggingface/swift-huggingface", exact: "0.9.0"),
     ],
     targets: [
         .target(
@@ -57,6 +83,17 @@ let package = Package(
                 .product(name: "SotoSTS", package: "soto"),
                 .product(name: "FluidAudio", package: "FluidAudio"),
                 .product(name: "Sparkle", package: "Sparkle"),
+                .product(name: "MLXLLM", package: "mlx-swift-lm"),
+                .product(name: "MLXLMCommon", package: "mlx-swift-lm"),
+                // MLX / MLXNN / MLXFast — required directly by the vendored
+                // KV-shared-aware Gemma4 text model (TODO(upstream-gemma4),
+                // VendoredGemma4Text.swift). Remove these three when the
+                // vendored file is deleted on upstream merge.
+                .product(name: "MLX", package: "mlx-swift"),
+                .product(name: "MLXNN", package: "mlx-swift"),
+                .product(name: "MLXFast", package: "mlx-swift"),
+                .product(name: "Tokenizers", package: "swift-transformers"),
+                .product(name: "HuggingFace", package: "swift-huggingface"),
             ],
             path: "Sources/ParleqAppCore"
         ),

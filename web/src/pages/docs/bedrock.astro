@@ -3,7 +3,6 @@ import Layout from '../../layouts/Layout.astro';
 import SiteHeader from '../../components/SiteHeader.astro';
 import PricingNote from '../../components/PricingNote.astro';
 
-const repoUrl = 'https://github.com/parleq/parleq-speech';
 ---
 
 <Layout title="AWS Bedrock setup — Parleq" description="Set up AWS Bedrock as Parleq's cleanup provider. Three auth modes: AWS SSO, static IAM access keys, scoped Bedrock API keys.">
@@ -236,18 +235,4 @@ aws sso login --profile work
     </div>
   </article>
 
-  <footer class="border-t border-[color:var(--color-border-subtle)]">
-    <div class="mx-auto flex max-w-5xl flex-col items-start justify-between gap-4 px-6 py-10 text-sm text-[color:var(--color-text-subtle)] sm:flex-row sm:items-center">
-      <div class="flex items-center gap-3">
-        <span class="text-base font-semibold text-[color:var(--color-text)]">Parleq</span>
-        <span>·</span>
-        <span>Apache-2.0</span>
-      </div>
-      <div class="flex items-center gap-6">
-        <a href={repoUrl} class="hover:text-[color:var(--color-text)]">GitHub</a>
-        <a href={`${repoUrl}/releases`} class="hover:text-[color:var(--color-text)]">Releases</a>
-        <a href={`${repoUrl}/blob/main/THIRD_PARTY_LICENSES.md`} class="hover:text-[color:var(--color-text)]">Licenses</a>
-      </div>
-    </div>
-  </footer>
 </Layout>

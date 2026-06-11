@@ -30,6 +30,23 @@
 //                      "ttft_deadline_seconds": [5.5, 8.0],
 //                      "ttft_deadline_thinking_seconds": [25.0],
 //                      "request_timeout_seconds": 60   // 5...300
+//                    },
+//                    // On-device cleanup tier (local provider). Omit
+//                    // when every field is default (omit-when-default):
+//                    "local": {
+//                      // Model residency policy once loaded:
+//                      //   "auto"  — unload after idle_unload_minutes
+//                      //             (default; threshold varies by RAM tier)
+//                      //   "keep"  — keep loaded between dictations
+//                      //   "idle"  — always unload immediately after use
+//                      "residency": "auto",
+//                      // Override idle-unload timeout (minutes). null
+//                      // means "use the RAM-tier default" (3 min on
+//                      // cautioned / 30 min on comfortable).
+//                      "idle_unload_minutes": null,
+//                      // Allow local provider on < 12 GB RAM machines
+//                      // despite thrash risk. Default false.
+//                      "allow_unsupported_ram": false
 //                    } },
 //     "aws":       { "region": "us-east-2",
 //                    "profile": "work",
@@ -191,6 +208,70 @@ public struct TransformPreset: Sendable, Equatable, Identifiable {
         self.name = name
         self.prompt = prompt
     }
+}
+
+// MARK: - On-device (local) LLM cleanup tier types
+
+/// Model residency policy once the local model is loaded.
+/// - `auto`: Unload after the RAM-tier idle-unload timeout (default).
+/// - `keep`: Keep the model loaded between dictations.
+/// - `idle`: Always unload immediately after each use.
+public enum LocalResidency: String, Codable, Sendable {
+    case auto, keep, idle
+}
+
+/// Machine RAM tier, used to gate and tune the local cleanup provider.
+/// Based on physical memory reported by `ProcessInfo.processInfo.physicalMemory`.
+public enum RAMTier: Equatable, Sendable {
+    /// < 12 GB: local card not selectable (wired ~6 GB = thrash risk).
+    case unsupported
+    /// 12 GB – <24 GB: allowed with strong caution and aggressive idle-unload.
+    case cautioned
+    /// >= 24 GB: comfortable fit for the ~6 GB resident model.
+    case comfortable
+
+    public static func forPhysicalMemory(_ bytes: UInt64) -> RAMTier {
+        let gb = Double(bytes) / Double(1 << 30)
+        if gb < 12 { return .unsupported }
+        if gb < 24 { return .cautioned }
+        return .comfortable
+    }
+
+    public static var current: RAMTier {
+        forPhysicalMemory(ProcessInfo.processInfo.physicalMemory)
+    }
+}
+
+/// Static defaults for the on-device cleanup tier. Single source of truth
+/// referenced by LocalModelStore, ResidencyManager, and the setup wizard.
+public enum LocalModelDefaults {
+    public static let checkpoint = "mlx-community/gemma-4-E4B-it-qat-4bit"
+    public static let approxDownloadGB = 4.2
+    public static let approxResidentGB = 6.0
+    public static let idleUnloadMinutesCautioned = 3
+    public static let idleUnloadMinutesComfortable = 30
+    public static let maxTokens = 1024
+    public static let contextLength = 8192
+    /// LRU capacity for the on-device KV system-prefix cache (Task 9). Small:
+    /// per-app preset transforms vary the prefix suffix so a handful of distinct
+    /// prefixes can be live, but the working set is tiny and each entry holds
+    /// GPU memory (the full system-prompt KV state).
+    public static let prefixCacheCapacity = 4
+    public static let modelsDirectory: URL = {
+        guard let base = FileManager.default
+            .urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+        else {
+            // Extreme edge (corrupt user dir): Application Support is
+            // unavailable. Don't crash the whole app at launch — fall back to a
+            // temp-dir path. The on-device model just won't persist across this
+            // session, but every other code path (cloud providers, dictation)
+            // keeps working.
+            configLogStderr("[config] WARNING: Application Support directory unavailable — falling back to temporary directory for on-device model path")
+            return FileManager.default.temporaryDirectory
+                .appendingPathComponent("Parleq/models", isDirectory: true)
+        }
+        return base.appendingPathComponent("Parleq/models", isDirectory: true)
+    }()
 }
 
 public struct Config: Sendable {
@@ -517,6 +598,22 @@ public struct Config: Sendable {
     /// LLMTuning.swift for field semantics and clamping.
     public var llmTuning: LLMTuning
 
+    // MARK: - On-device (local) LLM cleanup tier
+
+    /// Model residency policy for the local cleanup provider.
+    /// Decoded from `llm.local.residency`. Default `.auto`.
+    public var localResidency: LocalResidency
+    /// Override for the idle-unload timeout (minutes) when
+    /// `localResidency == .auto`. nil means "use the RAM-tier
+    /// default" (`LocalModelDefaults.idleUnloadMinutesCautioned`
+    /// or `…Comfortable`). Decoded from `llm.local.idle_unload_minutes`.
+    public var localIdleUnloadMinutes: Int?
+    /// When true, allow the local provider even on machines with
+    /// < 12 GB RAM where the ~6 GB resident model will likely
+    /// cause thrashing. Default false; gated by `RAMTier.current`.
+    /// Decoded from `llm.local.allow_unsupported_ram`.
+    public var localAllowUnsupportedRAM: Bool
+
     /// Keys whose effective values were sourced from MDM
     /// (/Library/Managed Preferences) rather than from the user's
     /// config file. Populated by Config.load(); never persisted to disk.
@@ -592,6 +689,9 @@ public struct Config: Sendable {
         learnedCorrectionsRetentionHours: nil,
         transformPresetsEnabled: true,
         llmTuning: LLMTuning(),
+        localResidency: .auto,
+        localIdleUnloadMinutes: nil,
+        localAllowUnsupportedRAM: false,
         managedKeys: []
     )
 
@@ -1317,6 +1417,20 @@ public struct Config: Sendable {
             if let tuning = llm["tuning"] as? [String: Any] {
                 c.llmTuning = parseLLMTuning(tuning)
             }
+            // On-device cleanup tier — llm.local sub-object.
+            // All fields optional-with-default; omit-when-default on save.
+            if let local = llm["local"] as? [String: Any] {
+                if let v = local["residency"] as? String,
+                   let r = LocalResidency(rawValue: v) {
+                    c.localResidency = r
+                }
+                if let v = local["idle_unload_minutes"] as? Int, v >= 0 {
+                    c.localIdleUnloadMinutes = v
+                }
+                if let v = local["allow_unsupported_ram"] as? Bool {
+                    c.localAllowUnsupportedRAM = v
+                }
+            }
         }
         if let aws = parsed["aws"] as? [String: Any] {
             if let v = aws["region"] as? String, !v.isEmpty { c.awsRegion = v }
@@ -1573,7 +1687,8 @@ public struct Config: Sendable {
     /// Build the `llm` JSON section, appending the `tuning` sub-object
     /// only when at least one tuning field differs from its default
     /// (omit-when-default house style). The base mode/provider/model
-    /// fields are always present.
+    /// fields are always present. The `local` sub-object is likewise
+    /// omitted when every field is default.
     static func serializeLLMSection(_ config: Config) -> [String: Any] {
         var llm: [String: Any] = [
             "mode": config.llmMode,
@@ -1583,7 +1698,29 @@ public struct Config: Sendable {
         if !config.llmTuning.isDefault {
             llm["tuning"] = Self.serializeLLMTuning(config.llmTuning)
         }
+        if let localDict = Self.serializeLocalSection(config) {
+            llm["local"] = localDict
+        }
         return llm
+    }
+
+    /// Build the `llm.local` sub-object (omit-when-default). Returns nil
+    /// when every on-device field is at its default value so the caller can
+    /// skip adding a "local" key, keeping the JSON clean. Used by both
+    /// `serializeLLMSection` and the MDM/save preservation path so a future
+    /// local field only needs to be added here.
+    private static func serializeLocalSection(_ config: Config) -> [String: Any]? {
+        var localDict: [String: Any] = [:]
+        if config.localResidency != .auto {
+            localDict["residency"] = config.localResidency.rawValue
+        }
+        if let minutes = config.localIdleUnloadMinutes {
+            localDict["idle_unload_minutes"] = minutes
+        }
+        if config.localAllowUnsupportedRAM {
+            localDict["allow_unsupported_ram"] = true
+        }
+        return localDict.isEmpty ? nil : localDict
     }
 
     /// Serialize an LLMTuning to a JSON dictionary, emitting ONLY the
@@ -2049,6 +2186,11 @@ public struct Config: Sendable {
         // rebuild above.
         if !config.llmTuning.isDefault {
             llmToWrite["tuning"] = Self.serializeLLMTuning(config.llmTuning)
+        }
+        // On-device cleanup tier — llm.local fields have no MDM key.
+        // Carry forward (omit-when-default) same as tuning above.
+        if let localToWrite = Self.serializeLocalSection(config) {
+            llmToWrite["local"] = localToWrite
         }
         dict["llm"] = llmToWrite
         var awsToWrite: [String: Any] = [

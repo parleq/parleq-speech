@@ -58,6 +58,11 @@ make notarize            # build + Apple notarize + staple (requires keychain pr
 | `LearnedStore.swift` | Apply / suggest / revert surface for learned dictionary changes. High-confidence proposals auto-apply into the custom dictionary tagged `source=learned`; others become pending suggestions. **In-memory only** — pending suggestions and the applied-changes log are process memory, wiped on quit; the only durable output is the learned terms in `config.json`. |
 | `LearnedView.swift` | SwiftUI "Learned" sidebar section in Settings. Shows pending suggestions (Accept / Dismiss), the applied-changes log (Revert), and the feature on/off toggle. Disabling offers to clear the in-memory correction data immediately (cleared on quit regardless). |
 | `PresetsSettingsView.swift` | "Presets" Settings pane: transform-preset list editor (name + prompt) + per-app default mapping. A preset is a canned refine instruction; an app default folds into that app's cleanup prompt (one LLM call) with a "Styled with X · Undo" chip in the overlay. |
+| `LocalLLMProvider.swift` | On-device cleanup provider (`provider=local`). Acquires the loaded model from `ResidencyManager`, formats the prompt via `LocalTokenizerBridge`, runs MLX generation, and streams token events. Sets `enable_thinking: false` explicitly — load-bearing; see CLAUDE.md invariant #8. |
+| `LocalModelStore.swift` | Download + state machine for the on-device model checkpoint. Uses swift-huggingface's `HubClient`; writes a `.parleq-ready` marker only on successful completion; fires `onStateChanged` callbacks for UI updates. |
+| `ResidencyManager.swift` | Model load/idle-unload lifecycle actor. Holds the loaded MLX model (or nil); enforces the `ResidencyPolicy` (keep-loaded vs. idle-unload-after-N-minutes based on RAM tier). |
+| `LocalTokenizerBridge.swift` | Bridges swift-transformers' `AutoTokenizer` to Parleq's prompt format. Applies the Jinja2 chat template from the checkpoint's `tokenizer_config.json` and produces token IDs for the generation loop. |
+| `VendoredGemma4Text.swift` | **TEMPORARY** in-tree vendor of the Gemma 4 text model graph from mlx-swift-lm, with a KV-shared-layer gating fix applied. MIT-licensed (Apple). Remove when the upstream fix merges into a tagged mlx-swift-lm release (`TODO(upstream-gemma4)`). |
 
 ## Per-utterance pipeline
 
@@ -87,7 +92,8 @@ Non-obvious things that are easy to forget. Documented here so they survive futu
 3. **Fresh stateless LLM call per refinement turn.** No server-side conversation history.
 4. **Audio is memory-only end-to-end.** `AudioRecorder.stop()` returns a `Data`; no `/tmp/parleq-*.wav`, no audio cache. Required for compliance with enterprise policies on Bedrock-using apps.
 5. **Logs carry length-only diagnostics.** ASR diagnostic shows `(N chars / W words)`, never the transcript text. `LocalASR`'s `[vocab]` log defaults to count-only; per-replacement detail is opt-in via `PARLEQ_VOCAB_TRACE=1`.
-6. **Audio never leaves the device** — ASR is in-process FluidAudio by default; no listening sockets, no IPC. Cleanup payloads (the transcript text) go to the configured LLM provider; that's the only network boundary input data crosses. Users who configure a custom `asr.endpoint` opt into a localhost HTTP path to their own server.
+6. **Audio never leaves the device** — ASR is in-process FluidAudio by default; no listening sockets, no IPC. Cleanup payloads (the transcript text) go to the configured LLM provider; that's the only network boundary input data crosses. When `provider=local` is selected, cleanup payloads cross no network boundary at all — text is processed in-process by `LocalLLMProvider`. Users who configure a custom `asr.endpoint` opt into a localhost HTTP path to their own server.
+7. **`enable_thinking: false` must be set explicitly on every on-device generation call** (`LocalLLMProvider.swift`, `ResidencyManager.swift`). The Gemma 4 chat template enables thinking by default when the key is absent, burning the entire token budget on hidden reasoning before any visible output. The explicit `false` is load-bearing — do not omit it at any new call site.
 
 ## Quick verification
 

@@ -1,0 +1,63 @@
+---
+import Layout from '../layouts/Layout.astro';
+import SiteHeader from '../components/SiteHeader.astro';
+---
+
+<Layout
+  title="Privacy Policy — Parleq"
+  description="Parleq's privacy policy. We run no server, collect no dictation data, and never receive your audio or transcripts."
+>
+  <SiteHeader />
+
+  <article class="mx-auto max-w-2xl px-6 pt-20 pb-24">
+    <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">
+      Privacy
+    </p>
+    <h1 class="mt-4 font-display text-4xl leading-[1.1] font-medium tracking-tight sm:text-5xl">
+      Privacy Policy
+    </h1>
+    <p class="mt-4 text-sm text-[color:var(--color-text-subtle)]">Last updated: June 2026</p>
+
+    <div class="mt-12 space-y-6 text-[17px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      <p>
+        Parleq is an open-source macOS dictation app made by <strong class="font-semibold text-[color:var(--color-text)]">Keavi LLC</strong>, a Virginia limited liability company ("Keavi," "we"). The short version: <strong class="font-semibold text-[color:var(--color-text)]">we don't collect your data.</strong>
+      </p>
+
+      <p>
+        <strong class="font-semibold text-[color:var(--color-text)]">We run no server and collect no dictation data.</strong> Keavi operates no backend that receives your audio, transcripts, or usage. Parleq runs entirely on your Mac.
+      </p>
+
+      <p>
+        <strong class="font-semibold text-[color:var(--color-text)]">Your audio never leaves your device.</strong> By default, speech recognition runs on-device on the Apple Neural Engine. Audio lives in memory only for the duration of a dictation — never written to disk, and never sent to Parleq or Keavi.
+      </p>
+
+      <p>
+        <strong class="font-semibold text-[color:var(--color-text)]">Transcript cleanup is on-device or your own provider.</strong> The optional cleanup step either runs <strong class="font-semibold text-[color:var(--color-text)]">on-device</strong> (nothing leaves your Mac), or is sent to <strong class="font-semibold text-[color:var(--color-text)]">a cloud provider you configure</strong> (Google Gemini, OpenAI, AWS Bedrock, Google Vertex AI, or Azure OpenAI) directly from your Mac using <em>your own</em> account and credentials. Keavi is not a party to that exchange and never receives or stores that text; the provider's handling is governed by your agreement with them. You can also skip cleanup entirely.
+      </p>
+
+      <p>
+        <strong class="font-semibold text-[color:var(--color-text)]">No telemetry in the app.</strong> Parleq contains no analytics, crash-reporting, advertising, or tracking SDKs and does not phone home. Its only outbound connections are ones you initiate: update checks, your chosen cloud cleanup provider, and one-time model downloads from Hugging Face (the on-device speech model, and the on-device cleanup model if you enable it).
+      </p>
+
+      <p>
+        <strong class="font-semibold text-[color:var(--color-text)]">This website.</strong> parleq.app uses GoatCounter — a privacy-friendly, open-source analytics tool that sets no cookies, needs no consent banner, and records only aggregate pageview and referrer counts. No personal information, no cross-site tracking.
+      </p>
+
+      <p>
+        <strong class="font-semibold text-[color:var(--color-text)]">Downloads.</strong> The app is distributed via GitHub; on-device models are downloaded from Hugging Face at your request. These third parties have their own privacy practices.
+      </p>
+
+      <p>
+        <strong class="font-semibold text-[color:var(--color-text)]">Changes.</strong> We'll revise this page and its date if our practices change.
+      </p>
+
+      <p>
+        <strong class="font-semibold text-[color:var(--color-text)]">Contact.</strong> Questions? Email <a href="mailto:hello@parleq.app" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">hello@parleq.app</a>.
+      </p>
+
+      <p class="text-[15px] text-[color:var(--color-text-subtle)]">
+        Keavi LLC &middot; A Virginia limited liability company &middot; <a href="https://keavi.app" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">keavi.app</a>
+      </p>
+    </div>
+  </article>
+</Layout>
