@@ -4,6 +4,8 @@ DerivedData/
 *.xcodeproj
 # Output of scripts/make-app.sh — built Parleq.app
 build/
+# Cached prebuilt assets fetched by scripts/fetch-metallib.sh
+.build-cache/
 # Package.resolved is intentionally tracked (see top-level note in
 # CLAUDE.md) — fresh clones build against the same dependency
 # versions we tested, supply-chain bumps require an explicit

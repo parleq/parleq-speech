@@ -81,12 +81,34 @@ struct ParleqApp {
             logStderr("[parleq] llm tuning: \(tuningOverrides.count) override(s) active — \(tuningOverrides.joined(separator: ", "))")
         }
 
+        // Eval-gate mode: PARLEQ_EVAL_CASES_FILE is set → this is a batch
+        // quality re-gate run, not a live dictation session. Detect it HERE,
+        // before any provider is constructed, so:
+        //   1. The cleanup provider is ALWAYS local (on-device MLX), regardless
+        //      of what config.llmProvider says — the eval gate is exclusively
+        //      for the on-device path; it must not depend on user provider
+        //      config, must not touch any cloud credentials, and must not
+        //      require config edits before running.
+        //   2. The OIDC session block is skipped entirely — it has no role on
+        //      the local path and its OIDCSession.init reads the Keychain
+        //      (refresh token + identity) which triggers re-auth prompts on
+        //      every ad-hoc-signed rebuild.
+        // The rest of the eval logic lives at the PARLEQ_EVAL_CASES_FILE
+        // check below (after localModelStore / makeProvider are wired up).
+        let evalMode = ProcessInfo.processInfo.environment["PARLEQ_EVAL_CASES_FILE"] != nil
+
         // Kick off a background refresh of the LiteLLM pricing
         // table. No-ops if the on-disk cache is fresh (<24h) or a
         // refresh is already in flight; failure is non-fatal —
         // bundled defaults continue to serve. UI sees the new data
         // on its next read of UsageLedger.aggregate().
-        PricingCache.shared.refreshIfStale()
+        //
+        // Skipped in eval mode: a batch quality re-gate is intended to be
+        // network-free except for the on-device model download — no cloud
+        // pricing fetch should fire.
+        if !evalMode {
+            PricingCache.shared.refreshIfStale()
+        }
 
         // Plumb config knobs to the modules that consume them.
         MainActor.assumeIsolated {
@@ -194,16 +216,22 @@ struct ParleqApp {
         // (config.awsAuthMode / config.vertexAuthMode), shared across
         // tiers, so a context tier pointing at the same provider rides
         // the same cache.
-        let contextProvider = config.contextModel?.provider.lowercased()
-        let bedrockOIDCActive = config.awsAuthMode == "oidc"
+        //
+        // In eval mode this entire block is skipped: the eval gate uses
+        // the local (on-device) provider only, which needs no OIDC
+        // session. OIDCSession.init reads the Keychain (refresh token +
+        // identity), so skipping it is what keeps eval runs credential-
+        // free on ad-hoc-signed debug builds.
+        let contextProvider = evalMode ? nil : config.contextModel?.provider.lowercased()
+        let bedrockOIDCActive = !evalMode && config.awsAuthMode == "oidc"
             && (config.llmProvider == "bedrock" || contextProvider == "bedrock")
         // Vertex OIDC modes: "oidcFederation" (Workforce Identity Federation,
         // wires a GCP exchanger) and "googleOAuth" (native Google sign-in, NO
         // exchanger — the session's access token is the Vertex bearer). Both
         // construct the shared OIDCSession; only oidcFederation builds gcpExchange.
-        let vertexFederationActive = config.vertexAuthMode == "oidcFederation"
+        let vertexFederationActive = !evalMode && config.vertexAuthMode == "oidcFederation"
             && (config.llmProvider == "vertex" || contextProvider == "vertex")
-        let vertexGoogleOAuthActive = config.vertexAuthMode == "googleOAuth"
+        let vertexGoogleOAuthActive = !evalMode && config.vertexAuthMode == "googleOAuth"
             && (config.llmProvider == "vertex" || contextProvider == "vertex")
         let vertexOIDCActive = vertexFederationActive || vertexGoogleOAuthActive
         let oidcModeActive = bedrockOIDCActive || vertexOIDCActive
@@ -263,6 +291,22 @@ struct ParleqApp {
             oidcSession = session
         } else if oidcModeActive {
             logStderr("[parleq] oidc: an OIDC auth mode is selected but oidc.issuer/client_id are not configured — Company Account is inactive; cleanup will fail closed until configured")
+        }
+
+        // On-device LLM tier: one shared LocalModelStore + ResidencyManager for
+        // the whole process. Created here (before makeProvider) so the factory
+        // closure can capture the same instances that wizard/Settings will later
+        // reference. Both inits are @MainActor; main.swift's startup block runs
+        // inside MainActor.assumeIsolated, so the synchronous read is safe.
+        //
+        let localModelStore = MainActor.assumeIsolated { LocalModelStore() }
+        let localResidency = MainActor.assumeIsolated {
+            ResidencyManager(
+                store: localModelStore,
+                policy: ResidencyPolicy.effective(
+                    residency: config.localResidency,
+                    tier: RAMTier.current,
+                    configMinutes: config.localIdleUnloadMinutes))
         }
 
         // LLM cleanup is best-effort. If GEMINI_API_KEY isn't
@@ -427,6 +471,31 @@ struct ParleqApp {
                 // handles llm == nil.
                 logStderr("[parleq] LLM \(label) disabled (provider=none — user opted out of cleanup; will paste raw ASR)")
                 return nil
+            case "local":
+                // RAM gate (mirrors the Setup Wizard + Settings picker): on
+                // machines below the 12 GB floor the on-device model (~6 GB
+                // resident, ~4 GB download) would thrash the machine, so it's
+                // not selectable unless the user sets the explicit config-file
+                // override llm.local.allow_unsupported_ram=true. Honoring the
+                // override means we do NOT block when it's set. Without it we
+                // fail closed to raw paste rather than kicking off a multi-GB
+                // download on an unsupported machine (a config.json hand-edit or
+                // an upgrade from a build that predated the gate can reach here).
+                if RAMTier.current == .unsupported && !config.localAllowUnsupportedRAM {
+                    let gb = Int((Double(ProcessInfo.processInfo.physicalMemory) / Double(1 << 30)).rounded())
+                    logStderr("[parleq] LLM \(label): on-device requires 12 GB+ RAM (have \(gb)GB); set llm.local.allow_unsupported_ram=true to override. Falling back to no cleanup (raw paste).")
+                    return nil
+                }
+                // id.model is ignored on the local path: the store only ever serves
+                // LocalModelDefaults.checkpoint, and a stale cloud model id left in
+                // config.llm.model would otherwise pollute logs and the UsageLedger
+                // (and hit cloud pricing tables in the Usage UI).
+                let p = LocalLLMProvider(
+                    model: LocalModelDefaults.checkpoint,
+                    store: localModelStore,
+                    residency: localResidency)
+                logStderr("[parleq] LLM \(label) (local model=\(p.model) — on-device via MLX, no network)")
+                return p
             default:
                 // "gemini" and any unknown future tag (e.g. a config
                 // written by a newer build) — fall through to the
@@ -447,8 +516,175 @@ struct ParleqApp {
             }
         }
 
-        let cleanupId = ModelIdentifier(provider: config.llmProvider, model: config.llmModel)
+        // In eval mode, force the cleanup provider to "local" regardless of what
+        // config.llmProvider says. The eval gate is exclusively for the on-device
+        // path; it must not depend on user provider config, must not touch any
+        // cloud credentials, and must not require config edits before running.
+        // Any Keychain-touching cloud provider branch inside makeProvider is
+        // therefore never reached in eval mode.
+        let cleanupId = evalMode
+            ? ModelIdentifier(provider: "local", model: config.llmModel)
+            : ModelIdentifier(provider: config.llmProvider, model: config.llmModel)
+        if evalMode {
+            logStderr("[parleq] eval mode: cleanup provider overridden to 'local' (config says '\(config.llmProvider)'); no cloud credentials will be accessed")
+        }
         let llm = makeProvider(cleanupId, "cleanup enabled")
+
+        // PARLEQ_EVAL_CASES_FILE / PARLEQ_EVAL_OUTPUT_FILE — debug-only batch
+        // eval: run the cleanup suite through the real provider path and exit.
+        // Powers the pre-merge quality re-gate; logs counts only — no
+        // transcript content (house invariant).
+        if let evalCasesPath = ProcessInfo.processInfo.environment["PARLEQ_EVAL_CASES_FILE"] {
+            let evalOutputPath = ProcessInfo.processInfo.environment["PARLEQ_EVAL_OUTPUT_FILE"]
+                ?? "/tmp/parleq-eval.json"
+
+            // DATA HYGIENE: the cases file (PARLEQ_EVAL_CASES_FILE) MUST contain
+            // ONLY synthetic / fixture transcripts — never real user dictations.
+            // Both the input cases and the generated cleanup output land on disk
+            // (the input file is read from its given path; output is written to
+            // PARLEQ_EVAL_OUTPUT_FILE, default /tmp/parleq-eval.json). Real
+            // dictation content has no business in either file.
+            struct EvalInputCase: Decodable {
+                let id: String
+                let system: String
+                let user: String
+            }
+
+            // Swift 6 strict concurrency: the onEvent closure is @Sendable, so
+            // var captures are rejected. Accumulate streaming events via a
+            // final-class box that each case constructs fresh; the closure
+            // captures the box (a reference type), which is Sendable as
+            // @unchecked. The accumulator is only ever written from the
+            // streaming closure (called serially by the provider) and read
+            // after the await returns — no actual concurrent mutation occurs.
+            final class EvalAccumulator: @unchecked Sendable {
+                var output = ""
+                var ttftApproxMs: Double = -1.0
+                var promptTokens = 0
+                var genTokens = 0
+                let genStart: Date
+                init() { genStart = Date() }
+            }
+
+            guard let casesData = try? Data(contentsOf: URL(fileURLWithPath: (evalCasesPath as NSString).expandingTildeInPath)),
+                  let cases = try? JSONDecoder().decode([EvalInputCase].self, from: casesData) else {
+                logStderr("[eval] ERROR: could not read or parse PARLEQ_EVAL_CASES_FILE=\(evalCasesPath)")
+                exit(1)
+            }
+
+            guard let evalProvider = llm else {
+                logStderr("[eval] ERROR: no cleanup provider available (provider=\(config.llmProvider)); cannot run eval")
+                exit(1)
+            }
+
+            logStderr("[eval] starting \(cases.count) cases via \(evalProvider.providerName)/\(evalProvider.model)")
+
+            // Bridge sync main() → async generateStreaming using a semaphore.
+            // We're still on the main thread before app.run(), so we spin a
+            // Task on the cooperative pool, block the main thread on the
+            // semaphore, and let the RunLoop drain during the wait so the
+            // cooperative executor can progress.
+            let semaphore = DispatchSemaphore(value: 0)
+            var evalResults: [[String: Any]] = []
+
+            Task {
+                defer { semaphore.signal() }
+                for c in cases {
+                    let wallStart = Date()
+                    let acc = EvalAccumulator()
+                    var caseError: String? = nil
+                    do {
+                        try await evalProvider.generateStreaming(
+                            systemPrompt: c.system,
+                            messages: [LLMMessage(role: "user", content: c.user)]
+                        ) { event in
+                            switch event {
+                            case .chunk(let text):
+                                if acc.ttftApproxMs < 0 {
+                                    acc.ttftApproxMs = Date().timeIntervalSince(acc.genStart) * 1000.0
+                                }
+                                acc.output += text
+                            case .done(let summary):
+                                acc.promptTokens = summary.inputTokens
+                                acc.genTokens = summary.outputTokens
+                                if acc.ttftApproxMs < 0 {
+                                    acc.ttftApproxMs = summary.ttft * 1000.0
+                                }
+                            }
+                        }
+                    } catch {
+                        caseError = "\(error)"
+                    }
+                    let totalMs = Date().timeIntervalSince(wallStart) * 1000.0
+                    let truncated = acc.genTokens >= 1024
+                    let metrics: [String: Any] = [
+                        "total_duration_ms": (totalMs * 100).rounded() / 100,
+                        "ttft_approx_ms": (acc.ttftApproxMs * 100).rounded() / 100,
+                        "prompt_eval_count": acc.promptTokens,
+                        "eval_count": acc.genTokens,
+                    ]
+                    evalResults.append([
+                        "id": c.id,
+                        "output": acc.output,
+                        "metrics": metrics,
+                        "truncated": truncated,
+                        "error": caseError as Any? ?? NSNull(),
+                    ])
+                    // Progress line: id + timing + token counts only — never output text.
+                    let truncTag = truncated ? " [TRUNCATED]" : ""
+                    let errTag = caseError != nil ? " ERROR" : ""
+                    logStderr(String(format: "[eval] %@  %.0fms  prompt=%d gen=%d%@%@",
+                                     c.id, totalMs, acc.promptTokens, acc.genTokens, truncTag, errTag))
+                }
+
+                // Write results JSON.
+                do {
+                    let json = try JSONSerialization.data(
+                        withJSONObject: evalResults,
+                        options: [.prettyPrinted, .sortedKeys])
+                    let outURL = URL(fileURLWithPath: (evalOutputPath as NSString).expandingTildeInPath)
+                    try FileManager.default.createDirectory(
+                        at: outURL.deletingLastPathComponent(),
+                        withIntermediateDirectories: true)
+                    try json.write(to: outURL)
+                    logStderr("[eval] wrote \(evalResults.count) results to \(evalOutputPath)")
+                } catch {
+                    // Fail loud: a CI gate keys off the exit code, so a failed
+                    // output write must NOT fall through to exit(0) below (which
+                    // would report success with no results file written).
+                    logStderr("[eval] ERROR writing output: \(error)")
+                    exit(1)
+                }
+            }
+
+            // Drain the RunLoop while waiting so the cooperative executor
+            // (which runs Task bodies) can make progress on the main thread.
+            while semaphore.wait(timeout: .now()) == .timedOut {
+                RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+            }
+
+            let errors = evalResults.filter { !($0["error"] is NSNull) }.count
+            logStderr("[eval] done. \(evalResults.count)/\(cases.count) completed, \(errors) error(s)")
+            exit(0)
+        }
+
+        // KV prefix-cache warm-up (Task 9). When the cleanup provider is the
+        // on-device tier and the model is downloaded, prefill the current
+        // cleanup system prompt's KV prefix in the background so the FIRST
+        // dictation already hits a warm cache (TTFT win). Low priority and fully
+        // best-effort: it must never block startup or a dictation. Cache miss =
+        // plain uncached prefill, exactly as before. The transform is nil here
+        // (per-app preset variants warm lazily on first use); the dictionary
+        // mirrors the dictation path's enabled-gating.
+        if cleanupId.provider == "local" && localModelStore.state == .ready {
+            let warmDictionary = config.customDictionaryEnabled ? config.customDictionary : []
+            let warmCheckpoint = LocalModelDefaults.checkpoint
+            Task(priority: .utility) {
+                await localResidency.warmCleanupPrefix(
+                    checkpoint: warmCheckpoint, dictionary: warmDictionary)
+            }
+            logStderr("[parleq] local cleanup: warming KV system-prefix cache in background")
+        }
 
         // Context-model tier. Build a second provider only when
         // config.contextModel is set AND differs from the cleanup
@@ -608,7 +844,11 @@ struct ParleqApp {
             // About). The legacy SettingsWindowController was
             // removed in PR 2 (#217); ParleqAppWindowController
             // is the only window controller for the new shell.
-            let wizard = SetupWizardController()
+            // Inject the shared on-device model store into Settings so the
+            // Cleanup → on-device card can surface live download state.
+            // Task 11 fulfills the Settings side of TODO(local-ui).
+            ParleqAppWindowController.shared.setLocalModelStore(localModelStore)
+            let wizard = SetupWizardController(localModelStore: localModelStore)
             wizardBox.value = wizard
             // Sparkle auto-update controller. `startingUpdater: true`
             // arms Sparkle's standard background-check loop (default
@@ -775,6 +1015,39 @@ struct ParleqApp {
             stateBox.value?.onCleanupResult = { message in
                 menuBar.setCleanupFailure(message)
             }
+
+            // On-device LLM model download progress → menu-bar status line.
+            // Mirrors the LocalASR onReadyChanged pattern for the speech engine.
+            // Show "Downloading cleanup model… N%" while in-flight; hide when
+            // done (ready or failed). The initial state fires once to sync the
+            // menu on launch (handles the case where a download was in progress
+            // from a previous session that ended mid-download — unlikely today
+            // since a fresh init always starts in .notDownloaded or .ready, but
+            // defensive).
+            let applyLocalModelState: (LocalModelStore.State) -> Void = { [weak menuBox] state in
+                switch state {
+                case .downloading(let p):
+                    menuBox?.value?.setLocalModelDownloadProgress(p)
+                case .notDownloaded:
+                    menuBox?.value?.setLocalModelDownloadProgress(nil)
+                    // "Remove downloaded model" sets state to .notDownloaded.
+                    // Also release the ~6 GB of resident GPU/ANE memory
+                    // immediately so the user sees the benefit right away
+                    // rather than waiting for the idle-unload timer to fire.
+                    Task { await localResidency.unloadNow() }
+                default:
+                    menuBox?.value?.setLocalModelDownloadProgress(nil)
+                }
+            }
+            localModelStore.onStateChanged = applyLocalModelState
+            applyLocalModelState(localModelStore.state)
+
+            // "Finish setup…" prompt — shown when the wizard hasn't been
+            // completed yet. Disappears once the wizard saves
+            // config.wizardCompleted=true (next launch after finishing).
+            // Clicking posts .parleqRunSetupAgain (same as "Run Setup…").
+            menuBar.setNeedsSetupPrompt(!config.wizardCompleted)
+
             // First-launch wizard auto-show (#21 step 6). Skipping
             // here keeps existing users (config.wizardCompleted ==
             // true) out of the path entirely. Test users who want

@@ -292,6 +292,33 @@ final class SettingsModel: ObservableObject {
     /// `config.contextModel` is nil.
     @Published var contextModelName: String
 
+    // MARK: - On-device (local) cleanup tier
+
+    /// Model residency policy for the local cleanup provider.
+    /// Mirrors `config.localResidency`. Restart-required: the
+    /// ResidencyManager is constructed at launch with the baked-in
+    /// policy; a mid-session change can't re-wire the live manager.
+    /// TODO(local-ui): apply live once ResidencyManager exposes a
+    /// setPolicy path.
+    @Published var localResidency: LocalResidency
+
+    /// Mirrors `config.localAllowUnsupportedRAM` (`llm.local.allow_unsupported_ram`).
+    /// On machines below the 12 GB RAM floor (`RAMTier.unsupported`) the on-device
+    /// cleanup option is NOT selectable unless this explicit config-file override
+    /// is set — same gate the Setup Wizard applies to its on-device card. There is
+    /// intentionally no UI for this flag; it's a deliberate config-only escape hatch.
+    @Published var localAllowUnsupportedRAM: Bool
+
+    /// Shared on-device model store, injected by ParleqAppWindowController
+    /// via setLocalModelStore(_:) at startup. The cleanup section observes
+    /// this for live download state and calls store.download() / store.remove().
+    /// nil only before injection (between app launch and the first main-actor
+    /// tick in main.swift where the store is wired — never nil in practice
+    /// during normal Settings navigation).
+    /// @Published so a view that guards on this property re-evaluates if
+    /// injection timing ever changes.
+    @Published var localModelStore: LocalModelStore?
+
     // MARK: - Provider option catalog
 
     struct ProviderOption: Identifiable {
@@ -300,12 +327,14 @@ final class SettingsModel: ObservableObject {
     }
 
     static let providerOptions: [ProviderOption] = [
+        ProviderOption(id: "local",          displayName: "On-device (no cloud)"),
         ProviderOption(id: "gemini",         displayName: "Gemini (Google API)"),
         ProviderOption(id: "vertex",         displayName: "Gemini (Vertex / Google Cloud)"),
         ProviderOption(id: "bedrock",        displayName: "Bedrock (AWS IAM)"),
         ProviderOption(id: "bedrock-bearer", displayName: "Bedrock (bearer token)"),
         ProviderOption(id: "azure",          displayName: "Azure OpenAI"),
         ProviderOption(id: "openai",         displayName: "OpenAI (direct API)"),
+        ProviderOption(id: "none",           displayName: "None — paste raw transcript"),
     ]
 
     /// Mirror of `KeychainStore.hasGeminiAPIKey` for SwiftUI.
@@ -339,6 +368,7 @@ final class SettingsModel: ObservableObject {
     private let initialAzureApiVersion: String
     private let initialAzureAuthMode: String
     private let initialContextModel: ModelIdentifier?
+    private let initialLocalResidency: LocalResidency
     private let initialOidcIssuer: String
     private let initialOidcClientID: String
     private let initialAwsRoleArn: String
@@ -399,6 +429,8 @@ final class SettingsModel: ObservableObject {
         self.cleanupModelName = config.llmModel
         self.contextProvider = config.contextModel?.provider ?? config.llmProvider
         self.contextModelName = config.contextModel?.model ?? config.llmModel
+        self.localResidency = config.localResidency
+        self.localAllowUnsupportedRAM = config.localAllowUnsupportedRAM
         // Feature toggles (Phase 5).
         self.referenceWindowsEnabled = config.referenceWindowsEnabled
         self.clipboardReferenceEnabled = config.clipboardReferenceEnabled
@@ -442,6 +474,7 @@ final class SettingsModel: ObservableObject {
         self.initialAzureApiVersion = config.azureApiVersion
         self.initialAzureAuthMode = config.azureAuthMode
         self.initialContextModel = config.contextModel
+        self.initialLocalResidency = config.localResidency
         refreshUsage()
     }
 
@@ -520,6 +553,8 @@ final class SettingsModel: ObservableObject {
         self.cleanupModelName = config.llmModel
         self.contextProvider = config.contextModel?.provider ?? config.llmProvider
         self.contextModelName = config.contextModel?.model ?? config.llmModel
+        self.localResidency = config.localResidency
+        self.localAllowUnsupportedRAM = config.localAllowUnsupportedRAM
         // Feature toggles (Phase 5).
         self.referenceWindowsEnabled = config.referenceWindowsEnabled
         self.clipboardReferenceEnabled = config.clipboardReferenceEnabled
@@ -592,6 +627,10 @@ final class SettingsModel: ObservableObject {
             || awsRoleArn != initialAwsRoleArn
             || awsSessionDurationSeconds != initialAwsSessionDurationSeconds
             || vertexWorkforceProvider != initialVertexWorkforceProvider
+            // localResidency is baked into ResidencyManager at launch; a policy
+            // change requires a restart for the new unload schedule to take effect.
+            // TODO(local-ui): apply live once ResidencyManager exposes setPolicy.
+            || localResidency != initialLocalResidency
     }
 
     /// Persist current model values to ~/.parleq/config.json. Other
@@ -681,6 +720,8 @@ final class SettingsModel: ObservableObject {
         let resolvedContextModel: ModelIdentifier? = (contextId == cleanupId) ? nil : contextId
         c.contextModel = resolvedContextModel
         contextModel = resolvedContextModel
+        // On-device cleanup tier residency policy.
+        c.localResidency = localResidency
         // Feature toggles (Phase 5). Managed keys are already excluded
         // inside Config.save() via c.managedKeys, so we just set the
         // user-facing values unconditionally here — Config.save skips
@@ -1603,19 +1644,28 @@ struct SettingsView: View {
         // ── Tier configuration ──────────────────────────────────────────
         tierConfiguration
 
-        // ── Provider Credentials ─────────────────────────────────────────
-        HStack(alignment: .center) {
-            VStack { Divider() }
-            Text("Provider Credentials")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .fixedSize()
-                .padding(.horizontal, 6)
-            VStack { Divider() }
+        // ── On-device model card (only when provider == "local") ─────────
+        if model.cleanupProvider == "local", let store = model.localModelStore {
+            LocalOnDeviceCard(store: store, model: model)
         }
-        .padding(.top, 4)
 
-        providerCredentialsSection
+        // ── Provider Credentials (hidden when both tiers are local/none — no cloud creds)
+        let cleanupNeedsCredentials = (model.cleanupProvider != "local" && model.cleanupProvider != "none")
+        let contextNeedsCredentials = (model.contextProvider != "local" && model.contextProvider != "none")
+        if cleanupNeedsCredentials || contextNeedsCredentials {
+            HStack(alignment: .center) {
+                VStack { Divider() }
+                Text("Provider Credentials")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .fixedSize()
+                    .padding(.horizontal, 6)
+                VStack { Divider() }
+            }
+            .padding(.top, 4)
+
+            providerCredentialsSection
+        }
     }
 
     // MARK: - Tier configuration (top of Cleanup section)
@@ -1660,23 +1710,31 @@ struct SettingsView: View {
                             pinnedKey: "cleanupProvider",
                             allowlistKey: "cleanupAllowedProviders",
                             allowedValues: cleanupAllowedProviders,
-                            modelAllowlist: cleanupAllowedModels
+                            modelAllowlist: cleanupAllowedModels,
+                            // On sub-12 GB machines the on-device cleanup tier is
+                            // not selectable (mirrors the Setup Wizard) unless the
+                            // config-file override is set. Only the cleanup tier
+                            // offers "local"; the context tier never does.
+                            gateLocalUnsupported: true
                         )
-                        tierModelPicker(
-                            forProvider: model.cleanupProvider,
-                            selection: Binding(
-                                get: { model.cleanupModelName },
-                                set: { newVal in
-                                    guard newVal != model.cleanupModelName else { return }
-                                    model.cleanupModelName = newVal
-                                    model.save()
-                                }
-                            ),
-                            label: "Model",
-                            pinnedKey: "cleanupModel",
-                            allowlistKey: "cleanupAllowedModels",
-                            allowedModels: cleanupAllowedModels
-                        )
+                        // "local" and "none" have no cloud model to pick.
+                        if model.cleanupProvider != "local" && model.cleanupProvider != "none" {
+                            tierModelPicker(
+                                forProvider: model.cleanupProvider,
+                                selection: Binding(
+                                    get: { model.cleanupModelName },
+                                    set: { newVal in
+                                        guard newVal != model.cleanupModelName else { return }
+                                        model.cleanupModelName = newVal
+                                        model.save()
+                                    }
+                                ),
+                                label: "Model",
+                                pinnedKey: "cleanupModel",
+                                allowlistKey: "cleanupAllowedModels",
+                                allowedModels: cleanupAllowedModels
+                            )
+                        }
                     }
                 }
 
@@ -1714,21 +1772,25 @@ struct SettingsView: View {
                             allowedValues: contextAllowedProviders,
                             modelAllowlist: contextAllowedModels
                         )
-                        tierModelPicker(
-                            forProvider: model.contextProvider,
-                            selection: Binding(
-                                get: { model.contextModelName },
-                                set: { newVal in
-                                    guard newVal != model.contextModelName else { return }
-                                    model.contextModelName = newVal
-                                    model.save()
-                                }
-                            ),
-                            label: "Model",
-                            pinnedKey: "contextModel",
-                            allowlistKey: "contextAllowedModels",
-                            allowedModels: contextAllowedModels
-                        )
+                        // "local" and "none" have no cloud model to pick —
+                        // same guard as the cleanup tier above.
+                        if model.contextProvider != "local" && model.contextProvider != "none" {
+                            tierModelPicker(
+                                forProvider: model.contextProvider,
+                                selection: Binding(
+                                    get: { model.contextModelName },
+                                    set: { newVal in
+                                        guard newVal != model.contextModelName else { return }
+                                        model.contextModelName = newVal
+                                        model.save()
+                                    }
+                                ),
+                                label: "Model",
+                                pinnedKey: "contextModel",
+                                allowlistKey: "contextAllowedModels",
+                                allowedModels: contextAllowedModels
+                            )
+                        }
                     }
                 }
             }
@@ -1751,7 +1813,8 @@ struct SettingsView: View {
         pinnedKey: String? = nil,
         allowlistKey: String? = nil,
         allowedValues: [String]? = nil,
-        modelAllowlist: [String]? = nil
+        modelAllowlist: [String]? = nil,
+        gateLocalUnsupported: Bool = false
     ) -> some View {
         let isPinned    = pinnedKey.map    { model.managedKeys.contains($0) } ?? false
         let isAllowlist = allowlistKey.map { model.managedKeys.contains($0) } ?? false
@@ -1801,6 +1864,21 @@ struct SettingsView: View {
                                     ModelCatalog.isCanonical(provider: providerOption.id, model: modelID)
                                 }
                             }
+                        }
+                        // RAM gate: on sub-12 GB machines the on-device ("local")
+                        // cleanup tier is not selectable unless the config-file
+                        // override (llm.local.allow_unsupported_ram) is set — same
+                        // floor the Setup Wizard enforces on its on-device card.
+                        // Omit the row entirely so it can't be picked. If "local"
+                        // is already the active selection (e.g. config.json was
+                        // hand-edited), keep it visible so the user sees their
+                        // current state rather than a silently-blank picker; the
+                        // factory still falls back to raw paste at launch.
+                        if gateLocalUnsupported
+                            && RAMTier.current == .unsupported
+                            && !model.localAllowUnsupportedRAM
+                            && selection.wrappedValue != "local" {
+                            filtered = filtered.filter { $0.id != "local" }
                         }
                         return filtered
                     }()
@@ -2174,12 +2252,13 @@ struct SettingsView: View {
     }
 
     /// The set of provider IDs currently selected for at least one
-    /// tier. "none" (skip-cleanup) is not a real credentials provider
-    /// and is excluded.
+    /// tier. "none" (skip-cleanup) and "local" (on-device, no cloud
+    /// credentials) are not credential providers and are excluded.
     private var activeProviderSet: Set<String> {
         var set: Set<String> = []
-        if model.cleanupProvider != "none" { set.insert(model.cleanupProvider) }
-        if model.contextProvider != "none" { set.insert(model.contextProvider) }
+        let skip: Set<String> = ["none", "local"]
+        if !skip.contains(model.cleanupProvider) { set.insert(model.cleanupProvider) }
+        if !skip.contains(model.contextProvider) { set.insert(model.contextProvider) }
         return set
     }
 
@@ -2851,6 +2930,180 @@ struct SettingsCaption: View {
             .font(.callout)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+// MARK: - On-device cleanup status card
+
+/// Status card for the on-device (local) cleanup provider. Rendered in
+/// Settings → Cleanup when the user picks "On-device". Shows the model
+/// download state (with a Download / Remove button), a residency picker,
+/// and a RAM-tier note on cautioned or unsupported machines.
+///
+/// `@ObservedObject var store` drives redraws on every state transition
+/// (download progress, .ready, .failed) without going through SettingsModel.
+private struct LocalOnDeviceCard: View {
+    @ObservedObject var store: LocalModelStore
+    @ObservedObject var model: SettingsModel
+    @State private var showRemoveConfirmation = false
+
+    private var ramTier: RAMTier { RAMTier.current }
+
+    var body: some View {
+        SettingsCard {
+            // Header
+            Text("On-device model")
+                .font(.system(size: 13, weight: .semibold))
+            Text("Gemma 4 E4B, 4-bit — runs via Apple MLX on this Mac. No cloud calls, no API key.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 0) {
+                Text("Uses Google Gemma 4 (Apache 2.0) · ")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                Link("Learn more", destination: URL(string: "https://ai.google.dev/gemma/docs/gemma_4_license")!)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+
+            // State-driven status row
+            stateRow
+
+            // RAM tier note (cautioned or unsupported)
+            ramTierNote
+
+            // Residency picker
+            HStack(alignment: .center, spacing: 8) {
+                Text("Keep model loaded")
+                    .font(.callout)
+                Picker("", selection: Binding(
+                    get: { model.localResidency },
+                    set: { newVal in
+                        guard newVal != model.localResidency else { return }
+                        model.localResidency = newVal
+                        model.save()
+                    }
+                )) {
+                    Text("Automatic").tag(LocalResidency.auto)
+                    Text("Keep loaded").tag(LocalResidency.keep)
+                    Text("Unload when idle").tag(LocalResidency.idle)
+                }
+                .labelsHidden()
+                .frame(maxWidth: 200)
+                Spacer()
+            }
+            SettingsCaption("Automatic: unloads after 3 min (16 GB Mac) or 30 min (24 GB+ Mac) of inactivity. Keep loaded: model stays warm all session — fastest response but holds ~6 GB of memory. Unload when idle: same as automatic but the idle deadline follows the Automatic default for your tier. Restart to apply.")
+        }
+        .confirmationDialog(
+            "Remove the downloaded model?",
+            isPresented: $showRemoveConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Remove (~4 GB freed)", role: .destructive) {
+                store.remove()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The model will need to be downloaded again (~4 GB) before on-device cleanup is available.")
+        }
+    }
+
+    @ViewBuilder
+    private var stateRow: some View {
+        switch store.state {
+        case .notDownloaded:
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Model not downloaded")
+                        .font(.callout)
+                    Text("~4 GB one-time download required before on-device cleanup is available.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+                Button("Download (~4 GB)") {
+                    store.download()
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        case .downloading(let progress):
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    ProgressView(value: progress)
+                        .frame(maxWidth: 200)
+                    Text("\(Int(progress * 100))%")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                    Spacer()
+                }
+                Text("Downloading… Dictation works without cleanup until the model finishes.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        case .ready:
+            HStack(spacing: 10) {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                    Text("Ready")
+                        .font(.callout)
+                }
+                Spacer()
+                Button("Remove downloaded model (frees ~4 GB)") {
+                    showRemoveConfirmation = true
+                }
+                .foregroundStyle(.red)
+                .buttonStyle(.bordered)
+            }
+        case .failed(let message):
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                    Text("Download failed: \(message)")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Button("Retry") {
+                    store.remove()
+                    store.download()
+                }
+                .buttonStyle(.bordered)
+                Text("Dictation works without cleanup until the model downloads successfully.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var ramTierNote: some View {
+        switch ramTier {
+        case .unsupported:
+            HStack(spacing: 6) {
+                Image(systemName: "exclamationmark.triangle")
+                    .foregroundStyle(.orange)
+                Text("This Mac has less than 12 GB of memory. The cleanup model uses ~6 GB while active, which may cause thrashing on machines with less RAM. Enable at your own risk via config.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        case .cautioned:
+            HStack(spacing: 6) {
+                Image(systemName: "memorychip")
+                    .foregroundStyle(.orange)
+                Text("On a 16 GB Mac, the cleanup model uses ~6 GB while active — this can slow other memory-hungry apps. Parleq frees the memory after a few minutes of inactivity.")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        case .comfortable:
+            EmptyView()
+        }
     }
 }
 

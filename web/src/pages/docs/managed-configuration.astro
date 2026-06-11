@@ -133,7 +133,7 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
           <tr class="bg-[color:var(--color-bg)]">
             <td class="px-4 py-3 font-mono text-[13px] text-[color:var(--color-text)]">cleanupProvider</td>
             <td class="px-4 py-3 font-mono text-[13px]">String</td>
-            <td class="px-4 py-3"><strong class="text-[color:var(--color-text)]">Pin.</strong> Forces a single provider. The picker is disabled and shows only this value. Valid values: <code class="font-mono text-[12px]">gemini</code>, <code class="font-mono text-[12px]">vertex</code>, <code class="font-mono text-[12px]">bedrock</code>, <code class="font-mono text-[12px]">bedrock-bearer</code>, <code class="font-mono text-[12px]">azure</code>, <code class="font-mono text-[12px]">openai</code>.</td>
+            <td class="px-4 py-3"><strong class="text-[color:var(--color-text)]">Pin.</strong> Forces a single provider. The picker is disabled and shows only this value. Valid values: <code class="font-mono text-[12px]">local</code> (on-device cleanup via Gemma 4 E4B / MLX — no auth-mode sub-key; requires the model pre-downloaded or the wizard run with network access; lets orgs pin users to on-device cleanup with no cloud dependency), <code class="font-mono text-[12px]">gemini</code>, <code class="font-mono text-[12px]">vertex</code>, <code class="font-mono text-[12px]">bedrock</code>, <code class="font-mono text-[12px]">bedrock-bearer</code>, <code class="font-mono text-[12px]">azure</code>, <code class="font-mono text-[12px]">openai</code>.</td>
           </tr>
           <tr class="bg-[color:var(--color-surface)]">
             <td class="px-4 py-3 font-mono text-[13px] text-[color:var(--color-text)]">cleanupAllowedProviders</td>

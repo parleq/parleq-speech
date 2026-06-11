@@ -65,6 +65,15 @@ cp "$APP_DIR/Resources/Info.plist" "$APP_BUNDLE/Contents/Info.plist"
 cp "$BINARY" "$APP_BUNDLE/Contents/MacOS/ParleqApp"
 chmod +x "$APP_BUNDLE/Contents/MacOS/ParleqApp"
 
+# Stage the prebuilt MLX Metal shader library next to the executable.
+# `swift build` cannot compile MLX's Metal shaders (Xcode-only build
+# phase); the MLX runtime looks for mlx.metallib next to the executable
+# first (mlx/backend/metal/device.cpp, load_default_library). Must run
+# BEFORE codesign so the metallib is inside the signed bundle.
+# Note: APP_DIR is already resolved above; scripts/ is always a peer of
+# the directory make-app.sh lives in.
+"$APP_DIR/scripts/fetch-metallib.sh" "$APP_BUNDLE/Contents/MacOS"
+
 # Inject the standard macOS-bundle framework search path into the
 # executable's LC_RPATH. SwiftPM doesn't add this for binary-target
 # frameworks (it injects @executable_path/ only, treating the
@@ -267,6 +276,19 @@ else
             --options runtime \
             --timestamp \
             "$SPARKLE_FW"
+    fi
+    # Sign the MLX Metal shader library. `mlx.metallib` is a MetalLib
+    # code object (not a data file), so codesign treats it as a nested
+    # binary and requires it to be signed before the outer .app seal.
+    # Ad-hoc path above uses --deep which covers it automatically.
+    METALLIB_PATH="$APP_BUNDLE/Contents/MacOS/mlx.metallib"
+    if [[ -f "$METALLIB_PATH" ]]; then
+        # No --preserve-metadata=entitlements: MetalLib code objects carry no
+        # entitlements; the flag is only meaningful for XPC service bundles (Sparkle).
+        codesign --force --sign "$IDENTITY" \
+            --options runtime \
+            --timestamp \
+            "$METALLIB_PATH"
     fi
     # Outer .app bundle. No --deep; the nested signatures above
     # remain intact.

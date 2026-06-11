@@ -1,0 +1,107 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import SiteHeader from '../../components/SiteHeader.astro';
+
+---
+
+<Layout title="On-device setup — Parleq" description="Run Parleq's cleanup entirely on your Mac with the on-device option — Gemma 4 E4B via Apple MLX. No API key, no cloud account, no network boundary.">
+  <SiteHeader active="docs" />
+
+  <article class="mx-auto max-w-2xl px-6 pt-16 pb-24">
+    <p class="text-sm">
+      <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/'} class="text-[color:var(--color-text-subtle)] hover:text-[color:var(--color-text-muted)]">← Docs</a>
+    </p>
+
+    <p class="mt-8 text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">On-device · no cloud</p>
+    <h1 class="mt-4 font-display text-4xl leading-[1.1] font-medium tracking-tight sm:text-5xl">
+      On-device cleanup
+    </h1>
+    <p class="mt-6 text-[17px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      The on-device option runs the cleanup pass entirely on your Mac — no API key, no cloud account, no per-call cost, and no network boundary for your transcript. It uses Google's Gemma 4 E4B model (Apache 2.0), quantized to 4-bit and run in-process through Apple's MLX framework. Pick this when transcript content must never leave your machine, when you have no internet for cleanup, or when you simply don't want to manage a provider account. Cleanup quality is comparable to the cloud providers on the short text Parleq generates; the trade-off is a one-time model download and a memory footprint while the model is loaded.
+    </p>
+
+    <div class="mt-8 rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6">
+      <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-text-subtle)]">At a glance</p>
+      <ul class="mt-3 space-y-2 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
+        <li><strong class="text-[color:var(--color-text)]">Auth:</strong> None. No account, no key.</li>
+        <li><strong class="text-[color:var(--color-text)]">Model:</strong> Gemma 4 E4B (4-bit, MLX), downloaded once from Hugging Face — about 4 GB.</li>
+        <li><strong class="text-[color:var(--color-text)]">Memory:</strong> ~6 GB while the model is loaded; Parleq frees it after a few minutes of inactivity.</li>
+        <li><strong class="text-[color:var(--color-text)]">Requirement:</strong> A Mac with at least 12 GB of RAM. On Macs with less, the option appears in the picker but can't be selected.</li>
+        <li><strong class="text-[color:var(--color-text)]">Network:</strong> None for cleanup — your transcript never crosses a network boundary. The only network use is the one-time model download you initiate.</li>
+        <li><strong class="text-[color:var(--color-text)]">Cost:</strong> $0. No per-call charges, ever.</li>
+      </ul>
+    </div>
+
+    <h2 class="mt-12 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+      Setup
+    </h2>
+    <ol class="mt-6 space-y-7 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      <li class="flex gap-4">
+        <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums">1.</span>
+        <div>
+          <p class="text-[color:var(--color-text)] font-medium">Choose On-device.</p>
+          <p class="mt-2">
+            On first launch the setup wizard asks how you want cleanup handled. Pick <strong class="text-[color:var(--color-text)]">On-device</strong>. Already past the wizard? Open <strong class="text-[color:var(--color-text)]">Settings… → Cleanup → Provider</strong> and switch to <strong class="text-[color:var(--color-text)]">On-device</strong>.
+          </p>
+          <p class="mt-2 text-[14px] text-[color:var(--color-text-subtle)]">
+            On a Mac with less than 12 GB of RAM the option is visible but disabled — the model's ~6 GB working set would crowd out your other apps, so Parleq won't let you select it.
+          </p>
+        </div>
+      </li>
+
+      <li class="flex gap-4">
+        <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums">2.</span>
+        <div>
+          <p class="text-[color:var(--color-text)] font-medium">Let the model download.</p>
+          <p class="mt-2">
+            Selecting On-device starts a one-time ~4 GB download from Hugging Face. Progress shows in the wizard and in the menu-bar item; you can keep using Parleq (it pastes raw transcription until the model is ready). The model is stored at <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">~/Library/Application Support/Parleq/models/</code>.
+          </p>
+        </div>
+      </li>
+
+      <li class="flex gap-4">
+        <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums">3.</span>
+        <div>
+          <p class="text-[color:var(--color-text)] font-medium">Test a dictation.</p>
+          <p class="mt-2">
+            Hold <kbd class="rounded border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-2 py-0.5 font-mono text-sm">right Option</kbd>, say a sentence, release. The first dictation after launch loads the model (a couple of seconds); after that, cleanup runs in well under a second, entirely on your Mac.
+          </p>
+        </div>
+      </li>
+    </ol>
+
+    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+      Memory &amp; residency
+    </h2>
+    <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      <p>
+        While the model is loaded it uses about 6 GB of memory. Parleq keeps it resident only as long as you're actively dictating and unloads it after a few minutes of inactivity, returning that memory to the system. The first dictation after an unload reloads the model (a couple of seconds); subsequent ones are fast.
+      </p>
+      <p>
+        You can change this in <strong class="text-[color:var(--color-text)]">Settings → Cleanup</strong> with the <strong class="text-[color:var(--color-text)]">Keep model loaded</strong> control — <strong class="text-[color:var(--color-text)]">Automatic</strong> (the default), <strong class="text-[color:var(--color-text)]">Keep loaded</strong> (no reload pause, but holds the memory), or <strong class="text-[color:var(--color-text)]">Unload when idle</strong>.
+      </p>
+    </div>
+
+    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+      Removing the model
+    </h2>
+    <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      <p>
+        To reclaim the disk space, open <strong class="text-[color:var(--color-text)]">Settings → Cleanup</strong> and click <strong class="text-[color:var(--color-text)]">Remove downloaded model</strong>. That deletes the weights from <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">~/Library/Application Support/Parleq/models/</code> and frees the in-memory copy immediately. You can re-download anytime by selecting On-device again, or switch to a cloud provider or to no cleanup at all.
+      </p>
+    </div>
+
+    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+      Privacy &amp; licensing
+    </h2>
+    <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      <p>
+        Nothing about your dictation leaves your Mac on this path. Audio stays on-device (as always), and with on-device cleanup the transcript never crosses a network boundary either — there is no provider receiving your text. See the <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/privacy/'} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">privacy policy</a> for the full data posture.
+      </p>
+      <p>
+        The model is Google Gemma 4, licensed under the <a href="https://ai.google.dev/gemma/docs/gemma_4_license" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Apache 2.0 license</a>. Parleq doesn't redistribute the weights — your Mac downloads them from Hugging Face when you enable this option.
+      </p>
+    </div>
+  </article>
+
+</Layout>

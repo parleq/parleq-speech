@@ -4,8 +4,8 @@ This document is the starting point for an enterprise security / cloudops review
 
 The intended audience is a security reviewer who needs to decide whether deploying Parleq on a managed workstation meets the organization's policy. We've tried to make every claim grep-able to a specific file in the source tree, so anything here can be verified independently.
 
-**Last reviewed:** 2026-06-08 (v0.21.0 — added the metadata-only `preset-usage.jsonl` + `preset-usage-declined.json` on-disk artifacts (§2, §5), the optional `oidc-client-secret` Keychain item (§4.1), and the config-only `llm.tuning` request-shape knobs (§6); enumerated the in-memory-only Learned activity log + dismissed-preset hashes (§5); prior 2026-06-06 OIDC loopback-redirect content unchanged)
-**Source:** [github.com/parleq/parleq-speech](https://github.com/parleq/parleq-speech) at v0.17.0 or later
+**Last reviewed:** 2026-06-10 (added the on-device cleanup option: in-process MLX inference path where transcript text crosses no network boundary (§1, §2, §6, §9.1); one new outbound flow — user-initiated Gemma 4 E4B model download from huggingface.co (~4 GB, TLS; §6); eval/debug env vars noted (§5); bundled mlx.metallib supply-chain note (§7); prior 2026-06-08 v0.22.0 content unchanged)
+**Source:** [github.com/parleq/parleq-speech](https://github.com/parleq/parleq-speech) at v0.23.0 or later
 **Review trigger / context:** [docs/SETUP.md](SETUP.md) covers end-user installation; this document covers the security model.
 
 ---
@@ -15,11 +15,11 @@ The intended audience is a security reviewer who needs to decide whether deployi
 Parleq is an open-source macOS dictation utility. The user holds a global hotkey (right Option), speaks, and a cleaned-up transcript appears in a floating overlay; on accept, the cleaned text pastes into whatever app was focused. Two passes:
 
 1. **Speech-to-text (ASR):** local FluidAudio Parakeet TDT v3 inference on the Apple Neural Engine, **in-process** (no separate sidecar, no listening sockets). Audio never leaves the device.
-2. **LLM cleanup:** the raw transcript goes to a configurable LLM provider — one of **Google Gemini** (direct API), **OpenAI** (direct API), **Google Vertex AI**, **AWS Bedrock**, or **Azure OpenAI** — or cleanup can be skipped entirely (paste raw ASR). Cleanup output streams into the overlay; on accept it pastes and is forgotten.
+2. **LLM cleanup:** the raw transcript goes to a configurable LLM provider — one of **Google Gemini** (direct API), **OpenAI** (direct API), **Google Vertex AI**, **AWS Bedrock**, or **Azure OpenAI** — or to the **on-device cleanup** option (in-process MLX inference on the user's Mac, **no network boundary**), or cleanup can be skipped entirely (paste raw ASR). Cleanup output streams into the overlay; on accept it pastes and is forgotten.
 
 There is no server-side storage of audio or transcripts. Parleq's only persistent local state is under `~/.parleq/`: user configuration (settings + custom dictionary), a metadata-only LLM-call ledger, and a metadata-only per-dictation metrics file — none contain transcript text. Provider secrets live in the macOS Keychain.
 
-**What changed since this packet was last reviewed (v0.9.0).** Four LLM providers were added beyond Gemini (OpenAI, Vertex AI, Bedrock, Azure OpenAI), each with its own authentication; the **Reference Windows** feature lets the user optionally attach a window's content (captured via ScreenCaptureKit) as cleanup context, which introduces a Screen Recording permission and a new outbound data class; a persistent **text-free** metrics file was added; the managed-configuration (MDM) surface grew substantially; and the opt-in **"learn from corrections"** feature (v0.18.0) introduces a bounded in-memory correction journal covered in §5.2 and §9.8. Each is covered below.
+**What changed since this packet was last reviewed (v0.9.0).** Four LLM providers were added beyond Gemini (OpenAI, Vertex AI, Bedrock, Azure OpenAI), each with its own authentication; the **Reference Windows** feature lets the user optionally attach a window's content (captured via ScreenCaptureKit) as cleanup context, which introduces a Screen Recording permission and a new outbound data class; a persistent **text-free** metrics file was added; the managed-configuration (MDM) surface grew substantially; the opt-in **"learn from corrections"** feature (v0.18.0) introduces a bounded in-memory correction journal covered in §5.2 and §9.8; and the **on-device cleanup option** (`provider=local`, v0.23.0) adds in-process MLX inference (Gemma 4 E4B) so transcript text crosses no network boundary — see §2 and §9.1. Each is covered below.
 
 ---
 
@@ -41,11 +41,18 @@ There is no server-side storage of audio or transcripts. Parleq's only persisten
    │     │                                    │   │
    │     ◄────────── transcript text ─────────┘   │
    │     │                                        │
+   │     │  ┌─ on-device cleanup (provider=local) ┤
+   │     │  │  LocalLLMProvider (in-process MLX)  │
+   │     │  │  Gemma 4 E4B · NO network boundary  │
+   │     │  │  (model downloaded once from        │
+   │     │  │  huggingface.co ~4 GB — see §6)     │
+   │     ◄──┘                                     │
+   │     │                                        │
    │     ▼ transcript text (+ attached reference   │
    │       window content, only if the user used   │
    │       Reference Windows this dictation)        │
    └─────┬──────────────────────────────────────────┘
-         │
+         │  (cloud provider path only — not taken when provider=local)
          │  (HTTPS; per-provider auth — API key / Bearer / SigV4 / OAuth)
          │
          ▼
@@ -66,6 +73,13 @@ There is no server-side storage of audio or transcripts. Parleq's only persisten
    │  app (Cmd-V simulation), pasteboard restored after.  │
    └──────────────────────────────────────────────────────┘
 ```
+
+**On-device cleanup (provider=local).** When the user selects the on-device cleanup option, transcript text is processed entirely in-process by `LocalLLMProvider` using the MLX framework and a locally-resident Gemma 4 E4B model. **Transcript text crosses no network boundary** on that path — the only outbound flows associated with the local tier are:
+
+1. **One-time model download:** ~4 GB of model weights from `huggingface.co`, user-initiated (via Settings or the Setup Wizard), TLS-only, anonymous, resume-capable. This does not carry any user speech or transcript data. Blocking `huggingface.co` entirely leaves all cloud-provider and "none" modes fully functional; the local option simply cannot be set up. For MDM-managed fleets that must prevent all `huggingface.co` access, pin away from `provider=local` (or block the download host at the network layer); the app fails closed to whatever other provider is configured.
+2. **Nothing else.** No LLM API call, no cleanup payload egress, no telemetry.
+
+The eval/debug hook environment variables `PARLEQ_LEARN_TRIGGER` and `PARLEQ_LEARN_MIN_INTERVAL` are **debug-only tuning knobs for the learning analyzer** (see §5.2 and the environment-variable table in CLAUDE.md). They carry no credential or transcript content and are not a network boundary — they only change when the off-hot-path LearningAnalyzer fires relative to its default thresholds.
 
 **No listening sockets on the default path.** Parleq's default ASR path runs in-process. Earlier builds (≤ v0.8.x) hosted FluidAudio inside a bundled HTTP sidecar on `127.0.0.1:8767`; v0.9.0 retired that boundary. Audio buffers move between AudioRecorder and LocalASR as a Swift `Data` value within the same process — no socket, no IPC, no bearer-token negotiation between two halves of the same install. Users who explicitly configure a custom `asr.endpoint` to point at their own external server (Sherpa-ONNX, faster-whisper) opt into a localhost HTTP path; that's the only scenario in which any local socket is involved, and the server's lifecycle and auth are the user's responsibility.
 
@@ -92,10 +106,11 @@ There is no server-side storage of audio or transcripts. Parleq's only persisten
 
 Parleq trusts:
 - The user's macOS user account (process isolation, Keychain ACLs, AWS/gcloud/az CLI session-cache integrity).
-- The configured LLM provider HTTPS endpoint(s) — chosen from Gemini, OpenAI, Vertex AI, Bedrock, or Azure OpenAI. Parleq has two tiers (a Cleanup provider and an optional Context provider for reference-aware turns) that may be *different* providers, so data can reach up to two of them (§3.2, §6).
+- The configured LLM provider HTTPS endpoint(s) — chosen from Gemini, OpenAI, Vertex AI, Bedrock, or Azure OpenAI. Parleq has two tiers (a Cleanup provider and an optional Context provider for reference-aware turns) that may be *different* providers, so data can reach up to two of them (§3.2, §6). When `provider=local` is selected, no cloud LLM endpoint is trusted or contacted for cleanup.
 - macOS system frameworks **ScreenCaptureKit** and **Vision** (used by Reference Windows to capture + OCR a window the user explicitly picks; only exercised when that feature is used).
 - LiteLLM's community pricing JSON (`raw.githubusercontent.com/BerriAI/litellm/...`) — used for cost reporting only; not load-bearing for any user-facing functionality. **Disable-able via the `livePricingEnabled: false` MDM key (fleet-wide) or the `PARLEQ_DISABLE_LIVE_PRICING=1` env var (single user).**
 - The FluidAudio model artifacts in `~/Library/Application Support/FluidAudio/Models/` (downloaded by FluidAudio's own loader from `huggingface.co` on first run; their integrity is FluidAudio's responsibility, not Parleq's).
+- The on-device cleanup model artifacts in `~/Library/Application Support/Parleq/models/` (downloaded by Parleq's own `LocalModelStore` from `huggingface.co` at user request; model weights are downloaded over TLS and accepted on that channel's integrity — the `.parleq-ready` marker is a completion sentinel written only after all files land, not a cryptographic hash of the weights — the same trust posture as the FluidAudio ASR models; the Metal shader library `mlx.metallib` IS SHA-256-verified at build time — §7).
 
 Parleq does **not** trust:
 - Other processes on the user's device (Keychain is per-app via service identifier; no listening sockets to attack in the first place — see §3.1).
@@ -232,6 +247,7 @@ Parleq writes the following files. Audited against the enterprise rule "no input
 | `~/.parleq/pricing-cache.json` | LiteLLM JSON snapshot (public reference data). | Not user data. Disable-able via `PARLEQ_DISABLE_LIVE_PRICING=1`. |
 | `~/.parleq/app.log` | Stderr-redirected diagnostics: phase transitions, ASR latency + length, LLM token counts, model-load progress, error stack traces. Capped at 10 MB; truncates to last 5 MB on launch when over the cap. | **No transcript content, no audio, no auth values.** Same redaction discipline as the rest of the codebase. Learning-analysis log output is count-only (records analyzed, proposals produced) — no correction snippet content. Skipped in dev mode (when stderr is a TTY). **Debug builds only:** development builds (never the released binaries — the gate is a compile-time `#if DEBUG` inside the FluidAudio dependency) emit verbose third-party ASR logs that can include transcript text. As of the 2026-06 audit (§8.1, finding #11), debug builds **no longer redirect stderr to `app.log`** unless `PARLEQ_DEBUG_LOG=1` is explicitly set, so that transcript-bearing debug output stays on the developer's terminal and off disk; a security review of a release build is unaffected either way. **Opt-in trace exception:** setting the `PARLEQ_VOCAB_TRACE=1` environment variable restores per-replacement vocabulary detail (`replaced 'X' → 'Y'`) in the log, which includes transcript-derived words — off by default, requires the user to deliberately set the variable on their own machine, and is intended for short-lived debugging only. `PARLEQ_HOTKEY_TRACE=1` emits keypress timing metadata only (gap/hold durations, classifier booleans — no content). `PARLEQ_BEDROCK_TRACE=1` enables Soto's debug logger, whose output CAN include request bodies (transcript text) and auth material — but it activates only when stderr is a TTY (a developer terminal session); in the bundled app, where stderr is redirected to `app.log`, the variable has no effect, so this content cannot reach the log file. |
 | `~/Library/Application Support/FluidAudio/Models/` | Downloaded Parakeet TDT v3 + CTC vocab encoder model weights. | Public model artifacts, not user data. |
+| `~/Library/Application Support/Parleq/models/` | On-device cleanup model weights (Gemma 4 E4B QAT 4-bit, `mlx-community/gemma-4-E4B-it-qat-4bit`). Present only when the user has downloaded the model. Not user data. Removed via Settings → Cleanup → Remove model. | Public model artifacts, not user data. |
 
 **Explicitly NOT written to disk:**
 - Audio bytes (WAV or PCM). `AudioRecorder.stop()` returns `Data` in memory; the bundled `LocalASR` decodes that buffer to Float samples in-process and hands them to FluidAudio without touching the filesystem. When the user has configured a custom `asr.endpoint`, `ASRClient` POSTs via `request.httpBody` (in-memory), not `httpBodyStream` (potentially file-backed).
@@ -310,12 +326,14 @@ All network calls are HTTPS via URLSession or Soto, both using the system trust 
 | `sts.<region>.amazonaws.com` | AWS leg of OIDC federation: `AssumeRoleWithWebIdentity` — the OIDC **ID token** goes out, **temporary AWS credentials** come back. This is an **unauthenticated** STS call (no Parleq-held AWS secret; the role's trust policy is the gate). **No transcript content.** | Periodic, near the federated credential's expiry (refresh-ahead) | Only when `aws.auth_mode = "oidc"`. Use a key-based Bedrock auth mode instead. |
 | `sts.googleapis.com` | GCP leg of OIDC federation: Workforce Identity Federation token exchange — the OIDC **ID token** goes out, a **federated access token** comes back (used directly as the Vertex bearer). **No transcript content.** | Periodic, near the federated token's expiry (refresh-ahead) | Only when `vertex.auth_mode = "oidcFederation"`. Use gcloud ADC or service-account auth instead. |
 | `raw.githubusercontent.com/BerriAI/litellm/...` | LiteLLM pricing JSON | Once per 24 h, on launch | MDM `livePricingEnabled: false` (fleet) or `PARLEQ_DISABLE_LIVE_PRICING=1` (single user) |
-| `huggingface.co` (FluidAudio's loader) | First-run model download (Parakeet TDT v3 ≈ 150 MB; CTC encoder ≈ 97 MB if custom dictionary used) | Once per machine, then cached at `~/Library/Application Support/FluidAudio/Models/` | N/A — bundled ASR requires the models. Switch to a custom `asr.endpoint` to skip. |
+| `huggingface.co` (FluidAudio's loader) | First-run ASR model download (Parakeet TDT v3 ≈ 150 MB; CTC encoder ≈ 97 MB if custom dictionary used) | Once per machine, then cached at `~/Library/Application Support/FluidAudio/Models/` | N/A — bundled ASR requires the models. Switch to a custom `asr.endpoint` to skip. |
+| `huggingface.co` (Parleq's `LocalModelStore`) | On-device cleanup model download (Gemma 4 E4B QAT 4-bit, mlx-community checkpoint, **~4 GB**, TLS, anonymous, resume-capable). Carries **no transcript content** — only model weight files. | **Once, user-initiated** (via Settings or Setup Wizard, only when the user selects the on-device cleanup option); cached at `~/Library/Application Support/Parleq/models/`. Never triggered without explicit user action. | Pin `provider` away from `local` via MDM, or block `huggingface.co` at the network layer. Cloud providers and "none" remain fully functional without this download. |
 | `parleq.app/appcast.xml` | Sparkle auto-update check | On app launch + every 24 h (default; configurable) | Settings → Updates → "Automatically check for updates" off. The menu-bar "Check for Updates…" item still hits the URL on demand. |
 | `github.com/parleq/parleq-speech/releases/download/...` | Downloads the .dmg referenced by the appcast, when the user accepts an update prompt | Per update install (user-initiated) | Don't accept the prompt; the request never fires. |
 
 **Outbound data classifications:**
-- Transcript text → the configured **Cleanup** provider for ordinary dictations. A reference-aware dictation's transcript + reference content goes to the **Context** provider/model instead when one is configured (otherwise it also uses the Cleanup provider) — so over time data can reach both configured providers (§3.2).
+- **When `provider=local`:** transcript text does **not** leave the device for cleanup. The only outbound activity of the local tier is the one-time user-initiated model download (above), which carries no user content.
+- **When a cloud provider is configured:** Transcript text → the configured **Cleanup** provider for ordinary dictations. A reference-aware dictation's transcript + reference content goes to the **Context** provider/model instead when one is configured (otherwise it also uses the Cleanup provider) — so over time data can reach both configured providers (§3.2).
 - Attached reference content (OCR'd window/file/clipboard text, or a PNG when a vision model is selected) → the **Context** provider when one is configured, else the Cleanup provider — **only** when the user used Reference Windows for that dictation (§9.6).
 - Reference-aware prompts also carry lightweight **labels** built by `PromptBuilder`: a `Destination: <app>` line (the paste-target app name) and, per attached reference, a `Reference N — <app> — <sanitized window title>` line. So the target app name and the attached windows' app names + (sanitized) titles reach the LLM on reference-aware dictations. **Ordinary (no-reference) cleanup sends none of this** — just the transcript (+ dictionary hint).
 - Request metadata (model ID, region/resource, token-shaped JSON body) → the provider. The request-shape parameters (request timeout, per-model thinking budget, max-output-tokens, sampling temperature, TTFT watchdog deadlines) are config-tunable via an advanced `llm.tuning` section (`LLMTuning.swift`; config-file only — no Settings UI, no MDM key). It has no security impact — the defaults preserve the documented behavior, and the only payload that egresses is unchanged (transcript text + the usual token-shaped body); these knobs only adjust timeouts/limits.
@@ -332,7 +350,17 @@ All network calls are HTTPS via URLSession or Soto, both using the system trust 
 | Soto (`SotoBedrockRuntime`) | AWS SigV4, ConverseStream, SSO credential resolution | `"7.14.0"..<"7.15.0"` | `soto-project/soto` |
 | FluidAudio | In-process ASR (Parakeet TDT v3) + CTC custom-vocab boosting | `"0.14.3"..<"0.15.0"` | `FluidInference/FluidAudio` |
 | Sparkle | Auto-update framework (Ed25519-signed appcast → download → relaunch). Open-source, the de-facto standard for third-party Mac auto-updates, widely deployed across the ecosystem. | `"2.9.0"..<"2.10.0"` | `sparkle-project/Sparkle` |
+| mlx-swift | In-process MLX compute framework for the on-device cleanup tier | exact `0.31.4` | `ml-explore/mlx-swift` |
+| mlx-swift-lm | LLM inference layer (MLXLLM, MLXLMCommon) for the on-device cleanup tier | commit `b95dc78` | `ml-explore/mlx-swift-lm` |
+| swift-transformers | Tokeniser (AutoTokenizer, BPE/SentencePiece) for the on-device cleanup tier | exact `1.3.3` | `huggingface/swift-transformers` |
+| swift-huggingface | Hub client (model download) for the on-device cleanup tier | exact `0.9.0` | `huggingface/swift-huggingface` |
 | swift-nio, swift-crypto, swift-certificates | Transitive | (Soto / FluidAudio deps) | Apple |
+
+**mlx.metallib (prebuilt Metal shader library).** MLX's Metal compute kernels cannot be compiled from source via SwiftPM (`swift build` does not run Xcode build phases). `parleq-app/scripts/fetch-metallib.sh` fetches the prebuilt `mlx.metallib` from the matching mlx-swift GitHub release asset at build time, verifies it against a hardcoded SHA-256, and places it in `Parleq.app/Contents/MacOS/` before codesign. The SHA-256 constant and the mlx-swift version must be updated together when the mlx-swift pin is bumped (the script enforces this with a cross-check against `Package.resolved`). This is a build-time supply-chain step: the metallib is signed inside the notarized bundle, and a version mismatch fails the build rather than silently using mismatched kernels.
+
+**On-device cleanup model license.** The runtime checkpoint (`mlx-community/gemma-4-E4B-it-qat-4bit`) is a derivative of `google/gemma-4-e4b-it` and is licensed **Apache 2.0** per its Hugging Face model card and https://ai.google.dev/gemma/docs/gemma_4_license. This is a deliberate change from the custom Gemma Terms of Use that governed Gemma 1–3; Gemma 4 is ungated — anonymous download is permitted, and no model-access approval is required.
+
+**Vendored `VendoredGemma4Text.swift`.** A lightly modified copy of the Gemma 4 text-model graph from `ml-explore/mlx-swift-lm` is vendored in-tree under an MIT license (see `THIRD_PARTY_LICENSES.md` Embedded components). The vendored copy carries a KV-shared gating fix that has not yet landed upstream; it is a temporary measure pending resolution of `ml-explore/mlx-swift-lm#338`, at which point the vendored file will be removed and the upstream dependency used directly.
 
 `Package.resolved` is **committed** to the repository — fresh clones build against the exact dependency graph we tested. Bumping a dependency requires an explicit `swift package update` + reviewable commit diff. See [CLAUDE.md § Dependency upgrade policy](../CLAUDE.md) for the periodic-upgrade ritual.
 
@@ -429,7 +457,12 @@ A three-dimension adversarial audit (disk persistence / logging / network + misc
 
 When LLM cleanup is enabled (default), the **raw transcript text** (plus any attached reference content — §9.6) is sent to a configured LLM provider as part of the cleanup request. This is intentional — it's the entire point of the cleanup pass — but it means transcript content crosses an organizational boundary. **Both tiers matter:** ordinary dictations go to the **Cleanup** provider, and reference-aware dictations go to the **Context** provider when one is configured (otherwise the Cleanup provider) — so **both configured providers must satisfy your data-residency policy**, not just one. Mitigation: choose providers that match it — Gemini = Google; OpenAI = OpenAI; Vertex AI = Google but in *your* GCP project (IAM + audit logs); Bedrock = your own AWS account; Azure OpenAI = your Microsoft tenant — and on managed Macs pin **both** tiers fleet-wide via MDM (§9.7).
 
-If transcript content must never leave the device, set cleanup to **None** — choose **"None — skip cleanup, paste raw ASR"** in the **Setup wizard** (menu bar → **Run Setup…**, re-runnable any time), set `llm.provider = "none"` in `~/.parleq/config.json`, or pin `cleanupProvider` off via MDM. (The in-app **Settings** picker does *not* list None — it's a setup-wizard / config / MDM action.)
+If transcript content must never leave the device, there are two options:
+
+1. **On-device cleanup (`provider=local`)** — selects `LocalLLMProvider` (in-process MLX inference). Transcript text is processed entirely in-process; **no cleanup payload egresses**. The only network activity of this tier is the one-time user-initiated model download from `huggingface.co` (~4 GB, carries no user content). Select in the **Setup Wizard** or Settings → Cleanup → provider picker. Requires a 12 GB+ Mac and the one-time model download before it can be used.
+2. **No cleanup (`provider=none`)** — pastes the raw ASR transcript with no LLM pass at all. Choose **"None — skip cleanup, paste raw ASR"** in the **Setup wizard** (menu bar → **Run Setup…**, re-runnable any time), set `llm.provider = "none"` in `~/.parleq/config.json`, or pin `cleanupProvider` off via MDM. (The in-app **Settings** picker does *not* list None — it's a setup-wizard / config / MDM action.)
+
+Either option ensures transcript content never leaves the device at the LLM step. `provider=local` requires that the model download has occurred and the Mac has sufficient RAM; `provider=none` has no prerequisites.
 
 `provider = none` is a **global off switch**: `Config.modelForInvocation` short-circuits to the (nil) cleanup provider for *every* dictation — including reference-aware ones — when `llmProvider == "none"`, and `main.swift` does not build a Context provider in that case either. So both ordinary and reference-aware dictations paste the raw on-device ASR and make **no** LLM call; you do **not** need to separately clear `context_model`. One caveat: merely *not configuring an API key* is **not** sufficient — the federated auth modes (Bedrock SSO, Vertex ADC, Azure Entra) need no key yet still egress; you must explicitly select `none`.
 
@@ -456,6 +489,8 @@ When the user attaches a window (or file / clipboard) as context, that content �
 ### 9.7 Destination pinning on managed Macs
 
 Beyond enabling/disabling features, managed configuration can pin *where data goes* so a user can't redirect it to a personal account: cleanup/context provider, allowed providers + models (`cleanupProvider`, `cleanupAllowedProviders`, `cleanupModel`, `contextProvider`, …), auth mode (`bedrockAuthMode`, `azureAuthMode`, `staticApiKeysAllowed`), the Sparkle update feed URL, logging mode, transcript-history retention, the **ASR endpoint** (pinning it closes the "point dictation audio at an arbitrary server" gap within an otherwise-allowed config), and the **correction-journal feature + retention** (`learnFromCorrectionsEnabled`, `learnedCorrectionsMaxEntries`, `learnedCorrectionsRetentionHours` — see §5.2 and §9.8). The enterprise OIDC federation surface is pinnable the same way: `oidcIssuer`, `oidcClientID`, `oidcScopes`, `oidcEphemeralBrowserSession`, `oidcRedirectURI`, `oidcExtraAuthParams`, `awsRoleArn`, `awsSessionDurationSeconds`, and `vertexWorkforceProvider` (see §3.4). The authoritative key set lives in `ManagedConfig.swift`; the public reference is [parleq.app/docs/managed-configuration](https://parleq.app/docs/managed-configuration/).
+
+`cleanupProvider` accepts `gemini`, `openai`, `vertex`, `bedrock`, `bedrock-bearer`, `azure`, `none`, and `local`. Orgs may pin `local` to enforce on-device-only cleanup for compliance — this ensures transcript text never crosses a network boundary at the LLM step. Note that `local` has no auth-mode sub-key and requires the model to be pre-downloaded (or the Setup Wizard run with network access to `huggingface.co`) before dictation cleanup will work; pinning it without pre-downloading leaves cleanup non-functional until the download completes.
 
 ### 9.8 Opt-in correction journal (learn from corrections)
 
@@ -503,6 +538,8 @@ For reviewers who want to verify the claims above against code:
 | Learned-changes store (auto-apply / suggest / revert; in-memory only) | `parleq-app/Sources/ParleqAppCore/LearnedStore.swift` |
 | MDM keys for correction ring (3 keys) | `parleq-app/Sources/ParleqAppCore/ManagedConfig.swift` (search "learnFromCorrections") |
 | OIDC loopback-redirect listener (127.0.0.1-only, ephemeral port, static response, defer teardown) | `parleq-app/Sources/ParleqAppCore/LoopbackRedirectServer.swift`; selection + browser open in `CompanyAccountView.swift` (`makeOIDCAuthenticator` / `loopbackRedirectAuthenticator`); validator in `ManagedConfig.swift` (`validateOIDCRedirectURI`) |
+| On-device cleanup (in-process MLX inference, no network boundary on the cleanup path) | `parleq-app/Sources/ParleqAppCore/LocalLLMProvider.swift` (provider impl + enable_thinking:false invariant), `ResidencyManager.swift` (model load/unload lifecycle), `LocalModelStore.swift` (download + state machine), `LocalTokenizerBridge.swift` (tokenizer + chat-template formatting), `VendoredGemma4Text.swift` (temporary vendored Gemma 4 model graph) |
+| On-device model download (user-initiated, huggingface.co, ~4 GB, no transcript content) | `parleq-app/Sources/ParleqAppCore/LocalModelStore.swift` (`download()` method, `HubClient` usage); `fetch-metallib.sh` (SHA-256-verified prebuilt Metal shader library) |
 
 ---
 
@@ -544,6 +581,11 @@ grep -l "SecItemAdd\|kSecClassGenericPassword" parleq-app/Sources/
 
 # 8. Confirm usage ledger is metadata-only.
 head -3 ~/.parleq/usage.jsonl 2>/dev/null | jq
+
+# 9. Confirm on-device cleanup has no HTTP request path.
+#    Expected: no matches (LocalLLMProvider runs in-process; the only
+#    HF network call is the model download in LocalModelStore).
+grep -rn "URLSession\|URLRequest\|http" parleq-app/Sources/ParleqAppCore/LocalLLMProvider.swift
 ```
 
 For the operational side (AWS account configuration, Identity Center, Bedrock model access), see [`docs/SETUP.md`](SETUP.md). For the public-facing architecture walkthrough, see [parleq.app/how-it-works](https://parleq.app/how-it-works/).
@@ -552,6 +594,7 @@ For the operational side (AWS account configuration, Identity Center, Bedrock mo
 
 ## Appendix: change log relevant to security posture
 
+- **2026-06-10** (on-device cleanup tier): documented the new on-device cleanup option (`provider=local`, §1, §2, §9.1): in-process MLX inference where transcript text crosses no network boundary at all. The ONE new outbound flow: user-initiated Gemma 4 E4B model download from `huggingface.co` (~4 GB, TLS, anonymous, resume-capable, no user content; §6). Noted the eval/debug env vars `PARLEQ_LEARN_TRIGGER` / `PARLEQ_LEARN_MIN_INTERVAL` are credential-free debug-only tuning knobs. Noted the bundled `mlx.metallib` prebuilt Metal shader library fetched at build time from the pinned mlx-swift release asset, SHA-256-verified (§7). Added 4 MLX/HuggingFace dependencies to §7. No new on-disk transcript store; no new listening socket; no new Keychain item.
 - **2026-06-08** (v0.22.0): the enterprise-federation fail-closed "signed out" notice in the dictation overlay is now clickable — tapping runs the **same** interactive OIDC sign-in as Settings → Company Account against the one shared session, then offers an opt-in re-clean of the retained raw transcript. Scoped to the federation case only (Bedrock `oidc`, Vertex `oidcFederation`/`googleOAuth`), keyed off a typed signal rather than the hint text. **No new trust boundary, listening socket, on-disk store, or token surface** — only sign-in *state* (not tokens or identity) crosses into the overlay layer; the loopback listener (§3.4.1), when that redirect is configured, can now be opened from the overlay but is otherwise unchanged (see §3.4 fail-closed bullet). Re-cleaning is never automatic.
 - **2026-06-08** (v0.21.0): added a new **metadata-only** on-disk artifact pair — `~/.parleq/preset-usage.jsonl` + `~/.parleq/preset-usage-declined.json` (timestamps, preset IDs/names, app bundle IDs, `manual`/`default` source, declined (app, preset) pairs; **no transcript content**), same compliance class as `usage.jsonl`/`metrics.jsonl`/`pricing-cache.json` (§2, §5). Added the optional `oidc-client-secret` Keychain item — **client configuration, not a user credential**, survives sign-out, needed only for Google "Desktop app" OAuth clients (§4.1); owner-stamped with its client_id/issuer so a stale secret is never sent to a different reconfigured client. Documented the config-only `llm.tuning` request-shape knobs (timeout / thinking budget / max-output-tokens / temperature / TTFT deadlines — no Settings UI, no MDM key; **no security impact**, defaults preserve documented behavior) (§6). Enumerated the in-memory-only Learned **activity log** and **dismissed-preset hashes** in the "explicitly NOT written to disk" list (§5). No new egress boundary, no new transcript-bearing store, no new MDM surface.
 - **2026-06-06** (OIDC loopback-redirect sign-in): added the Google "Desktop app" loopback-redirect authenticator (§3.4.1). This introduces the **one precisely-scoped exception** to the "no listening sockets" posture: a transient 127.0.0.1-only listener on an ephemeral port, bound only for the duration of an active interactive sign-in, single callback, static response, immediate defer-based teardown, no callback URL/query logged. Updated the no-listening-sockets language (§3, §3.1), the lsof verification claim + cheat-sheet command, the §9.9 callback-hijack note (loopback registers no scheme; same PKCE+state), and the §10 source map. Config validator relaxed to accept `http://` + loopback redirects (still rejects `https://` and non-loopback `http://`). No new on-disk store of any kind.

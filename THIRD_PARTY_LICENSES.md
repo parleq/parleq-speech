@@ -21,18 +21,21 @@ copy for users who want a clickable view.
 
 | Category | Count | License |
 |---|---|---|
-| Direct SwiftPM dependencies (parleq-app) | 3 | 2× Apache-2.0; 1× MIT (Sparkle) |
-| Transitive SwiftPM dependencies | 25 | Apache-2.0 |
+| Direct SwiftPM dependencies (parleq-app) | 7 | 4× Apache-2.0 (FluidAudio, Soto, swift-transformers, swift-huggingface); 3× MIT (Sparkle, mlx-swift, mlx-swift-lm) |
+| Transitive SwiftPM dependencies | 29 | Predominantly Apache-2.0 and MIT (e.g. yyjson is MIT) |
 | Components embedded inside SwiftPM dependencies | 5 | 1× MIT (llhttp, inside swift-nio); 1× zlib-style (ed25519-sparkle, inside Sparkle); 2× 2-clause BSD (bsdiff inside Sparkle, fastcluster inside FluidAudio); 1× Apache-2.0 (VBx, inside FluidAudio) |
+| Vendored source in-tree | 1 | MIT — `VendoredGemma4Text.swift` (copied from mlx-swift-lm; see [Embedded components](#embedded-components) below) |
 | Apple system frameworks | n/a | Bundled with macOS — no attribution required |
-| Run-time downloaded model weights | 2 | See [Model weights](#model-weights) below |
+| Run-time downloaded model weights | 3 | See [Model weights](#model-weights) below |
 
-Total unique top-level third-party packages bundled in the .app: **28**.
+Total unique top-level third-party packages bundled in the .app: **36**.
 
 Note: as of v0.9.0 there is only one SwiftPM tree — the retired
 `third_party/fluidaudio-sidecar/` package was folded into the main
 `parleq-app` target, dropping Hummingbird as a dependency. Sparkle
-was added in v0.10.0 for auto-updates.
+was added in v0.10.0 for auto-updates. mlx-swift, mlx-swift-lm,
+swift-transformers, and swift-huggingface were added for the on-device
+cleanup option (see §"On-device LLM cleanup" below).
 
 ---
 
@@ -61,7 +64,16 @@ also use direct HTTPS (URLSession) with no SDK.
 |---|---|---|---|---|
 | Sparkle | 2.9.1 | MIT | https://github.com/sparkle-project/Sparkle | EdDSA-verified appcast checks + user-prompted download/install/relaunch flow. Added in v0.10.0. Bundled as `Parleq.app/Contents/Frameworks/Sparkle.framework` (plus the framework's nested XPC services and helper tool). |
 
-### Apple Swift ecosystem (transitive)
+### On-device LLM cleanup
+
+| Package | Version | License | Source | Used for |
+|---|---|---|---|---|
+| mlx-swift | 0.31.4 | MIT | https://github.com/ml-explore/mlx-swift | Apple MLX machine-learning framework for Swift. Provides the Metal-accelerated compute graph, quantized-linear operators, and KV-cache primitives used by the on-device cleanup tier. The prebuilt Metal shader library (`mlx.metallib`) is fetched from the matching release asset at build time by `parleq-app/scripts/fetch-metallib.sh` (SHA-256-verified). |
+| mlx-swift-lm | commit b95dc78 | MIT | https://github.com/ml-explore/mlx-swift-lm | LLM inference layer on top of MLX Swift. Provides `MLXLLM`, `MLXLMCommon`, and the KV-cache / generation-loop infrastructure. Copyright © 2024 ml-explore. The `VendoredGemma4Text.swift` in-tree file is copied from a fork of this library — see [Embedded components](#embedded-components) for details. |
+| swift-transformers | 1.3.3 | Apache-2.0 | https://github.com/huggingface/swift-transformers | Swift tokeniser library from Hugging Face. Provides `AutoTokenizer` (Jinja2 chat-template evaluation + BPE/SentencePiece decoding) used by `LocalTokenizerBridge.swift`. |
+| swift-huggingface | 0.9.0 | Apache-2.0 | https://github.com/huggingface/swift-huggingface | Hugging Face Hub client for Swift. Provides `HubClient` used to download and verify the on-device model checkpoint from `huggingface.co` at user request. |
+
+
 
 | Package | Version | License | Source |
 |---|---|---|---|
@@ -85,6 +97,7 @@ also use direct HTTPS (URLSession) with no SDK.
 | swift-nio-transport-services | 1.28.0 | Apache-2.0 | https://github.com/apple/swift-nio-transport-services |
 | swift-numerics | 1.1.1 | Apache-2.0 | https://github.com/apple/swift-numerics |
 | swift-service-context | 1.3.0 | Apache-2.0 | https://github.com/apple/swift-service-context |
+| swift-syntax | 603.0.2 | Apache-2.0 with Runtime Library Exception | https://github.com/swiftlang/swift-syntax |
 | swift-system | 1.6.4 | Apache-2.0 | https://github.com/apple/swift-system |
 
 ### Server / transport (transitive)
@@ -94,6 +107,14 @@ also use direct HTTPS (URLSession) with no SDK.
 | async-http-client | 1.33.1 | Apache-2.0 | https://github.com/swift-server/async-http-client |
 | jmespath.swift | 1.0.3 | Apache-2.0 | https://github.com/jmespath/jmespath.swift |
 | swift-service-lifecycle | 2.11.0 | Apache-2.0 | https://github.com/swift-server/swift-service-lifecycle |
+
+### On-device LLM cleanup (transitive)
+
+| Package | Version | License | Source |
+|---|---|---|---|
+| eventsource | 1.4.1 | MIT | https://github.com/mattt/EventSource |
+| swift-jinja | 2.3.6 | Apache-2.0 | https://github.com/huggingface/swift-jinja |
+| yyjson | 0.12.0 | MIT | https://github.com/ibireme/yyjson |
 
 ### Embedded components
 
@@ -140,6 +161,22 @@ also use direct HTTPS (URLSession) with no SDK.
   preserving the license/notice on redistribution, satisfied via this
   entry and the bundled `NOTICE`. Part of FluidAudio's speaker-
   diarization clustering.
+
+- **VendoredGemma4Text** — MIT — Source code copied from an
+  mlx-swift-lm fork into
+  `parleq-app/Sources/ParleqAppCore/VendoredGemma4Text.swift`. This
+  file combines two files from the fork (`Gemma4.swift` and
+  `Gemma4Text.swift`) with a KV-shared-layer gating fix applied on
+  top of the upstream mlx-swift-lm codebase. Copyright © 2024 Apple
+  Inc. Licensed under the MIT License (same as upstream mlx-swift-lm).
+  The full MIT license text is reproduced at the top of the upstream
+  `mlx-swift-lm` checkout under `LICENSE`. This vendored copy is a
+  **temporary measure** pending the upstream fix merging into a tagged
+  release; the file will be removed when the upstream mlx-swift-lm
+  package is bumped to a release that includes the KV-shared fix (see
+  `TODO(upstream-gemma4)` in the file header). MIT is more permissive
+  than Apache-2.0 and adds no obligations beyond keeping the license
+  notice with the source.
 
 ---
 
@@ -197,6 +234,32 @@ intended use is permitted.** Personal use and the local-only
 inference path Parleq exercises today are uncontroversial; broader
 redistribution is not.
 
+### On-device cleanup model (user-initiated download)
+
+| Model | Used for | Source | Approx size |
+|---|---|---|---|
+| Gemma 4 E4B (QAT 4-bit, MLX) | On-device LLM cleanup — the `local` provider option | https://huggingface.co/mlx-community/gemma-4-E4B-it-qat-4bit | ~4 GB download; ~6 GB resident |
+
+This model is **NOT shipped inside the .app** — it is downloaded at user
+request (via Settings or the Setup Wizard) when the user selects the
+on-device cleanup option, and is stored at
+`~/Library/Application Support/Parleq/models/`. Blocking the
+`huggingface.co` download leaves all cloud-provider and "no cleanup"
+modes fully functional.
+
+**License.** The upstream model is `google/gemma-4-e4b-it`, which the
+Hugging Face model card lists as **Apache License 2.0**
+(https://huggingface.co/google/gemma-4-e4b-it). The mlx-community
+quantized conversion (`mlx-community/gemma-4-E4B-it-qat-4bit`) derives
+from that base model and carries the same Apache 2.0 designation.
+Verified from the HuggingFace model page; no custom Gemma Terms of Use
+apply to this release — it is standard Apache 2.0. The weights are not
+redistributed inside the .app; the user downloads them directly from
+Hugging Face, so the model license binds the user's machine, not
+Parleq's release artifact. Apache 2.0 permits personal and commercial
+use with attribution; review the license at
+https://ai.google.dev/gemma/docs/gemma_4_license before redistribution.
+
 ---
 
 ## External services contacted at runtime
@@ -208,7 +271,7 @@ Parleq makes outbound network calls to:
 - **Google Vertex AI** — direct HTTPS to `*-aiplatform.googleapis.com`. Subject to the user's GCP account terms and the Vertex AI service terms. The user authenticates via gcloud Application Default Credentials or a service-account JSON they supply.
 - **Azure OpenAI** — direct HTTPS to the user's Azure resource hostname. Subject to the user's Azure agreement and Azure OpenAI service terms. The user authenticates with an API key or via Microsoft Entra ID (`az login`).
 - **Sparkle appcast** — HTTPS to `parleq.app/appcast.xml` on launch + every 24 h to check for newer Parleq releases. EdDSA signature on each enclosure is verified locally before any download is installed. Disable in Settings → Updates.
-- **Hugging Face** — anonymous reads only, for the FluidAudio model downloads above. Subject to [Hugging Face's Terms of Service](https://huggingface.co/terms-of-service).
+- **Hugging Face** — anonymous reads only, for the FluidAudio model downloads above and (when the user selects the on-device cleanup option) the one-time Gemma 4 E4B checkpoint download (~4 GB, TLS, resume-capable). Subject to [Hugging Face's Terms of Service](https://huggingface.co/terms-of-service). Blocking `huggingface.co` leaves all cloud and "no cleanup" modes fully functional.
 - **GitHub raw content** (LiteLLM JSON pricing snapshot) — public read of `BerriAI/litellm`'s `model_prices_and_context_window.json`, cached locally for 24 h. Disable with `PARLEQ_DISABLE_LIVE_PRICING=1`.
 
 No telemetry endpoint is contacted. No third-party analytics SDKs
@@ -252,7 +315,11 @@ the LICENSE file in that package's `.build/checkouts/<name>/`
 directory. The current audit captures the dependency state at the
 v0.11.0 release (2026-05-15) — refreshed to add Sparkle (added in
 v0.10.0 for auto-updates, MIT-licensed, with two embedded vendored
-components attributed above) and to drop the obsolete Hummingbird
-reference (the sidecar that depended on it was retired in v0.9.0).
+components attributed above); to drop the obsolete Hummingbird
+reference (the sidecar that depended on it was retired in v0.9.0); and
+to add mlx-swift, mlx-swift-lm, swift-transformers, and
+swift-huggingface for the on-device cleanup option, plus the vendored
+`VendoredGemma4Text.swift` (MIT, from mlx-swift-lm) and the Gemma 4
+E4B weights (Apache-2.0, user-downloaded, not distributed in the .app).
 
 If you upgrade a dependency, re-run the audit and update this file.

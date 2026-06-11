@@ -19,7 +19,7 @@ const sections = [
       },
       {
         q: 'What does the cloud cleanup provider see, and what gets logged on my Mac?',
-        a: `The cleanup provider receives only the transcript — the same words the on-device speech model emitted, plus any custom-dictionary hints you've configured. It never receives audio. On your Mac, Parleq writes four files under \`~/.parleq/\`: \`config.json\` (your settings), \`usage.jsonl\` (one line per cleanup call — timestamp, model, token counts, latency — metadata only, no transcript text), \`app.log\` (a diagnostic log that records lengths and timing, e.g. "post-utterance 87 ms, 142 chars / 28 words", but never the words themselves), and \`metrics.jsonl\` (one text-free record per dictation — duration, latencies, token counts, ref-attached/cleanup-failed flags — so the Stats dashboard spans sessions; no transcript text, kept to the last 30 days). Cleaned text is held in memory during the overlay session and kept in an in-memory list that backs the Parleq window's Recent Dictations section — wiped on app quit, never written to disk.`,
+        a: `When the **On-device** cleanup option is used, the cleanup provider receives nothing — all processing happens in-process on your Mac with no network call. For cloud providers, the cleanup provider receives only the transcript — the same words the on-device speech model emitted, plus any custom-dictionary hints you've configured. It never receives audio. On your Mac, Parleq writes four files under \`~/.parleq/\`: \`config.json\` (your settings), \`usage.jsonl\` (one line per cleanup call — timestamp, model, token counts, latency — metadata only, no transcript text), \`app.log\` (a diagnostic log that records lengths and timing, e.g. "post-utterance 87 ms, 142 chars / 28 words", but never the words themselves), and \`metrics.jsonl\` (one text-free record per dictation — duration, latencies, token counts, ref-attached/cleanup-failed flags — so the Stats dashboard spans sessions; no transcript text, kept to the last 30 days). Cleaned text is held in memory during the overlay session and kept in an in-memory list that backs the Parleq window's Recent Dictations section — wiped on app quit, never written to disk.`,
       },
       {
         q: 'Will my prompts and responses be used to train someone\'s model?',
@@ -40,7 +40,7 @@ const sections = [
     items: [
       {
         q: 'Which cleanup provider should I pick?',
-        a: `For personal use with no compliance constraints: **Gemini direct** or **OpenAI direct** — both offer five-minute setup using just an API key, no infrastructure to think about. For work where you have an existing cloud relationship: pick the one your team already uses (**Bedrock** for AWS, **Vertex** for GCP, **Azure** for Microsoft). All options produce comparable cleanup quality on the short text Parleq generates. The provider choice mostly comes down to where you want the bill to land and whose contract you're operating under.`,
+        a: `For personal use with no compliance constraints: **Gemini direct** or **OpenAI direct** — both offer five-minute setup using just an API key, no infrastructure to think about. If you want cleanup to run entirely on your Mac with no internet needed and no per-call cost, pick **On-device** — it downloads a ~4 GB model once (Gemma 4 E4B, quantized) and requires 12 GB+ RAM. For work where you have an existing cloud relationship: pick the one your team already uses (**Bedrock** for AWS, **Vertex** for GCP, **Azure** for Microsoft). All options produce comparable cleanup quality on the short text Parleq generates. The provider choice mostly comes down to where you want the bill to land, whose contract you're operating under, and whether the transcript should cross a network boundary at all.`,
       },
       {
         q: 'Can I use OpenAI directly?',
@@ -52,7 +52,7 @@ const sections = [
       },
       {
         q: 'Can I run cleanup entirely locally, with no cloud at all?',
-        a: `Not yet — but you can skip cleanup entirely. Re-run the setup wizard (menu bar → **Run Setup…**) and choose **None — skip cleanup**, or set \`llm.provider\` to \`"none"\` in \`~/.parleq/config.json\` (IT can pin it via managed configuration). The in-app Settings picker lists only real providers. Parleq will then paste exactly what the on-device speech model emitted, with no punctuation/casing pass. The result is rougher but fully local and zero-cost. A future build may add a local-LLM cleanup option for users with the GPU/RAM headroom; not committed.`,
+        a: `Yes — select **On-device** in the Setup Wizard or **Settings → Cleanup → Provider**. Parleq downloads a ~4 GB model (Gemma 4 E4B, quantized) from Hugging Face once; after that, cleanup runs entirely in-process on your Mac with no network boundary and no per-call cost. The model uses about 6 GB of memory while it's running, and Parleq frees that memory after a few minutes of inactivity. Because of that footprint, the on-device option requires a Mac with at least 12 GB of RAM — on Macs with less, it appears in the picker but can't be selected. The model is stored at \`~/Library/Application Support/Parleq/models/\` and can be removed from Settings to reclaim the disk space. If you want no cleanup at all rather than local cleanup, choose **None — paste raw ASR** instead, which pastes the on-device speech model's output without any cleanup pass.`,
       },
       {
         q: 'Can I use a model that isn\'t in the dropdown?',
@@ -357,21 +357,6 @@ function renderInline(text: string): string {
       </p>
     </section>
   </article>
-
-  <footer class="border-t border-[color:var(--color-border-subtle)]">
-    <div class="mx-auto flex max-w-5xl flex-col items-start justify-between gap-4 px-6 py-10 text-sm text-[color:var(--color-text-subtle)] sm:flex-row sm:items-center">
-      <div class="flex items-center gap-3">
-        <span class="text-base font-semibold text-[color:var(--color-text)]">Parleq</span>
-        <span>·</span>
-        <span>Apache-2.0</span>
-      </div>
-      <div class="flex items-center gap-6">
-        <a href={repoUrl} class="hover:text-[color:var(--color-text)]">GitHub</a>
-        <a href={`${repoUrl}/releases`} class="hover:text-[color:var(--color-text)]">Releases</a>
-        <a href={`${repoUrl}/blob/main/THIRD_PARTY_LICENSES.md`} class="hover:text-[color:var(--color-text)]">Licenses</a>
-      </div>
-    </div>
-  </footer>
 
   <!-- Deep-link support. Questions are <details> closed by default; if the
        URL targets one (on load or via hashchange), open it and scroll it

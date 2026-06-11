@@ -359,6 +359,16 @@ public final class ParleqAppWindowController: NSObject {
         settingsModel.onResetASR = handler
     }
 
+    /// Wire the shared on-device model store so the Settings → Cleanup
+    /// on-device card can surface live download state and call
+    /// download() / remove(). Called from `parleq-app/main.swift` at
+    /// startup unconditionally (the store is always constructed; the
+    /// card only renders when provider == "local"). Same pattern as
+    /// setOnResetASR.
+    public func setLocalModelStore(_ store: LocalModelStore) {
+        settingsModel.localModelStore = store
+    }
+
     /// Wire the Enterprise OIDC federation handles into the canonical
     /// SettingsModel so the Company Account section can drive sign-in /
     /// sign-out / connection-test against the AppState-owned session +

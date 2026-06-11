@@ -28,8 +28,8 @@ struct UsageEntry: Codable, Sendable {
     /// "cleanup" for the post-ASR pass that prepares text for the
     /// overlay; "refine" for the user-driven follow-up turn.
     let kind: String
-    /// "gemini" today; will be "bedrock" / "openai" / etc. if we
-    /// add providers later. Drives the Pricing lookup with model.
+    /// Provider string. Current values: "gemini", "bedrock", "vertex",
+    /// "azure", "openai", "local". Drives the Pricing lookup with model.
     let provider: String
     let model: String
     let inputTokens: Int
@@ -104,6 +104,9 @@ struct ModelBreakdown: Sendable, Identifiable {
             return "Claude Sonnet 4.5 (Bedrock)"
         case "openai.gpt-oss-120b-1:0": return "GPT-OSS 120B (Bedrock)"
         case "openai.gpt-oss-20b-1:0":  return "GPT-OSS 20B (Bedrock)"
+        // On-device model: show a user-friendly name rather than the
+        // raw HuggingFace checkpoint string.
+        case LocalModelDefaults.checkpoint: return "On-device (Gemma 4 E4B)"
         default: return model
         }
     }
@@ -267,11 +270,16 @@ final class UsageLedger: @unchecked Sendable {
         // theory; in practice we don't see this) wouldn't collide.
         var modelBuckets: [String: (provider: String, model: String, bucket: UsageBucket)] = [:]
         for e in entries {
-            let cost = Pricing.cost(
+            // On-device (local) runs are always free — the model checkpoint
+            // string (e.g. "mlx-community/gemma-4-E4B-it-qat-4bit") will never
+            // appear in any cloud pricing table, but explicitly short-circuit on
+            // provider so "$0.0000" renders without a misleading "unknown pricing"
+            // gap if the table ever coincidentally matched a future key.
+            let cost: Double = e.provider == "local" ? 0 : (Pricing.cost(
                 model: e.model,
                 inputTokens: e.inputTokens,
                 outputTokens: e.outputTokens
-            ) ?? 0
+            ) ?? 0)
             if e.ts >= startOfToday { add(e, cost: cost, to: &today) }
             if e.ts >= startOfWeek { add(e, cost: cost, to: &thisWeek) }
             if e.ts >= startOfMonth { add(e, cost: cost, to: &thisMonth) }

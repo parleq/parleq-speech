@@ -88,7 +88,16 @@ extension Notification.Name {
 /// Mirrors SettingsWindowController's pattern.
 @MainActor
 public final class SetupWizardController {
-    public init() {}
+    /// The shared on-device model store. Injected at construction so the
+    /// wizard's Done step can show live download progress and the pick-
+    /// provider step can trigger the download when the user chooses "local".
+    /// Same store instance that main.swift and LocalLLMProvider hold.
+    private let localModelStore: LocalModelStore
+
+    public init(localModelStore: LocalModelStore) {
+        self.localModelStore = localModelStore
+    }
+
     private var window: NSWindow?
 
     /// Show the wizard, creating it on first call. Always re-centers
@@ -97,9 +106,10 @@ public final class SetupWizardController {
     /// the user dragged it last.
     public func show() {
         if window == nil {
-            let view = SetupWizardView(onFinish: { [weak self] in
-                self?.window?.close()
-            })
+            let view = SetupWizardView(
+                onFinish: { [weak self] in self?.window?.close() },
+                localModelStore: localModelStore
+            )
             let hosting = NSHostingController(rootView: view)
             let w = NSWindow(contentViewController: hosting)
             w.title = "Welcome to Parleq"
@@ -146,6 +156,15 @@ private enum WizardStep: Int, CaseIterable {
 @MainActor
 private final class WizardModel: ObservableObject {
     @Published var step: WizardStep = .welcome
+
+    /// Top-level tier choice on the pick-provider step. nil until the user
+    /// makes a selection (forcing a deliberate choice; Continue is disabled
+    /// while nil). Values: "local", "cloud", "none".
+    @Published var pickedTier: String? = nil
+
+    /// The cloud sub-provider selected when pickedTier == "cloud".
+    /// Drives the ConfigureProvider step and commit(). When pickedTier is
+    /// "local" or "none" this field is not consulted.
     @Published var pickedProvider: String = "gemini" {
         didSet {
             if oldValue != pickedProvider {
@@ -248,11 +267,29 @@ private final class WizardModel: ObservableObject {
     func commit() {
         let (existing, _) = Config.load()
         var c = existing
-        c.llmProvider = pickedProvider
+
+        // Resolve the effective provider from the tier choice.
+        //   "local" → provider="local", leave llmModel alone (factory ignores
+        //             id.model on the local path; writing a stale cloud id
+        //             would pollute logs and the UsageLedger).
+        //   "none"  → provider="none" (no cleanup).
+        //   "cloud" → delegate to pickedProvider (gemini/vertex/bedrock/azure).
+        let effectiveProvider: String
+        switch pickedTier {
+        case "local": effectiveProvider = "local"
+        case "none":  effectiveProvider = "none"
+        default:      effectiveProvider = pickedProvider   // "cloud" or legacy path
+        }
+
+        c.llmProvider = effectiveProvider
+
         // Sensible default model per provider — matches Settings'
         // defaultModelByProvider table so the user gets a working
-        // model id without typing one.
-        switch pickedProvider {
+        // model id without typing one. Local path deliberately does
+        // NOT write llmModel — the factory ignores it for local and
+        // a stale cloud model id in config.llm.model would pollute
+        // logs and the UsageLedger.
+        switch effectiveProvider {
         case "gemini": c.llmModel = "gemini-2.5-flash"
         case "vertex":
             c.llmModel = "gemini-2.5-flash"
@@ -300,9 +337,9 @@ private final class WizardModel: ObservableObject {
         // Advanced step: nil means "same as cleanup" which is also
         // Config.contextModel's nil meaning, so this is a straight
         // pass-through in both the "skipped" and "same as cleanup"
-        // cases. Skip-cleanup ("none") has no cleanup model to be
-        // "different from", so don't touch contextModel on that path.
-        if pickedProvider != "none" {
+        // cases. Skip-cleanup ("none") and local have no cleanup cloud
+        // model to be "different from", so don't touch contextModel.
+        if effectiveProvider != "none" && effectiveProvider != "local" {
             c.contextModel = pickedContextModel
         }
         do {
@@ -315,30 +352,33 @@ private final class WizardModel: ObservableObject {
 
         // Secrets land in the Keychain via KeychainStore — never in
         // the JSON config file. Each branch only writes if the
-        // user actually picked the matching provider AND filled
-        // the field; that way switching providers in the wizard
-        // doesn't leave stale secrets behind for the unpicked
-        // ones.
-        let geminiTrimmed = pendingGeminiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        if pickedProvider == "gemini", !geminiTrimmed.isEmpty {
-            KeychainStore.setGeminiAPIKey(geminiTrimmed)
-        }
-        let azureTrimmed = pendingAzureKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        if pickedProvider == "azure", pendingAzureAuthMode == "apiKey", !azureTrimmed.isEmpty {
-            KeychainStore.setAzureAPIKey(azureTrimmed)
-        }
-        let saTrimmed = pendingVertexServiceAccountJSON.trimmingCharacters(in: .whitespacesAndNewlines)
-        if pickedProvider == "vertex", pendingVertexAuthMode == "serviceAccount", !saTrimmed.isEmpty {
-            // Best-effort: try to parse to validate before storing.
-            // Bad JSON gets stored anyway so the user can re-run
-            // the wizard and edit; the provider's per-request
-            // path will surface a clean missingCredentials error
-            // until they fix it.
-            if (try? ServiceAccountKey.parse(saTrimmed)) == nil {
-                let msg = "[parleq] wizard: pasted Vertex SA JSON did not validate; storing anyway. Provider will surface a clear error on first dictation if it's still bad.\n"
-                FileHandle.standardError.write(msg.data(using: .utf8) ?? Data())
+        // user actually committed to the cloud tier AND picked the
+        // matching provider AND filled the field. The `pickedTier == "cloud"`
+        // guard prevents a pending key (typed while exploring the cloud
+        // sub-path) from being written if the user backed out and finished
+        // with the On-device or None tier.
+        if pickedTier == "cloud" {
+            let geminiTrimmed = pendingGeminiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+            if pickedProvider == "gemini", !geminiTrimmed.isEmpty {
+                KeychainStore.setGeminiAPIKey(geminiTrimmed)
             }
-            KeychainStore.setVertexServiceAccountJSON(saTrimmed)
+            let azureTrimmed = pendingAzureKey.trimmingCharacters(in: .whitespacesAndNewlines)
+            if pickedProvider == "azure", pendingAzureAuthMode == "apiKey", !azureTrimmed.isEmpty {
+                KeychainStore.setAzureAPIKey(azureTrimmed)
+            }
+            let saTrimmed = pendingVertexServiceAccountJSON.trimmingCharacters(in: .whitespacesAndNewlines)
+            if pickedProvider == "vertex", pendingVertexAuthMode == "serviceAccount", !saTrimmed.isEmpty {
+                // Best-effort: try to parse to validate before storing.
+                // Bad JSON gets stored anyway so the user can re-run
+                // the wizard and edit; the provider's per-request
+                // path will surface a clean missingCredentials error
+                // until they fix it.
+                if (try? ServiceAccountKey.parse(saTrimmed)) == nil {
+                    let msg = "[parleq] wizard: pasted Vertex SA JSON did not validate; storing anyway. Provider will surface a clear error on first dictation if it's still bad.\n"
+                    FileHandle.standardError.write(msg.data(using: .utf8) ?? Data())
+                }
+                KeychainStore.setVertexServiceAccountJSON(saTrimmed)
+            }
         }
 
         // Drop in-memory secret state on commit so it doesn't sit in
@@ -365,6 +405,10 @@ private final class WizardModel: ObservableObject {
 
 private struct SetupWizardView: View {
     let onFinish: () -> Void
+    /// Shared on-device cleanup model store. Observed for live download
+    /// state in DoneStep; download() is called here when the user picks the
+    /// on-device tier and advances past the pick-provider step.
+    @ObservedObject var localModelStore: LocalModelStore
     @StateObject private var model = WizardModel()
     /// Observed so `canAdvance` and the Continue button label
     /// re-evaluate every time a permission state changes (e.g. the
@@ -394,13 +438,13 @@ private struct SetupWizardView: View {
                     case .permissions:
                         PermissionsWizardStep()
                     case .pickProvider:
-                        PickProviderStep(model: model)
+                        PickProviderStep(model: model, localModelStore: localModelStore)
                     case .configureProvider:
                         ConfigureProviderStep(model: model)
                     case .advancedModel:
                         AdvancedModelStep(model: model)
                     case .done:
-                        DoneStep(model: model)
+                        DoneStep(model: model, localModelStore: localModelStore)
                     }
                 }
                 .padding(.horizontal, 28)
@@ -414,14 +458,21 @@ private struct SetupWizardView: View {
             // top + bottom read as a unified frame around the
             // active step.
             HStack(spacing: 12) {
-                Button("Skip Setup") {
-                    let (existing, _) = Config.load()
-                    var c = existing
-                    c.wizardCompleted = true
-                    try? Config.save(c)
-                    onFinish()
+                // "Skip Setup" is hidden on the pick-provider step: the cleanup
+                // choice is now a forced decision. The user can still close the
+                // window (the window's close button remains active — abandoning
+                // the wizard safely leaves config unchanged so raw ASR continues
+                // to work). All other steps keep the skip affordance.
+                if model.step != .pickProvider {
+                    Button("Skip Setup") {
+                        let (existing, _) = Config.load()
+                        var c = existing
+                        c.wizardCompleted = true
+                        try? Config.save(c)
+                        onFinish()
+                    }
+                    .buttonStyle(.bordered)
                 }
-                .buttonStyle(.bordered)
                 Spacer()
                 if model.step != .welcome {
                     Button("Back") {
@@ -537,7 +588,12 @@ private struct SetupWizardView: View {
             // optional (the row is in the step but doesn't gate).
             let snap = permissionsModel.snapshot
             return snap.microphone == .granted && snap.accessibility == .granted
-        case .pickProvider: return !model.pickedProvider.isEmpty
+        case .pickProvider:
+            // Tier must be chosen. If "cloud" is chosen, a sub-provider
+            // must also be selected. "local" and "none" need no sub-pick.
+            guard let tier = model.pickedTier else { return false }
+            if tier == "cloud" { return !model.pickedProvider.isEmpty }
+            return true
         case .configureProvider:
             // Vertex needs a project (and SA JSON when in SA mode);
             // Azure needs resource + deployment; Gemini and Bedrock
@@ -604,12 +660,18 @@ private struct SetupWizardView: View {
         case .permissions:
             model.step = .pickProvider
         case .pickProvider:
-            // For "none" provider, skip the per-provider config screen
-            // and the advanced-model step — there is no cleanup model
-            // to be "same as" or "different from".
-            if model.pickedProvider == "none" {
+            let tier = model.pickedTier ?? "cloud"
+            if tier == "local" {
+                // Kick off the model download now (idempotent — LocalModelStore.download()
+                // guards against re-entering when not in .notDownloaded state, so if the
+                // model is already .ready or .downloading this is a safe no-op).
+                localModelStore.download()
+                // Local and none both skip configure + advanced (no cloud auth needed).
+                model.step = .done
+            } else if tier == "none" {
                 model.step = .done
             } else {
+                // Cloud: show the per-provider configure step.
                 model.step = .configureProvider
             }
         case .configureProvider:
@@ -638,10 +700,10 @@ private struct SetupWizardView: View {
             model.resetAdvancedModelState()
             model.step = .configureProvider
         case .done:
-            // Mirror the forward skip: if the user chose "none" on the
-            // pick-provider step they bypassed both configureProvider
-            // and advancedModel, so back from done lands on pickProvider.
-            if model.pickedProvider == "none" {
+            // Mirror the forward skip: local and none both bypassed configure
+            // and advanced; cloud went through them.
+            let tier = model.pickedTier ?? "cloud"
+            if tier == "local" || tier == "none" {
                 model.step = .pickProvider
             } else {
                 model.step = .advancedModel
@@ -673,13 +735,56 @@ private struct WelcomeStep: View {
 
 private struct PickProviderStep: View {
     @ObservedObject var model: WizardModel
+    @ObservedObject var localModelStore: LocalModelStore
 
-    private struct Option: Identifiable {
+    // MARK: - Tier cards (top level)
+
+    private struct TierOption: Identifiable {
         var id: String
         var title: String
         var blurb: String
     }
-    private let options: [Option] = [
+
+    private var ramTier: RAMTier { RAMTier.current }
+    /// Snapshotted once at view creation — `Config.load()` is file I/O and
+    /// must not run per render. The pick-provider step doesn't hot-reload
+    /// config while it's visible, so a once-per-view-instance value is fine.
+    private let localAllowUnsupportedRAM: Bool = {
+        let (config, _) = Config.load()
+        return config.localAllowUnsupportedRAM
+    }()
+
+    private var tierOptions: [TierOption] {
+        [
+            .init(id: "local",
+                  title: "On-device",
+                  blurb: localCardBlurb),
+            .init(id: "cloud",
+                  title: "Cloud provider",
+                  blurb: "Best quality. Google Gemini (free tier, recommended for personal use), AWS Bedrock, Vertex AI, or Azure OpenAI — needs an API key or your org's sign-in."),
+            .init(id: "none",
+                  title: "None — paste raw speech-to-text",
+                  blurb: "Local dictation only. No cloud calls. Faster, fully private. Output won't be punctuated or polished — best when transcript content cannot leave the device."),
+        ]
+    }
+
+    private var localCardBlurb: String {
+        switch ramTier {
+        case .unsupported where !localAllowUnsupportedRAM:
+            return "Needs a Mac with 12 GB+ memory — the model alone uses ~6 GB while active."
+        default:
+            return "Runs entirely on this Mac. No account or API key. Uses about 6 GB of memory while cleaning up. ~4 GB one-time download."
+        }
+    }
+
+    // MARK: - Cloud sub-provider options (shown when tier == "cloud")
+
+    private struct CloudOption: Identifiable {
+        var id: String
+        var title: String
+        var blurb: String
+    }
+    private let cloudOptions: [CloudOption] = [
         .init(id: "gemini", title: "Google Gemini (recommended for personal use)",
               blurb: "Free tier covers most personal dictation. One API key from Google AI Studio. Fastest setup."),
         .init(id: "bedrock", title: "AWS Bedrock",
@@ -688,8 +793,6 @@ private struct PickProviderStep: View {
               blurb: "Same Gemini models as the direct API but on the GCP control plane — IAM, audit logs, data residency. Auth via gcloud."),
         .init(id: "azure", title: "Azure OpenAI",
               blurb: "OpenAI GPT-4o family hosted in your Azure subscription. Use on Microsoft contracts (BAA, EU residency). Resource API key."),
-        .init(id: "none", title: "None — skip cleanup, paste raw ASR",
-              blurb: "Local dictation only. No cloud calls. Faster, fully private. Output won't be punctuated or polished — best when transcript content cannot leave the device."),
     ]
 
     var body: some View {
@@ -701,17 +804,41 @@ private struct PickProviderStep: View {
                 .foregroundStyle(.secondary)
 
             VStack(alignment: .leading, spacing: 8) {
-                ForEach(options) { opt in
-                    providerRow(opt)
+                ForEach(tierOptions) { opt in
+                    tierCard(opt)
+                }
+            }
+
+            // Cloud sub-picker — revealed when the user picks "cloud".
+            if model.pickedTier == "cloud" {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Select a cloud provider:")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.leading, 4)
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(cloudOptions) { opt in
+                            cloudProviderRow(opt)
+                        }
+                    }
+                    .padding(.leading, 16)
                 }
             }
         }
     }
 
-    private func providerRow(_ opt: Option) -> some View {
-        let isPicked = (model.pickedProvider == opt.id)
+    // MARK: - Tier card renderer
+
+    private func tierCard(_ opt: TierOption) -> some View {
+        let isLocalUnsupported = opt.id == "local"
+            && ramTier == .unsupported
+            && !localAllowUnsupportedRAM
+        let isPicked = model.pickedTier == opt.id
+
         return Button {
-            model.pickedProvider = opt.id
+            if !isLocalUnsupported {
+                model.pickedTier = opt.id
+            }
         } label: {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: isPicked ? "largecircle.fill.circle" : "circle")
@@ -721,12 +848,19 @@ private struct PickProviderStep: View {
                     Text(opt.title)
                         .font(.body)
                         .fontWeight(isPicked ? .semibold : .regular)
-                        .foregroundStyle(Color.primary)
+                        .foregroundStyle(isLocalUnsupported ? Color.secondary : Color.primary)
                     Text(opt.blurb)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.leading)
                         .fixedSize(horizontal: false, vertical: true)
+                    // Cautioned caption: appended for 16 GB Macs when not unsupported.
+                    if opt.id == "local" && ramTier == .cautioned {
+                        Text("On a 16 GB Mac this can slow other memory-hungry apps; Parleq frees the memory after a few minutes of inactivity.")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
                 Spacer(minLength: 0)
             }
@@ -742,6 +876,52 @@ private struct PickProviderStep: View {
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(isPicked
                             ? SettingsView.brandAccent.opacity(0.55)
+                            : SettingsView.cardBorder,
+                            lineWidth: isPicked ? 1.0 : 0.5)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(isLocalUnsupported)
+        .opacity(isLocalUnsupported ? 0.5 : 1.0)
+    }
+
+    // MARK: - Cloud sub-provider row renderer (reuses the same visual pattern)
+
+    private func cloudProviderRow(_ opt: CloudOption) -> some View {
+        let isPicked = (model.pickedProvider == opt.id)
+        return Button {
+            model.pickedProvider = opt.id
+        } label: {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: isPicked ? "largecircle.fill.circle" : "circle")
+                    .foregroundStyle(isPicked ? SettingsView.brandAccent : Color.secondary)
+                    .font(.body)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(opt.title)
+                        .font(.callout)
+                        .fontWeight(isPicked ? .semibold : .regular)
+                        .foregroundStyle(Color.primary)
+                    Text(opt.blurb)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 7)
+                    .fill(isPicked
+                          ? SettingsView.brandAccent.opacity(0.10)
+                          : SettingsView.cardBackground)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 7)
+                    .stroke(isPicked
+                            ? SettingsView.brandAccent.opacity(0.45)
                             : SettingsView.cardBorder,
                             lineWidth: isPicked ? 1.0 : 0.5)
             )
@@ -1246,6 +1426,7 @@ private struct AdvancedModelStep: View {
 
 private struct DoneStep: View {
     @ObservedObject var model: WizardModel
+    @ObservedObject var localModelStore: LocalModelStore
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -1258,6 +1439,21 @@ private struct DoneStep: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            // On-device cleanup model download status — only shown when the
+            // user picked the on-device tier.
+            if model.pickedTier == "local" {
+                onDeviceStatusRow
+                HStack(spacing: 0) {
+                    Text("Uses Google Gemma 4 (Apache 2.0). ")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Link("Learn more", destination: URL(string: "https://ai.google.dev/gemma/docs/gemma_4_license")!)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             Text("On first run after install, the speech model downloads in the background (~150 MB, 30–60 seconds). The menu-bar icon shows a download glyph until it's ready, then switches to a microphone. After that, dictations run locally — your audio never leaves the Mac.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
@@ -1267,6 +1463,57 @@ private struct DoneStep: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer()
+        }
+    }
+
+    @ViewBuilder
+    private var onDeviceStatusRow: some View {
+        switch localModelStore.state {
+        case .downloading(let progress):
+            HStack(spacing: 10) {
+                ProgressView(value: progress)
+                    .frame(maxWidth: 160)
+                Text("Downloading cleanup model… \(Int(progress * 100))%")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+            Text("Dictation works without cleanup until the model finishes downloading.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        case .ready:
+            HStack(spacing: 8) {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                Text("On-device cleanup model ready.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+        case .failed(let message):
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                    Text("Download failed: \(message)")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                Button("Retry download") {
+                    localModelStore.remove()
+                    localModelStore.download()
+                }
+                .font(.callout)
+                Text("Dictation works without cleanup until the model downloads successfully.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        case .notDownloaded:
+            HStack(spacing: 8) {
+                ProgressView()
+                    .scaleEffect(0.8)
+                Text("Starting download…")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 }

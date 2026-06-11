@@ -37,11 +37,11 @@ const stages = [
     n: '3',
     slug: 'cleanup',
     title: 'Clean up',
-    where: 'cloud LLM (or skipped)',
+    where: 'cloud LLM · on-device · or skipped',
     summary:
-      'The raw transcript streams to a configurable AI provider that polishes it into finished text — capitalization, punctuation, filler-word removal, common transcription errors, and spoken numbers turned into digits when the context is technical. The raw transcript shows in the overlay first, and the cleaned text replaces it progressively as it arrives — so you can press Enter to accept whatever is currently shown at any moment, which also stops the in-flight cleanup.',
+      'The raw transcript streams to a configurable AI provider that polishes it into finished text — capitalization, punctuation, filler-word removal, common transcription errors, and spoken numbers turned into digits when the context is technical. The raw transcript shows in the overlay first, and the cleaned text replaces it progressively as it arrives — so you can press Enter to accept whatever is currently shown at any moment, which also stops the in-flight cleanup. Cleanup can also run entirely on-device (no network boundary) via the on-device option — a one-time ~4 GB model download runs Gemma 4 E4B in-process via Apple MLX; requires 12 GB+ RAM.',
     detail: [
-      ['Pluggable providers', 'Six options: Google Gemini direct API (default — free tier<sup>†</sup>, ~500–700 ms TTFT), OpenAI direct API (GPT-4o / GPT-4.1 family), Google Vertex AI (Gemini + Claude on GCP with IAM + audit logs), AWS Bedrock (Claude or GPT-OSS via your AWS account), Azure OpenAI (GPT-4o / GPT-4.1 + reasoning models on Microsoft\'s contract), or skip cleanup entirely and paste raw ASR. The choice is made in Settings or via the first-run setup wizard. For IT-deployed Macs, the provider and allowed model list can be pinned centrally via an MDM-managed configuration profile so users cannot change it.'],
+      ['Pluggable providers', 'Seven options: On-device (Gemma 4 E4B via Apple MLX — no network boundary, no per-call cost, one-time ~4 GB download, 12 GB+ RAM), Google Gemini direct API (default — free tier<sup>†</sup>, ~500–700 ms TTFT), OpenAI direct API (GPT-4o / GPT-4.1 family), Google Vertex AI (Gemini + Claude on GCP with IAM + audit logs), AWS Bedrock (Claude or GPT-OSS via your AWS account), Azure OpenAI (GPT-4o / GPT-4.1 + reasoning models on Microsoft\'s contract), or skip cleanup entirely and paste raw ASR. The choice is made in Settings or via the first-run setup wizard. For IT-deployed Macs, the provider and allowed model list can be pinned centrally via an MDM-managed configuration profile so users cannot change it.'],
       ['Auth flexibility per provider', 'Each cloud supports both pasted API keys (stored in the macOS Keychain) and your existing CLI session — gcloud Application Default Credentials for Vertex (or service-account JSON), AWS SSO / static IAM keys / scoped Bedrock API keys for Bedrock, az login or resource keys for Azure. Parleq never stores long-lived cloud session tokens directly; the AWS/GCP/Azure CLIs handle refresh through their own caches.'],
       ['Skippable', 'Re-run the setup wizard (menu bar → Run Setup…) and choose "None — skip cleanup", or set llm.provider to "none" in ~/.parleq/config.json (IT can pin it via managed configuration). The in-app Settings picker lists only real providers. Parleq will then paste the raw transcript exactly as the on-device speech model emitted it. Useful when transcript content must never leave the device.'],
       ['Custom dictionary hint', 'Your dictionary feeds a smart-vocabulary addendum to the cleanup prompt — terms with optional context blurbs and aliases. The LLM judges topic alignment and prefers your canonical spellings without force-correcting genuine homophones.'],
@@ -116,7 +116,7 @@ const gestures = [
       A press, a sentence, a paste.
     </h1>
     <p class="mt-6 text-lg leading-relaxed text-[color:var(--color-text-muted)]">
-      When you hold the hotkey, four stages run in sequence. Three of them stay on your Mac. The middle one — LLM cleanup — talks to a cloud provider you configure (or skip entirely). This page walks each stage and what gets persisted versus what doesn't.
+      When you hold the hotkey, four stages run in sequence. Three of them stay on your Mac. The middle one — LLM cleanup — talks to a cloud provider you configure (or runs fully on-device, or can be skipped entirely). This page walks each stage and what gets persisted versus what doesn't.
     </p>
     <p class="mt-5 text-sm">
       <a href="#gestures" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Just want the keyboard gestures? Jump to the cheat sheet →</a>
@@ -755,18 +755,4 @@ const gestures = [
     });
   </script>
 
-  <footer class="border-t border-[color:var(--color-border-subtle)]">
-    <div class="mx-auto flex max-w-5xl flex-col items-start justify-between gap-4 px-6 py-10 text-sm text-[color:var(--color-text-subtle)] sm:flex-row sm:items-center">
-      <div class="flex items-center gap-3">
-        <span class="text-base font-semibold text-[color:var(--color-text)]">Parleq</span>
-        <span>·</span>
-        <span>Apache-2.0</span>
-      </div>
-      <div class="flex items-center gap-6">
-        <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/'} class="hover:text-[color:var(--color-text)]">Home</a>
-        <a href={repoUrl} class="hover:text-[color:var(--color-text)]">GitHub</a>
-        <a href={`${repoUrl}/releases`} class="hover:text-[color:var(--color-text)]">Releases</a>
-      </div>
-    </div>
-  </footer>
 </Layout>
