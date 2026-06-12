@@ -1355,6 +1355,25 @@ nonisolated func fittingChipCount(
     return count
 }
 
+// MARK: - Preset number-key mapping
+
+/// Bare digit keys 1–9 apply the transform preset at that 1-based
+/// position in `config.transformPresets`. Presets past the 9th are
+/// click-only (no digit, no key) — double-digit keystrokes aren't worth
+/// it and `0` is an awkward "10th". This cap governs both the digit
+/// drawn on a chip and which keypresses resolve to a preset.
+let maxNumberedPresets = 9
+
+/// Maps a pressed digit (1-based) to a zero-based index into the preset
+/// array, or nil when the digit is outside 1…`maxNumberedPresets` or
+/// beyond the available preset count. Pure — unit-testable without a host
+/// app, mirroring `fittingChipCount`.
+nonisolated func presetIndex(forNumber number: Int, presetCount: Int) -> Int? {
+    guard (1...maxNumberedPresets).contains(number) else { return nil }
+    let index = number - 1
+    return index < presetCount ? index : nil
+}
+
 // MARK: - PresetChip view
 
 // MARK: - ChromeSlotMetrics (spike: state-transition smoothness)
