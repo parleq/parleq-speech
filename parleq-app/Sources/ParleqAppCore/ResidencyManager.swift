@@ -358,7 +358,10 @@ public actor ResidencyManager {
         let limitBytes: Int = {
             if let mb = ProcessInfo.processInfo.environment["PARLEQ_GPU_CACHE_MB"],
                let v = Int(mb), v >= 0 {
-                return v * 1024 * 1024
+                // Clamp to a sane ceiling (64 GB) so an absurd value can't trap
+                // on Int overflow in the MB→bytes multiply, or pin more memory
+                // than any Mac has.
+                return min(v, 65_536) * 1024 * 1024
             }
             return LocalModelDefaults.gpuCacheLimitBytes
         }()
