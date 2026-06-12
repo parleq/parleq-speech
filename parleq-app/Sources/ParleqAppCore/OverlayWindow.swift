@@ -1391,6 +1391,15 @@ nonisolated func presetIndex(forNumber number: Int, presetCount: Int) -> Int? {
     return index < presetCount ? index : nil
 }
 
+/// The 1-based number drawn on the chip at zero-based array `index`, or
+/// nil for positions past `maxNumberedPresets` (no digit, no key). This is
+/// the display-side inverse of `presetIndex(forNumber:presetCount:)`: both
+/// derive from the same cap, so the digit shown on a chip and the digit
+/// that resolves to it are guaranteed to agree. Pure — unit-testable.
+nonisolated func presetNumber(forIndex index: Int) -> Int? {
+    index < maxNumberedPresets ? index + 1 : nil
+}
+
 // MARK: - PresetChip view
 
 // MARK: - ChromeSlotMetrics (spike: state-transition smoothness)
@@ -1707,7 +1716,7 @@ private struct OverlayContent: View {
             let numbered: [(id: String, number: Int?, name: String, prompt: String)] =
                 presetChips.enumerated().map { idx, p in
                     (id: p.id,
-                     number: idx < maxNumberedPresets ? idx + 1 : nil,
+                     number: presetNumber(forIndex: idx),
                      name: p.name,
                      prompt: p.prompt)
                 }

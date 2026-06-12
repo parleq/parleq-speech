@@ -334,4 +334,34 @@ final class TransformPresetsTests: XCTestCase {
     func test_maxNumberedPresets_is_nine() {
         XCTAssertEqual(maxNumberedPresets, 9)
     }
+
+    // MARK: - presetNumber(forIndex:) — preset position → chip digit
+
+    func test_presetNumber_maps_zero_based_index_to_one_based_digit() {
+        XCTAssertEqual(presetNumber(forIndex: 0), 1)
+        XCTAssertEqual(presetNumber(forIndex: 8), 9)
+    }
+
+    func test_presetNumber_nil_past_the_ninth() {
+        XCTAssertNil(presetNumber(forIndex: 9),
+                     "The 10th preset (index 9) is click-only — no digit")
+        XCTAssertNil(presetNumber(forIndex: 25))
+    }
+
+    func test_presetNumber_and_presetIndex_round_trip_for_reachable_positions() {
+        // The digit drawn on the chip at position i must resolve back to
+        // that same position — this is the "chip N == key N" contract,
+        // structurally guaranteed because both helpers share the cap.
+        for index in 0..<maxNumberedPresets {
+            guard let number = presetNumber(forIndex: index) else {
+                XCTFail("Index \(index) within the cap must have a number")
+                return
+            }
+            XCTAssertEqual(
+                presetIndex(forNumber: number, presetCount: maxNumberedPresets),
+                index,
+                "Chip digit \(number) must resolve back to index \(index)"
+            )
+        }
+    }
 }
