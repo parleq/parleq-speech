@@ -1420,6 +1420,9 @@ private enum ChromeSlotMetrics {
 private struct PresetChip: View {
     let title: String
     let help: String
+    /// 1-based preset number drawn in the left padding gutter, or nil for
+    /// presets past `maxNumberedPresets` (no digit, no key).
+    let number: Int?
     let action: () -> Void
     @State private var hovered = false
 
@@ -1455,6 +1458,22 @@ private struct PresetChip: View {
                     .strokeBorder(OverlayContent.aiGradient, lineWidth: 1)
                     .opacity(hovered ? 0.9 : 0.45)
             )
+            .overlay(alignment: .leading) {
+                if let number {
+                    // Drawn INSIDE the capsule's existing 9pt left padding
+                    // gutter. An overlay takes no part in layout, so the
+                    // chip frame and the 22pt chips-row floor are unchanged
+                    // and PresetChipMetrics.chipWidth (title-only) stays
+                    // correct. The title is left-aligned after the 9pt
+                    // padding, so this never overlaps the name.
+                    Text("\(number)")
+                        .font(.system(size: 8, weight: .semibold))
+                        .foregroundColor(hovered ? .primary : .secondary)
+                        .opacity(hovered ? 0.85 : 0.5)
+                        .padding(.leading, 2)
+                        .accessibilityHidden(true)
+                }
+            }
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
@@ -1682,6 +1701,16 @@ private struct OverlayContent: View {
                 spacing: PresetChipMetrics.interChipSpacing,
                 overflowReserve: PresetChipMetrics.overflowMenuReserve
             )
+            // Pair each preset with its 1-based number (nil past the 9th).
+            // Built from the original array index so a preset keeps its
+            // number even when it falls into the ⋯ overflow.
+            let numbered: [(id: String, number: Int?, name: String, prompt: String)] =
+                presetChips.enumerated().map { idx, p in
+                    (id: p.id,
+                     number: idx < maxNumberedPresets ? idx + 1 : nil,
+                     name: p.name,
+                     prompt: p.prompt)
+                }
             // ── render ──────────────────────────────────────────────
             HStack(spacing: PresetChipMetrics.interChipSpacing) {
                 Image(systemName: "sparkles")
@@ -1707,17 +1736,19 @@ private struct OverlayContent: View {
                             .accessibilityLabel("Undo style: \(name)")
                     }
                 }
-                ForEach(presetChips.prefix(visibleCount)) { preset in
-                    PresetChip(title: preset.name, help: preset.prompt) {
-                        onRunPreset(preset.id)
+                ForEach(Array(numbered.prefix(visibleCount)), id: \.id) { np in
+                    PresetChip(title: np.name, help: np.prompt, number: np.number) {
+                        onRunPreset(np.id)
                     }
                 }
                 if visibleCount < presetChips.count {
                     Menu {
-                        ForEach(presetChips.dropFirst(visibleCount)) { preset in
-                            Button(preset.name) { onRunPreset(preset.id) }
-                                .help(preset.prompt)
-                                .accessibilityHint("Apply this transform to the dictation")
+                        ForEach(Array(numbered.dropFirst(visibleCount)), id: \.id) { np in
+                            Button(np.number.map { "\($0)  \(np.name)" } ?? np.name) {
+                                onRunPreset(np.id)
+                            }
+                            .help(np.prompt)
+                            .accessibilityHint("Apply this transform to the dictation")
                         }
                     } label: {
                         Text("⋯")
