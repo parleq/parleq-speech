@@ -127,6 +127,9 @@ public final class OverlayWindow {
     /// pass on the current review text. Triggered by the preset chips in
     /// the .awaitingAccept footer.
     public var onRunPreset: ((String) -> Void)?
+    /// AppState wires this to run the preset at a 1-based position (digit
+    /// key 1–9 in review). Returns true iff a preset was applied.
+    public var onRunPresetNumber: ((Int) -> Bool)?
     /// AppState wires this to undo a per-app default style: re-runs plain
     /// cleanup (no transform addendum) from the retained raw transcript.
     public var onUndoStyle: (() -> Void)?
@@ -222,6 +225,7 @@ public final class OverlayWindow {
         panel.onAttachWindow = { [weak self] in self?.onAttachWindow?() }
         panel.onAttachCurrent = { [weak self] in self?.onAttachCurrent?() }
         panel.onShowParleq = { [weak self] in self?.onShowParleq?() }
+        panel.onRunPresetNumber = { [weak self] n in self?.onRunPresetNumber?(n) ?? false }
 
         sizeObservation = hc.observe(\.preferredContentSize, options: [.new]) { [weak self] _, change in
             // Trace: prove the KVO fires. Captures the .new value so
@@ -818,6 +822,11 @@ private final class OverlayPanel: NSPanel {
     var onAttachWindow: (() -> Void)?
     var onAttachCurrent: (() -> Void)?
     var onShowParleq: (() -> Void)?
+    /// Bare digit 1–9 during review → apply the preset at that 1-based
+    /// position. Returns true iff a preset was actually applied, so
+    /// keyDown can consume the event only on a hit and let an unmapped
+    /// digit fall through inert.
+    var onRunPresetNumber: ((Int) -> Bool)?
     /// When non-nil, every setFrame call forces origin.y to this
     /// value so the bottom edge stays on screen and the panel grows
     /// upward. Without this, NSWindow's auto-tracking of
@@ -925,6 +934,14 @@ private final class OverlayPanel: NSPanel {
                 // Bare "P" — show the Parleq window (cancels review).
                 // AppState gates to .awaitingAccept so it no-ops elsewhere.
                 onShowParleq?()
+            } else if noMods, let g = baseGlyph, g.count == 1,
+                      let digit = Int(g), (1...9).contains(digit) {
+                // Bare 1–9 — apply the numbered transform preset. Consume
+                // the event only when a preset was actually applied;
+                // otherwise fall through so an unmapped digit stays inert.
+                if onRunPresetNumber?(digit) != true {
+                    super.keyDown(with: event)
+                }
             } else {
                 super.keyDown(with: event)
             }
