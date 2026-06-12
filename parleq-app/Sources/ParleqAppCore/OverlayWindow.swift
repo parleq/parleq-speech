@@ -934,11 +934,21 @@ private final class OverlayPanel: NSPanel {
                 // Bare "P" — show the Parleq window (cancels review).
                 // AppState gates to .awaitingAccept so it no-ops elsewhere.
                 onShowParleq?()
-            } else if noMods, let g = baseGlyph, g.count == 1,
+            } else if event.modifierFlags
+                        .intersection([.command, .control, .option]).isEmpty,
+                      let g = baseGlyph, g.count == 1,
                       let digit = Int(g), (1...9).contains(digit) {
-                // Bare 1–9 — apply the numbered transform preset. Consume
-                // the event only when a preset was actually applied;
-                // otherwise fall through so an unmapped digit stays inert.
+                // 1–9 → apply the numbered transform preset. Shift is
+                // ALLOWED here (unlike the bare V/C/P gestures) because on
+                // AZERTY-style layouts the number row yields symbols
+                // unshifted and digits only WITH Shift. `baseGlyph`
+                // (charactersIgnoringModifiers) reflects Shift, so it is "1"
+                // for both a US bare press AND an AZERTY Shift press, but "!"
+                // for a US Shift+1 — which correctly is not a digit and so
+                // doesn't fire. Cmd/Ctrl/Option are still excluded so real
+                // shortcuts pass through. Consume the event only when a
+                // preset was actually applied; otherwise fall through so an
+                // unmapped digit stays inert.
                 if onRunPresetNumber?(digit) != true {
                     super.keyDown(with: event)
                 }
