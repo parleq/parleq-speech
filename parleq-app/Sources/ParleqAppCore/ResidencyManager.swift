@@ -344,6 +344,28 @@ public actor ResidencyManager {
             from: snapshotDirectory,
             using: TransformersTokenizerLoader())
         print("[ResidencyManager] model loaded")
+        // Bound MLX's retained Metal free-buffer pool while the model stays
+        // loaded, so phys_footprint sits near the honest weights floor (~6–7 GB)
+        // instead of ballooning to ~10 GB after a generation peak. Set once per
+        // load (not per generation); additive to — never a replacement for —
+        // idle-unload + clearCache(), which fully releases the pool on drop.
+        // The C setter reports the previous limit, so we can log the change
+        // (count-only — no model/transcript content).
+        let previousLimitMB = Memory.cacheLimit / (1024 * 1024)
+        // PARLEQ_GPU_CACHE_MB: measurement/tuning override (MB). Lets the
+        // footprint↔latency sweep pick a value without rebuilding. Falls back
+        // to the shipped default when unset/invalid.
+        let limitBytes: Int = {
+            if let mb = ProcessInfo.processInfo.environment["PARLEQ_GPU_CACHE_MB"],
+               let v = Int(mb), v >= 0 {
+                return v * 1024 * 1024
+            }
+            return LocalModelDefaults.gpuCacheLimitBytes
+        }()
+        Memory.cacheLimit = limitBytes
+        logStderr(
+            "[parleq] local: gpu cache limit \(previousLimitMB) MB → " +
+            "\(limitBytes / (1024 * 1024)) MB")
         return c
     }
 

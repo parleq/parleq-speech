@@ -257,6 +257,28 @@ public enum LocalModelDefaults {
     /// prefixes can be live, but the working set is tiny and each entry holds
     /// GPU memory (the full system-prompt KV state).
     public static let prefixCacheCapacity = 4
+    /// Upper bound (bytes) on MLX's retained Metal free-buffer pool while the
+    /// model stays loaded. MLX keeps freed GPU scratch buffers in a reuse pool;
+    /// left unbounded it balloons to ~4 GB above the ~5.5 GB E4B weights floor
+    /// during a generation peak and stays there until idle-unload, so
+    /// phys_footprint (GPU buffers count against it on unified memory) reads
+    /// ~10 GB in Activity Monitor — alarming to users and security reviewers
+    /// even though the true hot working set is a few GB. Capping the pool keeps
+    /// loaded footprint near the honest weights floor (~6–7 GB) without
+    /// unloading. NOT zero: a tiny pool forces every scratch buffer back to
+    /// Metal each generation (allocation churn → latency); a moderate cap keeps
+    /// enough warm buffers for back-to-back dictations. Distinct from
+    /// idle-unload + `clearCache()`, which fully releases the pool when the
+    /// model is dropped; this only bounds it while loaded.
+    ///
+    /// Value chosen from a measured sweep (heavy ~1.8k-prompt-token cleanup
+    /// workload, Gemma 4 E4B QAT): peak phys_footprint was ~9.9 GB uncapped,
+    /// ~7.5 GB at 1024 MB, ~7.0 GB at 512 MB. 1024 MB keeps ~80% of the
+    /// footprint win while its TTFT tracked the uncapped baseline in both cold
+    /// and hot runs (512 MB showed a small, possibly-thermal TTFT bump), so it
+    /// is the choice that best preserves the "stay fast" invariant. Override at
+    /// runtime with `PARLEQ_GPU_CACHE_MB` (MB) to re-tune without a rebuild.
+    public static let gpuCacheLimitBytes = 1024 * 1024 * 1024
     public static let modelsDirectory: URL = {
         guard let base = FileManager.default
             .urls(for: .applicationSupportDirectory, in: .userDomainMask).first

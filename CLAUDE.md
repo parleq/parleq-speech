@@ -208,6 +208,7 @@ Schema is documented in source comments at the top of `Config.swift`. The Settin
 | `PARLEQ_PASTE_TRACE=1` | Opt-in: at synthetic-paste time logs the ambient corruption-prone modifier mask (hex) + how long Paster waited for it to clear (`paste post (ambientMods=0x…, waited=…ms)`). Flags + ms only — never transcript/pasteboard content. Off by default. |
 | `PARLEQ_LEARN_TRIGGER=<n>` | Demo/debug: lowers the learning analyzer's correction-count trigger threshold (e.g. `=1` to run after a single correction). Default 5. |
 | `PARLEQ_LEARN_MIN_INTERVAL=<seconds>` | Demo/debug: shortens the learning analyzer's minimum interval between runs (e.g. `=0` for back-to-back runs). Default 600. |
+| `PARLEQ_GPU_CACHE_MB=<MB>` | Tuning override (MB) for the on-device LLM's MLX Metal free-buffer cache cap, applied once per model load. Bounds the retained GPU pool so loaded phys_footprint sits near the weights floor instead of ballooning. Default `LocalModelDefaults.gpuCacheLimitBytes` (1024 MB). Lets you re-tune the footprint↔latency tradeoff without a rebuild. |
 
 ## Commit conventions
 
