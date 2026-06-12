@@ -50,9 +50,10 @@ final class HelpOverlayWindow {
     /// `referenceWindowsEnabled` drops the Space/C attach gestures from
     /// the list when reference windows are disabled (MDM / Settings), so
     /// the panel only advertises gestures that are actually live.
-    func show(hotkeyName: String, referenceWindowsEnabled: Bool) {
+    func show(hotkeyName: String, referenceWindowsEnabled: Bool, transformPresetsEnabled: Bool) {
         model.hotkeyName = hotkeyName.isEmpty ? "your hotkey" : hotkeyName
         model.referenceWindowsEnabled = referenceWindowsEnabled
+        model.transformPresetsEnabled = transformPresetsEnabled
         // Size to content, then center, then show. Sizing before
         // centering avoids the "grows from the wrong origin" class of
         // bug documented in CLAUDE.md.
@@ -110,6 +111,7 @@ private final class HelpPanel: NSPanel {
 private final class HelpModel: ObservableObject {
     @Published var hotkeyName: String = "your hotkey"
     @Published var referenceWindowsEnabled: Bool = true
+    @Published var transformPresetsEnabled: Bool = false
 }
 
 private struct HelpRow {
@@ -205,10 +207,16 @@ private struct HelpContent: View {
                 HelpRow(keys: "Hold the hotkey again", desc: "Revise your reviewed text — say what to change"),
             ]),
             HelpSection(title: "While dictating, refining, or reviewing", rows: both),
-            HelpSection(title: "Reviewing your text", rows: [
-                HelpRow(keys: "Enter", desc: "Accept & paste to the current app"),
-                HelpRow(keys: "V", desc: "Send to a different window"),
-            ]),
+            HelpSection(title: "Reviewing your text", rows: {
+                var rows = [
+                    HelpRow(keys: "Enter", desc: "Accept & paste to the current app"),
+                    HelpRow(keys: "V", desc: "Send to a different window"),
+                ]
+                if model.transformPresetsEnabled {
+                    rows.append(HelpRow(keys: "1–9", desc: "Apply the numbered transform preset"))
+                }
+                return rows
+            }()),
         ]
     }
 

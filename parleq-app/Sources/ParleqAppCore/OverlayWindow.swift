@@ -127,6 +127,9 @@ public final class OverlayWindow {
     /// pass on the current review text. Triggered by the preset chips in
     /// the .awaitingAccept footer.
     public var onRunPreset: ((String) -> Void)?
+    /// AppState wires this to run the preset at a 1-based position (digit
+    /// key 1–9 in review). Returns true iff a preset was applied.
+    public var onRunPresetNumber: ((Int) -> Bool)?
     /// AppState wires this to undo a per-app default style: re-runs plain
     /// cleanup (no transform addendum) from the retained raw transcript.
     public var onUndoStyle: (() -> Void)?
@@ -222,6 +225,7 @@ public final class OverlayWindow {
         panel.onAttachWindow = { [weak self] in self?.onAttachWindow?() }
         panel.onAttachCurrent = { [weak self] in self?.onAttachCurrent?() }
         panel.onShowParleq = { [weak self] in self?.onShowParleq?() }
+        panel.onRunPresetNumber = { [weak self] n in self?.onRunPresetNumber?(n) ?? false }
 
         sizeObservation = hc.observe(\.preferredContentSize, options: [.new]) { [weak self] _, change in
             // Trace: prove the KVO fires. Captures the .new value so
@@ -818,6 +822,11 @@ private final class OverlayPanel: NSPanel {
     var onAttachWindow: (() -> Void)?
     var onAttachCurrent: (() -> Void)?
     var onShowParleq: (() -> Void)?
+    /// Bare digit 1–9 during review → apply the preset at that 1-based
+    /// position. Returns true iff a preset was actually applied, so
+    /// keyDown can consume the event only on a hit and let an unmapped
+    /// digit fall through inert.
+    var onRunPresetNumber: ((Int) -> Bool)?
     /// When non-nil, every setFrame call forces origin.y to this
     /// value so the bottom edge stays on screen and the panel grows
     /// upward. Without this, NSWindow's auto-tracking of
@@ -925,6 +934,24 @@ private final class OverlayPanel: NSPanel {
                 // Bare "P" — show the Parleq window (cancels review).
                 // AppState gates to .awaitingAccept so it no-ops elsewhere.
                 onShowParleq?()
+            } else if event.modifierFlags
+                        .intersection([.command, .control, .option]).isEmpty,
+                      let g = baseGlyph, g.count == 1,
+                      let digit = Int(g), (1...9).contains(digit) {
+                // 1–9 → apply the numbered transform preset. Shift is
+                // ALLOWED here (unlike the bare V/C/P gestures) because on
+                // AZERTY-style layouts the number row yields symbols
+                // unshifted and digits only WITH Shift. `baseGlyph`
+                // (charactersIgnoringModifiers) reflects Shift, so it is "1"
+                // for both a US bare press AND an AZERTY Shift press, but "!"
+                // for a US Shift+1 — which correctly is not a digit and so
+                // doesn't fire. Cmd/Ctrl/Option are still excluded so real
+                // shortcuts pass through. Consume the event only when a
+                // preset was actually applied; otherwise fall through so an
+                // unmapped digit stays inert.
+                if onRunPresetNumber?(digit) != true {
+                    super.keyDown(with: event)
+                }
             } else {
                 super.keyDown(with: event)
             }
@@ -1355,6 +1382,34 @@ nonisolated func fittingChipCount(
     return count
 }
 
+// MARK: - Preset number-key mapping
+
+/// Bare digit keys 1–9 apply the transform preset at that 1-based
+/// position in `config.transformPresets`. Presets past the 9th are
+/// click-only (no digit, no key) — double-digit keystrokes aren't worth
+/// it and `0` is an awkward "10th". This cap governs both the digit
+/// drawn on a chip and which keypresses resolve to a preset.
+let maxNumberedPresets = 9
+
+/// Maps a pressed digit (1-based) to a zero-based index into the preset
+/// array, or nil when the digit is outside 1…`maxNumberedPresets` or
+/// beyond the available preset count. Pure — unit-testable without a host
+/// app, mirroring `fittingChipCount`.
+nonisolated func presetIndex(forNumber number: Int, presetCount: Int) -> Int? {
+    guard (1...maxNumberedPresets).contains(number) else { return nil }
+    let index = number - 1
+    return index < presetCount ? index : nil
+}
+
+/// The 1-based number drawn on the chip at zero-based array `index`, or
+/// nil for positions past `maxNumberedPresets` (no digit, no key). This is
+/// the display-side inverse of `presetIndex(forNumber:presetCount:)`: both
+/// derive from the same cap, so the digit shown on a chip and the digit
+/// that resolves to it are guaranteed to agree. Pure — unit-testable.
+nonisolated func presetNumber(forIndex index: Int) -> Int? {
+    index < maxNumberedPresets ? index + 1 : nil
+}
+
 // MARK: - PresetChip view
 
 // MARK: - ChromeSlotMetrics (spike: state-transition smoothness)
@@ -1384,6 +1439,9 @@ private enum ChromeSlotMetrics {
 private struct PresetChip: View {
     let title: String
     let help: String
+    /// 1-based preset number drawn in the left padding gutter, or nil for
+    /// presets past `maxNumberedPresets` (no digit, no key).
+    let number: Int?
     let action: () -> Void
     @State private var hovered = false
 
@@ -1419,6 +1477,22 @@ private struct PresetChip: View {
                     .strokeBorder(OverlayContent.aiGradient, lineWidth: 1)
                     .opacity(hovered ? 0.9 : 0.45)
             )
+            .overlay(alignment: .leading) {
+                if let number {
+                    // Drawn INSIDE the capsule's existing 9pt left padding
+                    // gutter. An overlay takes no part in layout, so the
+                    // chip frame and the 22pt chips-row floor are unchanged
+                    // and PresetChipMetrics.chipWidth (title-only) stays
+                    // correct. The title is left-aligned after the 9pt
+                    // padding, so this never overlaps the name.
+                    Text("\(number)")
+                        .font(.system(size: 8, weight: .semibold))
+                        .foregroundColor(hovered ? .primary : .secondary)
+                        .opacity(hovered ? 0.85 : 0.5)
+                        .padding(.leading, 2)
+                        .accessibilityHidden(true)
+                }
+            }
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
@@ -1646,6 +1720,16 @@ private struct OverlayContent: View {
                 spacing: PresetChipMetrics.interChipSpacing,
                 overflowReserve: PresetChipMetrics.overflowMenuReserve
             )
+            // Pair each preset with its 1-based number (nil past the 9th).
+            // Built from the original array index so a preset keeps its
+            // number even when it falls into the ⋯ overflow.
+            let numbered: [(id: String, number: Int?, name: String, prompt: String)] =
+                presetChips.enumerated().map { idx, p in
+                    (id: p.id,
+                     number: presetNumber(forIndex: idx),
+                     name: p.name,
+                     prompt: p.prompt)
+                }
             // ── render ──────────────────────────────────────────────
             HStack(spacing: PresetChipMetrics.interChipSpacing) {
                 Image(systemName: "sparkles")
@@ -1671,17 +1755,19 @@ private struct OverlayContent: View {
                             .accessibilityLabel("Undo style: \(name)")
                     }
                 }
-                ForEach(presetChips.prefix(visibleCount)) { preset in
-                    PresetChip(title: preset.name, help: preset.prompt) {
-                        onRunPreset(preset.id)
+                ForEach(Array(numbered.prefix(visibleCount)), id: \.id) { np in
+                    PresetChip(title: np.name, help: np.prompt, number: np.number) {
+                        onRunPreset(np.id)
                     }
                 }
                 if visibleCount < presetChips.count {
                     Menu {
-                        ForEach(presetChips.dropFirst(visibleCount)) { preset in
-                            Button(preset.name) { onRunPreset(preset.id) }
-                                .help(preset.prompt)
-                                .accessibilityHint("Apply this transform to the dictation")
+                        ForEach(Array(numbered.dropFirst(visibleCount)), id: \.id) { np in
+                            Button(np.number.map { "\($0)  \(np.name)" } ?? np.name) {
+                                onRunPreset(np.id)
+                            }
+                            .help(np.prompt)
+                            .accessibilityHint("Apply this transform to the dictation")
                         }
                     } label: {
                         Text("⋯")

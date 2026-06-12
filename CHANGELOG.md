@@ -4,6 +4,20 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-06-12
+
+Two improvements: apply a styling preset to your dictation with a single number key, and on-device cleanup now holds less memory while the model is loaded.
+
+### Added
+
+- **Apply a transform preset by number.** In the review overlay, each of your transform presets now shows a small number, and pressing that number key (1–9) applies it instantly — no need to reach for the mouse. Presets tucked into the "⋯" overflow keep their number too, so the key works whether or not the chip is on screen. Press ? in the overlay to see the shortcut alongside the others.
+
+### Changed
+
+- **On-device cleanup holds less memory while loaded.** The on-device model now caps the pool of reusable GPU scratch buffers it keeps around, so the memory it occupies while loaded stays close to the model's own size instead of climbing several gigabytes higher after a longer cleanup. Idle release is unchanged — the model still frees its memory after a few minutes of not being used — and cloud cleanup is unaffected.
+
+[0.24.0]: https://github.com/parleq/parleq-speech/releases/tag/v0.24.0
+
 ## [0.23.0] - 2026-06-10
 
 Parleq can now clean up your dictations entirely on your device — no account, no API key, and no network connection required. If you'd rather keep everything local, this is the option for you.

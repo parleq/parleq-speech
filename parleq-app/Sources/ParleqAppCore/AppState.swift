@@ -592,6 +592,7 @@ public final class AppState {
             self?.switchModelAndRecleanup(id)
         }
         overlay.onRunPreset = { [weak self] id in self?.runPreset(id: id) }
+        overlay.onRunPresetNumber = { [weak self] n in self?.runPresetByNumber(n) ?? false }
         overlay.onUndoStyle = { [weak self] in self?.undoStyle() }
         // Wire the overlay's async file-pick into AppState's pending-
         // capture bookkeeping. Submit (hotkeyUp) and accept() both
@@ -1788,7 +1789,8 @@ public final class AppState {
         }
         helpOverlay.show(
             hotkeyName: overlay.model.hotkeyDisplayName,
-            referenceWindowsEnabled: overlay.model.referenceWindowsEnabled
+            referenceWindowsEnabled: overlay.model.referenceWindowsEnabled,
+            transformPresetsEnabled: Config.load().config.transformPresetsEnabled
         )
     }
 
@@ -3541,6 +3543,25 @@ public final class AppState {
                     appBundleID: targetBundleID, source: "manual")
             }
         }
+    }
+
+    /// Apply the transform preset at a 1-based position (digit keys 1–9
+    /// in review). Resolves against `config.transformPresets` — the same
+    /// ordered source the overlay chips render from — so digit N always
+    /// matches the chip numbered N. Returns true iff a preset was applied,
+    /// letting the panel consume the keystroke only on a hit. The result
+    /// is always consumed (the panel uses it to decide event swallowing),
+    /// so it is intentionally not @discardableResult.
+    @MainActor
+    func runPresetByNumber(_ number: Int) -> Bool {
+        guard phase == .awaitingAccept else { return false }
+        let (config, _) = Config.load()
+        guard config.transformPresetsEnabled,
+              let index = presetIndex(forNumber: number,
+                                      presetCount: config.transformPresets.count)
+        else { return false }
+        runPreset(id: config.transformPresets[index].id)
+        return true
     }
 
     /// Tapped the overlay's signed-out notice (enterprise OIDC
