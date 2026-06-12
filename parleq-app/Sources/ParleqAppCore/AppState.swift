@@ -1789,7 +1789,8 @@ public final class AppState {
         }
         helpOverlay.show(
             hotkeyName: overlay.model.hotkeyDisplayName,
-            referenceWindowsEnabled: overlay.model.referenceWindowsEnabled
+            referenceWindowsEnabled: overlay.model.referenceWindowsEnabled,
+            transformPresetsEnabled: Config.load().config.transformPresetsEnabled
         )
     }
 
