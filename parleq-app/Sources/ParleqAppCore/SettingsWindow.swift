@@ -3102,7 +3102,20 @@ private struct LocalOnDeviceCard: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         case .comfortable:
-            EmptyView()
+            // Even on machines with ample RAM, surface the working-set cost up
+            // front — it's the headline trade-off of the on-device tier and the
+            // first thing a user (or a security reviewer) wonders about. Styled
+            // as a subtle callout so it reads as prominent without alarming.
+            HStack(alignment: .top, spacing: 7) {
+                Image(systemName: "memorychip")
+                    .foregroundStyle(SettingsView.brandAccent)
+                Text("Uses about 6 GB of memory while the model is loaded, and frees it automatically after a few minutes of inactivity. A Mac with 12 GB or more of memory is required.")
+                    .font(.callout)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.05)))
         }
     }
 }

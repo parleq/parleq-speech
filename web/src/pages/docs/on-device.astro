@@ -78,6 +78,9 @@ import SiteHeader from '../../components/SiteHeader.astro';
         While the model is loaded it uses about 6 GB of memory. Parleq keeps it resident only as long as you're actively dictating and unloads it after a few minutes of inactivity, returning that memory to the system. The first dictation after an unload reloads the model (a couple of seconds); subsequent ones are fast.
       </p>
       <p>
+        Parleq also caps the pool of reusable GPU scratch buffers the model keeps around, so the memory it holds while loaded stays close to the model's own size rather than climbing several gigabytes higher after a longer cleanup. The figure you see in Activity Monitor therefore tracks the model itself — useful to know if you or your security team are watching the process's footprint.
+      </p>
+      <p>
         You can change this in <strong class="text-[color:var(--color-text)]">Settings → Cleanup</strong> with the <strong class="text-[color:var(--color-text)]">Keep model loaded</strong> control — <strong class="text-[color:var(--color-text)]">Automatic</strong> (the default), <strong class="text-[color:var(--color-text)]">Keep loaded</strong> (no reload pause, but holds the memory), or <strong class="text-[color:var(--color-text)]">Unload when idle</strong>.
       </p>
     </div>
