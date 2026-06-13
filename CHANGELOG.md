@@ -4,7 +4,7 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
-## [0.24.1] - 2026-06-12
+## [0.24.1] - 2026-06-13
 
 On-device cleanup polish: a restart prompt that actually appears when the model is ready, a clearer (and cancellable) download experience, and Parleq's own name recognized out of the box.
 
