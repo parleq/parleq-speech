@@ -34,6 +34,18 @@ final class ManagedConfigTests: XCTestCase {
         XCTAssertTrue(Config.default.customDictionaryEnabled)
     }
 
+    func test_default_dictionary_ships_parleq_builtin() {
+        guard let parleq = Config.default.customDictionary
+            .first(where: { $0.term == "Parleq" }) else {
+            XCTFail("Config.default should ship a built-in \"Parleq\" dictionary term")
+            return
+        }
+        XCTAssertTrue(parleq.aliases.contains("Parlek"),
+                      "the common mis-hearing \"Parlek\" should be a Parleq alias")
+        XCTAssertEqual(parleq.biasing, .asrAndLLM,
+                       "the built-in term must bias ASR (not LLM-only) to fix the transcript")
+    }
+
     func test_customModelEntryEnabled_defaults_to_true() {
         XCTAssertTrue(Config.default.customModelEntryEnabled)
     }
