@@ -4,6 +4,24 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.24.1] - 2026-06-13
+
+On-device cleanup polish: a restart prompt that actually appears when the model is ready, a clearer (and cancellable) download experience, and Parleq's own name recognized out of the box.
+
+### Fixed
+
+- **A clear "Restart" prompt after the on-device model downloads.** Enabling on-device cleanup takes effect after a restart, but the prompt didn't always appear — especially when you enabled it from the Setup Wizard. Now, once the model is ready, Parleq shows a "Restart Now" prompt both in Settings → Cleanup and in the menu bar, so on-device cleanup is one click away from working regardless of where you turned it on.
+
+### Changed
+
+- **Clearer on-device download.** While the model downloads, Parleq now shows an activity indicator (instead of a percentage that could appear stuck) and a **Cancel** button to stop the download.
+
+### Added
+
+- **"Parleq" is recognized out of the box.** New installs ship with the app's own name (and its common mis-hearings) as a built-in dictionary term, so dictating "Parleq" no longer comes out as "Parlek." You can edit or remove it in Settings → Dictionary like any term.
+
+[0.24.1]: https://github.com/parleq/parleq-speech/releases/tag/v0.24.1
+
 ## [0.24.0] - 2026-06-12
 
 Two improvements: apply a styling preset to your dictation with a single number key, and on-device cleanup now holds less memory while the model is loaded.

@@ -727,6 +727,10 @@ struct ParleqApp {
                 oidcGCPExchange: gcpExchange,
                 oidcPrewarmSessionAccessToken: vertexGoogleOAuthActive
             )
+            // Record the provider this process actually launched with, so the
+            // on-device restart affordance can detect "config says local + model
+            // ready, but the live process predates that" (see onDeviceActivationPending).
+            LaunchInfo.cleanupProvider = cleanupId.provider
         }
 
         // Enterprise OIDC: wire the Company Account section. Only when a
@@ -1028,19 +1032,52 @@ struct ParleqApp {
                 switch state {
                 case .downloading(let p):
                     menuBox?.value?.setLocalModelDownloadProgress(p)
+                    menuBox?.value?.setOnDeviceRestartPending(false)
                 case .notDownloaded:
                     menuBox?.value?.setLocalModelDownloadProgress(nil)
+                    menuBox?.value?.setOnDeviceRestartPending(false)
                     // "Remove downloaded model" sets state to .notDownloaded.
                     // Also release the ~6 GB of resident GPU/ANE memory
                     // immediately so the user sees the benefit right away
                     // rather than waiting for the idle-unload timer to fire.
                     Task { await localResidency.unloadNow() }
+                case .ready:
+                    menuBox?.value?.setLocalModelDownloadProgress(nil)
+                    // Restart-after-download (wizard OR Settings): if config now
+                    // says local and the model is ready but THIS process launched
+                    // with a different provider, surface the menu-bar restart
+                    // prompt so the wizard path is covered even when Settings is
+                    // closed. Config re-read is cheap (fires once on .ready).
+                    let pending = onDeviceActivationPending(
+                        launchProvider: cleanupId.provider,
+                        configProvider: Config.load().config.llmProvider,
+                        modelReady: true)
+                    menuBox?.value?.setOnDeviceRestartPending(pending)
                 default:
                     menuBox?.value?.setLocalModelDownloadProgress(nil)
+                    menuBox?.value?.setOnDeviceRestartPending(false)
                 }
             }
             localModelStore.onStateChanged = applyLocalModelState
             applyLocalModelState(localModelStore.state)
+
+            // Re-evaluate the on-device restart-to-activate prompt when the
+            // cleanup provider changes in Settings — the model-state observer
+            // above only fires on download-state transitions, so switching
+            // local→other (or other→local) while the model is already ready
+            // would otherwise leave the menu-bar item stale. Together the two
+            // keep it correct across both axes (model readiness AND provider).
+            NotificationCenter.default.addObserver(
+                forName: .parleqCleanupProviderChanged, object: nil, queue: .main
+            ) { [weak menuBox] _ in
+                MainActor.assumeIsolated {
+                    let pending = onDeviceActivationPending(
+                        launchProvider: cleanupId.provider,
+                        configProvider: Config.load().config.llmProvider,
+                        modelReady: localModelStore.state == .ready)
+                    menuBox?.value?.setOnDeviceRestartPending(pending)
+                }
+            }
 
             // "Finish setup…" prompt — shown when the wizard hasn't been
             // completed yet. Disappears once the wizard saves

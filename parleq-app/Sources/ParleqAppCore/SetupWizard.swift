@@ -69,6 +69,12 @@ extension Notification.Name {
     /// app restart. userInfo["ms"] carries the new delay as an Int.
     public static let parleqOverlayDelayChanged = Notification.Name("ParleqOverlayDelayChanged")
 
+    /// Posted when the cleanup provider changes in Settings, so the on-device
+    /// restart-to-activate menu-bar item re-evaluates `onDeviceActivationPending`
+    /// (the menu-bar observer otherwise only fires on model-state transitions, so
+    /// switching local→other while the model is ready would leave a stale item).
+    public static let parleqCleanupProviderChanged = Notification.Name("ParleqCleanupProviderChanged")
+
     /// Posted when "learn from corrections" is enabled OUTSIDE the Settings
     /// window — i.e. via the overlay's inline toggle (`LearnBanner`). An open
     /// `SettingsModel` loaded the old value at init and would otherwise write
@@ -344,6 +350,12 @@ private final class WizardModel: ObservableObject {
         }
         do {
             try Config.save(c)
+            // Refresh the on-device restart-to-activate affordance. The wizard
+            // changes the provider via Config.save (not the Settings picker), and
+            // if the model is already downloaded no `.ready` transition fires —
+            // so without this the menu-bar restart item wouldn't update when
+            // on-device is enabled from the wizard. Mirrors the picker's post.
+            NotificationCenter.default.post(name: .parleqCleanupProviderChanged, object: nil)
         } catch {
             FileHandle.standardError.write(
                 "[parleq] wizard: save failed: \(error)\n".data(using: .utf8) ?? Data()
@@ -1469,13 +1481,19 @@ private struct DoneStep: View {
     @ViewBuilder
     private var onDeviceStatusRow: some View {
         switch localModelStore.state {
-        case .downloading(let progress):
+        case .downloading:
+            // Indeterminate (see the Settings card note): the library can't
+            // report incremental bytes for the big shards, so a percentage would
+            // freeze. Honest activity indicator + Cancel.
             HStack(spacing: 10) {
-                ProgressView(value: progress)
-                    .frame(maxWidth: 160)
-                Text("Downloading cleanup model… \(Int(progress * 100))%")
+                ProgressView()
+                    .controlSize(.small)
+                Text("Downloading cleanup model (~4 GB, one-time)…")
                     .font(.callout)
                     .foregroundStyle(.secondary)
+                Spacer()
+                Button("Cancel") { localModelStore.remove() }
+                    .buttonStyle(.bordered)
             }
             Text("Dictation works without cleanup until the model finishes downloading.")
                 .font(.caption)

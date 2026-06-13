@@ -694,7 +694,19 @@ public struct Config: Sendable {
         continueOtherAudio: true,
         audioInputDeviceUID: "",
         asrEndpoint: bundledASREndpoint,
-        customDictionary: [],
+        // Ship the app's own name as a built-in dictionary term so ASR
+        // biasing emits "Parleq" out of the box instead of common
+        // mis-hearings ("Parlek", "Parlay", …). Source .user so it shows in
+        // the dictionary editor and can be edited/removed like any term.
+        // (New configs only — existing users keep their saved dictionary.)
+        customDictionary: [
+            DictionaryEntry(
+                term: "Parleq",
+                context: "the name of this dictation app",
+                aliases: ["Parlek", "Parlay", "Parlez", "Parlec"],
+                biasing: .asrAndLLM,
+                source: .user)
+        ],
         transformPresets: [],
         presetAppDefaults: [:],
         contextModel: nil,

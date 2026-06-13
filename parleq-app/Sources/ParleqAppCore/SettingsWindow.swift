@@ -1704,6 +1704,11 @@ struct SettingsView: View {
                                         model.cleanupModelName = available.first ?? ""
                                     }
                                     model.save()
+                                    // Re-evaluate the on-device restart-to-activate
+                                    // menu-bar item (its observer only fires on model
+                                    // state changes, not provider changes).
+                                    NotificationCenter.default.post(
+                                        name: .parleqCleanupProviderChanged, object: nil)
                                 }
                             ),
                             label: "Provider",
@@ -2970,6 +2975,10 @@ private struct LocalOnDeviceCard: View {
             // State-driven status row
             stateRow
 
+            // Restart-to-activate prompt (model ready, but the running process
+            // launched with a different provider — covers the Settings path).
+            activationRestartRow
+
             // RAM tier note (cautioned or unsupported)
             ramTierNote
 
@@ -3009,6 +3018,34 @@ private struct LocalOnDeviceCard: View {
         }
     }
 
+    /// Shown when the model is downloaded/ready but the running process didn't
+    /// launch with the on-device provider — i.e. on-device was just enabled
+    /// (here in Settings, or earlier in the wizard) and only takes effect after
+    /// a restart. Gated on `.ready` so the call-to-action appears when the model
+    /// is actually usable, not the instant the provider is switched.
+    @ViewBuilder
+    private var activationRestartRow: some View {
+        if case .ready = store.state,
+           onDeviceActivationPending(
+               launchProvider: LaunchInfo.cleanupProvider,
+               configProvider: model.cleanupProvider,
+               modelReady: true) {
+            HStack(alignment: .center, spacing: 10) {
+                Image(systemName: "arrow.clockwise.circle.fill")
+                    .foregroundStyle(SettingsView.brandAccent)
+                Text("Model ready. Restart Parleq to start using on-device cleanup.")
+                    .font(.callout)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer()
+                Button("Restart Now") { ParleqApp_relaunch() }
+                    .buttonStyle(.borderedProminent)
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 8).fill(Color.orange.opacity(0.12)))
+        }
+    }
+
     @ViewBuilder
     private var stateRow: some View {
         switch store.state {
@@ -3028,18 +3065,26 @@ private struct LocalOnDeviceCard: View {
                 }
                 .buttonStyle(.borderedProminent)
             }
-        case .downloading(let progress):
+        case .downloading:
+            // Indeterminate by design: HF's library only reports progress at
+            // whole-file completion (the multi-GB shards download out-of-process
+            // and never report incremental bytes), so a percentage would freeze
+            // mid-shard and read as broken. An honest activity indicator + Cancel
+            // until the custom in-process downloader lands (see the download issue).
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 8) {
-                    ProgressView(value: progress)
-                        .frame(maxWidth: 200)
-                    Text("\(Int(progress * 100))%")
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Downloading the model (~4 GB, one-time)…")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                        .monospacedDigit()
                     Spacer()
+                    // Cancel an in-flight download — remove() cancels the task and
+                    // discards partial files, returning to .notDownloaded.
+                    Button("Cancel") { store.remove() }
+                        .buttonStyle(.bordered)
                 }
-                Text("Downloading… Dictation works without cleanup until the model finishes.")
+                Text("Dictation works without cleanup until the model finishes.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
