@@ -10,31 +10,6 @@ import Combine
 import Foundation
 import HuggingFace
 
-/// Overall model-download progress (0…1) across `byteSizes` files, where the
-/// file at `index` is `fileFraction` (0…1) downloaded. **Byte-weighted** when
-/// every file size is known and the total is positive — so the dominant
-/// multi-GB safetensors shard occupies its true share of the bar instead of a
-/// flat `1/fileCount` slice (which made the bar jump to ~30% and then appear to
-/// stall for the whole download). Falls back to file-count weighting when any
-/// size is missing. Pure; unit-testable without a host app.
-nonisolated func modelDownloadProgress(
-    byteSizes: [Int?], index: Int, fileFraction: Double
-) -> Double {
-    let count = byteSizes.count
-    guard count > 0, index >= 0, index < count else { return 0 }
-    let frac = min(max(fileFraction, 0), 1)
-    if !byteSizes.contains(where: { $0 == nil }) {
-        let sizes = byteSizes.map { Double($0 ?? 0) }
-        let totalBytes = sizes.reduce(0, +)
-        if totalBytes > 0 {
-            let bytesBefore = sizes[0..<index].reduce(0, +)
-            return min(max((bytesBefore + sizes[index] * frac) / totalBytes, 0), 1)
-        }
-    }
-    // Fallback: file-count weighting (original behavior) when sizes are absent.
-    return min(max((Double(index) + frac) / Double(count), 0), 1)
-}
-
 @MainActor
 public final class LocalModelStore: ObservableObject {
     public enum State: Equatable {
@@ -220,10 +195,6 @@ public final class LocalModelStore: ObservableObject {
             }
 
             // 2. Download each file into modelDirectory, preserving sub-paths.
-            // Per-file byte sizes from the listFiles tree drive a byte-weighted
-            // progress bar (nil for any file → modelDownloadProgress falls back
-            // to file-count weighting).
-            let byteSizes: [Int?] = fileEntries.map { $0.size }
             for (index, entry) in fileEntries.enumerated() {
                 // Check for cancellation before each file download. On cancel,
                 // leave partial files on disk (a relaunch can resume where the
@@ -249,11 +220,10 @@ public final class LocalModelStore: ObservableObject {
                 }
 
                 let destination = modelDirectory.appendingPathComponent(entry.path)
-                // Byte-weighted progress (see modelDownloadProgress): the bar
-                // reflects bytes downloaded, so the ~4 GB shard advances it in
-                // proportion to its size instead of a flat 1/fileCount step.
-                let baseProgress = modelDownloadProgress(
-                    byteSizes: byteSizes, index: index, fileFraction: 0)
+                // Progress is file-count-proportional, not byte-proportional —
+                // small files advance the bar quickly; large shards crawl it.
+                // Acceptable for v1; byte-weighting would need sizes from listFiles.
+                let baseProgress = Double(index) / Double(total)
                 let perFileProgress = Progress(totalUnitCount: 100)
 
                 // Deliver coarse progress on MainActor immediately.
@@ -266,9 +236,8 @@ public final class LocalModelStore: ObservableObject {
                 let observation = perFileProgress.observe(\.fractionCompleted,
                                                           options: [.new]) { [weak self] prog, _ in
                     guard let self else { return }
-                    let combined = modelDownloadProgress(
-                        byteSizes: byteSizes, index: index,
-                        fileFraction: prog.fractionCompleted)
+                    let withinFile = prog.fractionCompleted / Double(total)
+                    let combined = min(baseProgress + withinFile, 1.0)
                     Task { @MainActor [weak self] in
                         guard let self, case .downloading = self.state else { return }
                         self.state = .downloading(progress: combined)

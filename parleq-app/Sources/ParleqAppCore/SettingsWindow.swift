@@ -3065,18 +3065,26 @@ private struct LocalOnDeviceCard: View {
                 }
                 .buttonStyle(.borderedProminent)
             }
-        case .downloading(let progress):
+        case .downloading:
+            // Indeterminate by design: HF's library only reports progress at
+            // whole-file completion (the multi-GB shards download out-of-process
+            // and never report incremental bytes), so a percentage would freeze
+            // mid-shard and read as broken. An honest activity indicator + Cancel
+            // until the custom in-process downloader lands (see the download issue).
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 8) {
-                    ProgressView(value: progress)
-                        .frame(maxWidth: 200)
-                    Text("\(Int(progress * 100))%")
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Downloading the model (~4 GB, one-time)…")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                        .monospacedDigit()
                     Spacer()
+                    // Cancel an in-flight download — remove() cancels the task and
+                    // discards partial files, returning to .notDownloaded.
+                    Button("Cancel") { store.remove() }
+                        .buttonStyle(.bordered)
                 }
-                Text("Downloading… Dictation works without cleanup until the model finishes.")
+                Text("Dictation works without cleanup until the model finishes.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

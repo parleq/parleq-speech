@@ -350,6 +350,12 @@ private final class WizardModel: ObservableObject {
         }
         do {
             try Config.save(c)
+            // Refresh the on-device restart-to-activate affordance. The wizard
+            // changes the provider via Config.save (not the Settings picker), and
+            // if the model is already downloaded no `.ready` transition fires —
+            // so without this the menu-bar restart item wouldn't update when
+            // on-device is enabled from the wizard. Mirrors the picker's post.
+            NotificationCenter.default.post(name: .parleqCleanupProviderChanged, object: nil)
         } catch {
             FileHandle.standardError.write(
                 "[parleq] wizard: save failed: \(error)\n".data(using: .utf8) ?? Data()
@@ -1475,13 +1481,19 @@ private struct DoneStep: View {
     @ViewBuilder
     private var onDeviceStatusRow: some View {
         switch localModelStore.state {
-        case .downloading(let progress):
+        case .downloading:
+            // Indeterminate (see the Settings card note): the library can't
+            // report incremental bytes for the big shards, so a percentage would
+            // freeze. Honest activity indicator + Cancel.
             HStack(spacing: 10) {
-                ProgressView(value: progress)
-                    .frame(maxWidth: 160)
-                Text("Downloading cleanup model… \(Int(progress * 100))%")
+                ProgressView()
+                    .controlSize(.small)
+                Text("Downloading cleanup model (~4 GB, one-time)…")
                     .font(.callout)
                     .foregroundStyle(.secondary)
+                Spacer()
+                Button("Cancel") { localModelStore.remove() }
+                    .buttonStyle(.bordered)
             }
             Text("Dictation works without cleanup until the model finishes downloading.")
                 .font(.caption)
