@@ -239,6 +239,9 @@ public final class HotkeyListener {
     private var pPressedThisHold = false
     /// Mirror of pPressedThisHold for the "hold-hotkey + C" gesture.
     private var cPressedThisHold = false
+    /// #83: whether THIS hold's key-down was classified as a double-tap. Read at
+    /// key-up to decide double-tap-and-release (continuous) vs -and-hold (quick).
+    private var doubleTapThisHold = false
     /// Cross-cutting flag tracking a Space keyDown we consumed.
     /// Set when the keyDown is swallowed; checked when the
     /// matching keyUp arrives so we also consume it. Without this,
@@ -353,6 +356,7 @@ public final class HotkeyListener {
             spacePressedThisHold = false
             pPressedThisHold = false
             cPressedThisHold = false
+            doubleTapThisHold = isDoubleTap   // #83: remembered for the key-up classifier
             // Record the hold-start time for the P-gesture's
             // hold-threshold gate (see pHoldThreshold).
             keyDownAt = now
@@ -388,10 +392,20 @@ public final class HotkeyListener {
                         .data(using: .utf8) ?? Data()
                 )
             }
-            let upEvent = HotkeyUpEvent(spaceWasPressedDuringHold: spacePressedThisHold)
+            // #83: double-tap whose second press was released quickly (a tap,
+            // not a hold) → continuous recording. Decided here at key-up from the
+            // remembered double-tap classification + the measured hold duration.
+            let wasDoubleTapRelease = GestureTiming.isContinuousRelease(
+                wasDoubleTapDown: doubleTapThisHold,
+                holdDuration: holdDuration,
+                threshold: GestureTiming.continuousReleaseWindow)
+            let upEvent = HotkeyUpEvent(
+                spaceWasPressedDuringHold: spacePressedThisHold,
+                wasDoubleTapRelease: wasDoubleTapRelease)
             // Defensive reset on emit — anything that happens after
             // this point belongs to a new hold cycle.
             spacePressedThisHold = false
+            doubleTapThisHold = false
             onKeyUp(upEvent)
         }
     }
@@ -596,6 +610,15 @@ public struct HotkeyUpEvent {
     /// release submits (false) or transitions into the latched
     /// state to open the picker (true).
     public let spaceWasPressedDuringHold: Bool
+    /// #83: true when this release was a double-tap-and-release (a double-tap
+    /// whose second press was a quick tap, not a hold) — the continuous-recording
+    /// gesture. AppState resolves it against the configurable gesture map.
+    public var wasDoubleTapRelease: Bool = false
+
+    public init(spaceWasPressedDuringHold: Bool, wasDoubleTapRelease: Bool = false) {
+        self.spaceWasPressedDuringHold = spaceWasPressedDuringHold
+        self.wasDoubleTapRelease = wasDoubleTapRelease
+    }
 }
 
 // Non-prompting trust check. #82: launch must NOT fire the system

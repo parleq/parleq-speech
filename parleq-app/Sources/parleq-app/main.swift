@@ -1225,7 +1225,8 @@ struct ParleqApp {
                     let suppress = stateBox.value?.quickMode ?? false
                     soundBox.value?.endOrCancel(suppressEnd: suppress)
                     stateBox.value?.hotkeyUp(
-                        spaceWasPressedDuringHold: upEvent.spaceWasPressedDuringHold
+                        spaceWasPressedDuringHold: upEvent.spaceWasPressedDuringHold,
+                        wasDoubleTapRelease: upEvent.wasDoubleTapRelease
                     )
                 }
             },

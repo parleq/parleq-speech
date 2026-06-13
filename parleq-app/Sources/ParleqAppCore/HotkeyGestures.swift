@@ -7,6 +7,23 @@
 // remapping is deferred.
 import Foundation
 
+/// Pure timing classifier for the double-tap-and-release gesture (#83). Kept
+/// here (not on HotkeyListener) so it's free of MainActor isolation and unit-
+/// testable. The CGEventTap measures `holdDuration`; this decides intent.
+public enum GestureTiming {
+    /// Default release window: a double-tap whose second press is released
+    /// within this is a "tap" → continuous recording; held longer → quick mode.
+    public static let continuousReleaseWindow: TimeInterval = 0.35
+
+    /// True when a double-tap's second press was released quickly enough to mean
+    /// "double-tap-and-release" (continuous) rather than "double-tap-and-hold".
+    public static func isContinuousRelease(
+        wasDoubleTapDown: Bool, holdDuration: TimeInterval, threshold: TimeInterval
+    ) -> Bool {
+        wasDoubleTapDown && holdDuration < threshold
+    }
+}
+
 /// What a configurable gesture does. Raw values are the on-disk config tokens.
 public enum GestureAction: String, Sendable, CaseIterable {
     case dictate              // same as a plain hold: push-to-talk

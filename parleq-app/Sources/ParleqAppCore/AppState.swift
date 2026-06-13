@@ -422,6 +422,18 @@ public final class AppState {
         }
     }
 
+    /// #83: true while a hands-free continuous recording is in progress. Entered
+    /// by the double-tap-and-release gesture; the mic stays hot after the gesture
+    /// releases and a subsequent hotkey tap (or Esc) stops it. Distinct from
+    /// quickMode (which finalizes on release) and the latched-compose machine
+    /// (which pauses the mic).
+    public private(set) var continuousRecording = false
+
+    /// #83: set when a hotkey tap stops a continuous recording, so the matching
+    /// key-up (which arrives a moment later) is swallowed rather than re-entering
+    /// the capture machinery.
+    private var stopTapAwaitingKeyUp = false
+
     // The configured auto-accept delay. Default 6 s per the design;
     // wired to Config.autoAcceptSeconds at construction time.
     private var autoAcceptInterval: TimeInterval
@@ -789,6 +801,16 @@ public final class AppState {
             dismissHelpForResume()
             return
         }
+        // #83: a hotkey tap while continuously recording STOPS it — finalize the
+        // captured audio through the normal review path. The matching key-up is
+        // swallowed (stopTapAwaitingKeyUp) so it doesn't re-trigger anything.
+        if continuousRecording {
+            continuousRecording = false
+            stopTapAwaitingKeyUp = true
+            log("hotkeyDown stops continuous recording → finalize")
+            finalizeCapture(asRefine: false)
+            return
+        }
         // Reset the per-hold Space-armed visual flag at every fresh
         // hotkey-down. The flag's semantic is "Space has been pressed
         // during THIS specific hold" — scoping it to a single hold.
@@ -936,6 +958,20 @@ public final class AppState {
         presentPicker()
     }
 
+    /// #83: transition the in-flight capture into a hands-free continuous
+    /// recording. The recorder (hot since key-down) keeps running — we neither
+    /// pause nor finalize. The overlay switches to the recording state with a
+    /// stop hint. Stopped by a hotkey tap (hotkeyDown) or cancelled by Esc.
+    private func enterContinuousRecording() {
+        quickMode = false
+        continuousRecording = true
+        overlay.model.continuousRecording = true
+        // Show the recording overlay immediately — a hands-free session must be
+        // visible (normal holds defer the overlay behind overlayShowDelaySeconds).
+        overlay.show(state: .capturing, text: "")
+        log("entered continuous recording (hands-free; tap or Esc to stop)")
+    }
+
     /// Hotkey was released (key-up). Whichever capture phase we're
     /// in, this finalizes the audio and runs the ASR-then-LLM
     /// pipeline.
@@ -949,7 +985,26 @@ public final class AppState {
     ///     Audio segments accumulate across multiple holds in this
     ///     session and submit together at the eventual release-without-
     ///     space.
-    public func hotkeyUp(spaceWasPressedDuringHold: Bool = false) {
+    public func hotkeyUp(spaceWasPressedDuringHold: Bool = false,
+                         wasDoubleTapRelease: Bool = false) {
+        // #83: swallow the key-up that follows a stop-tap (the tap that ended a
+        // continuous recording in hotkeyDown) so it doesn't re-enter capture.
+        if stopTapAwaitingKeyUp {
+            stopTapAwaitingKeyUp = false
+            return
+        }
+        // #83: a double-tap-and-release while capturing latches into continuous
+        // recording instead of finalizing — the mic (hot since key-down) keeps
+        // running hands-free until a stop tap or Esc. Resolved against the
+        // configurable gesture map (default: continuous; remappable / disablable).
+        // Guarded by wasDoubleTapRelease, which is false for every existing path,
+        // so normal dictation/quick-mode/compose flows are untouched.
+        if wasDoubleTapRelease, phase == .capturing, !continuousRecording,
+           !spaceWasPressedDuringHold,
+           Config.load().config.hotkeyGestureMap.action(for: .doubleTapRelease) == .continuousRecording {
+            enterContinuousRecording()
+            return
+        }
         // While the help overlay is up, a release must NOT submit the
         // utterance — the user paused to read help, not to finish. Record
         // that the hold ended so dismissing help finalizes the preserved
@@ -2999,6 +3054,10 @@ public final class AppState {
             task.cancel()
         }
         pendingCaptureTasks.removeAll()
+        // #83: a finished/cancelled session is never still continuously recording.
+        continuousRecording = false
+        stopTapAwaitingKeyUp = false
+        overlay.model.continuousRecording = false
         overlay.model.references = []
         overlay.model.pickedModelOverride = nil
         overlay.model.userDowngradedConflict = false

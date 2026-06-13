@@ -1181,6 +1181,10 @@ public final class OverlayModel: ObservableObject {
     /// the latest setting.
     @Published var referenceWindowsEnabled: Bool = true
 
+    /// #83: true while a hands-free continuous recording is in progress, so the
+    /// hint strip can show "tap or Esc to stop" instead of the hold-to-dictate copy.
+    @Published var continuousRecording: Bool = false
+
     /// Per-invocation model override set by the in-overlay ModelPicker
     /// (Task 9). nil → fall through to Config.modelForInvocation's
     /// override > context > cleanup chain. Reset to nil after each
@@ -2957,7 +2961,13 @@ private struct OverlayContent: View {
         case .staging:
             Text("[hold \(hotkeyLabel)] start dictating   [Esc] cancel")
         case .capturing:
-            Text("Release \(hotkeyLabel) when done")
+            // #83: continuous (hands-free) recording is stopped by a tap, not a
+            // release — show the matching hint.
+            if model.continuousRecording {
+                Text("Recording… [tap \(hotkeyLabel)] stop   [Esc] cancel")
+            } else {
+                Text("Release \(hotkeyLabel) when done")
+            }
         case .cleaning:
             Text("[Esc] cancel")
         case .awaitingAccept:
