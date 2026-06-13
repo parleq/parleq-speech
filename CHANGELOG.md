@@ -6,12 +6,15 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 ## [0.24.1] - 2026-06-12
 
-On-device cleanup polish: a clearer download bar, a restart prompt that actually appears when the model is ready, and Parleq's own name recognized out of the box.
+On-device cleanup polish: a restart prompt that actually appears when the model is ready, a clearer (and cancellable) download experience, and Parleq's own name recognized out of the box.
 
 ### Fixed
 
-- **The on-device download bar no longer appears to stall.** Progress is now weighted by download size, so the large model file moves the bar in proportion to its size instead of the bar jumping to ~30% and sitting there until the download finished.
 - **A clear "Restart" prompt after the on-device model downloads.** Enabling on-device cleanup takes effect after a restart, but the prompt didn't always appear — especially when you enabled it from the Setup Wizard. Now, once the model is ready, Parleq shows a "Restart Now" prompt both in Settings → Cleanup and in the menu bar, so on-device cleanup is one click away from working regardless of where you turned it on.
+
+### Changed
+
+- **Clearer on-device download.** While the model downloads, Parleq now shows an activity indicator (instead of a percentage that could appear stuck) and a **Cancel** button to stop the download.
 
 ### Added
 
