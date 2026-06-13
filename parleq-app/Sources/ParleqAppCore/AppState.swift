@@ -434,6 +434,10 @@ public final class AppState {
     /// the capture machinery.
     private var stopTapAwaitingKeyUp = false
 
+    /// #85: the review text snapshotted when in-place edit mode opened, so the
+    /// corrections journal can record the before/after of a confirmed edit.
+    private var editPreEditText = ""
+
     // The configured auto-accept delay. Default 6 s per the design;
     // wired to Config.autoAcceptSeconds at construction time.
     private var autoAcceptInterval: TimeInterval
@@ -616,6 +620,10 @@ public final class AppState {
         }
         overlay.model.onReauthSignIn = { [weak self] in self?.reauthSignIn() }
         overlay.model.onReauthReclean = { [weak self] in self?.reauthReclean() }
+        // #85: in-place edit callbacks.
+        overlay.model.onEnterEdit = { [weak self] in self?.enterEditMode() }
+        overlay.model.onCommitEdit = { [weak self] accept in self?.commitEdit(accept: accept) }
+        overlay.model.onDiscardEdit = { [weak self] in self?.discardEdit() }
 
         windowPickerWindow.setCallbacks(
             onPick: { [weak self] entry in
@@ -1640,6 +1648,61 @@ public final class AppState {
         dismissPicker()
         isPickByClickingSinglePick = true
         beginHoldPickMode()
+    }
+
+    // MARK: - #85 in-place edit
+
+    /// E in review → open the editor seeded with the current text. Cancels the
+    /// auto-accept timer so it can't paste mid-edit; snapshots the pre-edit text
+    /// for the corrections journal. No-op outside the review state.
+    private func enterEditMode() {
+        guard phase == .awaitingAccept, !overlay.model.editing else { return }
+        cancelAutoAcceptTimer()
+        editPreEditText = currentText
+        overlay.model.editableText = currentText
+        overlay.model.editing = true
+        log("in-place edit: entered")
+    }
+
+    /// ⌘Return (accept=true) or ⌘S (accept=false). Applies the edited text,
+    /// records the before/after to the corrections journal, then pastes (accept)
+    /// or returns to review with auto-accept re-armed (save).
+    private func commitEdit(accept: Bool) {
+        guard phase == .awaitingAccept, overlay.model.editing else { return }
+        let edited = overlay.model.editableText
+        overlay.model.editing = false
+        if edited != editPreEditText {
+            currentText = edited
+            overlay.model.text = edited
+            recordInPlaceEdit(before: editPreEditText, after: edited)
+        }
+        log("in-place edit: \(accept ? "commit+accept" : "save")")
+        if accept {
+            self.accept()
+        } else {
+            startAutoAcceptTimer()
+        }
+    }
+
+    /// Esc in edit → drop the edits and return to review (auto-accept re-armed).
+    /// A second Esc from review cancels the dictation via the normal path.
+    private func discardEdit() {
+        guard overlay.model.editing else { return }
+        overlay.model.editing = false
+        overlay.model.editableText = ""
+        startAutoAcceptTimer()
+        log("in-place edit: discarded")
+    }
+
+    /// Feed a confirmed in-place edit to the corrections-learning journal (opt-in;
+    /// no-op when the feature is off). Modeled as a refine: instruction names the
+    /// gesture, before/after carry the edit. Never written to disk by the journal.
+    private func recordInPlaceEdit(before: String, after: String) {
+        let enabled = Config.load().config.learnFromCorrectionsEnabled
+        guard enabled, !before.isEmpty, before != after else { return }
+        CorrectionJournal.shared.record(CorrectionRecord(
+            kind: .refine, instruction: "in-place edit", before: before, after: after
+        ), enabled: enabled)
     }
 
     /// User accepted (Enter on overlay) or auto-accept timer fired.
@@ -3058,6 +3121,10 @@ public final class AppState {
         continuousRecording = false
         stopTapAwaitingKeyUp = false
         overlay.model.continuousRecording = false
+        // #85: clear any in-place edit state so it never leaks into the next session.
+        overlay.model.editing = false
+        overlay.model.editableText = ""
+        editPreEditText = ""
         overlay.model.references = []
         overlay.model.pickedModelOverride = nil
         overlay.model.userDowngradedConflict = false

@@ -133,6 +133,8 @@ public final class OverlayWindow {
     /// AppState wires this to undo a per-app default style: re-runs plain
     /// cleanup (no transform addendum) from the retained raw transcript.
     public var onUndoStyle: (() -> Void)?
+    // #85 in-place edit callbacks live on OverlayModel (set by AppState, like
+    // onReauthSignIn); the panel forwards E → model.onEnterEdit. See OverlayModel.
     /// M2 fix: wired to AppState.switchModelAndRecleanup(_:) so the
     /// Switch-to-vision-model button re-runs cleanup with the new
     /// provider rather than only flipping the badge. Distinct from the
@@ -226,6 +228,11 @@ public final class OverlayWindow {
         panel.onAttachCurrent = { [weak self] in self?.onAttachCurrent?() }
         panel.onShowParleq = { [weak self] in self?.onShowParleq?() }
         panel.onRunPresetNumber = { [weak self] n in self?.onRunPresetNumber?(n) ?? false }
+        // #85: E enters edit mode (forwarded to the model callback AppState sets);
+        // isEditing lets the panel suspend the single-key review gestures so the
+        // focused editor owns the keyboard.
+        panel.onEnterEdit = { [weak self] in self?.model.onEnterEdit?() }
+        panel.isEditing = { [weak self] in self?.model.editing ?? false }
 
         sizeObservation = hc.observe(\.preferredContentSize, options: [.new]) { [weak self] _, change in
             // Trace: prove the KVO fires. Captures the .new value so
@@ -822,6 +829,12 @@ private final class OverlayPanel: NSPanel {
     var onAttachWindow: (() -> Void)?
     var onAttachCurrent: (() -> Void)?
     var onShowParleq: (() -> Void)?
+    /// #85: bare E during review → enter in-place edit mode.
+    var onEnterEdit: (() -> Void)?
+    /// #85: true while the editor is focused. When editing, keyDown must NOT
+    /// intercept the single-key review gestures — the editor (and its onKeyPress
+    /// handlers for ⌘Return/⌘S/Esc) owns the keys.
+    var isEditing: () -> Bool = { false }
     /// Bare digit 1–9 during review → apply the preset at that 1-based
     /// position. Returns true iff a preset was actually applied, so
     /// keyDown can consume the event only on a hit and let an unmapped
@@ -897,6 +910,14 @@ private final class OverlayPanel: NSPanel {
     }
 
     override func keyDown(with event: NSEvent) {
+        // #85: while the in-place editor is focused it owns the keyboard — never
+        // run the single-key review gestures here. The editor's own onKeyPress
+        // handles ⌘Return (commit+accept), ⌘S (save), and Esc (discard); any key
+        // that reaches the panel during edit mode just falls through to type.
+        if isEditing() {
+            super.keyDown(with: event)
+            return
+        }
         switch event.keyCode {
         case 36, 76:    // Return, Enter (numpad)
             onEnter?()
@@ -934,6 +955,10 @@ private final class OverlayPanel: NSPanel {
                 // Bare "P" — show the Parleq window (cancels review).
                 // AppState gates to .awaitingAccept so it no-ops elsewhere.
                 onShowParleq?()
+            } else if noMods, baseGlyph?.lowercased() == "e" {
+                // #85: bare "E" — enter in-place edit mode. AppState gates it to
+                // .awaitingAccept (it no-ops in other states).
+                onEnterEdit?()
             } else if event.modifierFlags
                         .intersection([.command, .control, .option]).isEmpty,
                       let g = baseGlyph, g.count == 1,
@@ -1008,6 +1033,12 @@ private final class FirstMouseAcceptingView: NSView {
 public final class OverlayModel: ObservableObject {
     @Published var state: OverlayState = .capturing
     @Published var text: String = ""
+
+    /// #85: in-place edit mode. `editing` flips the awaitingAccept content from a
+    /// read-only Text to a focused editor bound to `editableText`. Entered by E,
+    /// left via ⌘S (save), ⌘Return (commit+accept), or Esc (discard).
+    @Published var editing: Bool = false
+    @Published var editableText: String = ""
     /// Normalized 0…1 mic level pushed by AudioRecorder during
     /// capture. Drives the SoundWaveBars view in the .capturing
     /// state. Resets to 0 when the overlay is shown for a new
@@ -1065,6 +1096,15 @@ public final class OverlayModel: ObservableObject {
     /// dictation" affordance (↻). AppState re-runs cleanup from the
     /// retained raw transcript.
     var onReauthReclean: (() -> Void)?
+
+    /// #85: in-place edit, invoked from the panel (E) and the editor's onKeyPress.
+    /// onEnterEdit = E in review → focus the editor. onCommitEdit(true) = ⌘Return
+    /// (apply edits + accept/paste); onCommitEdit(false) = ⌘S (apply edits, stay in
+    /// review). onDiscardEdit = Esc (drop edits → review). AppState sets these
+    /// (model-level, like onReauthSignIn).
+    var onEnterEdit: (() -> Void)?
+    var onCommitEdit: ((Bool) -> Void)?
+    var onDiscardEdit: (() -> Void)?
 
     /// Name of the per-app default preset folded into the current
     /// dictation's cleanup, nil when none. Drives the review state's
@@ -1509,6 +1549,9 @@ private struct PresetChip: View {
 
 private struct OverlayContent: View {
     @ObservedObject var model: OverlayModel
+    /// #85: focus for the in-place edit editor. Bound to model.editing so the
+    /// editor grabs the keyboard the instant edit mode turns on.
+    @FocusState private var editorFocused: Bool
     /// Fixed outer width passed in from OverlayWindow. We constrain
     /// the SwiftUI hierarchy to this so NSHostingController's
     /// preferredContentSize reports (fixedWidth, naturalHeight)
@@ -2856,10 +2899,39 @@ private struct OverlayContent: View {
             ZStack(alignment: .topLeading) {
                 Color.clear.frame(height: ChromeSlotMetrics.contentMin)
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(model.text)
-                        .font(.system(size: 17))
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    if model.editing {
+                        // #85: in-place edit. ⌘Return commits + accepts, ⌘S saves
+                        // back to review, Esc discards; plain Return is a newline
+                        // (default TextEditor behavior). Handled via onKeyPress so
+                        // the editor keeps focus and the panel's review gestures
+                        // stay suspended (OverlayPanel.isEditing).
+                        TextEditor(text: $model.editableText)
+                            .font(.system(size: 17))
+                            .scrollContentBackground(.hidden)
+                            .frame(minHeight: ChromeSlotMetrics.contentMin)
+                            .focused($editorFocused)
+                            .onAppear { editorFocused = true }
+                            .onKeyPress(.escape) {
+                                model.onDiscardEdit?(); return .handled
+                            }
+                            .onKeyPress(.return, phases: .down) { press in
+                                if press.modifiers.contains(.command) {
+                                    model.onCommitEdit?(true); return .handled
+                                }
+                                return .ignored   // plain Return → newline
+                            }
+                            .onKeyPress(keys: ["s"], phases: .down) { press in
+                                if press.modifiers.contains(.command) {
+                                    model.onCommitEdit?(false); return .handled
+                                }
+                                return .ignored   // plain "s" → types
+                            }
+                    } else {
+                        Text(model.text)
+                            .font(.system(size: 17))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                     // Cleanup-failure decoration. AppState passes a
                     // non-nil message when LLM cleanup threw — the user
                     // is being shown the raw ASR transcript (the
@@ -2971,7 +3043,13 @@ private struct OverlayContent: View {
         case .cleaning:
             Text("[Esc] cancel")
         case .awaitingAccept:
-            Text("[tap \(hotkeyLabel)] accept   [Esc] cancel   [hold \(hotkeyLabel)] refine")
+            // #85: in edit mode, show the editor keymap; otherwise the review
+            // gestures plus the [E] edit affordance.
+            if model.editing {
+                Text("[⌘↵] accept   [⌘S] save   [esc] discard")
+            } else {
+                Text("[tap \(hotkeyLabel)] accept   [E] edit   [Esc] cancel   [hold \(hotkeyLabel)] refine")
+            }
         case .refining:
             Text("Release \(hotkeyLabel) when done")
         }
