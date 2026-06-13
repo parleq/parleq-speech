@@ -66,6 +66,10 @@ struct DictionaryEntryRow: Identifiable, Equatable {
 @MainActor
 final class SettingsModel: ObservableObject {
     @Published var hotkeyBinding: String
+    /// #84: action tokens (GestureAction.rawValue) for the two configurable
+    /// double-tap entry gestures. Persisted into config's hotkey.gestures map.
+    @Published var doubleTapHoldAction: String
+    @Published var doubleTapReleaseAction: String
     @Published var autoAcceptSeconds: Double
     /// Overlay-show delay in milliseconds (#56). Mirror of
     /// Config.overlayShowDelayMs; also drives the hold-hotkey+P
@@ -378,6 +382,8 @@ final class SettingsModel: ObservableObject {
     init() {
         let (config, _) = Config.load()
         self.hotkeyBinding = config.hotkeyBinding
+        self.doubleTapHoldAction = config.hotkeyGestureMap.action(for: .doubleTapHold).rawValue
+        self.doubleTapReleaseAction = config.hotkeyGestureMap.action(for: .doubleTapRelease).rawValue
         self.autoAcceptSeconds = config.autoAcceptSeconds
         self.overlayShowDelayMs = config.overlayShowDelayMs
         self.acousticFeedback = config.acousticFeedback
@@ -502,6 +508,8 @@ final class SettingsModel: ObservableObject {
     func reload() {
         let (config, _) = Config.load()
         self.hotkeyBinding = config.hotkeyBinding
+        self.doubleTapHoldAction = config.hotkeyGestureMap.action(for: .doubleTapHold).rawValue
+        self.doubleTapReleaseAction = config.hotkeyGestureMap.action(for: .doubleTapRelease).rawValue
         self.autoAcceptSeconds = config.autoAcceptSeconds
         self.overlayShowDelayMs = config.overlayShowDelayMs
         self.acousticFeedback = config.acousticFeedback
@@ -641,6 +649,11 @@ final class SettingsModel: ObservableObject {
         let (existing, _) = Config.load()
         var c = existing
         c.hotkeyBinding = hotkeyBinding
+        // #84: persist the two configurable double-tap gesture actions.
+        c.hotkeyGestures = [
+            HotkeyGesture.doubleTapHold.rawValue: doubleTapHoldAction,
+            HotkeyGesture.doubleTapRelease.rawValue: doubleTapReleaseAction,
+        ]
         c.autoAcceptSeconds = autoAcceptSeconds
         // Clamp to the same 0...2000 range Config.load() enforces, so
         // the live listeners (P-gesture threshold + start-sound) that
@@ -1471,7 +1484,30 @@ struct SettingsView: View {
                 .frame(maxWidth: 280)
                 Spacer()
             }
-            SettingsCaption("Press and hold to dictate; release to paste. Double-tap-and-hold is quick mode (no overlay).")
+            SettingsCaption("Press and hold to dictate; release to paste.")
+            Divider().padding(.vertical, 2)
+            // #84: configurable double-tap gestures.
+            gestureActionRow("Double-tap & hold", binding: bind(\.doubleTapHoldAction))
+            gestureActionRow("Double-tap & release", binding: bind(\.doubleTapReleaseAction))
+            SettingsCaption("Customize what the double-tap gestures do. \"Continuous recording\" starts a hands-free session you stop with a tap or Esc.")
+        }
+    }
+
+    /// One labeled picker over the GestureAction options (#84).
+    @ViewBuilder
+    private func gestureActionRow(_ label: String, binding: Binding<String>) -> some View {
+        HStack(alignment: .center) {
+            Text(label)
+                .frame(minWidth: 120, alignment: .leading)
+            Picker("", selection: binding) {
+                Text("Quick mode (no overlay)").tag(GestureAction.quickMode.rawValue)
+                Text("Continuous recording").tag(GestureAction.continuousRecording.rawValue)
+                Text("Dictate (push-to-talk)").tag(GestureAction.dictate.rawValue)
+                Text("Do nothing").tag(GestureAction.disabled.rawValue)
+            }
+            .labelsHidden()
+            .frame(maxWidth: 280)
+            Spacer()
         }
     }
 

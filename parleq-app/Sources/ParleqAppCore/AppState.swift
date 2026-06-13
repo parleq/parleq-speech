@@ -860,7 +860,14 @@ public final class AppState {
                 enterStaging()
                 return
             }
-            quickMode = isDoubleTapHold
+            // #84: the double-tap-and-hold gesture's action is configurable
+            // (default: quick mode). A remap to dictate/disabled just dictates
+            // normally. The continuousRecording action + the double-tap-and-
+            // release gesture are wired in #83.
+            let dtAction = isDoubleTapHold
+                ? Config.load().config.hotkeyGestureMap.action(for: .doubleTapHold)
+                : .dictate
+            quickMode = (dtAction == .quickMode)
             startFreshCapture()
         case .staging:
             // Hotkey-down in staging means "start dictating with the
