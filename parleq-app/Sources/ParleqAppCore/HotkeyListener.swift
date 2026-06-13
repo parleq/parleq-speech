@@ -277,7 +277,15 @@ public final class HotkeyListener {
         self.onCPressed = onCPressed
     }
 
+    /// True once the event tap is installed. #82: lets the launch path re-attempt
+    /// start() when Accessibility is granted later without installing a second tap.
+    public var isArmed: Bool { eventTap != nil }
+
     public func start() throws {
+        // Idempotent: a re-attempt after the user grants Accessibility must not
+        // install a second tap. The launch wiring also guards this via
+        // LaunchPermissions.armingDecision, but defend in depth.
+        guard eventTap == nil else { return }
         guard ensureAccessibility() else {
             throw HotkeyError.accessibilityNotGranted
         }
@@ -590,11 +598,10 @@ public struct HotkeyUpEvent {
     public let spaceWasPressedDuringHold: Bool
 }
 
-// ensureAccessibility prompts the user (with the system dialog) the
-// first time it's called from an untrusted process. Subsequent calls
-// short-circuit. Returns whether the process is currently trusted.
+// Non-prompting trust check. #82: launch must NOT fire the system
+// Accessibility dialog before the wizard explains why it's needed — so we
+// use the non-prompting AXIsProcessTrusted() here and let the wizard's
+// permissions step drive the actual prompt (Permissions.requestAccessibility).
 private func ensureAccessibility() -> Bool {
-    let key = "AXTrustedCheckOptionPrompt" as CFString
-    let opts = [key: true] as CFDictionary
-    return AXIsProcessTrustedWithOptions(opts)
+    AXIsProcessTrusted()
 }

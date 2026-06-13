@@ -1090,9 +1090,19 @@ struct ParleqApp {
             // true) out of the path entirely. Test users who want
             // to re-run the flow can do so from the menu bar or
             // via Settings → "Run Setup Again".
-            if !config.wizardCompleted {
-                logStderr("[parleq] wizard: launching first-run setup (config.wizardCompleted=false)")
-                wizard.show()
+            let accessGrantedAtLaunch = LaunchPermissions.accessibilityGranted
+            if LaunchPermissions.shouldShowWizardAtLaunch(
+                wizardCompleted: config.wizardCompleted,
+                accessibilityGranted: accessGrantedAtLaunch) {
+                if !config.wizardCompleted {
+                    logStderr("[parleq] wizard: launching first-run setup (config.wizardCompleted=false)")
+                    wizard.show()
+                } else {
+                    // #82: returning user whose Accessibility was revoked — show
+                    // the permissions step only (no full re-flow, no config reset).
+                    logStderr("[parleq] wizard: Accessibility missing — showing permissions re-grant (#82)")
+                    wizard.show(permissionsOnly: true)
+                }
             }
 
             // Settings → "Run Setup Again" posts this notification
@@ -1252,11 +1262,24 @@ struct ParleqApp {
                 }
             }
         )
-        do {
-            try listener.start()
-        } catch {
-            logStderr("[parleq] hotkey listener failed: \(error)")
-            exit(1)
+        // #82: arm the global hotkey listener if Accessibility is already
+        // granted; otherwise do NOT exit(1) — Parleq stays alive and arms once
+        // the user grants access (via the wizard's explained prompt or System
+        // Settings). The didBecomeActive observer below re-attempts on return.
+        switch LaunchPermissions.armingDecision(
+            armed: listener.isArmed,
+            accessibilityGranted: LaunchPermissions.accessibilityGranted
+        ) {
+        case .arm:
+            do {
+                try listener.start()
+            } catch {
+                logStderr("[parleq] hotkey listener failed to arm: \(error)")
+            }
+        case .waitForAccessibility:
+            logStderr("[parleq] hotkey: Accessibility not granted — listener will arm once granted (#82)")
+        case .alreadyArmed:
+            break
         }
         // Sync the hold-hotkey+P gesture threshold to the configured
         // overlay-show delay at launch, and keep it live thereafter:
@@ -1279,6 +1302,27 @@ struct ParleqApp {
         }
         let listenerBox = ListenerBox()
         listenerBox.value = listener
+        // #82: re-attempt arming whenever Parleq becomes active again — fires
+        // when the user returns after granting Accessibility (wizard prompt or
+        // System Settings). Idempotent: armingDecision returns .alreadyArmed
+        // once the tap is installed, and start() itself no-ops when armed.
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { [listenerBox] _ in
+            MainActor.assumeIsolated {
+                guard let listener = listenerBox.value,
+                      case .arm = LaunchPermissions.armingDecision(
+                          armed: listener.isArmed,
+                          accessibilityGranted: LaunchPermissions.accessibilityGranted)
+                else { return }
+                do {
+                    try listener.start()
+                    logStderr("[parleq] hotkey: listener armed after Accessibility granted (#82)")
+                } catch {
+                    logStderr("[parleq] hotkey: re-arm failed: \(error)")
+                }
+            }
+        }
         NotificationCenter.default.addObserver(
             forName: .parleqOverlayDelayChanged,
             object: nil,
