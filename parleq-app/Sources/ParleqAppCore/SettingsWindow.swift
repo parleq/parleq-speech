@@ -1486,24 +1486,32 @@ struct SettingsView: View {
             }
             SettingsCaption("Press and hold to dictate; release to paste.")
             Divider().padding(.vertical, 2)
-            // #84: configurable double-tap gestures.
-            gestureActionRow("Double-tap & hold", binding: bind(\.doubleTapHoldAction))
-            gestureActionRow("Double-tap & release", binding: bind(\.doubleTapReleaseAction))
-            SettingsCaption("Customize what the double-tap gestures do. \"Continuous recording\" starts a hands-free session you stop with a tap or Esc.")
+            // #84: configurable double-tap gestures. The options differ by
+            // gesture: a HOLD captures while held (Quick mode / Dictate), while a
+            // quick RELEASE has no hold to capture, so it starts a hands-free
+            // continuous session (or is turned off).
+            gestureActionRow("Double-tap & hold", binding: bind(\.doubleTapHoldAction),
+                             options: [(.quickMode, "Quick mode (no overlay)"),
+                                       (.dictate, "Dictate (push-to-talk)")])
+            gestureActionRow("Double-tap & release", binding: bind(\.doubleTapReleaseAction),
+                             options: [(.continuousRecording, "Continuous recording"),
+                                       (.disabled, "Off")])
+            SettingsCaption("\"Continuous recording\" starts a hands-free session you stop with a tap (or cancel with Esc).")
         }
     }
 
-    /// One labeled picker over the GestureAction options (#84).
+    /// One labeled picker over a gesture's allowed GestureAction options (#84).
     @ViewBuilder
-    private func gestureActionRow(_ label: String, binding: Binding<String>) -> some View {
+    private func gestureActionRow(
+        _ label: String, binding: Binding<String>, options: [(GestureAction, String)]
+    ) -> some View {
         HStack(alignment: .center) {
             Text(label)
                 .frame(minWidth: 120, alignment: .leading)
             Picker("", selection: binding) {
-                Text("Quick mode (no overlay)").tag(GestureAction.quickMode.rawValue)
-                Text("Continuous recording").tag(GestureAction.continuousRecording.rawValue)
-                Text("Dictate (push-to-talk)").tag(GestureAction.dictate.rawValue)
-                Text("Do nothing").tag(GestureAction.disabled.rawValue)
+                ForEach(options, id: \.0.rawValue) { action, title in
+                    Text(title).tag(action.rawValue)
+                }
             }
             .labelsHidden()
             .frame(maxWidth: 280)

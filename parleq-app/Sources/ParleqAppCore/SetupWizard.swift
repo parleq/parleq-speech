@@ -115,33 +115,33 @@ public final class SetupWizardController {
     /// whole flow (which would reset their provider config). The root view is
     /// rebuilt each call so the mode is always correct even if the window is reused.
     public func show(permissionsOnly: Bool = false) {
+        // Always build a FRESH window + view each call. Reusing the window and
+        // swapping rootView does NOT reset the @StateObject WizardModel (SwiftUI
+        // keys it to structural position), so a reused wizard would keep its old
+        // step — breaking the permissions-only entry. Closing the old window and
+        // rebuilding guarantees a fresh WizardModel at the requested step.
+        window?.close()
         let view = SetupWizardView(
-            onFinish: { [weak self] in self?.window?.close() },
+            onFinish: { [weak self] in
+                self?.window?.close()
+                self?.window = nil
+            },
             localModelStore: localModelStore,
             permissionsOnly: permissionsOnly
         )
-        if window == nil {
-            let hosting = NSHostingController(rootView: view)
-            let w = NSWindow(contentViewController: hosting)
-            w.title = permissionsOnly ? "Parleq needs Accessibility" : "Welcome to Parleq"
-            w.styleMask = [.titled, .closable]
-            w.collectionBehavior = [.fullScreenAuxiliary]
-            w.isReleasedWhenClosed = false
-            // Force the content size up-front so center() below
-            // operates on the real frame, not a default tiny one.
-            // (See SettingsWindowController.show for the same dance
-            // and the explanation of why this matters on first open.)
-            w.setContentSize(NSSize(width: 660, height: 540))
-            self.window = w
-        } else if let hosting = window?.contentViewController as? NSHostingController<SetupWizardView> {
-            // Reused window: swap in a fresh view so the mode (and a fresh
-            // WizardModel at the right step) reflects this call.
-            hosting.rootView = view
-            window?.title = permissionsOnly ? "Parleq needs Accessibility" : "Welcome to Parleq"
-        }
-        window?.center()
+        let hosting = NSHostingController(rootView: view)
+        let w = NSWindow(contentViewController: hosting)
+        w.title = permissionsOnly ? "Parleq needs Accessibility" : "Welcome to Parleq"
+        w.styleMask = [.titled, .closable]
+        w.collectionBehavior = [.fullScreenAuxiliary]
+        w.isReleasedWhenClosed = false
+        // Force the content size up-front so center() below operates on the real
+        // frame, not a default tiny one. (See SettingsWindowController.show.)
+        w.setContentSize(NSSize(width: 660, height: 540))
+        self.window = w
+        w.center()
         NSApp.activate(ignoringOtherApps: true)
-        window?.makeKeyAndOrderFront(nil)
+        w.makeKeyAndOrderFront(nil)
     }
 }
 

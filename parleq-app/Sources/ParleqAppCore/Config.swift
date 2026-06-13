@@ -1435,8 +1435,8 @@ public struct Config: Sendable {
             // #84: configurable double-tap gesture actions.
             if let gestures = hotkey["gestures"] as? [String: Any] {
                 var m: [String: String] = [:]
-                for (key, value) in gestures where value is String {
-                    m[key] = value as? String
+                for (key, value) in gestures {
+                    if let s = value as? String { m[key] = s }
                 }
                 c.hotkeyGestures = m
             }

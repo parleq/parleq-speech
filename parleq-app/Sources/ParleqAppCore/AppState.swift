@@ -890,10 +890,13 @@ public final class AppState {
                 enterStaging()
                 return
             }
-            // #84: the double-tap-and-hold gesture's action is configurable
-            // (default: quick mode). A remap to dictate/disabled just dictates
-            // normally. The continuousRecording action + the double-tap-and-
-            // release gesture are wired in #83.
+            // #84: the double-tap-and-HOLD gesture is configurable between Quick
+            // mode (default) and Dictate (Settings offers only those two for the
+            // hold — continuous/off belong to the release gesture). We can't yet
+            // know at key-down whether this double-tap will be a hold or a quick
+            // release, so always start a capture and set quickMode only for the
+            // quickMode action; if it turns out to be a release, hotkeyUp
+            // reinterprets it (continuous / cancel) via wasDoubleTapRelease (#83).
             let dtAction = isDoubleTapHold
                 ? Config.load().config.hotkeyGestureMap.action(for: .doubleTapHold)
                 : .dictate
@@ -1008,10 +1011,19 @@ public final class AppState {
         // Guarded by wasDoubleTapRelease, which is false for every existing path,
         // so normal dictation/quick-mode/compose flows are untouched.
         if wasDoubleTapRelease, phase == .capturing, !continuousRecording,
-           !spaceWasPressedDuringHold,
-           Config.load().config.hotkeyGestureMap.action(for: .doubleTapRelease) == .continuousRecording {
-            enterContinuousRecording()
-            return
+           !spaceWasPressedDuringHold {
+            switch Config.load().config.hotkeyGestureMap.action(for: .doubleTapRelease) {
+            case .continuousRecording:
+                enterContinuousRecording()
+                return
+            case .disabled:
+                // Double-tap-and-release is turned off → discard the brief capture
+                // started at key-down rather than pasting a near-empty quick result.
+                cancel()
+                return
+            case .quickMode, .dictate:
+                break  // fall through to the normal release/finalize path
+            }
         }
         // While the help overlay is up, a release must NOT submit the
         // utterance — the user paused to read help, not to finish. Record
