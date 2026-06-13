@@ -2970,6 +2970,10 @@ private struct LocalOnDeviceCard: View {
             // State-driven status row
             stateRow
 
+            // Restart-to-activate prompt (model ready, but the running process
+            // launched with a different provider — covers the Settings path).
+            activationRestartRow
+
             // RAM tier note (cautioned or unsupported)
             ramTierNote
 
@@ -3006,6 +3010,35 @@ private struct LocalOnDeviceCard: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("The model will need to be downloaded again (~4 GB) before on-device cleanup is available.")
+        }
+    }
+
+    /// Shown when the model is downloaded/ready but the running process didn't
+    /// launch with the on-device provider — i.e. on-device was just enabled
+    /// (here in Settings, or earlier in the wizard) and only takes effect after
+    /// a restart. Gated on `.ready` so the call-to-action appears when the model
+    /// is actually usable, not the instant the provider is switched.
+    @ViewBuilder
+    private var activationRestartRow: some View {
+        if case .ready = store.state,
+           onDeviceActivationPending(
+               launchProvider: LaunchInfo.cleanupProvider,
+               configProvider: model.cleanupProvider,
+               modelReady: true) {
+            HStack(alignment: .center, spacing: 10) {
+                Image(systemName: "arrow.clockwise.circle.fill")
+                    .foregroundStyle(SettingsView.brandAccent)
+                Text("Model ready. Restart Parleq to start using on-device cleanup.")
+                    .font(.callout)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer()
+                Button("Restart Now") { ParleqApp_relaunch() }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut("r", modifiers: [.command])
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 8).fill(Color.orange.opacity(0.12)))
         }
     }
 

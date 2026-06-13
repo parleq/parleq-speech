@@ -40,6 +40,11 @@ public final class MenuBar: NSObject {
     /// pattern for the ASR engine. Hidden by default; driven by
     /// setLocalModelDownloadProgress(_:).
     private let localModelDownloadMenuItem: NSMenuItem
+    /// "Restart to finish enabling on-device" — shown when the model is ready
+    /// and config says local but the running process launched with a different
+    /// provider (the wizard/Settings restart-after-download case). Toggled by
+    /// setOnDeviceRestartPending(_:).
+    private let localModelRestartMenuItem: NSMenuItem
     /// "Finish setup…" — shown when the wizard hasn't been completed AND
     /// the user hasn't yet made a cleanup provider choice (i.e. both
     /// wizardCompleted=false and llmProvider is still the empty/default
@@ -133,6 +138,8 @@ public final class MenuBar: NSObject {
         statusMenuItem = NSMenuItem(title: "Status: Idle", action: nil, keyEquivalent: "")
         cleanupFailureMenuItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
         localModelDownloadMenuItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        localModelRestartMenuItem = NSMenuItem(
+            title: "Restart to finish enabling on-device", action: nil, keyEquivalent: "")
         finishSetupMenuItem = NSMenuItem(title: "Finish setup…", action: nil, keyEquivalent: "")
         microphoneMenuItem = NSMenuItem(
             title: "Microphone",
@@ -146,6 +153,9 @@ public final class MenuBar: NSObject {
         statusMenuItem.isEnabled = false
         localModelDownloadMenuItem.isEnabled = false
         localModelDownloadMenuItem.isHidden = true
+        localModelRestartMenuItem.target = self
+        localModelRestartMenuItem.action = #selector(restartForOnDevice)
+        localModelRestartMenuItem.isHidden = true
         finishSetupMenuItem.target = self
         finishSetupMenuItem.action = #selector(runSetup)
         finishSetupMenuItem.isHidden = true
@@ -239,6 +249,9 @@ public final class MenuBar: NSObject {
         menu.addItem(cleanupFailureMenuItem)
         // On-device cleanup model download progress (hidden until downloading).
         menu.addItem(localModelDownloadMenuItem)
+        // Restart-to-enable prompt (hidden until the model is ready + a restart
+        // is needed to switch the running process onto the on-device provider).
+        menu.addItem(localModelRestartMenuItem)
         // First-run prompt: hidden once wizard completed or provider chosen.
         menu.addItem(finishSetupMenuItem)
         menu.addItem(hotkeyItem)
@@ -262,6 +275,18 @@ public final class MenuBar: NSObject {
 
     @objc private func runSetup() {
         onOpenWizard?()
+    }
+
+    @objc private func restartForOnDevice() {
+        ParleqApp_relaunch()
+    }
+
+    /// Show/hide the "Restart to finish enabling on-device" item. Driven from
+    /// the on-device model state observer in main.swift (shown on `.ready` when
+    /// `onDeviceActivationPending` is true — the wizard/Settings
+    /// restart-after-download case where Settings may not be open).
+    public func setOnDeviceRestartPending(_ pending: Bool) {
+        localModelRestartMenuItem.isHidden = !pending
     }
 
     @objc private func checkForUpdates() {

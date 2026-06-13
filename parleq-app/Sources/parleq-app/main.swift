@@ -727,6 +727,10 @@ struct ParleqApp {
                 oidcGCPExchange: gcpExchange,
                 oidcPrewarmSessionAccessToken: vertexGoogleOAuthActive
             )
+            // Record the provider this process actually launched with, so the
+            // on-device restart affordance can detect "config says local + model
+            // ready, but the live process predates that" (see onDeviceActivationPending).
+            LaunchInfo.cleanupProvider = cleanupId.provider
         }
 
         // Enterprise OIDC: wire the Company Account section. Only when a
@@ -1028,15 +1032,30 @@ struct ParleqApp {
                 switch state {
                 case .downloading(let p):
                     menuBox?.value?.setLocalModelDownloadProgress(p)
+                    menuBox?.value?.setOnDeviceRestartPending(false)
                 case .notDownloaded:
                     menuBox?.value?.setLocalModelDownloadProgress(nil)
+                    menuBox?.value?.setOnDeviceRestartPending(false)
                     // "Remove downloaded model" sets state to .notDownloaded.
                     // Also release the ~6 GB of resident GPU/ANE memory
                     // immediately so the user sees the benefit right away
                     // rather than waiting for the idle-unload timer to fire.
                     Task { await localResidency.unloadNow() }
+                case .ready:
+                    menuBox?.value?.setLocalModelDownloadProgress(nil)
+                    // Restart-after-download (wizard OR Settings): if config now
+                    // says local and the model is ready but THIS process launched
+                    // with a different provider, surface the menu-bar restart
+                    // prompt so the wizard path is covered even when Settings is
+                    // closed. Config re-read is cheap (fires once on .ready).
+                    let pending = onDeviceActivationPending(
+                        launchProvider: cleanupId.provider,
+                        configProvider: Config.load().config.llmProvider,
+                        modelReady: true)
+                    menuBox?.value?.setOnDeviceRestartPending(pending)
                 default:
                     menuBox?.value?.setLocalModelDownloadProgress(nil)
+                    menuBox?.value?.setOnDeviceRestartPending(false)
                 }
             }
             localModelStore.onStateChanged = applyLocalModelState
