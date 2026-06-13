@@ -1481,16 +1481,17 @@ private struct DoneStep: View {
     @ViewBuilder
     private var onDeviceStatusRow: some View {
         switch localModelStore.state {
-        case .downloading:
-            // Indeterminate (see the Settings card note): the library can't
-            // report incremental bytes for the big shards, so a percentage would
-            // freeze. Honest activity indicator + Cancel.
+        case .downloading(let progress):
+            // Byte-accurate bar (see the Settings card note): the in-process
+            // streaming downloader (#89) reports real within-file progress, so
+            // the percentage climbs smoothly through the big shards.
             HStack(spacing: 10) {
-                ProgressView()
-                    .controlSize(.small)
-                Text("Downloading cleanup model (~4 GB, one-time)…")
+                ProgressView(value: progress)
+                    .frame(maxWidth: 160)
+                Text("Downloading cleanup model… \(Int(progress * 100))%")
                     .font(.callout)
                     .foregroundStyle(.secondary)
+                    .monospacedDigit()
                 Spacer()
                 Button("Cancel") { localModelStore.remove() }
                     .buttonStyle(.bordered)

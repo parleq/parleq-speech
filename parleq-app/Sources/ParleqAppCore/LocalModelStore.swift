@@ -83,6 +83,13 @@ public final class LocalModelStore: ObservableObject {
         readyMarkerExists(checkpoint: checkpoint, root: LocalModelDefaults.modelsDirectory)
     }
 
+    /// On-disk byte size of `url`, or 0 if it doesn't exist. Used to decide
+    /// skip/resume/fresh per file. Nonisolated — pure FileManager.
+    nonisolated static func fileSize(at url: URL) -> Int64 {
+        let attrs = try? FileManager.default.attributesOfItem(atPath: url.path)
+        return (attrs?[.size] as? NSNumber)?.int64Value ?? 0
+    }
+
     public init(checkpoint: String = LocalModelDefaults.checkpoint,
                 rootDirectory: URL = LocalModelDefaults.modelsDirectory) {
         self.checkpoint = checkpoint
@@ -128,38 +135,16 @@ public final class LocalModelStore: ObservableObject {
     }
 
     private func performDownload(epoch: Int) async {
-        // WHY Option B (per-file download) rather than Option A (HubCache inside
-        // modelDirectory) or the original downloadSnapshot(cache: nil, to:…) call:
-        //
-        // The library's downloadSnapshot(…) private implementation has this guard
-        // at the return path (swift-huggingface 0.9.0, HubClient+Files.swift ~L1379):
-        //
-        //   guard let cache else {
-        //       throw HubCacheError.snapshotRequiresCacheOrDestination(…)
-        //   }
-        //
-        // This guard fires AFTER all files have already been downloaded to the
-        // destination directory — so cache:nil + to: downloads successfully but
-        // then unconditionally throws on return, always landing in .failed.
-        //
-        // Option A (HubCache rooted inside modelDirectory) would avoid that throw
-        // but HubCache uses the Python-compatible blob/refs layout, leaving a
-        // .hub-cache/ subtree alongside the model weights. remove() would clean
-        // it up (deletes all of modelDirectory), but it still writes cache
-        // bookkeeping files alongside the model files, which is messier than needed.
-        //
-        // Option B (list + per-file download) is cleanest:
-        //   • downloadFile(at:from:to:…) with an explicit destination URL works
-        //     correctly without a cache — it downloads to a temp path then moves
-        //     to the destination (see L714-727 in the same file).
-        //   • Every byte lands directly under modelDirectory with no extra
-        //     subdirectories or bookkeeping files.
-        //   • Progress is tracked per-completed-file plus within-file via
-        //     Foundation.Progress.
-        //   • remove() deletes the whole modelDirectory subtree (unchanged).
+        // We fetch the file list (+ per-file sizes) with HF's library, then
+        // stream each file ourselves via HFStreamingDownloader. WHY not the
+        // library's own download: macOS runs URLSession *download* tasks
+        // out-of-process (nsurlsessiond) and only reports progress at whole-file
+        // completion, so the multi-GB LFS shards froze the bar mid-shard (#87/#89).
+        // Streaming the bytes in-process (URLSessionDataDelegate) makes progress
+        // byte-accurate. Files still land directly under modelDirectory (no cache
+        // subtree); remove() deletes the whole subtree (unchanged).
+        let revision = "main"
         do {
-            // cache: nil is safe here — we never call downloadSnapshot, so the
-            // guard-at-return bug is not triggered.
             let client = HubClient(
                 host: HubClient.defaultHost,
                 bearerToken: nil,
@@ -167,8 +152,6 @@ public final class LocalModelStore: ObservableObject {
             )
 
             guard let repoID = Repo.ID(rawValue: checkpoint) else {
-                // Repo.ID check is synchronous — no await has occurred, so the
-                // epoch guard is not strictly needed here, but use it for consistency.
                 applyTerminalState(.failed(message: "Invalid checkpoint identifier: \(checkpoint)"),
                                    ifEpoch: epoch)
                 return
@@ -176,9 +159,9 @@ public final class LocalModelStore: ObservableObject {
             try FileManager.default.createDirectory(
                 at: modelDirectory, withIntermediateDirectories: true)
 
-            // 1. Fetch the file list for the repo.
+            // 1. Fetch the file list (+ sizes) for the repo.
             let allEntries = try await client.listFiles(
-                in: repoID, kind: .model, revision: "main", recursive: true)
+                in: repoID, kind: .model, revision: revision, recursive: true)
 
             // Filter out repo metadata files that are not model weights.
             // .gitattributes is a Git LFS pointer-config file, not a model file.
@@ -188,74 +171,62 @@ public final class LocalModelStore: ObservableObject {
                     && $0.path != ".gitattributes"
                     && $0.path != "README.md"
             }
-            let total = fileEntries.count
-            guard total > 0 else {
+            guard !fileEntries.isEmpty else {
                 throw NSError(domain: "LocalModelStore", code: 1,
                               userInfo: [NSLocalizedDescriptionKey: "Repository has no files"])
             }
 
-            // 2. Download each file into modelDirectory, preserving sub-paths.
-            for (index, entry) in fileEntries.enumerated() {
-                // Check for cancellation before each file download. On cancel,
-                // leave partial files on disk (a relaunch can resume where the
-                // prior run left off) and reset state to .notDownloaded rather
-                // than .failed. Note: remove() deletes these files.
-                if Task.isCancelled {
-                    applyTerminalState(.notDownloaded, ifEpoch: epoch)
-                    return
-                }
-
-                // Defense-in-depth path-traversal guard (mirrors the library's
-                // validateSnapshotEntryPath intent). appendingPathComponent does
-                // NOT resolve ".." on macOS — it concatenates — so a malicious
-                // entry.path ("/etc/…" or "../../…") could escape modelDirectory.
-                // Risk is low (compile-time checkpoint, TLS to HF) but reject any
-                // absolute path or path containing a ".." component before writing.
-                let pathComponents = entry.path.split(separator: "/", omittingEmptySubsequences: false)
-                if entry.path.hasPrefix("/") || pathComponents.contains("..") {
+            // 2. Plan each file: resolve URL, destination, expected size, and the
+            //    skip/resume/fresh action from what's already on disk.
+            var plans: [HFPlannedFile] = []
+            var totalBytes: Int64 = 0
+            for entry in fileEntries {
+                // Defense-in-depth path-traversal guard: appendingPathComponent
+                // does NOT resolve ".." on macOS, so a malicious entry path could
+                // escape modelDirectory. Reject absolute paths or any ".." segment.
+                if HFDownload.isUnsafeRepoPath(entry.path) {
                     applyTerminalState(
                         .failed(message: "Refusing unsafe file path in repository: \(entry.path)"),
                         ifEpoch: epoch)
                     return
                 }
-
                 let destination = modelDirectory.appendingPathComponent(entry.path)
-                // Progress is file-count-proportional, not byte-proportional —
-                // small files advance the bar quickly; large shards crawl it.
-                // Acceptable for v1; byte-weighting would need sizes from listFiles.
-                let baseProgress = Double(index) / Double(total)
-                let perFileProgress = Progress(totalUnitCount: 100)
-
-                // Deliver coarse progress on MainActor immediately.
-                // Progress writes don't need epoch guarding — an overwrite by a
-                // fresh download task's .downloading is fine; only terminal states
-                // (.notDownloaded / .failed) need the guard.
-                state = .downloading(progress: baseProgress)
-
-                // Observe per-file progress to give finer-grained updates.
-                let observation = perFileProgress.observe(\.fractionCompleted,
-                                                          options: [.new]) { [weak self] prog, _ in
-                    guard let self else { return }
-                    let withinFile = prog.fractionCompleted / Double(total)
-                    let combined = min(baseProgress + withinFile, 1.0)
-                    Task { @MainActor [weak self] in
-                        guard let self, case .downloading = self.state else { return }
-                        self.state = .downloading(progress: combined)
-                    }
-                }
-                defer { observation.invalidate() }
-
-                _ = try await client.downloadFile(
-                    at: entry.path,
-                    from: repoID,
-                    to: destination,
-                    kind: .model,
-                    revision: "main",
-                    progress: perFileProgress
-                )
+                let expected = entry.size.map(Int64.init)
+                let onDisk = Self.fileSize(at: destination)
+                let action = HFDownload.plan(onDiskBytes: onDisk, expectedBytes: expected)
+                let url = HFDownload.resolveURL(
+                    host: HubClient.defaultHost,
+                    namespace: repoID.namespace, name: repoID.name,
+                    revision: revision, path: entry.path)
+                plans.append(HFPlannedFile(
+                    url: url, destination: destination, expectedBytes: expected, action: action))
+                totalBytes += expected ?? 0
             }
 
-            // 3. Write the ready marker only after all files have landed —
+            if Task.isCancelled {
+                applyTerminalState(.notDownloaded, ifEpoch: epoch)
+                return
+            }
+            // (No state reset here: download() already set .downloading(0) before
+            // spawning this task, nothing has emitted progress yet, and a remove()
+            // during the listFiles await is caught by the isCancelled check above.)
+
+            // 3. Stream the bytes in-process. Progress writes don't need epoch
+            //    guarding — an overwrite by a fresh task's .downloading is fine;
+            //    only terminal states do, and the `case .downloading` guard below
+            //    means a fraction never clobbers a terminal state set by
+            //    remove()/cancel. No monotonicity guard: a resume that gets HTTP
+            //    200 (server ignored Range) legitimately re-downloads from 0, so
+            //    the bar must be free to dip and re-climb rather than freeze.
+            try await HFStreamingDownloader().download(plans, totalBytes: totalBytes) {
+                [weak self] fraction in
+                Task { @MainActor [weak self] in
+                    guard let self, case .downloading = self.state else { return }
+                    self.state = .downloading(progress: fraction)
+                }
+            }
+
+            // 4. Write the ready marker only after all files have landed —
             //    and only if the task hasn't been cancelled mid-loop.
             if Task.isCancelled {
                 applyTerminalState(.notDownloaded, ifEpoch: epoch)
