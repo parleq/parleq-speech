@@ -1061,6 +1061,24 @@ struct ParleqApp {
             localModelStore.onStateChanged = applyLocalModelState
             applyLocalModelState(localModelStore.state)
 
+            // Re-evaluate the on-device restart-to-activate prompt when the
+            // cleanup provider changes in Settings — the model-state observer
+            // above only fires on download-state transitions, so switching
+            // local→other (or other→local) while the model is already ready
+            // would otherwise leave the menu-bar item stale. Together the two
+            // keep it correct across both axes (model readiness AND provider).
+            NotificationCenter.default.addObserver(
+                forName: .parleqCleanupProviderChanged, object: nil, queue: .main
+            ) { [weak menuBox] _ in
+                MainActor.assumeIsolated {
+                    let pending = onDeviceActivationPending(
+                        launchProvider: cleanupId.provider,
+                        configProvider: Config.load().config.llmProvider,
+                        modelReady: localModelStore.state == .ready)
+                    menuBox?.value?.setOnDeviceRestartPending(pending)
+                }
+            }
+
             // "Finish setup…" prompt — shown when the wizard hasn't been
             // completed yet. Disappears once the wizard saves
             // config.wizardCompleted=true (next launch after finishing).

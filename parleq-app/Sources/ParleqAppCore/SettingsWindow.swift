@@ -1704,6 +1704,11 @@ struct SettingsView: View {
                                         model.cleanupModelName = available.first ?? ""
                                     }
                                     model.save()
+                                    // Re-evaluate the on-device restart-to-activate
+                                    // menu-bar item (its observer only fires on model
+                                    // state changes, not provider changes).
+                                    NotificationCenter.default.post(
+                                        name: .parleqCleanupProviderChanged, object: nil)
                                 }
                             ),
                             label: "Provider",
@@ -3034,7 +3039,6 @@ private struct LocalOnDeviceCard: View {
                 Spacer()
                 Button("Restart Now") { ParleqApp_relaunch() }
                     .buttonStyle(.borderedProminent)
-                    .keyboardShortcut("r", modifiers: [.command])
             }
             .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)

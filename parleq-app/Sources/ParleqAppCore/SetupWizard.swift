@@ -69,6 +69,12 @@ extension Notification.Name {
     /// app restart. userInfo["ms"] carries the new delay as an Int.
     public static let parleqOverlayDelayChanged = Notification.Name("ParleqOverlayDelayChanged")
 
+    /// Posted when the cleanup provider changes in Settings, so the on-device
+    /// restart-to-activate menu-bar item re-evaluates `onDeviceActivationPending`
+    /// (the menu-bar observer otherwise only fires on model-state transitions, so
+    /// switching local→other while the model is ready would leave a stale item).
+    public static let parleqCleanupProviderChanged = Notification.Name("ParleqCleanupProviderChanged")
+
     /// Posted when "learn from corrections" is enabled OUTSIDE the Settings
     /// window — i.e. via the overlay's inline toggle (`LearnBanner`). An open
     /// `SettingsModel` loaded the old value at init and would otherwise write
