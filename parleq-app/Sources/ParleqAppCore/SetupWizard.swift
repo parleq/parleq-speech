@@ -106,10 +106,9 @@ public final class SetupWizardController {
 
     private var window: NSWindow?
 
-    /// Show the wizard, creating it on first call. Always re-centers
-    /// on the active screen — this is a one-shot focused flow that
-    /// should grab attention each time it opens, not restore wherever
-    /// the user dragged it last.
+    /// Show the wizard, building a fresh window each call. Always re-centers
+    /// on the active screen — this is a one-shot focused flow that should grab
+    /// attention each time it opens, not restore wherever the user dragged it last.
     /// `permissionsOnly` (#82): open directly at the permissions step for a
     /// returning user whose Accessibility was revoked, instead of re-running the
     /// whole flow (which would reset their provider config). The root view is

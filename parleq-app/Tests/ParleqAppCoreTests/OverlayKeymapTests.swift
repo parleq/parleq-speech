@@ -21,6 +21,15 @@ final class OverlayKeymapTests: XCTestCase {
                        .reviewKey)
     }
 
+    func testModifiedEDoesNotEnterEditMode() {
+        // Shift/Option/Control + E must stay a review key (matching the bare-E
+        // gesture's no-modifier requirement) — not silently enter edit mode.
+        XCTAssertEqual(
+            OverlayKeymap.action(key: .letterE, hasCommand: false,
+                                 hasOtherModifiers: true, isEditing: false),
+            .reviewKey)
+    }
+
     func testOtherKeysInReviewGoToReviewHandler() {
         XCTAssertEqual(OverlayKeymap.action(key: .returnKey, hasCommand: false, isEditing: false),
                        .reviewKey)

@@ -25,10 +25,18 @@ public enum OverlayKeymap {
         case typeIntoEditor     // editing: an ordinary character — let the editor handle it
     }
 
-    public static func action(key: Key, hasCommand: Bool, isEditing: Bool) -> Action {
+    /// `hasOtherModifiers` covers Shift/Control/Option (anything but Command).
+    /// It gates the bare-E review gesture so only an unmodified E enters edit
+    /// mode (matching the other single-key review gestures); it's irrelevant in
+    /// edit mode, where only Command distinguishes the shortcuts from typing.
+    public static func action(
+        key: Key, hasCommand: Bool, hasOtherModifiers: Bool = false, isEditing: Bool
+    ) -> Action {
         if !isEditing {
-            // Bare E opens edit mode; everything else (incl. ⌘E) is a review key.
-            return (key == .letterE && !hasCommand) ? .enterEditMode : .reviewKey
+            // Only a truly bare E opens edit mode; E with ANY modifier (incl. ⌘E,
+            // Shift+E, Option+E) is a review key, like the V/C/P gestures.
+            let bareE = key == .letterE && !hasCommand && !hasOtherModifiers
+            return bareE ? .enterEditMode : .reviewKey
         }
         switch key {
         case .escape:

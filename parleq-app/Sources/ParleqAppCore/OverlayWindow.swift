@@ -909,6 +909,21 @@ private final class OverlayPanel: NSPanel {
         FileHandle.standardError.write((message + "\n").data(using: .utf8) ?? Data())
     }
 
+    /// #85: map an NSEvent to the pure OverlayKeymap.Key. Kept here (not on the
+    /// SwiftUI/AppKit-free OverlayKeymap) so the enum stays unit-testable.
+    private static func keymapKey(for event: NSEvent) -> OverlayKeymap.Key {
+        switch event.keyCode {
+        case 36, 76: return .returnKey
+        case 53: return .escape
+        default:
+            switch event.charactersIgnoringModifiers?.lowercased() {
+            case "s": return .letterS
+            case "e": return .letterE
+            default: return .other
+            }
+        }
+    }
+
     override func keyDown(with event: NSEvent) {
         // #85: while the in-place editor is focused it owns the keyboard — never
         // run the single-key review gestures here. The editor's own onKeyPress
@@ -916,6 +931,19 @@ private final class OverlayPanel: NSPanel {
         // that reaches the panel during edit mode just falls through to type.
         if isEditing() {
             super.keyDown(with: event)
+            return
+        }
+        // #85: route the edit-entry decision through the shared OverlayKeymap
+        // table (the same table the editor's onKeyPress and the unit tests use)
+        // so the panel and editor can't silently diverge. In review state only
+        // bare E maps to .enterEditMode; everything else is a normal review key.
+        if OverlayKeymap.action(
+            key: OverlayPanel.keymapKey(for: event),
+            hasCommand: event.modifierFlags.contains(.command),
+            hasOtherModifiers: !event.modifierFlags
+                .intersection([.shift, .control, .option]).isEmpty,
+            isEditing: false) == .enterEditMode {
+            onEnterEdit?()
             return
         }
         switch event.keyCode {
@@ -955,10 +983,8 @@ private final class OverlayPanel: NSPanel {
                 // Bare "P" — show the Parleq window (cancels review).
                 // AppState gates to .awaitingAccept so it no-ops elsewhere.
                 onShowParleq?()
-            } else if noMods, baseGlyph?.lowercased() == "e" {
-                // #85: bare "E" — enter in-place edit mode. AppState gates it to
-                // .awaitingAccept (it no-ops in other states).
-                onEnterEdit?()
+            // (Bare "E" → edit mode is handled above via OverlayKeymap, before
+            // this switch, so there's no "e" branch here.)
             } else if event.modifierFlags
                         .intersection([.command, .control, .option]).isEmpty,
                       let g = baseGlyph, g.count == 1,
@@ -1552,6 +1578,21 @@ private struct OverlayContent: View {
     /// #85: focus for the in-place edit editor. Bound to model.editing so the
     /// editor grabs the keyboard the instant edit mode turns on.
     @FocusState private var editorFocused: Bool
+
+    /// #85: map a SwiftUI KeyPress to the pure OverlayKeymap.Key. Kept out of
+    /// OverlayKeymap so that enum stays SwiftUI/AppKit-free and unit-testable.
+    private static func keymapKey(forKeyPress press: KeyPress) -> OverlayKeymap.Key {
+        switch press.key {
+        case .escape: return .escape
+        case .return: return .returnKey
+        default:
+            switch press.characters.lowercased() {
+            case "s": return .letterS
+            case "e": return .letterE
+            default: return .other
+            }
+        }
+    }
     /// Fixed outer width passed in from OverlayWindow. We constrain
     /// the SwiftUI hierarchy to this so NSHostingController's
     /// preferredContentSize reports (fixedWidth, naturalHeight)
@@ -2911,20 +2952,26 @@ private struct OverlayContent: View {
                             .frame(minHeight: ChromeSlotMetrics.contentMin)
                             .focused($editorFocused)
                             .onAppear { editorFocused = true }
-                            .onKeyPress(.escape) {
-                                model.onDiscardEdit?(); return .handled
-                            }
-                            .onKeyPress(.return, phases: .down) { press in
-                                if press.modifiers.contains(.command) {
-                                    model.onCommitEdit?(true); return .handled
+                            // #85: dispatch edit-mode keys through the shared
+                            // OverlayKeymap decision table (the same one the unit
+                            // tests cover), so the editor and the panel can't
+                            // silently diverge. Non-handled keys return .ignored
+                            // so ordinary typing / newline pass through.
+                            .onKeyPress(phases: .down) { press in
+                                switch OverlayKeymap.action(
+                                    key: Self.keymapKey(forKeyPress: press),
+                                    hasCommand: press.modifiers.contains(.command),
+                                    hasOtherModifiers: !press.modifiers
+                                        .intersection([.shift, .control, .option]).isEmpty,
+                                    isEditing: true
+                                ) {
+                                case .commitAndAccept: model.onCommitEdit?(true); return .handled
+                                case .saveAndReview: model.onCommitEdit?(false); return .handled
+                                case .discardAndReview: model.onDiscardEdit?(); return .handled
+                                case .insertNewline, .typeIntoEditor,
+                                     .enterEditMode, .reviewKey:
+                                    return .ignored
                                 }
-                                return .ignored   // plain Return → newline
-                            }
-                            .onKeyPress(keys: ["s"], phases: .down) { press in
-                                if press.modifiers.contains(.command) {
-                                    model.onCommitEdit?(false); return .handled
-                                }
-                                return .ignored   // plain "s" → types
                             }
                     } else {
                         Text(model.text)
