@@ -62,3 +62,7 @@ docs/superpowers/
 
 # asr-bench local Python venv (deps installed on demand)
 bench/.venv/
+
+# Local-only: real work-machine dictionary used for personal over-fire repro.
+# Customer-identifying term cluster — never commit (see bench/dictionary-overfire.json for the public gate).
+bench/dictionary-work.json

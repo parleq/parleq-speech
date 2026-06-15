@@ -1,0 +1,866 @@
+[
+  {
+    "biasing" : false,
+    "hyp" : "The overnight job ran twice but still finished on time.",
+    "id" : "o01-cran-ran-Samantha",
+    "latency_ms" : 121.40720796585083,
+    "path" : "batch",
+    "ref" : "The overnight job ran twice but still finished on time."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "The overnight job CRAN twice but still finished on time.",
+    "id" : "o01-cran-ran-Samantha",
+    "latency_ms" : 349.2552499771118,
+    "path" : "batch",
+    "ref" : "The overnight job ran twice but still finished on time."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "The overnight job ran twice but still finished on time.",
+    "id" : "o01-cran-ran-Daniel",
+    "latency_ms" : 75.69462502002716,
+    "path" : "batch",
+    "ref" : "The overnight job ran twice but still finished on time."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "The overnight job CRAN twice but still finished on time.",
+    "id" : "o01-cran-ran-Daniel",
+    "latency_ms" : 298.5251669883728,
+    "path" : "batch",
+    "ref" : "The overnight job ran twice but still finished on time."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "The overnight job ran twice but still finished on time.",
+    "id" : "o01-cran-ran-Karen",
+    "latency_ms" : 74.1620409488678,
+    "path" : "batch",
+    "ref" : "The overnight job ran twice but still finished on time."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "The overnight job CRAN twice but still finished on time.",
+    "id" : "o01-cran-ran-Karen",
+    "latency_ms" : 302.1632069349289,
+    "path" : "batch",
+    "ref" : "The overnight job ran twice but still finished on time."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Could you grab the latest logs before the demo starts?",
+    "id" : "o02-cran-grab-Samantha",
+    "latency_ms" : 80.00879204273224,
+    "path" : "batch",
+    "ref" : "Could you grab the latest logs before the demo starts?"
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Could you grab the latest logs before the demo starts?",
+    "id" : "o02-cran-grab-Samantha",
+    "latency_ms" : 301.2837920188904,
+    "path" : "batch",
+    "ref" : "Could you grab the latest logs before the demo starts?"
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Could you grab the latest logs before the demo starts?",
+    "id" : "o02-cran-grab-Daniel",
+    "latency_ms" : 78.11758291721344,
+    "path" : "batch",
+    "ref" : "Could you grab the latest logs before the demo starts?"
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Could you grab the latest logs before the demo starts?",
+    "id" : "o02-cran-grab-Daniel",
+    "latency_ms" : 301.15954089164734,
+    "path" : "batch",
+    "ref" : "Could you grab the latest logs before the demo starts?"
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Could you grab the latest logs before the demo starts?",
+    "id" : "o02-cran-grab-Karen",
+    "latency_ms" : 76.70887506008148,
+    "path" : "batch",
+    "ref" : "Could you grab the latest logs before the demo starts?"
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Could you grab the latest logs before the demo starts?",
+    "id" : "o02-cran-grab-Karen",
+    "latency_ms" : 295.1313331127167,
+    "path" : "batch",
+    "ref" : "Could you grab the latest logs before the demo starts?"
+  },
+  {
+    "biasing" : false,
+    "hyp" : "We had to cram the whole roadmap into a single slide.",
+    "id" : "o03-cran-cram-Samantha",
+    "latency_ms" : 77.62216699123383,
+    "path" : "batch",
+    "ref" : "We had to cram the whole roadmap into a single slide."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "We had to CRAN the whole roadmap into a single slide.",
+    "id" : "o03-cran-cram-Samantha",
+    "latency_ms" : 299.9225000143051,
+    "path" : "batch",
+    "ref" : "We had to cram the whole roadmap into a single slide."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "We had to cram the whole roadmap into a single slide.",
+    "id" : "o03-cran-cram-Daniel",
+    "latency_ms" : 77.19025003910065,
+    "path" : "batch",
+    "ref" : "We had to cram the whole roadmap into a single slide."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "We had to CRAN the whole roadmap into a single slide.",
+    "id" : "o03-cran-cram-Daniel",
+    "latency_ms" : 298.2109999656677,
+    "path" : "batch",
+    "ref" : "We had to cram the whole roadmap into a single slide."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "We had to cram the whole roadmap into a single slide.",
+    "id" : "o03-cran-cram-Karen",
+    "latency_ms" : 75.90220808982849,
+    "path" : "batch",
+    "ref" : "We had to cram the whole roadmap into a single slide."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "We had to CRAN the whole roadmap into a single slide.",
+    "id" : "o03-cran-cram-Karen",
+    "latency_ms" : 301.17695808410645,
+    "path" : "batch",
+    "ref" : "We had to cram the whole roadmap into a single slide."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "The crane lifted the steel beams into place by noon.",
+    "id" : "o04-cran-crane-Samantha",
+    "latency_ms" : 80.92300009727478,
+    "path" : "batch",
+    "ref" : "The crane lifted the steel beams into place by noon."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "The CRAN lifted the steel beams into place by noon.",
+    "id" : "o04-cran-crane-Samantha",
+    "latency_ms" : 302.78175008296967,
+    "path" : "batch",
+    "ref" : "The crane lifted the steel beams into place by noon."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "The crane lifted the steel beams into place by noon.",
+    "id" : "o04-cran-crane-Daniel",
+    "latency_ms" : 81.73783302307129,
+    "path" : "batch",
+    "ref" : "The crane lifted the steel beams into place by noon."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "The CRAN lifted the steel beams into place by noon.",
+    "id" : "o04-cran-crane-Daniel",
+    "latency_ms" : 307.77645802497864,
+    "path" : "batch",
+    "ref" : "The crane lifted the steel beams into place by noon."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "The crane lifted the steel beams into place by noon.",
+    "id" : "o04-cran-crane-Karen",
+    "latency_ms" : 82.57937490940094,
+    "path" : "batch",
+    "ref" : "The crane lifted the steel beams into place by noon."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "The CRAN lifted the steel beams into place by noon.",
+    "id" : "o04-cran-crane-Karen",
+    "latency_ms" : 302.8594169616699,
+    "path" : "batch",
+    "ref" : "The crane lifted the steel beams into place by noon."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Can the team review the draft before we send it out?",
+    "id" : "o05-cran-can-Samantha",
+    "latency_ms" : 79.7010840177536,
+    "path" : "batch",
+    "ref" : "Can the team review the draft before we send it out?"
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Can the team review the draft before we send it out?",
+    "id" : "o05-cran-can-Samantha",
+    "latency_ms" : 302.5815839767456,
+    "path" : "batch",
+    "ref" : "Can the team review the draft before we send it out?"
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Can the team review the draft before we send it out?",
+    "id" : "o05-cran-can-Daniel",
+    "latency_ms" : 80.74495899677277,
+    "path" : "batch",
+    "ref" : "Can the team review the draft before we send it out?"
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Can the team review the draft before we send it out?",
+    "id" : "o05-cran-can-Daniel",
+    "latency_ms" : 303.26783406734467,
+    "path" : "batch",
+    "ref" : "Can the team review the draft before we send it out?"
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Can the team review the draft before we send it out?",
+    "id" : "o05-cran-can-Karen",
+    "latency_ms" : 74.99691593647003,
+    "path" : "batch",
+    "ref" : "Can the team review the draft before we send it out?"
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Can the team review the draft before we send it out?",
+    "id" : "o05-cran-can-Karen",
+    "latency_ms" : 304.7713749408722,
+    "path" : "batch",
+    "ref" : "Can the team review the draft before we send it out?"
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Please sync the branch before you open the pull request.",
+    "id" : "o06-snyk-sync-Samantha",
+    "latency_ms" : 82.21408295631409,
+    "path" : "batch",
+    "ref" : "Please sync the branch before you open the pull request."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Please sync the branch before you open the pull request.",
+    "id" : "o06-snyk-sync-Samantha",
+    "latency_ms" : 304.3422919511795,
+    "path" : "batch",
+    "ref" : "Please sync the branch before you open the pull request."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Please sync the branch before you open the pull request.",
+    "id" : "o06-snyk-sync-Daniel",
+    "latency_ms" : 82.89620804786682,
+    "path" : "batch",
+    "ref" : "Please sync the branch before you open the pull request."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Please sync the branch before you open the pull request.",
+    "id" : "o06-snyk-sync-Daniel",
+    "latency_ms" : 307.40870809555054,
+    "path" : "batch",
+    "ref" : "Please sync the branch before you open the pull request."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Please sync the branch before you open the pull request.",
+    "id" : "o06-snyk-sync-Karen",
+    "latency_ms" : 81.51533305644989,
+    "path" : "batch",
+    "ref" : "Please sync the branch before you open the pull request."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Please sync the branch before you open the pull request.",
+    "id" : "o06-snyk-sync-Karen",
+    "latency_ms" : 308.49729204177856,
+    "path" : "batch",
+    "ref" : "Please sync the branch before you open the pull request."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "The sink in the break room is leaking again this week.",
+    "id" : "o07-snyk-sink-Samantha",
+    "latency_ms" : 82.43124997615814,
+    "path" : "batch",
+    "ref" : "The sink in the break room is leaking again this week."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "The sink in the break room is leaking again this week.",
+    "id" : "o07-snyk-sink-Samantha",
+    "latency_ms" : 303.5722910165787,
+    "path" : "batch",
+    "ref" : "The sink in the break room is leaking again this week."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "The sink in the break room is leaking again this week.",
+    "id" : "o07-snyk-sink-Daniel",
+    "latency_ms" : 75.52125000953674,
+    "path" : "batch",
+    "ref" : "The sink in the break room is leaking again this week."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "The sink in the break room is leaking again this week.",
+    "id" : "o07-snyk-sink-Daniel",
+    "latency_ms" : 301.1282089948654,
+    "path" : "batch",
+    "ref" : "The sink in the break room is leaking again this week."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "The sink and the break room is leaking again this week.",
+    "id" : "o07-snyk-sink-Karen",
+    "latency_ms" : 79.3333330154419,
+    "path" : "batch",
+    "ref" : "The sink in the break room is leaking again this week."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "The sink and the break room is leaking again this week.",
+    "id" : "o07-snyk-sink-Karen",
+    "latency_ms" : 299.65487492084503,
+    "path" : "batch",
+    "ref" : "The sink in the break room is leaking again this week."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "The room is ready as soon as the guests arrive.",
+    "id" : "o08-redis-ready-Samantha",
+    "latency_ms" : 75.06675004959106,
+    "path" : "batch",
+    "ref" : "The room is ready as soon as the guests arrive."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "The room is ready as soon as the guests arrive.",
+    "id" : "o08-redis-ready-Samantha",
+    "latency_ms" : 304.8014590740204,
+    "path" : "batch",
+    "ref" : "The room is ready as soon as the guests arrive."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "The room is ready as soon as the guests arrive.",
+    "id" : "o08-redis-ready-Daniel",
+    "latency_ms" : 78.44500005245209,
+    "path" : "batch",
+    "ref" : "The room is ready as soon as the guests arrive."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "The room is ready as soon as the guests arrive.",
+    "id" : "o08-redis-ready-Daniel",
+    "latency_ms" : 304.0833340883255,
+    "path" : "batch",
+    "ref" : "The room is ready as soon as the guests arrive."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "The room is ready as soon as the guests arrive.",
+    "id" : "o08-redis-ready-Karen",
+    "latency_ms" : 78.0801249742508,
+    "path" : "batch",
+    "ref" : "The room is ready as soon as the guests arrive."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "The room is ready as soon as the guests arrive.",
+    "id" : "o08-redis-ready-Karen",
+    "latency_ms" : 290.9776660203934,
+    "path" : "batch",
+    "ref" : "The room is ready as soon as the guests arrive."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "The radish in the garden salad was crisp and fresh.",
+    "id" : "o09-redis-radish-Samantha",
+    "latency_ms" : 82.38483393192291,
+    "path" : "batch",
+    "ref" : "The radish in the garden salad was crisp and fresh."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "The Redis in the garden salad was crisp and fresh.",
+    "id" : "o09-redis-radish-Samantha",
+    "latency_ms" : 309.6108340024948,
+    "path" : "batch",
+    "ref" : "The radish in the garden salad was crisp and fresh."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "The radish and the garden salad was crisp and fresh.",
+    "id" : "o09-redis-radish-Daniel",
+    "latency_ms" : 77.58095800876617,
+    "path" : "batch",
+    "ref" : "The radish in the garden salad was crisp and fresh."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "The Redis and the garden salad was crisp and fresh.",
+    "id" : "o09-redis-radish-Daniel",
+    "latency_ms" : 300.2323330640793,
+    "path" : "batch",
+    "ref" : "The radish in the garden salad was crisp and fresh."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "The radish in the garden salad was crisp and fresh.",
+    "id" : "o09-redis-radish-Karen",
+    "latency_ms" : 77.68216705322266,
+    "path" : "batch",
+    "ref" : "The radish in the garden salad was crisp and fresh."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "The Redis in the garden salad was crisp and fresh.",
+    "id" : "o09-redis-radish-Karen",
+    "latency_ms" : 303.1345421075821,
+    "path" : "batch",
+    "ref" : "The radish in the garden salad was crisp and fresh."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Kate's laptop is sitting in the lab this morning.",
+    "id" : "o10-k8s-kates-Samantha",
+    "latency_ms" : 78.04170894622803,
+    "path" : "batch",
+    "ref" : "Kate's laptop is sitting in the lab this morning."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Kate's laptop is sitting in the lab this morning.",
+    "id" : "o10-k8s-kates-Samantha",
+    "latency_ms" : 293.356458902359,
+    "path" : "batch",
+    "ref" : "Kate's laptop is sitting in the lab this morning."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Kate's laptop is sitting in the lab this morning.",
+    "id" : "o10-k8s-kates-Daniel",
+    "latency_ms" : 77.02374994754791,
+    "path" : "batch",
+    "ref" : "Kate's laptop is sitting in the lab this morning."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Kate's laptop is sitting in the lab this morning.",
+    "id" : "o10-k8s-kates-Daniel",
+    "latency_ms" : 293.7144159078598,
+    "path" : "batch",
+    "ref" : "Kate's laptop is sitting in the lab this morning."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Kate's laptop is sitting in the lab this morning.",
+    "id" : "o10-k8s-kates-Karen",
+    "latency_ms" : 77.03279101848602,
+    "path" : "batch",
+    "ref" : "Kate's laptop is sitting in the lab this morning."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Kate's laptop is sitting in the lab this morning.",
+    "id" : "o10-k8s-kates-Karen",
+    "latency_ms" : 290.58204102516174,
+    "path" : "batch",
+    "ref" : "Kate's laptop is sitting in the lab this morning."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Stack the empty crates by the loading door.",
+    "id" : "o11-k8s-crates-Samantha",
+    "latency_ms" : 75.3189160823822,
+    "path" : "batch",
+    "ref" : "Stack the empty crates by the loading door."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Stack the empty crates by the loading door.",
+    "id" : "o11-k8s-crates-Samantha",
+    "latency_ms" : 289.0763751268387,
+    "path" : "batch",
+    "ref" : "Stack the empty crates by the loading door."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Stack the empty crates by the loading door.",
+    "id" : "o11-k8s-crates-Daniel",
+    "latency_ms" : 75.76629197597504,
+    "path" : "batch",
+    "ref" : "Stack the empty crates by the loading door."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Stack the empty crates by the loading door.",
+    "id" : "o11-k8s-crates-Daniel",
+    "latency_ms" : 290.4967509508133,
+    "path" : "batch",
+    "ref" : "Stack the empty crates by the loading door."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Stack the empty crates by the loading door.",
+    "id" : "o11-k8s-crates-Karen",
+    "latency_ms" : 78.31091690063477,
+    "path" : "batch",
+    "ref" : "Stack the empty crates by the loading door."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Stack the empty crates by the loading door.",
+    "id" : "o11-k8s-crates-Karen",
+    "latency_ms" : 293.3445838689804,
+    "path" : "batch",
+    "ref" : "Stack the empty crates by the loading door."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "We sketched the decision tree for every edge case.",
+    "id" : "o12-worktree-tree-Samantha",
+    "latency_ms" : 79.5393750667572,
+    "path" : "batch",
+    "ref" : "We sketched the decision tree for every edge case."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "We sketched the decision tree for every edge case.",
+    "id" : "o12-worktree-tree-Samantha",
+    "latency_ms" : 296.24579203128815,
+    "path" : "batch",
+    "ref" : "We sketched the decision tree for every edge case."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "We sketched the decision tree for every edge case.",
+    "id" : "o12-worktree-tree-Daniel",
+    "latency_ms" : 78.81175005435944,
+    "path" : "batch",
+    "ref" : "We sketched the decision tree for every edge case."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "We sketched the decision tree for every edge case.",
+    "id" : "o12-worktree-tree-Daniel",
+    "latency_ms" : 299.68770802021027,
+    "path" : "batch",
+    "ref" : "We sketched the decision tree for every edge case."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "We sketched the decision tree for every edge case.",
+    "id" : "o12-worktree-tree-Karen",
+    "latency_ms" : 76.25312507152557,
+    "path" : "batch",
+    "ref" : "We sketched the decision tree for every edge case."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "We sketched the decision tree for every edge case.",
+    "id" : "o12-worktree-tree-Karen",
+    "latency_ms" : 303.40350008010864,
+    "path" : "batch",
+    "ref" : "We sketched the decision tree for every edge case."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "It took a lot of careful work to get the release out.",
+    "id" : "o13-worktree-work-Samantha",
+    "latency_ms" : 77.57879197597504,
+    "path" : "batch",
+    "ref" : "It took a lot of careful work to get the release out."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "It took a lot of careful work to get the release out.",
+    "id" : "o13-worktree-work-Samantha",
+    "latency_ms" : 300.48041689395905,
+    "path" : "batch",
+    "ref" : "It took a lot of careful work to get the release out."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "It took a lot of careful work to get the release out.",
+    "id" : "o13-worktree-work-Daniel",
+    "latency_ms" : 75.53550004959106,
+    "path" : "batch",
+    "ref" : "It took a lot of careful work to get the release out."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "It took a lot of careful work to get the release out.",
+    "id" : "o13-worktree-work-Daniel",
+    "latency_ms" : 298.5840001106262,
+    "path" : "batch",
+    "ref" : "It took a lot of careful work to get the release out."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "It took a lot of careful work to get the release out.",
+    "id" : "o13-worktree-work-Karen",
+    "latency_ms" : 77.29237508773804,
+    "path" : "batch",
+    "ref" : "It took a lot of careful work to get the release out."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "It took a lot of careful work to get the release out.",
+    "id" : "o13-worktree-work-Karen",
+    "latency_ms" : 300.42604207992554,
+    "path" : "batch",
+    "ref" : "It took a lot of careful work to get the release out."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "I think everything is ready for the launch tomorrow morning.",
+    "id" : "o14-ultra-every-Samantha",
+    "latency_ms" : 78.51791703701019,
+    "path" : "batch",
+    "ref" : "I think everything is ready for the launch tomorrow morning."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "I think everything is ready for the launch tomorrow morning.",
+    "id" : "o14-ultra-every-Samantha",
+    "latency_ms" : 300.7896260023117,
+    "path" : "batch",
+    "ref" : "I think everything is ready for the launch tomorrow morning."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "I think everything is ready for the launch tomorrow morning.",
+    "id" : "o14-ultra-every-Daniel",
+    "latency_ms" : 76.03245806694031,
+    "path" : "batch",
+    "ref" : "I think everything is ready for the launch tomorrow morning."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "I think everything is ready for the launch tomorrow morning.",
+    "id" : "o14-ultra-every-Daniel",
+    "latency_ms" : 296.56587505340576,
+    "path" : "batch",
+    "ref" : "I think everything is ready for the launch tomorrow morning."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "I think everything is ready for the launch tomorrow morning.",
+    "id" : "o14-ultra-every-Karen",
+    "latency_ms" : 79.4548749923706,
+    "path" : "batch",
+    "ref" : "I think everything is ready for the launch tomorrow morning."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "I think everything is ready for the launch tomorrow morning.",
+    "id" : "o14-ultra-every-Karen",
+    "latency_ms" : 301.1183329820633,
+    "path" : "batch",
+    "ref" : "I think everything is ready for the launch tomorrow morning."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Ultimately we shipped it a full week ahead of schedule.",
+    "id" : "o15-ultra-ult-Samantha",
+    "latency_ms" : 80.2289160490036,
+    "path" : "batch",
+    "ref" : "Ultimately we shipped it a full week ahead of schedule."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Ultimately we shipped it a full week ahead of schedule.",
+    "id" : "o15-ultra-ult-Samantha",
+    "latency_ms" : 300.0997910499573,
+    "path" : "batch",
+    "ref" : "Ultimately we shipped it a full week ahead of schedule."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Ultimately we shipped it a full week ahead of schedule.",
+    "id" : "o15-ultra-ult-Daniel",
+    "latency_ms" : 78.1197919845581,
+    "path" : "batch",
+    "ref" : "Ultimately we shipped it a full week ahead of schedule."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Ultimately we shipped it a full week ahead of schedule.",
+    "id" : "o15-ultra-ult-Daniel",
+    "latency_ms" : 298.02470898628235,
+    "path" : "batch",
+    "ref" : "Ultimately we shipped it a full week ahead of schedule."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Ultimately we shipped it a full week ahead of schedule.",
+    "id" : "o15-ultra-ult-Karen",
+    "latency_ms" : 83.14570796489716,
+    "path" : "batch",
+    "ref" : "Ultimately we shipped it a full week ahead of schedule."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Ultimately we shipped it a full week ahead of schedule.",
+    "id" : "o15-ultra-ult-Karen",
+    "latency_ms" : 300.5634169578552,
+    "path" : "batch",
+    "ref" : "Ultimately we shipped it a full week ahead of schedule."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "The bonus payout lands at the very end of the quarter.",
+    "id" : "o16-sonnet-bonus-Samantha",
+    "latency_ms" : 77.52629208564758,
+    "path" : "batch",
+    "ref" : "The bonus payout lands at the very end of the quarter."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "The bonus payout lands at the very end of the quarter.",
+    "id" : "o16-sonnet-bonus-Samantha",
+    "latency_ms" : 297.5467920303345,
+    "path" : "batch",
+    "ref" : "The bonus payout lands at the very end of the quarter."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "The bonus payout lands at the very end of the quarter.",
+    "id" : "o16-sonnet-bonus-Daniel",
+    "latency_ms" : 82.45304107666016,
+    "path" : "batch",
+    "ref" : "The bonus payout lands at the very end of the quarter."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "The bonus payout lands at the very end of the quarter.",
+    "id" : "o16-sonnet-bonus-Daniel",
+    "latency_ms" : 300.47674906253815,
+    "path" : "batch",
+    "ref" : "The bonus payout lands at the very end of the quarter."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "The bonus payout lands at the very end of the quarter.",
+    "id" : "o16-sonnet-bonus-Karen",
+    "latency_ms" : 76.95262503623962,
+    "path" : "batch",
+    "ref" : "The bonus payout lands at the very end of the quarter."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "The bonus payout lands at the very end of the quarter.",
+    "id" : "o16-sonnet-bonus-Karen",
+    "latency_ms" : 296.11508297920227,
+    "path" : "batch",
+    "ref" : "The bonus payout lands at the very end of the quarter."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "She read a short sonnet at the opening ceremony.",
+    "id" : "o17-sonnet-sonnet-Samantha",
+    "latency_ms" : 77.0132919549942,
+    "path" : "batch",
+    "ref" : "She read a short sonnet at the opening ceremony."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "She read a short sonnet at the opening ceremony.",
+    "id" : "o17-sonnet-sonnet-Samantha",
+    "latency_ms" : 304.6125419139862,
+    "path" : "batch",
+    "ref" : "She read a short sonnet at the opening ceremony."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "She read a short sonnet at the opening ceremony.",
+    "id" : "o17-sonnet-sonnet-Daniel",
+    "latency_ms" : 79.62191700935364,
+    "path" : "batch",
+    "ref" : "She read a short sonnet at the opening ceremony."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "She read a short sonnet at the opening ceremony.",
+    "id" : "o17-sonnet-sonnet-Daniel",
+    "latency_ms" : 302.39279198646545,
+    "path" : "batch",
+    "ref" : "She read a short sonnet at the opening ceremony."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "She read a short sonnet at the opening ceremony.",
+    "id" : "o17-sonnet-sonnet-Karen",
+    "latency_ms" : 81.59329199790955,
+    "path" : "batch",
+    "ref" : "She read a short sonnet at the opening ceremony."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "She read a short sonnet at the opening ceremony.",
+    "id" : "o17-sonnet-sonnet-Karen",
+    "latency_ms" : 298.4806249141693,
+    "path" : "batch",
+    "ref" : "She read a short sonnet at the opening ceremony."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "The new tool is easy to use and quick to learn.",
+    "id" : "o18-e2e-easy-Samantha",
+    "latency_ms" : 79.70962500572205,
+    "path" : "batch",
+    "ref" : "The new tool is easy to use and quick to learn."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "The new tool is easy to use and quick to learn.",
+    "id" : "o18-e2e-easy-Samantha",
+    "latency_ms" : 297.58325004577637,
+    "path" : "batch",
+    "ref" : "The new tool is easy to use and quick to learn."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "The new tool is easy to use and quick to learn.",
+    "id" : "o18-e2e-easy-Daniel",
+    "latency_ms" : 76.04575002193451,
+    "path" : "batch",
+    "ref" : "The new tool is easy to use and quick to learn."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "The new tool is easy to use and quick to learn.",
+    "id" : "o18-e2e-easy-Daniel",
+    "latency_ms" : 292.8079169988632,
+    "path" : "batch",
+    "ref" : "The new tool is easy to use and quick to learn."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "The new tool is easy to use and quick to learn.",
+    "id" : "o18-e2e-easy-Karen",
+    "latency_ms" : 74.65137493610382,
+    "path" : "batch",
+    "ref" : "The new tool is easy to use and quick to learn."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "The new tool is easy to use and quick to learn.",
+    "id" : "o18-e2e-easy-Karen",
+    "latency_ms" : 291.68149995803833,
+    "path" : "batch",
+    "ref" : "The new tool is easy to use and quick to learn."
+  }
+]

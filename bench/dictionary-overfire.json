@@ -1,0 +1,13 @@
+{
+  "_comment": "Generic over-firing regression dictionary: short, acoustically-aggressive, PUBLIC developer terms whose canonical spellings collide with ordinary English (CRAN~'ran/cram/crane', Snyk~'sync/sink', Redis~'ready/radish', k8s~'Kate's/crates', worktree~'tree/work', ultrathink~'everything', Sonnet Opus~'bonus/sonnet'). Pairs with bench/corpus/overfire.json (phrases whose references contain NONE of these terms). Run through the biasing arm: any term that appears in the boosted output is a false positive (over-fire). This is the regression gate for FluidAudio bumps — see the pin comment in parleq-app/Package.swift. No proprietary/customer dictionaries live in this repo on purpose.",
+  "terms": [
+    { "term": "CRAN" },
+    { "term": "Snyk" },
+    { "term": "Redis" },
+    { "term": "k8s", "aliases": ["kubernetes"] },
+    { "term": "worktree" },
+    { "term": "ultrathink" },
+    { "term": "E2E", "aliases": ["end-to-end"] },
+    { "term": "Sonnet Opus", "aliases": ["Sonitor Opus"] }
+  ]
+}

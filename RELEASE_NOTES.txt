@@ -1,15 +1,18 @@
-Parleq 0.25.1
+Parleq 0.25.2
 
-A hotfix for a speech-recognition regression introduced in 0.25.0.
+A follow-up hotfix: 0.25.1 reverted the speech engine to the wrong version
+and didn't fully fix the dictionary regression.
 
 ### Fixed
 
-- **Custom dictionary terms no longer over-insert into transcripts.** 0.25.0
-  updated the on-device speech engine (FluidAudio 0.15.3), whose reworked
-  transcription pipeline made custom-dictionary biasing far too aggressive —
-  ordinary words could be replaced by your dictionary terms (e.g. "grab the key
-  signals" coming out as "CRAN the key bindex"), most noticeably with several
-  short terms. Reverted the engine to the previous version (0.14.8), so
-  transcription and dictionary biasing behave exactly as they did in 0.24.1.
-  (If you saw this on 0.25.0, marking your dictionary terms "LLM-only" was the
-  interim workaround.)
+- **Custom dictionary over-insertion is now actually fixed.** 0.25.1 reverted
+  the on-device speech engine to FluidAudio 0.14.8, believing the
+  over-aggressive dictionary biasing was introduced in 0.15.x. It wasn't — the
+  regression was introduced in FluidAudio 0.14.8 itself (an upstream rework of
+  the vocabulary-rescoring pipeline, tuned only against long, distinctive
+  terms), so reverting to 0.14.8 still over-fired (ordinary words replaced by
+  your dictionary terms, even with cleanup turned off). Pinned the engine to
+  exactly 0.14.5, the version 0.24.1 shipped, so transcription and dictionary
+  biasing behave as they did then. The 0.25.1 pin also used a version range
+  that silently resolved to the newest 0.14.x; the engine is now pinned to an
+  exact version.
