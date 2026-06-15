@@ -8,7 +8,9 @@
 // Schema (every field optional, defaults applied for missing ones):
 //
 //   {
-//     "hotkey":    { "binding": "option-right" },
+//     "hotkey":    { "binding": "option-right",
+//                    "gestures": { "double-tap-hold": "quick",       // quick|continuous|dictate|disabled
+//                                  "double-tap-release": "continuous" } },
 //     "ui":        { "auto_accept_seconds": 6,
 //                    "acoustic_feedback": true },
 //     "audio":     { "continue_other_audio": true },
@@ -298,6 +300,12 @@ public enum LocalModelDefaults {
 
 public struct Config: Sendable {
     public var hotkeyBinding: String
+    /// #84: raw `hotkey.gestures` map (gesture key → action token) for the
+    /// configurable double-tap entry gestures. Empty = all defaults. Parse via
+    /// `hotkeyGestureMap`.
+    public var hotkeyGestures: [String: String]
+    /// Resolved gesture→action map (defaults applied for unset/unknown entries).
+    public var hotkeyGestureMap: GestureMap { GestureMap.parse(hotkeyGestures) }
     public var autoAcceptSeconds: TimeInterval
     /// Delay in milliseconds after hotkey-down before the dictation
     /// overlay appears for a fresh capture (#56). Default 200. Also
@@ -654,6 +662,7 @@ public struct Config: Sendable {
 
     public static let `default` = Config(
         hotkeyBinding: "option-right",
+        hotkeyGestures: [:],
         // Auto-accept defaults to OFF (0 means "never auto-accept";
         // user must press Enter to paste). The design-doc default
         // was 6 seconds, but real-world testing showed it surprises
@@ -1419,9 +1428,18 @@ public struct Config: Sendable {
     /// Internal so tests can call it via `@testable import`.
     static func parse(fromDictionary parsed: [String: Any]) -> Config {
         var c = Config.default
-        if let hotkey = parsed["hotkey"] as? [String: Any],
-           let binding = hotkey["binding"] as? String {
-            c.hotkeyBinding = binding
+        if let hotkey = parsed["hotkey"] as? [String: Any] {
+            if let binding = hotkey["binding"] as? String {
+                c.hotkeyBinding = binding
+            }
+            // #84: configurable double-tap gesture actions.
+            if let gestures = hotkey["gestures"] as? [String: Any] {
+                var m: [String: String] = [:]
+                for (key, value) in gestures {
+                    if let s = value as? String { m[key] = s }
+                }
+                c.hotkeyGestures = m
+            }
         }
         if let ui = parsed["ui"] as? [String: Any] {
             if let secs = ui["auto_accept_seconds"] as? NSNumber {
@@ -1830,7 +1848,10 @@ public struct Config: Sendable {
         }
 
         var dict: [String: Any] = [
-            "hotkey": ["binding": config.hotkeyBinding],
+            "hotkey": config.hotkeyGestures.isEmpty
+                ? (["binding": config.hotkeyBinding] as [String: Any])
+                : (["binding": config.hotkeyBinding,
+                    "gestures": config.hotkeyGestures] as [String: Any]),
             "ui": [
                 "auto_accept_seconds": config.autoAcceptSeconds,
                 "overlay_show_delay_ms": config.overlayShowDelayMs,

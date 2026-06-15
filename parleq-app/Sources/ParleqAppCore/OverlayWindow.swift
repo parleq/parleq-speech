@@ -133,6 +133,8 @@ public final class OverlayWindow {
     /// AppState wires this to undo a per-app default style: re-runs plain
     /// cleanup (no transform addendum) from the retained raw transcript.
     public var onUndoStyle: (() -> Void)?
+    // #85 in-place edit callbacks live on OverlayModel (set by AppState, like
+    // onReauthSignIn); the panel forwards E → model.onEnterEdit. See OverlayModel.
     /// M2 fix: wired to AppState.switchModelAndRecleanup(_:) so the
     /// Switch-to-vision-model button re-runs cleanup with the new
     /// provider rather than only flipping the badge. Distinct from the
@@ -226,6 +228,11 @@ public final class OverlayWindow {
         panel.onAttachCurrent = { [weak self] in self?.onAttachCurrent?() }
         panel.onShowParleq = { [weak self] in self?.onShowParleq?() }
         panel.onRunPresetNumber = { [weak self] n in self?.onRunPresetNumber?(n) ?? false }
+        // #85: E enters edit mode (forwarded to the model callback AppState sets);
+        // isEditing lets the panel suspend the single-key review gestures so the
+        // focused editor owns the keyboard.
+        panel.onEnterEdit = { [weak self] in self?.model.onEnterEdit?() }
+        panel.isEditing = { [weak self] in self?.model.editing ?? false }
 
         sizeObservation = hc.observe(\.preferredContentSize, options: [.new]) { [weak self] _, change in
             // Trace: prove the KVO fires. Captures the .new value so
@@ -792,8 +799,28 @@ public final class OverlayWindow {
         // satisfy that description (review finding; no current reader
         // is affected, but a future one would be).
         lastFiniteMeasuredHeight = 0
+        model.transientNotice = nil   // B1: clear any capture-failure notice
         panel.orderOut(nil)
     }
+
+    /// B1: show a brief, self-dismissing notice (e.g. a dead-mic capture
+    /// failure) instead of letting the overlay vanish silently. Reuses the
+    /// normal show() machinery (the `.initializing` state is just a vehicle —
+    /// `content`/`footer` render the notice while `transientNotice` is set), and
+    /// auto-hides after `duration` unless superseded. Esc closes it early (via
+    /// the panel's cancel path, which AppState routes to hide()).
+    public func showTransientNotice(_ message: String, duration: TimeInterval = 2.5) {
+        model.transientNotice = message
+        show(state: .initializing, text: "")
+        noticeGeneration &+= 1
+        let gen = noticeGeneration
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [weak self] in
+            guard let self, self.noticeGeneration == gen,
+                  self.model.transientNotice == message else { return }
+            self.hide()
+        }
+    }
+    private var noticeGeneration = 0
 
     // MARK: - Position
 
@@ -822,6 +849,12 @@ private final class OverlayPanel: NSPanel {
     var onAttachWindow: (() -> Void)?
     var onAttachCurrent: (() -> Void)?
     var onShowParleq: (() -> Void)?
+    /// #85: bare E during review → enter in-place edit mode.
+    var onEnterEdit: (() -> Void)?
+    /// #85: true while the editor is focused. When editing, keyDown must NOT
+    /// intercept the single-key review gestures — the editor (and its onKeyPress
+    /// handlers for ⌘Return/⌘S/Esc) owns the keys.
+    var isEditing: () -> Bool = { false }
     /// Bare digit 1–9 during review → apply the preset at that 1-based
     /// position. Returns true iff a preset was actually applied, so
     /// keyDown can consume the event only on a hit and let an unmapped
@@ -896,7 +929,43 @@ private final class OverlayPanel: NSPanel {
         FileHandle.standardError.write((message + "\n").data(using: .utf8) ?? Data())
     }
 
+    /// #85: map an NSEvent to the pure OverlayKeymap.Key. Kept here (not on the
+    /// SwiftUI/AppKit-free OverlayKeymap) so the enum stays unit-testable.
+    private static func keymapKey(for event: NSEvent) -> OverlayKeymap.Key {
+        switch event.keyCode {
+        case 36, 76: return .returnKey
+        case 53: return .escape
+        default:
+            switch event.charactersIgnoringModifiers?.lowercased() {
+            case "s": return .letterS
+            case "e": return .letterE
+            default: return .other
+            }
+        }
+    }
+
     override func keyDown(with event: NSEvent) {
+        // #85: while the in-place editor is focused it owns the keyboard — never
+        // run the single-key review gestures here. The editor's own onKeyPress
+        // handles ⌘Return (commit+accept), ⌘S (save), and Esc (discard); any key
+        // that reaches the panel during edit mode just falls through to type.
+        if isEditing() {
+            super.keyDown(with: event)
+            return
+        }
+        // #85: route the edit-entry decision through the shared OverlayKeymap
+        // table (the same table the editor's onKeyPress and the unit tests use)
+        // so the panel and editor can't silently diverge. In review state only
+        // bare E maps to .enterEditMode; everything else is a normal review key.
+        if OverlayKeymap.action(
+            key: OverlayPanel.keymapKey(for: event),
+            hasCommand: event.modifierFlags.contains(.command),
+            hasOtherModifiers: !event.modifierFlags
+                .intersection([.shift, .control, .option]).isEmpty,
+            isEditing: false) == .enterEditMode {
+            onEnterEdit?()
+            return
+        }
         switch event.keyCode {
         case 36, 76:    // Return, Enter (numpad)
             onEnter?()
@@ -934,6 +1003,8 @@ private final class OverlayPanel: NSPanel {
                 // Bare "P" — show the Parleq window (cancels review).
                 // AppState gates to .awaitingAccept so it no-ops elsewhere.
                 onShowParleq?()
+            // (Bare "E" → edit mode is handled above via OverlayKeymap, before
+            // this switch, so there's no "e" branch here.)
             } else if event.modifierFlags
                         .intersection([.command, .control, .option]).isEmpty,
                       let g = baseGlyph, g.count == 1,
@@ -1008,6 +1079,18 @@ private final class FirstMouseAcceptingView: NSView {
 public final class OverlayModel: ObservableObject {
     @Published var state: OverlayState = .capturing
     @Published var text: String = ""
+
+    /// #85: in-place edit mode. `editing` flips the awaitingAccept content from a
+    /// read-only Text to a focused editor bound to `editableText`. Entered by E,
+    /// left via ⌘S (save), ⌘Return (commit+accept), or Esc (discard).
+    @Published var editing: Bool = false
+    @Published var editableText: String = ""
+
+    /// B1: when set, the overlay shows this transient notice (e.g. "Didn't catch
+    /// any audio — check your microphone") instead of the state-based content —
+    /// so a dead-input capture is visible + re-dictatable rather than vanishing.
+    /// Cleared on hide()/next show().
+    @Published var transientNotice: String? = nil
     /// Normalized 0…1 mic level pushed by AudioRecorder during
     /// capture. Drives the SoundWaveBars view in the .capturing
     /// state. Resets to 0 when the overlay is shown for a new
@@ -1066,6 +1149,15 @@ public final class OverlayModel: ObservableObject {
     /// retained raw transcript.
     var onReauthReclean: (() -> Void)?
 
+    /// #85: in-place edit, invoked from the panel (E) and the editor's onKeyPress.
+    /// onEnterEdit = E in review → focus the editor. onCommitEdit(true) = ⌘Return
+    /// (apply edits + accept/paste); onCommitEdit(false) = ⌘S (apply edits, stay in
+    /// review). onDiscardEdit = Esc (drop edits → review). AppState sets these
+    /// (model-level, like onReauthSignIn).
+    var onEnterEdit: (() -> Void)?
+    var onCommitEdit: ((Bool) -> Void)?
+    var onDiscardEdit: (() -> Void)?
+
     /// Name of the per-app default preset folded into the current
     /// dictation's cleanup, nil when none. Drives the review state's
     /// "Styled with <name> · Undo" chip.
@@ -1108,6 +1200,18 @@ public final class OverlayModel: ObservableObject {
     /// kills the in-flight LLM stream. Cleared by the first streamed
     /// chunk's text replacement (via update()).
     @Published var provisionalText: Bool = false
+    /// C1 (eager-accept deferral): true while an Enter pressed during
+    /// .cleaning is being held until the cleanup stream completes. The
+    /// footer shows a subtle "Finishing…" cue so the user knows the
+    /// keypress registered and the full cleaned result will auto-accept.
+    /// Set by AppState.accept(); cleared on the terminal transition / cancel.
+    @Published var pendingAcceptArmed: Bool = false
+    /// B2: true when the live mic watchdog has seen flat-zero input for ~1.5 s
+    /// during capture — the overlay's listening view shows a "⚠ not hearing
+    /// your mic" warning so a dead input is caught DURING the dictation
+    /// instead of vanishing. Set by AppState's mic-signal handler; cleared at
+    /// capture start and on any reset.
+    @Published var notHearingMic: Bool = false
     /// True when the current .cleaning pass is a REFINE (the raw-first
     /// change made `text.isEmpty` useless as the refine heuristic — the
     /// provisional transcript populates text immediately, which made
@@ -1180,6 +1284,10 @@ public final class OverlayModel: ObservableObject {
     /// AppState reads the config so the strip reactively respects
     /// the latest setting.
     @Published var referenceWindowsEnabled: Bool = true
+
+    /// #83: true while a hands-free continuous recording is in progress, so the
+    /// hint strip can show "tap or Esc to stop" instead of the hold-to-dictate copy.
+    @Published var continuousRecording: Bool = false
 
     /// Per-invocation model override set by the in-overlay ModelPicker
     /// (Task 9). nil → fall through to Config.modelForInvocation's
@@ -1505,6 +1613,24 @@ private struct PresetChip: View {
 
 private struct OverlayContent: View {
     @ObservedObject var model: OverlayModel
+    /// #85: focus for the in-place edit editor. Bound to model.editing so the
+    /// editor grabs the keyboard the instant edit mode turns on.
+    @FocusState private var editorFocused: Bool
+
+    /// #85: map a SwiftUI KeyPress to the pure OverlayKeymap.Key. Kept out of
+    /// OverlayKeymap so that enum stays SwiftUI/AppKit-free and unit-testable.
+    private static func keymapKey(forKeyPress press: KeyPress) -> OverlayKeymap.Key {
+        switch press.key {
+        case .escape: return .escape
+        case .return: return .returnKey
+        default:
+            switch press.characters.lowercased() {
+            case "s": return .letterS
+            case "e": return .letterE
+            default: return .other
+            }
+        }
+    }
     /// Fixed outer width passed in from OverlayWindow. We constrain
     /// the SwiftUI hierarchy to this so NSHostingController's
     /// preferredContentSize reports (fixedWidth, naturalHeight)
@@ -2737,6 +2863,25 @@ private struct OverlayContent: View {
 
     @ViewBuilder
     private var content: some View {
+        if let notice = model.transientNotice {
+            // B1: transient capture-failure notice (dead mic), shown instead of
+            // any state content.
+            HStack(spacing: 10) {
+                Image(systemName: "mic.slash.fill")
+                    .foregroundStyle(.orange)
+                Text(notice)
+                    .font(.system(size: 15))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxWidth: .infinity, minHeight: ChromeSlotMetrics.contentMin, alignment: .leading)
+        } else {
+            stateContent
+        }
+    }
+
+    @ViewBuilder
+    private var stateContent: some View {
         switch model.state {
         case .initializing:
             // Two sub-states:
@@ -2852,10 +2997,45 @@ private struct OverlayContent: View {
             ZStack(alignment: .topLeading) {
                 Color.clear.frame(height: ChromeSlotMetrics.contentMin)
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(model.text)
-                        .font(.system(size: 17))
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    if model.editing {
+                        // #85: in-place edit. ⌘Return commits + accepts, ⌘S saves
+                        // back to review, Esc discards; plain Return is a newline
+                        // (default TextEditor behavior). Handled via onKeyPress so
+                        // the editor keeps focus and the panel's review gestures
+                        // stay suspended (OverlayPanel.isEditing).
+                        TextEditor(text: $model.editableText)
+                            .font(.system(size: 17))
+                            .scrollContentBackground(.hidden)
+                            .frame(minHeight: ChromeSlotMetrics.contentMin)
+                            .focused($editorFocused)
+                            .onAppear { editorFocused = true }
+                            // #85: dispatch edit-mode keys through the shared
+                            // OverlayKeymap decision table (the same one the unit
+                            // tests cover), so the editor and the panel can't
+                            // silently diverge. Non-handled keys return .ignored
+                            // so ordinary typing / newline pass through.
+                            .onKeyPress(phases: .down) { press in
+                                switch OverlayKeymap.action(
+                                    key: Self.keymapKey(forKeyPress: press),
+                                    hasCommand: press.modifiers.contains(.command),
+                                    hasOtherModifiers: !press.modifiers
+                                        .intersection([.shift, .control, .option]).isEmpty,
+                                    isEditing: true
+                                ) {
+                                case .commitAndAccept: model.onCommitEdit?(true); return .handled
+                                case .saveAndReview: model.onCommitEdit?(false); return .handled
+                                case .discardAndReview: model.onDiscardEdit?(); return .handled
+                                case .insertNewline, .typeIntoEditor,
+                                     .enterEditMode, .reviewKey:
+                                    return .ignored
+                                }
+                            }
+                    } else {
+                        Text(model.text)
+                            .font(.system(size: 17))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                     // Cleanup-failure decoration. AppState passes a
                     // non-nil message when LLM cleanup threw — the user
                     // is being shown the raw ASR transcript (the
@@ -2923,7 +3103,17 @@ private struct OverlayContent: View {
     private func listeningIndicator(label: String?) -> some View {
         VStack(spacing: 10) {
             ParleqListeningIndicator(level: model.level, scale: 1.5)
-            if let label {
+            // B2: a sustained dead-mic reading escalates the listening hint to
+            // an explicit warning so a non-delivering mic is caught DURING the
+            // dictation, not after it silently vanishes. Overrides the normal
+            // listening label only while it's active.
+            if model.notHearingMic {
+                Text("⚠ Not hearing your mic — check your input device")
+                    .font(.system(size: 12, design: .rounded))
+                    .foregroundStyle(.orange)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+            } else if let label {
                 Text(label)
                     // SF Rounded gives the label a touch of warmth that
                     // pairs well with the rounded-rect listening bars,
@@ -2951,17 +3141,45 @@ private struct OverlayContent: View {
 
     @ViewBuilder
     private var footer: some View {
+        if model.transientNotice != nil {
+            Text("[Esc] dismiss")   // B1: notice auto-dismisses; Esc closes it early
+        } else {
+            stateFooter
+        }
+    }
+
+    @ViewBuilder
+    private var stateFooter: some View {
         switch model.state {
         case .initializing:
             Text("[Esc] dismiss")
         case .staging:
             Text("[hold \(hotkeyLabel)] start dictating   [Esc] cancel")
         case .capturing:
-            Text("Release \(hotkeyLabel) when done")
+            // #83: continuous (hands-free) recording is stopped by a tap, not a
+            // release — show the matching hint.
+            if model.continuousRecording {
+                Text("Recording… [tap \(hotkeyLabel)] stop   [Esc] cancel")
+            } else {
+                Text("Release \(hotkeyLabel) when done")
+            }
         case .cleaning:
-            Text("[Esc] cancel")
+            // C1: a deferred eager-accept shows a subtle "Finishing…" cue so
+            // the user knows the Enter registered and the full cleaned result
+            // will paste itself the moment the stream completes.
+            if model.pendingAcceptArmed {
+                Text("Finishing… will accept   [Esc] cancel")
+            } else {
+                Text("[Esc] cancel")
+            }
         case .awaitingAccept:
-            Text("[tap \(hotkeyLabel)] accept   [Esc] cancel   [hold \(hotkeyLabel)] refine")
+            // #85: in edit mode, show the editor keymap; otherwise the review
+            // gestures plus the [E] edit affordance.
+            if model.editing {
+                Text("[⌘↵] accept   [⌘S] save   [esc] discard")
+            } else {
+                Text("[tap \(hotkeyLabel)] accept   [E] edit   [Esc] cancel   [hold \(hotkeyLabel)] refine")
+            }
         case .refining:
             Text("Release \(hotkeyLabel) when done")
         }

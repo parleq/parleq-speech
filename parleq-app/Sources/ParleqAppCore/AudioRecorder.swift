@@ -46,11 +46,34 @@ public enum AudioRecorderError: Error, CustomStringConvertible {
 public final class AudioRecorder {
     private static let targetSampleRate: Double = 16_000
 
+    /// Explicit channel map for the capture AVAudioConverter (A1 fix): output
+    /// channel i ← input channel i. For our mono output this is `[0]` — take the
+    /// first input channel — which avoids the silent all-zero downmix a bare
+    /// multichannel→mono converter produces, and is a no-op for a mono input.
+    static func converterChannelMap(outputChannels: AVAudioChannelCount) -> [NSNumber] {
+        (0..<Int(outputChannels)).map { NSNumber(value: $0) }
+    }
+
     private let engine = AVAudioEngine()
     private var converter: AVAudioConverter?
     private let outputFormat: AVAudioFormat
     private var accumulated: [Int16] = []
     private var isRunning = false
+    /// A2 (lost-dictation fix): observer token for
+    /// `.AVAudioEngineConfigurationChange`, registered for the lifetime of the
+    /// recorder. macOS posts this when the engine's I/O configuration changes
+    /// mid-flight — e.g. another app (FaceTime/Zoom/Teams) flips the default
+    /// input to a multichannel format, or the routed device changes. When that
+    /// happens during an active capture, the tap + converter were built for the
+    /// OLD format and would feed silence/garbage for the rest of the utterance
+    /// (the all-zero "as if I never dictated" tail). We rebuild them against a
+    /// fresh format so the capture continues correctly.
+    private var configChangeObserver: NSObjectProtocol?
+    /// A2: fired (off the main thread) when the engine reconfigures mid-flight.
+    /// AppState owns the debounce + the MainActor hop and calls back into
+    /// `handleConfigurationChange()` — keeping all engine mutation on the main
+    /// queue alongside start()/stop(). Set to nil to ignore config changes.
+    public var onConfigurationChange: (@Sendable () -> Void)?
     /// Gates whether the tap-callback path appends new samples into
     /// `accumulated`. Toggled by `pause()` / `resume()` so the engine
     /// can stay warm across a latched-compose interruption (e.g.
@@ -97,6 +120,14 @@ public final class AudioRecorder {
     /// before touching SwiftUI state. Set to nil for headless capture.
     public var levelHandler: (@Sendable (Float) -> Void)?
 
+    /// B2: when set, every buffer's RAW peak amplitude (0…1, un-clamped) plus
+    /// the chunk's duration is pushed here so a live "are we hearing you?"
+    /// watchdog (MicSignalMonitor) can tell a dead mic from a quiet room. The
+    /// normalized `levelHandler` value can't make that distinction (it clamps
+    /// sub--50 dBFS to 0); the raw peak can. Called from the tap thread — hop
+    /// to MainActor before touching SwiftUI state. Set to nil to disable.
+    public var micSignalHandler: (@Sendable (Float, TimeInterval) -> Void)?
+
     /// When true, before starting capture we switch the engine's
     /// input device to the built-in mic if (and only if) the system
     /// default input is Bluetooth. This keeps BT headphones in A2DP
@@ -133,6 +164,74 @@ public final class AudioRecorder {
             channels: 1,
             interleaved: true
         )!
+        // A2: watch for mid-flight engine reconfiguration (default-input format
+        // flip, route change). Scoped to THIS engine. The handler only defers
+        // work — it never touches the engine inline (doing so races
+        // AVAudioEngine teardown; cf. Hex #236).
+        configChangeObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange,
+            object: engine,
+            queue: nil
+        ) { [weak self] _ in
+            // Defer entirely — never touch the engine inside this callback
+            // (it can fire on the render/HAL thread and racing AVAudioEngine
+            // teardown here deadlocks; cf. Hex #236). AppState debounces and
+            // calls handleConfigurationChange() back on the main queue.
+            self?.onConfigurationChange?()
+        }
+    }
+
+    deinit {
+        if let configChangeObserver {
+            NotificationCenter.default.removeObserver(configChangeObserver)
+        }
+    }
+
+    /// A2: rebuild the converter + tap against a freshly-re-queried input format
+    /// so an in-progress capture survives a mid-flight format/route change. The
+    /// accumulated samples are deliberately preserved — the utterance continues
+    /// across the change rather than being dropped. No-op when not actively
+    /// capturing: the next start() already re-queries the format and rebuilds.
+    ///
+    /// MUST be called on the main queue (AppState's debounced handler does), so
+    /// it never races the public start()/stop(). engine.stop() drains the
+    /// render thread before we swap `converter`, mirroring stop()'s ordering.
+    public func handleConfigurationChange() {
+        guard isRunning else {
+            logStderr("[parleq] audio[configchange]: idle — next start() will pick up the new format")
+            return
+        }
+        let input = engine.inputNode
+        // Stop the engine + remove the tap FIRST. engine.stop() drains the
+        // render thread, so no tap callback is mid-process() when we swap
+        // `converter` below — the same ordering the public stop() relies on.
+        engine.stop()
+        input.removeTap(onBus: 0)
+        applyInputDeviceOverride(on: input, context: "configchange")
+        let newFormat = input.inputFormat(forBus: 0)
+        guard let conv = AVAudioConverter(from: newFormat, to: outputFormat) else {
+            // Leave isRunning = true so the eventual stop() still returns the
+            // samples captured BEFORE the change — better to recover the first
+            // half than to drop the whole utterance on a rare rebuild failure.
+            logStderr("[parleq] audio[configchange]: converter rebuild failed; preserving captured-so-far audio")
+            return
+        }
+        // A1 channelMap again — the new format may itself be multichannel.
+        conv.channelMap = AudioRecorder.converterChannelMap(
+            outputChannels: outputFormat.channelCount)
+        converter = conv
+        input.installTap(onBus: 0, bufferSize: 4096, format: newFormat) { [weak self] buf, _ in
+            self?.process(buffer: buf)
+        }
+        do {
+            engine.prepare()
+            try engine.start()
+            logStderr("[parleq] audio[configchange]: rebuilt tap + converter on new input format; capture continues")
+        } catch {
+            // As above: keep isRunning so stop() returns the captured-so-far
+            // audio instead of discarding the whole utterance.
+            logStderr("[parleq] audio[configchange]: engine restart failed; preserving captured-so-far audio: \(error)")
+        }
     }
 
     /// Pre-instantiate the engine's input audio unit and apply the
@@ -213,6 +312,15 @@ public final class AudioRecorder {
         guard let conv = AVAudioConverter(from: inputFormat, to: outputFormat) else {
             throw AudioRecorderError.converterCreateFailed
         }
+        // A1 (lost-dictation fix): a bare multichannel→mono AVAudioConverter has
+        // no channel layout to guide the downmix and SILENTLY EMITS ALL ZEROS —
+        // the exact peak=0.0000 capture loss we saw, triggered when another app
+        // (FaceTime/Zoom/Teams) flips the default input to a multichannel format,
+        // or a multichannel-native device is used. (cf. Hex #211.) An explicit
+        // channelMap forces each output channel to take a real input channel
+        // (mono output → input channel 0); a no-op for an already-mono input.
+        conv.channelMap = AudioRecorder.converterChannelMap(
+            outputChannels: outputFormat.channelCount)
         self.converter = conv
 
         // Buffer size of 4096 frames at 48 kHz ≈ 85 ms — small enough
@@ -402,16 +510,24 @@ public final class AudioRecorder {
         // (quiet speech ≈ 0.4, raised voice ≈ 0.8, silence ≈ 0).
         // Buffer is small (~85 ms / ~1360 samples at 16 kHz) so an
         // in-line scalar pass is cheap on the audio thread.
-        if let levelHandler = levelHandler {
+        if levelHandler != nil || micSignalHandler != nil {
             var sumSq: Double = 0
+            var peak: Double = 0
             for i in 0..<outFrames {
                 let s = Double(channel[i]) / 32768.0
                 sumSq += s * s
+                let a = abs(s)
+                if a > peak { peak = a }
             }
             let rms = sqrt(sumSq / Double(max(1, outFrames)))
             let db = 20 * log10(max(rms, 1e-7))
             let normalized = Float(max(0, min(1, (db + 50) / 50)))
-            levelHandler(normalized)
+            levelHandler?(normalized)
+            // B2: raw peak + chunk duration for the dead-mic watchdog.
+            if let micSignalHandler {
+                let dt = Double(outFrames) / outputFormat.sampleRate
+                micSignalHandler(Float(peak), dt)
+            }
         }
 
         // Streaming hook: copy this chunk into a Data and push to

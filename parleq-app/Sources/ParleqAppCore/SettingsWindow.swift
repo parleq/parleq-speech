@@ -66,6 +66,10 @@ struct DictionaryEntryRow: Identifiable, Equatable {
 @MainActor
 final class SettingsModel: ObservableObject {
     @Published var hotkeyBinding: String
+    /// #84: action tokens (GestureAction.rawValue) for the two configurable
+    /// double-tap entry gestures. Persisted into config's hotkey.gestures map.
+    @Published var doubleTapHoldAction: String
+    @Published var doubleTapReleaseAction: String
     @Published var autoAcceptSeconds: Double
     /// Overlay-show delay in milliseconds (#56). Mirror of
     /// Config.overlayShowDelayMs; also drives the hold-hotkey+P
@@ -378,6 +382,8 @@ final class SettingsModel: ObservableObject {
     init() {
         let (config, _) = Config.load()
         self.hotkeyBinding = config.hotkeyBinding
+        self.doubleTapHoldAction = config.hotkeyGestureMap.action(for: .doubleTapHold).rawValue
+        self.doubleTapReleaseAction = config.hotkeyGestureMap.action(for: .doubleTapRelease).rawValue
         self.autoAcceptSeconds = config.autoAcceptSeconds
         self.overlayShowDelayMs = config.overlayShowDelayMs
         self.acousticFeedback = config.acousticFeedback
@@ -502,6 +508,8 @@ final class SettingsModel: ObservableObject {
     func reload() {
         let (config, _) = Config.load()
         self.hotkeyBinding = config.hotkeyBinding
+        self.doubleTapHoldAction = config.hotkeyGestureMap.action(for: .doubleTapHold).rawValue
+        self.doubleTapReleaseAction = config.hotkeyGestureMap.action(for: .doubleTapRelease).rawValue
         self.autoAcceptSeconds = config.autoAcceptSeconds
         self.overlayShowDelayMs = config.overlayShowDelayMs
         self.acousticFeedback = config.acousticFeedback
@@ -641,6 +649,11 @@ final class SettingsModel: ObservableObject {
         let (existing, _) = Config.load()
         var c = existing
         c.hotkeyBinding = hotkeyBinding
+        // #84: persist the two configurable double-tap gesture actions.
+        c.hotkeyGestures = [
+            HotkeyGesture.doubleTapHold.rawValue: doubleTapHoldAction,
+            HotkeyGesture.doubleTapRelease.rawValue: doubleTapReleaseAction,
+        ]
         c.autoAcceptSeconds = autoAcceptSeconds
         // Clamp to the same 0...2000 range Config.load() enforces, so
         // the live listeners (P-gesture threshold + start-sound) that
@@ -1471,7 +1484,38 @@ struct SettingsView: View {
                 .frame(maxWidth: 280)
                 Spacer()
             }
-            SettingsCaption("Press and hold to dictate; release to paste. Double-tap-and-hold is quick mode (no overlay).")
+            SettingsCaption("Press and hold to dictate; release to paste.")
+            Divider().padding(.vertical, 2)
+            // #84: configurable double-tap gestures. The options differ by
+            // gesture: a HOLD captures while held (Quick mode / Dictate), while a
+            // quick RELEASE has no hold to capture, so it starts a hands-free
+            // continuous session (or is turned off).
+            gestureActionRow("Double-tap & hold", binding: bind(\.doubleTapHoldAction),
+                             options: [(.quickMode, "Quick mode (no overlay)"),
+                                       (.dictate, "Dictate (push-to-talk)")])
+            gestureActionRow("Double-tap & release", binding: bind(\.doubleTapReleaseAction),
+                             options: [(.continuousRecording, "Continuous recording"),
+                                       (.disabled, "Off")])
+            SettingsCaption("\"Continuous recording\" starts a hands-free session you stop with a tap (or cancel with Esc).")
+        }
+    }
+
+    /// One labeled picker over a gesture's allowed GestureAction options (#84).
+    @ViewBuilder
+    private func gestureActionRow(
+        _ label: String, binding: Binding<String>, options: [(GestureAction, String)]
+    ) -> some View {
+        HStack(alignment: .center) {
+            Text(label)
+                .frame(minWidth: 120, alignment: .leading)
+            Picker("", selection: binding) {
+                ForEach(options, id: \.0.rawValue) { action, title in
+                    Text(title).tag(action.rawValue)
+                }
+            }
+            .labelsHidden()
+            .frame(maxWidth: 280)
+            Spacer()
         }
     }
 
@@ -3065,26 +3109,25 @@ private struct LocalOnDeviceCard: View {
                 }
                 .buttonStyle(.borderedProminent)
             }
-        case .downloading:
-            // Indeterminate by design: HF's library only reports progress at
-            // whole-file completion (the multi-GB shards download out-of-process
-            // and never report incremental bytes), so a percentage would freeze
-            // mid-shard and read as broken. An honest activity indicator + Cancel
-            // until the custom in-process downloader lands (see the download issue).
+        case .downloading(let progress):
+            // Byte-accurate bar: the in-process streaming downloader (#89)
+            // reports real within-file progress, so the percentage climbs
+            // smoothly through the multi-GB shards instead of freezing.
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 8) {
-                    ProgressView()
-                        .controlSize(.small)
-                    Text("Downloading the model (~4 GB, one-time)…")
+                    ProgressView(value: progress)
+                        .frame(maxWidth: 200)
+                    Text("\(Int(progress * 100))%")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .monospacedDigit()
                     Spacer()
                     // Cancel an in-flight download — remove() cancels the task and
                     // discards partial files, returning to .notDownloaded.
                     Button("Cancel") { store.remove() }
                         .buttonStyle(.bordered)
                 }
-                Text("Dictation works without cleanup until the model finishes.")
+                Text("Downloading the model (~7 GB, one-time)… Dictation works without cleanup until it finishes.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

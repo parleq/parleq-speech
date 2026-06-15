@@ -1019,6 +1019,14 @@ struct ParleqApp {
             stateBox.value?.onCleanupResult = { message in
                 menuBar.setCleanupFailure(message)
             }
+            // B3: enable the "Recover last dictation" menu item once a fresh
+            // capture has been retained this session.
+            menuBar.onRecoverLastDictation = {
+                Task { @MainActor in stateBox.value?.recoverLastDictation() }
+            }
+            stateBox.value?.onRecoverableDictationChanged = { available in
+                menuBar.canRecoverLastDictation = available
+            }
 
             // On-device LLM model download progress → menu-bar status line.
             // Mirrors the LocalASR onReadyChanged pattern for the speech engine.
@@ -1090,9 +1098,19 @@ struct ParleqApp {
             // true) out of the path entirely. Test users who want
             // to re-run the flow can do so from the menu bar or
             // via Settings → "Run Setup Again".
-            if !config.wizardCompleted {
-                logStderr("[parleq] wizard: launching first-run setup (config.wizardCompleted=false)")
-                wizard.show()
+            let accessGrantedAtLaunch = LaunchPermissions.accessibilityGranted
+            if LaunchPermissions.shouldShowWizardAtLaunch(
+                wizardCompleted: config.wizardCompleted,
+                accessibilityGranted: accessGrantedAtLaunch) {
+                if !config.wizardCompleted {
+                    logStderr("[parleq] wizard: launching first-run setup (config.wizardCompleted=false)")
+                    wizard.show()
+                } else {
+                    // #82: returning user whose Accessibility was revoked — show
+                    // the permissions step only (no full re-flow, no config reset).
+                    logStderr("[parleq] wizard: Accessibility missing — showing permissions re-grant (#82)")
+                    wizard.show(permissionsOnly: true)
+                }
             }
 
             // Settings → "Run Setup Again" posts this notification
@@ -1215,7 +1233,8 @@ struct ParleqApp {
                     let suppress = stateBox.value?.quickMode ?? false
                     soundBox.value?.endOrCancel(suppressEnd: suppress)
                     stateBox.value?.hotkeyUp(
-                        spaceWasPressedDuringHold: upEvent.spaceWasPressedDuringHold
+                        spaceWasPressedDuringHold: upEvent.spaceWasPressedDuringHold,
+                        wasDoubleTapRelease: upEvent.wasDoubleTapRelease
                     )
                 }
             },
@@ -1250,13 +1269,37 @@ struct ParleqApp {
                 Task { @MainActor in
                     stateBox.value?.cPressedDuringHold()
                 }
+            },
+            onRPressed: {
+                // B3 "hold-hotkey + R = recover last dictation" gesture.
+                // Edge-triggered the first time R lands during a
+                // dictation-hotkey hold; the listener has already
+                // consumed the R keyDown + matching keyUp so the focused
+                // app doesn't see a stray r. AppState aborts the in-flight
+                // capture and re-runs the retained last-dictation audio.
+                Task { @MainActor in
+                    stateBox.value?.rPressedDuringHold()
+                }
             }
         )
-        do {
-            try listener.start()
-        } catch {
-            logStderr("[parleq] hotkey listener failed: \(error)")
-            exit(1)
+        // #82: arm the global hotkey listener if Accessibility is already
+        // granted; otherwise do NOT exit(1) — Parleq stays alive and arms once
+        // the user grants access (via the wizard's explained prompt or System
+        // Settings). The didBecomeActive observer below re-attempts on return.
+        switch LaunchPermissions.armingDecision(
+            armed: listener.isArmed,
+            accessibilityGranted: LaunchPermissions.accessibilityGranted
+        ) {
+        case .arm:
+            do {
+                try listener.start()
+            } catch {
+                logStderr("[parleq] hotkey listener failed to arm: \(error)")
+            }
+        case .waitForAccessibility:
+            logStderr("[parleq] hotkey: Accessibility not granted — listener will arm once granted (#82)")
+        case .alreadyArmed:
+            break
         }
         // Sync the hold-hotkey+P gesture threshold to the configured
         // overlay-show delay at launch, and keep it live thereafter:
@@ -1279,6 +1322,26 @@ struct ParleqApp {
         }
         let listenerBox = ListenerBox()
         listenerBox.value = listener
+        // #82 + keyboard-lockout fix: reconcile the event tap with Accessibility
+        // trust whenever Parleq becomes active (e.g. returning from System
+        // Settings after granting OR revoking). reconcileWithAccessibility()
+        // arms on grant and TEARS THE TAP DOWN on revoke — so a revoked, keyboard-
+        // intercepting tap can never linger and lock the keyboard.
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { [listenerBox] _ in
+            MainActor.assumeIsolated { listenerBox.value?.reconcileWithAccessibility() }
+        }
+        // Periodic safety reconciler (~1s): catches an Accessibility revoke even
+        // when Parleq isn't activated and even if no tap-disabled callback fires,
+        // guaranteeing the keyboard is freed within ~1s of losing trust. Cheap
+        // (AXIsProcessTrusted is a fast probe). Also re-arms when trust returns.
+        let accessibilityReconciler = Timer.scheduledTimer(
+            withTimeInterval: 1.0, repeats: true
+        ) { [listenerBox] _ in
+            MainActor.assumeIsolated { listenerBox.value?.reconcileWithAccessibility() }
+        }
+        accessibilityReconciler.tolerance = 0.5   // let the OS coalesce; not time-critical
         NotificationCenter.default.addObserver(
             forName: .parleqOverlayDelayChanged,
             object: nil,

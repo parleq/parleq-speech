@@ -106,32 +106,41 @@ public final class SetupWizardController {
 
     private var window: NSWindow?
 
-    /// Show the wizard, creating it on first call. Always re-centers
-    /// on the active screen — this is a one-shot focused flow that
-    /// should grab attention each time it opens, not restore wherever
-    /// the user dragged it last.
-    public func show() {
-        if window == nil {
-            let view = SetupWizardView(
-                onFinish: { [weak self] in self?.window?.close() },
-                localModelStore: localModelStore
-            )
-            let hosting = NSHostingController(rootView: view)
-            let w = NSWindow(contentViewController: hosting)
-            w.title = "Welcome to Parleq"
-            w.styleMask = [.titled, .closable]
-            w.collectionBehavior = [.fullScreenAuxiliary]
-            w.isReleasedWhenClosed = false
-            // Force the content size up-front so center() below
-            // operates on the real frame, not a default tiny one.
-            // (See SettingsWindowController.show for the same dance
-            // and the explanation of why this matters on first open.)
-            w.setContentSize(NSSize(width: 660, height: 540))
-            self.window = w
-        }
-        window?.center()
+    /// Show the wizard, building a fresh window each call. Always re-centers
+    /// on the active screen — this is a one-shot focused flow that should grab
+    /// attention each time it opens, not restore wherever the user dragged it last.
+    /// `permissionsOnly` (#82): open directly at the permissions step for a
+    /// returning user whose Accessibility was revoked, instead of re-running the
+    /// whole flow (which would reset their provider config). The root view is
+    /// rebuilt each call so the mode is always correct even if the window is reused.
+    public func show(permissionsOnly: Bool = false) {
+        // Always build a FRESH window + view each call. Reusing the window and
+        // swapping rootView does NOT reset the @StateObject WizardModel (SwiftUI
+        // keys it to structural position), so a reused wizard would keep its old
+        // step — breaking the permissions-only entry. Closing the old window and
+        // rebuilding guarantees a fresh WizardModel at the requested step.
+        window?.close()
+        let view = SetupWizardView(
+            onFinish: { [weak self] in
+                self?.window?.close()
+                self?.window = nil
+            },
+            localModelStore: localModelStore,
+            permissionsOnly: permissionsOnly
+        )
+        let hosting = NSHostingController(rootView: view)
+        let w = NSWindow(contentViewController: hosting)
+        w.title = permissionsOnly ? "Parleq needs Accessibility" : "Welcome to Parleq"
+        w.styleMask = [.titled, .closable]
+        w.collectionBehavior = [.fullScreenAuxiliary]
+        w.isReleasedWhenClosed = false
+        // Force the content size up-front so center() below operates on the real
+        // frame, not a default tiny one. (See SettingsWindowController.show.)
+        w.setContentSize(NSSize(width: 660, height: 540))
+        self.window = w
+        w.center()
         NSApp.activate(ignoringOtherApps: true)
-        window?.makeKeyAndOrderFront(nil)
+        w.makeKeyAndOrderFront(nil)
     }
 }
 
@@ -227,7 +236,11 @@ private final class WizardModel: ObservableObject {
     /// pinned OIDC fields read-only with the org note.
     let managedKeys: Set<String>
 
-    init() {
+    /// `step` (#82): the launch path can open the wizard directly at the
+    /// permissions step (returning user whose Accessibility was revoked) without
+    /// re-running the whole flow. Config preloading below is unchanged.
+    init(step: WizardStep = .welcome) {
+        self.step = step
         let (config, _) = Config.load()
         self.managedKeys = config.managedKeys
         self.pendingOidcIssuer = config.oidcIssuer
@@ -421,7 +434,20 @@ private struct SetupWizardView: View {
     /// state in DoneStep; download() is called here when the user picks the
     /// on-device tier and advances past the pick-provider step.
     @ObservedObject var localModelStore: LocalModelStore
-    @StateObject private var model = WizardModel()
+    /// #82: when true the wizard opens at the permissions step and finishing
+    /// it just closes (no provider re-flow, no config reset). Used when a
+    /// returning user's Accessibility was revoked.
+    let permissionsOnly: Bool
+    @StateObject private var model: WizardModel
+
+    init(onFinish: @escaping () -> Void, localModelStore: LocalModelStore,
+         permissionsOnly: Bool = false) {
+        self.onFinish = onFinish
+        self.localModelStore = localModelStore
+        self.permissionsOnly = permissionsOnly
+        _model = StateObject(wrappedValue:
+            WizardModel(step: permissionsOnly ? .permissions : .welcome))
+    }
     /// Observed so `canAdvance` and the Continue button label
     /// re-evaluate every time a permission state changes (e.g. the
     /// user grants Mic, comes back, snapshot republishes, Continue
@@ -433,12 +459,14 @@ private struct SetupWizardView: View {
             // Top header strip — sidebar-tone background + a small
             // step indicator so the user can see how far through
             // the flow they are.
-            stepIndicator
-                .padding(.horizontal, 28)
-                .padding(.top, 18)
-                .padding(.bottom, 14)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(SettingsView.sidebarBackground)
+            if !permissionsOnly {
+                stepIndicator
+                    .padding(.horizontal, 28)
+                    .padding(.top, 18)
+                    .padding(.bottom, 14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(SettingsView.sidebarBackground)
+            }
 
             // Body — scrollable so a small window doesn't clip
             // long step content (DoneStep can be tall).
@@ -475,7 +503,7 @@ private struct SetupWizardView: View {
                 // window (the window's close button remains active — abandoning
                 // the wizard safely leaves config unchanged so raw ASR continues
                 // to work). All other steps keep the skip affordance.
-                if model.step != .pickProvider {
+                if !permissionsOnly && model.step != .pickProvider {
                     Button("Skip Setup") {
                         let (existing, _) = Config.load()
                         var c = existing
@@ -486,13 +514,20 @@ private struct SetupWizardView: View {
                     .buttonStyle(.bordered)
                 }
                 Spacer()
-                if model.step != .welcome {
+                if !permissionsOnly && model.step != .welcome {
                     Button("Back") {
                         goBack()
                     }
                     .buttonStyle(.bordered)
                 }
-                if model.step == .done {
+                if permissionsOnly {
+                    // Permissions-only re-grant flow: finishing closes the
+                    // wizard rather than advancing into provider setup.
+                    Button("Done") { onFinish() }
+                        .keyboardShortcut(.defaultAction)
+                        .buttonStyle(.borderedProminent)
+                        .disabled(!canAdvance)
+                } else if model.step == .done {
                     Button("Finish later") {
                         model.commit()
                         onFinish()
@@ -1481,16 +1516,17 @@ private struct DoneStep: View {
     @ViewBuilder
     private var onDeviceStatusRow: some View {
         switch localModelStore.state {
-        case .downloading:
-            // Indeterminate (see the Settings card note): the library can't
-            // report incremental bytes for the big shards, so a percentage would
-            // freeze. Honest activity indicator + Cancel.
+        case .downloading(let progress):
+            // Byte-accurate bar (see the Settings card note): the in-process
+            // streaming downloader (#89) reports real within-file progress, so
+            // the percentage climbs smoothly through the big shards.
             HStack(spacing: 10) {
-                ProgressView()
-                    .controlSize(.small)
-                Text("Downloading cleanup model (~4 GB, one-time)…")
+                ProgressView(value: progress)
+                    .frame(maxWidth: 160)
+                Text("Downloading cleanup model… \(Int(progress * 100))%")
                     .font(.callout)
                     .foregroundStyle(.secondary)
+                    .monospacedDigit()
                 Spacer()
                 Button("Cancel") { localModelStore.remove() }
                     .buttonStyle(.bordered)

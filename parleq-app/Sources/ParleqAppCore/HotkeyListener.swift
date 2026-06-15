@@ -132,10 +132,27 @@ public final class HotkeyListener {
     /// this threshold. Observed chatter is ~0 ms (down+up pair emitted
     /// by the keyboard driver within the same flagsChanged flush).
     private static let chatterDebounce: TimeInterval = 0.04
-    /// A real double-tap has a humanly-possible release→press gap; a
-    /// re-press within this window is keyboard/driver chatter re-emitting
-    /// the modifier, not a person tapping twice. See handle(event:).
-    private static let minHumanTapGap: TimeInterval = 0.04
+    /// A re-press within this gap of the prior release is keyboard/driver
+    /// chatter re-emitting the modifier, not a person tapping twice.
+    ///
+    /// History: 0.19.0 (#73) introduced this lower bound at 40 ms to kill
+    /// phantom chatter, but 40 ms also rejected genuinely-fast human double-taps
+    /// — measured at 29–33 ms for some users (worse under Karabiner-Elements,
+    /// which reposts events and compresses the inter-tap gap), silently breaking
+    /// quick mode + continuous recording for them. The phantom-chatter defense is
+    /// really the `chatterDebounce` HOLD-duration gate above (a chatter "tap" has
+    /// ~0 ms hold, so it never arms the window); this gap floor only needs to
+    /// exceed a near-instant re-emit (sub-~6 ms observed). Lowered to 12 ms:
+    /// rejects chatter, accepts fast human taps. (Config-overridable later if
+    /// heavy remappers still compress below this.)
+    private static let minHumanTapGap: TimeInterval = 0.012
+
+    /// Whether a release→press `gap` (seconds) is a deliberate double-tap: above
+    /// the chatter floor and within the double-tap window. Pure + testable so the
+    /// 0.19.0 fast-tap regression stays fixed.
+    public static func classifiesAsDoubleTap(gap: TimeInterval) -> Bool {
+        gap >= minHumanTapGap && gap < doubleTapWindow
+    }
 
     /// Virtual keycode for the Space bar on US/QWERTY. macOS
     /// dispatches Space by keyCode regardless of layout, same as
@@ -154,6 +171,11 @@ public final class HotkeyListener {
     /// front window as a reference. Same hold-threshold treatment as
     /// P so a brief Option-C still types ç.
     private static let cKeyCode: Int64 = 0x08
+    /// R key (US layout). B3 "hold-hotkey + R" recovers the LAST dictation:
+    /// abort the current capture and re-run ASR + cleanup on the retained
+    /// audio buffer. Same hold-threshold treatment as P/C so a brief Option-R
+    /// (® on some layouts) still passes through.
+    private static let rKeyCode: Int64 = 0x0F
 
     /// Timing-only gesture-classifier trace; opt-in like PARLEQ_VOCAB_TRACE —
     /// see the chatter/double-tap field bug. Env is launch-stable; read once.
@@ -184,6 +206,11 @@ public final class HotkeyListener {
     /// reference without opening the picker — the shortcut for "use
     /// what I'm looking at as context."
     private let onCPressed: (() -> Void)?
+    /// Fires the FIRST time R is pressed during a single hotkey hold.
+    /// B3 "hold-hotkey + R" recovers the last dictation — AppState's handler
+    /// aborts the in-flight capture and re-runs the retained audio buffer.
+    /// The gesture is "instead of dictating, bring back my last one."
+    private let onRPressed: (() -> Void)?
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     // Press-state tracking: CGEventTap delivers a flagsChanged event
@@ -239,6 +266,11 @@ public final class HotkeyListener {
     private var pPressedThisHold = false
     /// Mirror of pPressedThisHold for the "hold-hotkey + C" gesture.
     private var cPressedThisHold = false
+    /// Mirror of pPressedThisHold for the "hold-hotkey + R" recover gesture.
+    private var rPressedThisHold = false
+    /// #83: whether THIS hold's key-down was classified as a double-tap. Read at
+    /// key-up to decide double-tap-and-release (continuous) vs -and-hold (quick).
+    private var doubleTapThisHold = false
     /// Cross-cutting flag tracking a Space keyDown we consumed.
     /// Set when the keyDown is swallowed; checked when the
     /// matching keyUp arrives so we also consume it. Without this,
@@ -260,6 +292,8 @@ public final class HotkeyListener {
     private var pendingPKeyUpToSwallow = false
     /// C-key counterpart of pendingPKeyUpToSwallow.
     private var pendingCKeyUpToSwallow = false
+    /// R-key counterpart of pendingPKeyUpToSwallow.
+    private var pendingRKeyUpToSwallow = false
 
     public init(
         binding: HotkeyBinding = .defaultBinding,
@@ -267,7 +301,8 @@ public final class HotkeyListener {
         onKeyUp: @escaping (HotkeyUpEvent) -> Void,
         onSpacePressed: (() -> Void)? = nil,
         onPPressed: (() -> Void)? = nil,
-        onCPressed: (() -> Void)? = nil
+        onCPressed: (() -> Void)? = nil,
+        onRPressed: (() -> Void)? = nil
     ) {
         self.binding = binding
         self.onKeyDown = onKeyDown
@@ -275,9 +310,79 @@ public final class HotkeyListener {
         self.onSpacePressed = onSpacePressed
         self.onPPressed = onPPressed
         self.onCPressed = onCPressed
+        self.onRPressed = onRPressed
+    }
+
+    /// True once the event tap is installed. #82: lets the launch path re-attempt
+    /// start() when Accessibility is granted later without installing a second tap.
+    public var isArmed: Bool { eventTap != nil }
+
+    // MARK: - Keyboard-lockout safety (Accessibility revoke)
+
+    /// Why macOS disabled our event tap.
+    public enum TapDisableReason: Sendable { case timeout, userInput }
+    /// What to do about it.
+    public enum TapDisabledAction: Sendable, Equatable { case reEnable, tearDown }
+
+    /// The old code re-enabled the keyboard-intercepting `.defaultTap` on EVERY
+    /// disable. On an Accessibility *revoke*, macOS disables the tap and the
+    /// blind re-enable fought it back on, leaving a tap that intercepts keyboard
+    /// events but can no longer pass them → the user's keyboard locks up
+    /// (trackpad is unaffected; mouse isn't in our event mask). The rule:
+    /// - `.timeout` (callback genuinely too slow) → re-enable, but only if we're
+    ///   still trusted (never re-arm a tap the system revoked).
+    /// - `.userInput` (the system/user-disabled signal, i.e. the revoke case) →
+    ///   ALWAYS tear down. Don't trust `AXIsProcessTrusted()` here — it can lag a
+    ///   revoke; the periodic reconciler re-arms if we're legitimately still
+    ///   trusted.
+    public static func actionForTapDisabled(
+        reason: TapDisableReason, accessibilityTrusted: Bool
+    ) -> TapDisabledAction {
+        switch reason {
+        case .timeout: return accessibilityTrusted ? .reEnable : .tearDown
+        case .userInput: return .tearDown
+        }
+    }
+
+    /// Remove the event tap from the run loop and release it, so it stops
+    /// intercepting keyboard events. Idempotent. After teardown `isArmed` is
+    /// false, so the reconciler / #82 arm-on-grant path will reinstall it once
+    /// Accessibility is (re)granted.
+    public func teardown() {
+        if let source = runLoopSource {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes)
+        }
+        if let tap = eventTap {
+            CGEvent.tapEnable(tap: tap, enable: false)
+        }
+        runLoopSource = nil
+        eventTap = nil
+    }
+
+    /// Reconcile tap state with current Accessibility trust. Safety net that runs
+    /// periodically (and on app-activation): tears the tap down if trust was
+    /// revoked (frees the keyboard even if no disable callback fired), and
+    /// re-arms it if trust returned. Cheap; AXIsProcessTrusted() is a fast probe.
+    public func reconcileWithAccessibility() {
+        let trusted = AXIsProcessTrusted()
+        if trusted, eventTap == nil {
+            try? start()
+            logHotkey("hotkey: tap re-armed (Accessibility granted)")
+        } else if !trusted, eventTap != nil {
+            teardown()
+            logHotkey("hotkey: tap torn down (Accessibility revoked)")
+        }
+    }
+
+    private func logHotkey(_ message: String) {
+        FileHandle.standardError.write("[parleq] \(message)\n".data(using: .utf8) ?? Data())
     }
 
     public func start() throws {
+        // Idempotent: a re-attempt after the user grants Accessibility must not
+        // install a second tap. The launch wiring also guards this via
+        // LaunchPermissions.armingDecision, but defend in depth.
+        guard eventTap == nil else { return }
         guard ensureAccessibility() else {
             throw HotkeyError.accessibilityNotGranted
         }
@@ -335,8 +440,7 @@ public final class HotkeyListener {
         if isDown {
             let now = Date().timeIntervalSinceReferenceDate
             let gap = now - lastKeyUpAt
-            let isDoubleTap = gap < HotkeyListener.doubleTapWindow
-                && gap >= HotkeyListener.minHumanTapGap
+            let isDoubleTap = HotkeyListener.classifiesAsDoubleTap(gap: gap)
             // maskShift covers both left and right Shift.
             let isShiftHeld = event.flags.contains(.maskShift)
             // Reset the per-hold space + P flags at every fresh
@@ -345,6 +449,8 @@ public final class HotkeyListener {
             spacePressedThisHold = false
             pPressedThisHold = false
             cPressedThisHold = false
+            rPressedThisHold = false
+            doubleTapThisHold = isDoubleTap   // #83: remembered for the key-up classifier
             // Record the hold-start time for the P-gesture's
             // hold-threshold gate (see pHoldThreshold).
             keyDownAt = now
@@ -380,10 +486,20 @@ public final class HotkeyListener {
                         .data(using: .utf8) ?? Data()
                 )
             }
-            let upEvent = HotkeyUpEvent(spaceWasPressedDuringHold: spacePressedThisHold)
+            // #83: double-tap whose second press was released quickly (a tap,
+            // not a hold) → continuous recording. Decided here at key-up from the
+            // remembered double-tap classification + the measured hold duration.
+            let wasDoubleTapRelease = GestureTiming.isContinuousRelease(
+                wasDoubleTapDown: doubleTapThisHold,
+                holdDuration: holdDuration,
+                threshold: GestureTiming.continuousReleaseWindow)
+            let upEvent = HotkeyUpEvent(
+                spaceWasPressedDuringHold: spacePressedThisHold,
+                wasDoubleTapRelease: wasDoubleTapRelease)
             // Defensive reset on emit — anything that happens after
             // this point belongs to a new hold cycle.
             spacePressedThisHold = false
+            doubleTapThisHold = false
             onKeyUp(upEvent)
         }
     }
@@ -502,6 +618,30 @@ public final class HotkeyListener {
             }
             return false
         }
+        // R-during-hold path (B3 recover-last-dictation). Same shape and
+        // hold-threshold as P/C, so a brief Option-R still types its normal
+        // character; only a deliberate hold engages the recover gesture.
+        if keyCode == HotkeyListener.rKeyCode {
+            if keyDown {
+                let elapsed = Date().timeIntervalSinceReferenceDate - keyDownAt
+                if elapsed < pHoldThreshold {
+                    return false
+                }
+                let firstPressThisHold = !rPressedThisHold
+                rPressedThisHold = true
+                pendingRKeyUpToSwallow = true
+                if firstPressThisHold {
+                    onRPressed?()
+                }
+                return true
+            }
+            if pendingRKeyUpToSwallow {
+                if isAutorepeat { return true }
+                pendingRKeyUpToSwallow = false
+                return false
+            }
+            return false
+        }
         return false
     }
 
@@ -525,6 +665,10 @@ public final class HotkeyListener {
         }
         if keyCode == HotkeyListener.cKeyCode, pendingCKeyUpToSwallow {
             pendingCKeyUpToSwallow = false
+            return true
+        }
+        if keyCode == HotkeyListener.rKeyCode, pendingRKeyUpToSwallow {
+            pendingRKeyUpToSwallow = false
             return true
         }
         return false
@@ -553,24 +697,28 @@ public final class HotkeyListener {
                 return nil
             }
             return Unmanaged.passUnretained(event)
-        case .tapDisabledByTimeout:
-            // macOS disables .defaultTap callbacks that take too
-            // long. Re-enable so hotkey detection survives extreme
-            // system load (unlikely to ever happen given how fast
-            // this callback is, but the standard CGEventTap
-            // pattern). Without this the tap stays dead and no
-            // amount of hotkey pressing would register again until
-            // the user restarts Parleq.
-            if let tap = listener.eventTap {
-                CGEvent.tapEnable(tap: tap, enable: true)
-            }
-            return Unmanaged.passUnretained(event)
-        case .tapDisabledByUserInput:
-            // Similar to timeout — user-input disable also wants
-            // an explicit re-enable. Rare in practice but covered
-            // for symmetry.
-            if let tap = listener.eventTap {
-                CGEvent.tapEnable(tap: tap, enable: true)
+        case .tapDisabledByTimeout, .tapDisabledByUserInput:
+            // macOS disabled our keyboard event tap. Deciding whether to
+            // re-enable is SAFETY-CRITICAL: blindly re-enabling on an
+            // Accessibility revoke fights macOS and locks the user's keyboard
+            // (the tap keeps intercepting keystrokes it can no longer pass).
+            // actionForTapDisabled encodes the rule (see its doc).
+            let reason: TapDisableReason =
+                (type == .tapDisabledByTimeout) ? .timeout : .userInput
+            switch HotkeyListener.actionForTapDisabled(
+                reason: reason, accessibilityTrusted: AXIsProcessTrusted()
+            ) {
+            case .reEnable:
+                if let tap = listener.eventTap {
+                    CGEvent.tapEnable(tap: tap, enable: true)
+                }
+            case .tearDown:
+                // Lost Accessibility (or the system disabled us) → remove the tap
+                // so it stops intercepting the keyboard. We're on the main run
+                // loop (the tap's source lives there), so a synchronous teardown
+                // is safe; isArmed flips false so the reconciler re-installs the
+                // tap once trust returns.
+                listener.teardown()
             }
             return Unmanaged.passUnretained(event)
         default:
@@ -588,13 +736,21 @@ public struct HotkeyUpEvent {
     /// release submits (false) or transitions into the latched
     /// state to open the picker (true).
     public let spaceWasPressedDuringHold: Bool
+    /// #83: true when this release was a double-tap-and-release (a double-tap
+    /// whose second press was a quick tap, not a hold) — the continuous-recording
+    /// gesture. AppState resolves it against the configurable gesture map.
+    public var wasDoubleTapRelease: Bool = false
+
+    public init(spaceWasPressedDuringHold: Bool, wasDoubleTapRelease: Bool = false) {
+        self.spaceWasPressedDuringHold = spaceWasPressedDuringHold
+        self.wasDoubleTapRelease = wasDoubleTapRelease
+    }
 }
 
-// ensureAccessibility prompts the user (with the system dialog) the
-// first time it's called from an untrusted process. Subsequent calls
-// short-circuit. Returns whether the process is currently trusted.
+// Non-prompting trust check. #82: launch must NOT fire the system
+// Accessibility dialog before the wizard explains why it's needed — so we
+// use the non-prompting AXIsProcessTrusted() here and let the wizard's
+// permissions step drive the actual prompt (Permissions.requestAccessibility).
 private func ensureAccessibility() -> Bool {
-    let key = "AXTrustedCheckOptionPrompt" as CFString
-    let opts = [key: true] as CFDictionary
-    return AXIsProcessTrustedWithOptions(opts)
+    AXIsProcessTrusted()
 }

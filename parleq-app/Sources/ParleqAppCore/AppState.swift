@@ -155,6 +155,10 @@ public final class AppState {
     /// redundancy because the menu-bar badge is the only thing
     /// quick-mode users will see.
     public var onCleanupResult: (@MainActor (String?) -> Void)?
+    /// B3: fires when a fresh-capture audio buffer becomes available to
+    /// recover (true on the first retained capture of a session). main.swift
+    /// wires it to enable/disable the menu-bar "Recover last dictation" item.
+    public var onRecoverableDictationChanged: (@MainActor (Bool) -> Void)?
     private var pasteTarget: PasteTarget?
     /// User-chosen send-to destination (picked via V during review).
     /// When set, accept() pastes here instead of the default target.
@@ -194,6 +198,21 @@ public final class AppState {
     /// working. Reset by every fresh capture and by closeAndReset.
     private var lastCleanupFailed: Bool = false
     private var autoAcceptTimer: Timer?
+    /// C1 (eager-accept deferral): set when the user presses Enter during
+    /// .cleaning before the cleaned result is final. Instead of pasting a
+    /// half-streamed fragment + cancelling the stream, we hold the accept;
+    /// applyResult() auto-accepts the full cleaned text the instant the
+    /// stream completes. Cleared on that auto-accept, on cancel (Esc), and
+    /// on every reset path (resetPerDictationOverlayState).
+    private var pendingAcceptOnCleanupComplete = false
+    /// B2: live dead-mic watchdog. Fed the raw mic peak during capture; flips
+    /// the overlay's "⚠ not hearing your mic" warning when input stays flat-
+    /// zero past the threshold. Reset at every capture start.
+    private var micSignalMonitor = MicSignalMonitor()
+    /// A2: debounce for the audio config-change rebuild. A device/format change
+    /// posts a burst of notifications; coalesce them into one rebuild ~250 ms
+    /// after the last so we don't thrash the engine.
+    private var audioConfigRebuildTask: Task<Void, Never>?
     /// Bumped every time the auto-accept timer is cancelled/re-armed.
     /// A fired Timer has already dispatched its `Task { accept() }` onto
     /// the MainActor by the time `invalidate()` runs, so invalidation
@@ -260,6 +279,14 @@ public final class AppState {
     /// already-cleaned text. Reset at the start of each fresh capture
     /// and cleared in closeAndReset().
     private var lastRawTranscript: String = ""
+    /// B3 (recover last dictation): the most recent FRESH capture's audio
+    /// (16 kHz mono WAV bytes) + its duration, retained so hold+R or the
+    /// menu-bar "Recover last dictation" item can re-run ASR + cleanup on it
+    /// when the user loses the result (Esc, hasty double-Enter, focus change).
+    /// **Memory-only** — overwritten by the next fresh dictation, wiped on
+    /// quit; never written to disk (compliance invariant #1). nil until the
+    /// first successful fresh capture this session.
+    private var lastDictationAudio: (wav: Data, durationMs: Int)?
     /// Whether the most recent LLM turn was a REFINE — drives
     /// switchModelAndRecleanup's re-run shape (task #41): after a
     /// refine, lastRawTranscript holds the refine INSTRUCTION, and
@@ -421,6 +448,22 @@ public final class AppState {
             if oldValue != quickMode { updateRecordingPulse() }
         }
     }
+
+    /// #83: true while a hands-free continuous recording is in progress. Entered
+    /// by the double-tap-and-release gesture; the mic stays hot after the gesture
+    /// releases and a subsequent hotkey tap (or Esc) stops it. Distinct from
+    /// quickMode (which finalizes on release) and the latched-compose machine
+    /// (which pauses the mic).
+    public private(set) var continuousRecording = false
+
+    /// #83: set when a hotkey tap stops a continuous recording, so the matching
+    /// key-up (which arrives a moment later) is swallowed rather than re-entering
+    /// the capture machinery.
+    private var stopTapAwaitingKeyUp = false
+
+    /// #85: the review text snapshotted when in-place edit mode opened, so the
+    /// corrections journal can record the before/after of a confirmed edit.
+    private var editPreEditText = ""
 
     // The configured auto-accept delay. Default 6 s per the design;
     // wired to Config.autoAcceptSeconds at construction time.
@@ -604,6 +647,10 @@ public final class AppState {
         }
         overlay.model.onReauthSignIn = { [weak self] in self?.reauthSignIn() }
         overlay.model.onReauthReclean = { [weak self] in self?.reauthReclean() }
+        // #85: in-place edit callbacks.
+        overlay.model.onEnterEdit = { [weak self] in self?.enterEditMode() }
+        overlay.model.onCommitEdit = { [weak self] accept in self?.commitEdit(accept: accept) }
+        overlay.model.onDiscardEdit = { [weak self] in self?.discardEdit() }
 
         windowPickerWindow.setCallbacks(
             onPick: { [weak self] entry in
@@ -789,6 +836,16 @@ public final class AppState {
             dismissHelpForResume()
             return
         }
+        // #83: a hotkey tap while continuously recording STOPS it — finalize the
+        // captured audio through the normal review path. The matching key-up is
+        // swallowed (stopTapAwaitingKeyUp) so it doesn't re-trigger anything.
+        if continuousRecording {
+            continuousRecording = false
+            stopTapAwaitingKeyUp = true
+            log("hotkeyDown stops continuous recording → finalize")
+            finalizeCapture(asRefine: false)
+            return
+        }
         // Reset the per-hold Space-armed visual flag at every fresh
         // hotkey-down. The flag's semantic is "Space has been pressed
         // during THIS specific hold" — scoping it to a single hold.
@@ -860,7 +917,17 @@ public final class AppState {
                 enterStaging()
                 return
             }
-            quickMode = isDoubleTapHold
+            // #84: the double-tap-and-HOLD gesture is configurable between Quick
+            // mode (default) and Dictate (Settings offers only those two for the
+            // hold — continuous/off belong to the release gesture). We can't yet
+            // know at key-down whether this double-tap will be a hold or a quick
+            // release, so always start a capture and set quickMode only for the
+            // quickMode action; if it turns out to be a release, hotkeyUp
+            // reinterprets it (continuous / cancel) via wasDoubleTapRelease (#83).
+            let dtAction = isDoubleTapHold
+                ? Config.load().config.hotkeyGestureMap.action(for: .doubleTapHold)
+                : .dictate
+            quickMode = (dtAction == .quickMode)
             startFreshCapture()
         case .staging:
             // Hotkey-down in staging means "start dictating with the
@@ -929,6 +996,20 @@ public final class AppState {
         presentPicker()
     }
 
+    /// #83: transition the in-flight capture into a hands-free continuous
+    /// recording. The recorder (hot since key-down) keeps running — we neither
+    /// pause nor finalize. The overlay switches to the recording state with a
+    /// stop hint. Stopped by a hotkey tap (hotkeyDown) or cancelled by Esc.
+    private func enterContinuousRecording() {
+        quickMode = false
+        continuousRecording = true
+        overlay.model.continuousRecording = true
+        // Show the recording overlay immediately — a hands-free session must be
+        // visible (normal holds defer the overlay behind overlayShowDelaySeconds).
+        overlay.show(state: .capturing, text: "")
+        log("entered continuous recording (hands-free; tap or Esc to stop)")
+    }
+
     /// Hotkey was released (key-up). Whichever capture phase we're
     /// in, this finalizes the audio and runs the ASR-then-LLM
     /// pipeline.
@@ -942,7 +1023,35 @@ public final class AppState {
     ///     Audio segments accumulate across multiple holds in this
     ///     session and submit together at the eventual release-without-
     ///     space.
-    public func hotkeyUp(spaceWasPressedDuringHold: Bool = false) {
+    public func hotkeyUp(spaceWasPressedDuringHold: Bool = false,
+                         wasDoubleTapRelease: Bool = false) {
+        // #83: swallow the key-up that follows a stop-tap (the tap that ended a
+        // continuous recording in hotkeyDown) so it doesn't re-enter capture.
+        if stopTapAwaitingKeyUp {
+            stopTapAwaitingKeyUp = false
+            return
+        }
+        // #83: a double-tap-and-release while capturing latches into continuous
+        // recording instead of finalizing — the mic (hot since key-down) keeps
+        // running hands-free until a stop tap or Esc. Resolved against the
+        // configurable gesture map (default: continuous; remappable / disablable).
+        // Guarded by wasDoubleTapRelease, which is false for every existing path,
+        // so normal dictation/quick-mode/compose flows are untouched.
+        if wasDoubleTapRelease, phase == .capturing, !continuousRecording,
+           !spaceWasPressedDuringHold {
+            switch Config.load().config.hotkeyGestureMap.action(for: .doubleTapRelease) {
+            case .continuousRecording:
+                enterContinuousRecording()
+                return
+            case .disabled:
+                // Double-tap-and-release is turned off → discard the brief capture
+                // started at key-down rather than pasting a near-empty quick result.
+                cancel()
+                return
+            case .quickMode, .dictate:
+                break  // fall through to the normal release/finalize path
+            }
+        }
         // While the help overlay is up, a release must NOT submit the
         // utterance — the user paused to read help, not to finish. Record
         // that the hold ended so dismissing help finalizes the preserved
@@ -1580,6 +1689,61 @@ public final class AppState {
         beginHoldPickMode()
     }
 
+    // MARK: - #85 in-place edit
+
+    /// E in review → open the editor seeded with the current text. Cancels the
+    /// auto-accept timer so it can't paste mid-edit; snapshots the pre-edit text
+    /// for the corrections journal. No-op outside the review state.
+    private func enterEditMode() {
+        guard phase == .awaitingAccept, !overlay.model.editing else { return }
+        cancelAutoAcceptTimer()
+        editPreEditText = currentText
+        overlay.model.editableText = currentText
+        overlay.model.editing = true
+        log("in-place edit: entered")
+    }
+
+    /// ⌘Return (accept=true) or ⌘S (accept=false). Applies the edited text,
+    /// records the before/after to the corrections journal, then pastes (accept)
+    /// or returns to review with auto-accept re-armed (save).
+    private func commitEdit(accept: Bool) {
+        guard phase == .awaitingAccept, overlay.model.editing else { return }
+        let edited = overlay.model.editableText
+        overlay.model.editing = false
+        if edited != editPreEditText {
+            currentText = edited
+            overlay.model.text = edited
+            recordInPlaceEdit(before: editPreEditText, after: edited)
+        }
+        log("in-place edit: \(accept ? "commit+accept" : "save")")
+        if accept {
+            self.accept()
+        } else {
+            startAutoAcceptTimer()
+        }
+    }
+
+    /// Esc in edit → drop the edits and return to review (auto-accept re-armed).
+    /// A second Esc from review cancels the dictation via the normal path.
+    private func discardEdit() {
+        guard overlay.model.editing else { return }
+        overlay.model.editing = false
+        overlay.model.editableText = ""
+        startAutoAcceptTimer()
+        log("in-place edit: discarded")
+    }
+
+    /// Feed a confirmed in-place edit to the corrections-learning journal (opt-in;
+    /// no-op when the feature is off). Modeled as a refine: instruction names the
+    /// gesture, before/after carry the edit. Never written to disk by the journal.
+    private func recordInPlaceEdit(before: String, after: String) {
+        let enabled = Config.load().config.learnFromCorrectionsEnabled
+        guard enabled, !before.isEmpty, before != after else { return }
+        CorrectionJournal.shared.record(CorrectionRecord(
+            kind: .refine, instruction: "in-place edit", before: before, after: after
+        ), enabled: enabled)
+    }
+
     /// User accepted (Enter on overlay) or auto-accept timer fired.
     ///
     /// Critical ordering: hide the overlay BEFORE the paste call.
@@ -1611,36 +1775,52 @@ public final class AppState {
             NSSound.beep()
             return
         }
-        // Raw-first live accept (task #53, maintainer-specified
-        // kill-it semantics): accepting during .cleaning takes
-        // whatever is visible — the provisional raw transcript, or a
-        // partially streamed cleanup — and CANCELS the in-flight LLM
-        // stream (the user chose not to wait; no background completion,
-        // no resurrection). The visible text becomes currentText, and
-        // history records it as not-cleaned when it was the raw
-        // provisional. Empty text (no ASR result yet) beeps instead of
-        // pasting nothing.
+        // Accept during .cleaning (task #53 raw-first; C1 eager-accept
+        // deferral). Two outcomes, decided by EagerAccept.resolve:
+        //  • The full raw/prior transcript is on screen provisionally → the
+        //    user is deliberately taking the raw as-is. Keep the original
+        //    "kill-it" semantics: paste it and cancel the in-flight stream.
+        //  • A partial cleanup is streaming, or nothing's shown yet → DON'T
+        //    paste a fragment (or beep on empty) and discard the rest. Arm a
+        //    pending-accept; applyResult() auto-accepts the FULL cleaned
+        //    result the instant the stream completes (Jeff's hasty-Enter fix).
+        //    Esc still cancels.
         if phase == .cleaning {
             let visible = overlay.model.text
-            guard !visible.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                NSSound.beep()
+            let visibleIsEmpty = visible
+                .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            switch EagerAccept.resolve(
+                provisionalRawShown: overlay.model.provisionalText,
+                visibleIsEmpty: visibleIsEmpty
+            ) {
+            case .deferUntilComplete:
+                // Idempotent: a second hasty Enter while already armed is a
+                // no-op (the stream is still finishing).
+                if !pendingAcceptOnCleanupComplete {
+                    pendingAcceptOnCleanupComplete = true
+                    overlay.model.pendingAcceptArmed = true
+                    // Nothing to auto-accept yet — no review timer to run.
+                    cancelAutoAcceptTimer()
+                    log("accept during cleaning: deferred — will auto-accept full cleaned result on completion")
+                }
                 return
+            case .acceptVisibleNow:
+                inFlightTask?.cancel()
+                inFlightTask = nil
+                // Kill-it semantics extend to a chained refine still awaiting
+                // its baseline: cancel the background first cleanup and
+                // release the gate so the suspended refine task wakes and
+                // bails. The visible text (the refine view's current content)
+                // is what gets pasted. No-op outside the chained window.
+                teardownChainedRefine()
+                currentText = visible
+                lastCleanupFailed = overlay.model.provisionalText
+                // The cancelled stream never reported latency — don't let
+                // the PREVIOUS dictation's value leak into this entry's
+                // stats metadata.
+                lastLLMLatencyMs = nil
+                log("accept during cleaning: provisional raw accepted, LLM stream cancelled")
             }
-            inFlightTask?.cancel()
-            inFlightTask = nil
-            // Kill-it semantics extend to a chained refine still awaiting
-            // its baseline: cancel the background first cleanup and
-            // release the gate so the suspended refine task wakes and
-            // bails. The visible text (the refine view's current content)
-            // is what gets pasted. No-op outside the chained window.
-            teardownChainedRefine()
-            currentText = visible
-            lastCleanupFailed = overlay.model.provisionalText
-            // The cancelled stream never reported latency — don't let
-            // the PREVIOUS dictation's value leak into this entry's
-            // stats metadata.
-            lastLLMLatencyMs = nil
-            log("accept during cleaning: \(overlay.model.provisionalText ? "provisional raw" : "partial stream") accepted, LLM stream cancelled")
         }
         phase = .pasting
         cancelAutoAcceptTimer()
@@ -1695,6 +1875,12 @@ public final class AppState {
 
     /// User cancelled (Esc) or some external abort.
     public func cancel() {
+        // B1: a transient capture-failure notice (dead mic) is shown in idle
+        // phase; Esc dismisses it early. Handle before the phase switch.
+        if overlay.model.transientNotice != nil {
+            overlay.hide()
+            return
+        }
         // The init overlay is shown in idle phase, so it would be
         // missed by the phase switch below. Handle it explicitly.
         if initializingOverlayShowing {
@@ -1712,14 +1898,31 @@ public final class AppState {
             dismissPicker()
         case .capturing, .refining:
             // Stop the recorder so the audio engine releases its
-            // input tap; the returned WAV bytes are discarded
-            // (we're cancelling the utterance). Also cancel the
-            // streaming ASR session so the upload connection
-            // closes immediately instead of waiting for body close.
-            _ = try? recorder.stop()
+            // input tap. Also cancel the streaming ASR session so the
+            // upload connection closes immediately instead of waiting
+            // for body close.
+            let cancelledCapture = try? recorder.stop()
             recorder.chunkHandler = nil
             streamingSession?.cancel()
             streamingSession = nil
+            // B3: a mid-hold Esc is a fat-finger loss too. Before discarding
+            // the cancelled utterance, retain its audio as the recoverable
+            // buffer IF it's a real, voiced FRESH capture (not a refine — you
+            // recover the dictation, not an edit; and not an accidental
+            // sub-200ms tap or a dead/silent hold). Then hold+R / the menu can
+            // bring it back, same as a lost reviewed dictation.
+            if phase == .capturing, let cancelledCapture {
+                let s = SilenceDetector.analyze(wavData: cancelledCapture.wavData)
+                let health = CaptureHealth.classify(
+                    durationSeconds: cancelledCapture.durationSeconds,
+                    peakRMS: s.peakRMS,
+                    voicedSeconds: s.voicedDurationSeconds,
+                    isAnalyzable: s.isAnalyzable)
+                if health == .ok {
+                    retainRecoverableAudio(cancelledCapture)
+                    log("cancel during capture: retained \(cancelledCapture.wavData.count / 1024) KB for recovery")
+                }
+            }
         case .cleaning, .awaitingAccept:
             break
         }
@@ -1916,6 +2119,70 @@ public final class AppState {
         ParleqAppWindowController.shared.show()
     }
 
+    /// B3: re-run ASR + cleanup on the retained audio of the most recent fresh
+    /// dictation and drop the result into the review overlay. Reached two ways:
+    ///   • hold-hotkey + R — fires mid-hold; aborts the in-flight capture (we're
+    ///     recovering the PREVIOUS dictation, not this one) and re-runs.
+    ///   • the menu-bar "Recover last dictation" item — fires from .idle.
+    /// No-ops with a beep when nothing is retained (fresh launch, or the last
+    /// capture was dead-input and never retained — that case pairs with B1).
+    /// Memory-only: the buffer is the same retained bytes, never re-read from
+    /// disk.
+    @MainActor
+    public func recoverLastDictation() {
+        guard RecoveryEligibility.canRecover(hasRetainedAudio: lastDictationAudio != nil),
+              let retained = lastDictationAudio else {
+            log("recover-last-dictation: nothing retained to recover")
+            NSSound.beep()
+            return
+        }
+        log("recover-last-dictation: re-running ASR + cleanup on retained \(retained.wav.count / 1024) KB")
+        // hold+R fires during an active capture — tear it down and discard its
+        // audio (we're replacing it with the recovered dictation). All of these
+        // are no-ops on the menu-bar path, which fires from .idle.
+        if recorder.isCapturing { _ = try? recorder.stop() }
+        recorder.chunkHandler = nil
+        streamingSession?.cancel()
+        streamingSession = nil
+        inFlightTask?.cancel()
+        inFlightTask = nil
+        teardownChainedRefine()
+        cancelAutoAcceptTimer()
+        cancelPendingOverlayShow()
+        cancelPendingRefine()
+        if windowPickerWindow.isVisible { dismissPicker() }
+        if overlay.model.isPickingWindow { endHoldPickMode() }
+        // Start a fresh session for the recovered dictation, pointed at the
+        // current frontmost app (recover can be invoked from idle via the menu,
+        // or mid-hold via hold+R; in both cases the user's target is whatever's
+        // frontmost now). Clear any stale per-dictation overlay state first.
+        resetPerDictationOverlayState()
+        pasteTarget = Paster.captureFrontmost()
+        resetFreshDictationState()
+        // Keep the speaking-time stat honest — the retained buffer's measured
+        // duration, not 0 (resetFreshDictationState cleared it).
+        lastAudioDurationMs = retained.durationMs
+        runCleanupPipeline(wavData: retained.wav, asRefine: false)
+    }
+
+    /// hold-hotkey + R entry point (HotkeyListener.onRPressed). Thin wrapper so
+    /// the gesture wiring reads symmetrically with pPressedDuringHold.
+    @MainActor
+    public func rPressedDuringHold() {
+        recoverLastDictation()
+    }
+
+    /// B3: stash a fresh capture's audio as the recoverable buffer. Memory-only
+    /// (compliance invariant #1); fires onRecoverableDictationChanged the first
+    /// time a buffer becomes available so the menu item enables. Called from
+    /// both the normal finalize path AND a mid-hold cancel (Esc) — a cancelled
+    /// dictation is a fat-finger loss too, and recovery is exactly for that.
+    private func retainRecoverableAudio(_ capture: AudioRecorder.Capture) {
+        let wasUnavailable = (lastDictationAudio == nil)
+        lastDictationAudio = (capture.wavData, max(0, Int(capture.durationSeconds * 1000)))
+        if wasUnavailable { onRecoverableDictationChanged?(true) }
+    }
+
     /// Called from HotkeyListener.onCPressed when the user taps C while
     /// the dictation hotkey is held. Attaches the *current* frontmost
     /// window of the app that was frontmost at hotkey-down (the app's
@@ -2087,8 +2354,12 @@ public final class AppState {
         accept()
     }
 
-    private func startFreshCapture() {
-        pasteTarget = Paster.captureFrontmost()
+    /// Reset the per-dictation scalar state shared by a fresh capture and a B3
+    /// recovery re-run. Does NOT touch the recorder, the latched-compose state
+    /// machine, or `pasteTarget` — the caller establishes the recorder/target
+    /// for its own context (startFreshCapture opens the mic; recovery feeds a
+    /// retained buffer).
+    private func resetFreshDictationState() {
         chosenDestination = nil
         currentText = ""
         lastRawTranscript = ""
@@ -2117,6 +2388,11 @@ public final class AppState {
         // is cleared by resetPerDictationOverlayState() when the
         // session ends (accept / cancel / dismiss).
         currentSessionEntryID = UUID()
+    }
+
+    private func startFreshCapture() {
+        pasteTarget = Paster.captureFrontmost()
+        resetFreshDictationState()
         guard openRecorder() else { return }
         // Advance the latched-compose state machine so a subsequent
         // hotkeyUp(spaceWasPressedDuringHold: true) can transition
@@ -2354,11 +2630,34 @@ public final class AppState {
                 self?.recordingPulse.setLevel(value)
             }
         }
+        // B2: feed the raw mic peak to the dead-mic watchdog. Reset the monitor
+        // + warning for this fresh hold so a prior capture's flat-zero tail
+        // doesn't carry over.
+        micSignalMonitor.reset()
+        overlay.model.notHearingMic = false
+        recorder.micSignalHandler = { [weak self] peak, dt in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                let warn = self.micSignalMonitor.update(peak: peak, dt: dt)
+                if self.overlay.model.notHearingMic != warn {
+                    self.overlay.model.notHearingMic = warn
+                }
+            }
+        }
+        // A2: rebuild the tap + converter if the engine reconfigures mid-flight
+        // (another app flips the default input to multichannel, the route
+        // changes). Drop any rebuild queued against a prior capture first.
+        audioConfigRebuildTask?.cancel()
+        audioConfigRebuildTask = nil
+        recorder.onConfigurationChange = { [weak self] in
+            Task { @MainActor in self?.handleAudioConfigurationChange() }
+        }
         do {
             try recorder.start()
         } catch {
             log("recorder start failed: \(error)")
             recorder.levelHandler = nil
+            recorder.micSignalHandler = nil
             return false
         }
         // OIDC pre-warm: refresh-if-needed overlaps recording + ASR so
@@ -2374,6 +2673,23 @@ public final class AppState {
             Task { _ = try? await session.accessToken() }
         }
         return true
+    }
+
+    /// A2: debounced handler for AVAudioEngine config changes. A single
+    /// device/format change posts a burst of notifications; coalesce them into
+    /// one rebuild ~250 ms after the last. The rebuild itself (engine stop +
+    /// tap/converter rebuild on a fresh format) runs on the MainActor inside
+    /// AudioRecorder, so it never races a capture start/stop. No-op when the
+    /// recorder isn't actively capturing (the next start() re-queries anyway).
+    @MainActor
+    private func handleAudioConfigurationChange() {
+        audioConfigRebuildTask?.cancel()
+        audioConfigRebuildTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            guard let self, !Task.isCancelled else { return }
+            self.log("audio configuration changed mid-capture — rebuilding tap + converter")
+            self.recorder.handleConfigurationChange()
+        }
     }
 
     private func finalizeCapture(asRefine: Bool) {
@@ -2433,25 +2749,40 @@ public final class AppState {
         // path that shouldn't be reachable today) falls through to
         // ASR rather than getting suppressed by SilenceDetector's
         // zero-default voicedDuration fallback.
+        // A3: classify the capture so a DEAD mic (full-length but ~zero samples
+        // — a capture failure) is distinguished from genuine quiet/silence. Both
+        // skip the pipeline today; B1 will surface .deadInput to the user instead
+        // of hiding silently. `peakRMS≈0` is the maintainer's "as if I never
+        // dictated" signature.
         let silence = SilenceDetector.analyze(wavData: capture.wavData)
-        if silence.isAnalyzable && silence.voicedDurationSeconds < 0.05 {
-            log("captured audio voiced=\(String(format: "%.3f", silence.voicedDurationSeconds))s peak=\(String(format: "%.4f", silence.peakRMS)); skipping pipeline (silence)")
+        let health = CaptureHealth.classify(
+            durationSeconds: capture.durationSeconds,
+            peakRMS: silence.peakRMS,
+            voicedSeconds: silence.voicedDurationSeconds,
+            isAnalyzable: silence.isAnalyzable)
+        if health == .deadInput || health == .quietSilence {
+            if health == .deadInput {
+                log("captured audio peak=\(String(format: "%.4f", silence.peakRMS)) voiced=\(String(format: "%.3f", silence.voicedDurationSeconds))s — DEAD INPUT (mic delivered no audio); skipping pipeline")
+            } else {
+                log("captured audio voiced=\(String(format: "%.3f", silence.voicedDurationSeconds))s peak=\(String(format: "%.4f", silence.peakRMS)); skipping pipeline (silence)")
+            }
             cancelPendingOverlayShow()
             session?.cancel()
-            // Mirror the empty-transcript branch below: on a silent
-            // REFINE attempt, keep the prior text on screen so the
-            // user can still accept the unmodified version (a silent
-            // refine isn't a "cancel everything" gesture — the user
-            // may have meant to confirm the existing text and didn't
-            // realize they needed to actively speak). On a silent
-            // INITIAL dictation there is no prior text, so the
-            // full-reset is the right end state.
+            // On a silent/dead REFINE attempt, keep the prior text on screen so
+            // the user can still accept the unmodified version; on an INITIAL
+            // capture there's no prior text.
             if asRefine, !currentText.isEmpty {
                 applyResult(currentText)
             } else {
                 resetPerDictationOverlayState()
                 phase = .idle
-                overlay.hide()
+                if health == .deadInput {
+                    // B1: a dead mic delivered no audio — tell the user instead of
+                    // vanishing, so they know it failed and can re-dictate.
+                    overlay.showTransientNotice("Didn't catch any audio — check your microphone.")
+                } else {
+                    overlay.hide()
+                }
             }
             return
         }
@@ -2468,6 +2799,25 @@ public final class AppState {
         // marking the boundary of a new dictation session.
         lastAudioDurationMs += max(0, Int(capture.durationSeconds * 1000))
 
+        // B3 (recover last dictation): retain this fresh capture's audio so
+        // hold+R / the menu-bar item can re-run it if the user loses the
+        // result (Esc, a hasty double-Enter, a focus change). Memory-only —
+        // overwritten by the next fresh dictation and wiped on quit; never
+        // written to disk (compliance invariant #1). Refine turns don't
+        // overwrite the recoverable buffer: you recover the dictation, not an
+        // in-place edit of it.
+        if !asRefine {
+            retainRecoverableAudio(capture)
+        }
+
+        runCleanupPipeline(wavData: capture.wavData, asRefine: asRefine)
+    }
+
+    /// Run batch ASR + LLM cleanup/refine on `wavData` and route the result to
+    /// the review overlay (or the quick-mode direct paste). Extracted from
+    /// finalizeCapture so B3 recovery (recoverLastDictation) can push a
+    /// retained buffer through the identical pipeline.
+    private func runCleanupPipeline(wavData: Data, asRefine: Bool) {
         phase = .cleaning
         if quickMode {
             // In quick mode we don't show the overlay — the user
@@ -2497,7 +2847,7 @@ public final class AppState {
         // captured value here is only the seed.
         var priorText = currentText
         let asrClient = self.asr
-        let wavBytes = capture.wavData
+        let wavBytes = wavData
         inFlightTask = Task { @MainActor [weak self] in
             do {
                 // Batch ASR via /inference (Parakeet TDT v3) — uploads
@@ -2506,7 +2856,6 @@ public final class AppState {
                 // no end-of-utterance truncation either. Typical
                 // post-release latency on representative human-voice
                 // recordings was ~64 ms p50 for 5 s clips.
-                _ = session  // captured for compatibility; unused now
                 // Re-read the dictionary from disk once per utterance.
                 // Used by both the ASR pass (term list — biases
                 // recognition via CTC keyword spotting) and the LLM
@@ -2917,6 +3266,18 @@ public final class AppState {
         // any later count increase while .awaitingAccept, which suspends
         // the walk-away auto-accept timer (intent to refine).
         didAttachReferenceDuringReview = false
+        // C1: a hasty Enter during .cleaning armed a pending-accept. The full
+        // cleaned text is in hand now (currentText set above, review overlay
+        // shown), so accept it immediately rather than opening the review for
+        // a keypress the user already made. If accept() bails (help overlay
+        // open / unresolved image-conflict) it leaves phase == .awaitingAccept
+        // — fall through to the normal review + auto-accept timer.
+        if pendingAcceptOnCleanupComplete {
+            pendingAcceptOnCleanupComplete = false
+            overlay.model.pendingAcceptArmed = false
+            accept()
+            if phase != .awaitingAccept { return }
+        }
         startAutoAcceptTimer()
     }
 
@@ -2992,6 +3353,14 @@ public final class AppState {
             task.cancel()
         }
         pendingCaptureTasks.removeAll()
+        // #83: a finished/cancelled session is never still continuously recording.
+        continuousRecording = false
+        stopTapAwaitingKeyUp = false
+        overlay.model.continuousRecording = false
+        // #85: clear any in-place edit state so it never leaks into the next session.
+        overlay.model.editing = false
+        overlay.model.editableText = ""
+        editPreEditText = ""
         overlay.model.references = []
         overlay.model.pickedModelOverride = nil
         overlay.model.userDowngradedConflict = false
@@ -3010,6 +3379,15 @@ public final class AppState {
         // so the id survives across the full copy → refine → accept
         // sequence within one overlay session.
         currentSessionEntryID = nil
+        // C1: a deferred eager-accept must never survive into the next
+        // dictation. Cleared here so cancel (Esc), the empty-ASR exit, and
+        // the pipeline-failed exit — all of which reset without reaching
+        // applyResult's terminal transition — drop the pending accept.
+        pendingAcceptOnCleanupComplete = false
+        overlay.model.pendingAcceptArmed = false
+        // B2: drop any lingering dead-mic warning (only meaningful while
+        // capturing; the next capture re-arms its own monitor).
+        overlay.model.notHearingMic = false
     }
 
     // MARK: - Timer
