@@ -52,10 +52,10 @@ const capabilities = [
     href: `${base}/enterprise/`,
   },
   {
-    title: 'Recovery built in',
-    blurb: 'Recent cleaned dictations stay in an in-memory list you can copy or re-paste — wiped on quit, never written to disk.',
+    title: 'Never lose a dictation',
+    blurb: 'If your mic goes silent or your audio device switches mid-sentence, Parleq tells you and keeps what you said. Lost one anyway? Hold the hotkey and tap R to re-run it. Recent cleaned text also stays in an in-memory list — wiped on quit, never written to disk.',
     icon: 'clock-rewind',
-    href: `${base}/how-it-works/#stage-paste`,
+    href: `${base}/how-it-works/#stage-capture`,
   },
   {
     title: 'Teach it the words it gets wrong',
@@ -589,7 +589,7 @@ const capabilities = [
         </li>
         <li class="flex gap-4">
           <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums">3.</span>
-          <div>Launch from Applications. Grant <strong class="font-semibold text-[color:var(--color-text)]">Microphone</strong> + <strong class="font-semibold text-[color:var(--color-text)]">Accessibility</strong> permissions on first launch. <strong class="font-semibold text-[color:var(--color-text)]">Screen Recording</strong> is requested lazily the first time you use Reference Windows — not at startup.</div>
+          <div>Launch from Applications. The setup wizard explains and requests <strong class="font-semibold text-[color:var(--color-text)]">Microphone</strong> + <strong class="font-semibold text-[color:var(--color-text)]">Accessibility</strong> in context — Parleq stays running and usable while you grant them, with no permission dialog thrown at you before you know why. <strong class="font-semibold text-[color:var(--color-text)]">Screen Recording</strong> is requested lazily the first time you use Reference Windows — not at startup.</div>
         </li>
         <li class="flex gap-4">
           <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums">4.</span>
