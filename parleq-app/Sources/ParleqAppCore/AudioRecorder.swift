@@ -46,6 +46,14 @@ public enum AudioRecorderError: Error, CustomStringConvertible {
 public final class AudioRecorder {
     private static let targetSampleRate: Double = 16_000
 
+    /// Explicit channel map for the capture AVAudioConverter (A1 fix): output
+    /// channel i ← input channel i. For our mono output this is `[0]` — take the
+    /// first input channel — which avoids the silent all-zero downmix a bare
+    /// multichannel→mono converter produces, and is a no-op for a mono input.
+    static func converterChannelMap(outputChannels: AVAudioChannelCount) -> [NSNumber] {
+        (0..<Int(outputChannels)).map { NSNumber(value: $0) }
+    }
+
     private let engine = AVAudioEngine()
     private var converter: AVAudioConverter?
     private let outputFormat: AVAudioFormat
@@ -213,6 +221,15 @@ public final class AudioRecorder {
         guard let conv = AVAudioConverter(from: inputFormat, to: outputFormat) else {
             throw AudioRecorderError.converterCreateFailed
         }
+        // A1 (lost-dictation fix): a bare multichannel→mono AVAudioConverter has
+        // no channel layout to guide the downmix and SILENTLY EMITS ALL ZEROS —
+        // the exact peak=0.0000 capture loss we saw, triggered when another app
+        // (FaceTime/Zoom/Teams) flips the default input to a multichannel format,
+        // or a multichannel-native device is used. (cf. Hex #211.) An explicit
+        // channelMap forces each output channel to take a real input channel
+        // (mono output → input channel 0); a no-op for an already-mono input.
+        conv.channelMap = AudioRecorder.converterChannelMap(
+            outputChannels: outputFormat.channelCount)
         self.converter = conv
 
         // Buffer size of 4096 frames at 48 kHz ≈ 85 ms — small enough
