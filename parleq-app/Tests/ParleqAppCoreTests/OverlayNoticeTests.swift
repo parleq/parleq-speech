@@ -1,7 +1,8 @@
 import XCTest
 @testable import ParleqAppCore
 
-/// RoboRev follow-up (0.25.1): the B1 dead-input notice (`transientNotice`) has
+/// RoboRev follow-up (folded into the unreleased 0.25.0): the B1 dead-input
+/// notice (`transientNotice`) has
 /// a 2.5s auto-dismiss timer. `OverlayModel.update()` — called by every show() —
 /// must clear `transientNotice`, otherwise a fresh capture started within that
 /// window renders the dead-mic notice over the live capture AND the pending
