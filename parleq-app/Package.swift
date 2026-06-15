@@ -40,9 +40,20 @@ let package = Package(
         // Previously isolated in a bundled HTTP sidecar; folded into
         // the main app in v0.9.0 to drop the local listening socket,
         // simplify supervision, and shed the Hummingbird dependency.
-        // Same 0.14.x pin the retired sidecar used so first-run model
-        // downloads land on a known-good FluidAudio revision.
-        .package(url: "https://github.com/FluidInference/FluidAudio.git", "0.15.3"..<"0.16.0"),
+        //
+        // PINNED TO 0.14.x — DO NOT re-bump past 0.15.0 without first
+        // running the bench biasing arm against a REAL multi-term
+        // dictionary (bench/dictionary-realworld.json). 0.15.x reworked
+        // the TDT decode pipeline (DualDecodeArbitration / ChunkProcessor
+        // / new encoderPrecision); that shifts the CTC scores the
+        // *unchanged* vocabulary rescorer consumes (the CustomVocabulary/
+        // code + thresholds are byte-identical 0.14.8↔0.15.3), so custom-
+        // dictionary biasing wildly over-fires — ordinary words get
+        // replaced by dictionary terms. Briefly shipped as 0.15.3 in
+        // 0.25.0 (#91); reverted in 0.25.1. Our pre-ship bench called the
+        // bump "safe" because it only tested biasing with ONE synthetic
+        // term — the real-dictionary arm is the guard that would've caught it.
+        .package(url: "https://github.com/FluidInference/FluidAudio.git", "0.14.3"..<"0.15.0"),
         // Sparkle — auto-update framework. Checks an EdDSA-signed
         // appcast.xml on parleq.app for newer releases and runs the
         // user-prompted download/install/relaunch flow. Used by

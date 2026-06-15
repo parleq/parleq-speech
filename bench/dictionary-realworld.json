@@ -1,0 +1,14 @@
+{
+  "_comment": "Real-world-shaped biasing regression fixture (added in 0.25.1). Models the FluidAudio-0.15.3 over-firing report: a handful of SHORT, acoustically-aggressive custom terms (3-4-letter acronyms + a common-word collision) is exactly the profile that makes the CTC vocabulary rescorer replace ordinary words with dictionary terms ('grab' -> 'CRAN', 'check it' -> 'RFC it') once the underlying TDT scores shift. Terms here are generic/public on purpose (no proprietary dictionaries in the repo). BEFORE bumping FluidAudio past 0.14.x, run the biasing arm with this dictionary on the real-speech corpus and confirm dictionary terms do NOT replace unrelated words. See the FluidAudio pin comment in parleq-app/Package.swift.",
+  "terms": [
+    { "term": "CRAN" },
+    { "term": "RFC" },
+    { "term": "SDK" },
+    { "term": "CLI" },
+    { "term": "gRPC" },
+    { "term": "k8s", "aliases": ["kubernetes"] },
+    { "term": "worktree" },
+    { "term": "Redis" },
+    { "term": "RPC" }
+  ]
+}

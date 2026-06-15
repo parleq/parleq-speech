@@ -125,6 +125,17 @@ struct OverlayButtons: View {
             // it lets the user pick a destination. Hidden when send-to
             // is gated off (reference windows disabled), so we don't
             // advertise a no-op.
+            // E — edit the reviewed text yourself before accepting (#85). As
+            // useful as send-elsewhere and previously only in the footer / "?"
+            // help, so surface it here next to the V hint. Always available in
+            // review (no gate).
+            HStack(spacing: 4) {
+                keyCap("E", isProminent: false)
+                Text("edit")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            }
+            .help("Press E to edit the text yourself before accepting")
             if sendToEnabled {
                 HStack(spacing: 4) {
                     keyCap("V", isProminent: false)

@@ -4,6 +4,16 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.25.1] - 2026-06-15
+
+A hotfix for a speech-recognition regression introduced in 0.25.0.
+
+### Fixed
+
+- **Custom dictionary terms no longer over-insert into transcripts.** 0.25.0 updated the on-device speech engine (FluidAudio 0.15.3), whose reworked transcription pipeline made custom-dictionary biasing far too aggressive — ordinary words could be replaced by your dictionary terms (e.g. "grab the key signals" coming out as "CRAN the key bindex"), most noticeably with several short terms. Reverted the engine to the previous version (0.14.8), so transcription and dictionary biasing behave exactly as they did in 0.24.1. (If you saw this on 0.25.0, marking your dictionary terms "LLM-only" was the interim workaround.)
+
+[0.25.1]: https://github.com/parleq/parleq-speech/releases/tag/v0.25.1
+
 ## [0.25.0] - 2026-06-15
 
 A release focused on never losing a dictation — recover one you lost, plus fixes that stop dictations from being lost in the first place — alongside hands-free recording, in-place editing, configurable gestures, a gentler first run, and a rebuilt on-device model downloader.

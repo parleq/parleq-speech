@@ -18,6 +18,8 @@ const stages = [
       ['Bluetooth-aware', 'When the system default input is Bluetooth, Parleq overrides to the built-in mic so your music stays in A2DP instead of dropping to HFP/SCO mid-dictation.'],
       ['Pre-warm', 'The audio unit is instantiated at app launch and a 250 ms silent capture cycle runs once after the speech model finishes loading. This pays the cold-start cost so your first real dictation isn\'t a 90 ms first-buffer stub.'],
       ['Live level meter', 'Per-buffer RMS is computed on the audio thread and pushed to the overlay so the sound-wave bars animate with your actual voice.'],
+      ['Hears you — or says so', 'If the microphone stops delivering audio mid-dictation, the overlay warns you ("not hearing your mic") instead of you finding out only when nothing pastes.'],
+      ['Survives device changes', 'If another app flips your input to a multi-channel format, or your audio device changes mid-dictation, Parleq rebuilds the capture on the fresh format and keeps the audio you already spoke — no more silently-empty captures. Lost one anyway (a hasty Esc, a wrong key)? Hold the hotkey and tap R to re-run your last dictation.'],
     ],
   },
   {
@@ -39,7 +41,7 @@ const stages = [
     title: 'Clean up',
     where: 'cloud LLM · on-device · or skipped',
     summary:
-      'The raw transcript streams to a configurable AI provider that polishes it into finished text — capitalization, punctuation, filler-word removal, common transcription errors, and spoken numbers turned into digits when the context is technical. The raw transcript shows in the overlay first, and the cleaned text replaces it progressively as it arrives — so you can press Enter to accept whatever is currently shown at any moment, which also stops the in-flight cleanup. Cleanup can also run entirely on-device (no network boundary) via the on-device option — a one-time ~4 GB model download runs Gemma 4 E4B in-process via Apple MLX; requires 12 GB+ RAM.',
+      'The raw transcript streams to a configurable AI provider that polishes it into finished text — capitalization, punctuation, filler-word removal, common transcription errors, and spoken numbers turned into digits when the context is technical. The raw transcript shows in the overlay first, and the cleaned text replaces it progressively as it arrives. Press Enter while the raw is still showing to accept it as-is and skip cleanup; press Enter once cleanup is under way and Parleq finishes it and pastes the complete cleaned text — never a half-streamed fragment. Cleanup can also run entirely on-device (no network boundary) via the on-device option — a one-time ~4 GB model download runs Gemma 4 E4B in-process via Apple MLX; requires 12 GB+ RAM.',
     detail: [
       ['Pluggable providers', 'Seven options: On-device (Gemma 4 E4B via Apple MLX — no network boundary, no per-call cost, one-time ~4 GB download, 12 GB+ RAM), Google Gemini direct API (default — free tier<sup>†</sup>, ~500–700 ms TTFT), OpenAI direct API (GPT-4o / GPT-4.1 family), Google Vertex AI (Gemini + Claude on GCP with IAM + audit logs), AWS Bedrock (Claude or GPT-OSS via your AWS account), Azure OpenAI (GPT-4o / GPT-4.1 + reasoning models on Microsoft\'s contract), or skip cleanup entirely and paste raw ASR. The choice is made in Settings or via the first-run setup wizard. For IT-deployed Macs, the provider and allowed model list can be pinned centrally via an MDM-managed configuration profile so users cannot change it.'],
       ['Auth flexibility per provider', 'Each cloud supports both pasted API keys (stored in the macOS Keychain) and your existing CLI session — gcloud Application Default Credentials for Vertex (or service-account JSON), AWS SSO / static IAM keys / scoped Bedrock API keys for Bedrock, az login or resource keys for Azure. Parleq never stores long-lived cloud session tokens directly; the AWS/GCP/Azure CLIs handle refresh through their own caches.'],
@@ -74,6 +76,7 @@ const gestures = [
     rows: [
       ['Hold the hotkey', 'Dictate — review, then accept'],
       ['Double-tap + hold the hotkey', 'Quick dictate — pastes straight away'],
+      ['Double-tap + release the hotkey', 'Hands-free recording — tap once to stop'],
     ],
   },
   {
@@ -88,6 +91,7 @@ const gestures = [
       ['Space', 'Attach another window as context'],
       ['C', 'Attach the current window as context'],
       ['P', 'Cancel and show the Parleq window'],
+      ['Hold the hotkey + R', 'Recover your last dictation — re-runs it (also in the menu bar)'],
       ['? or /', 'Show this help'],
     ],
   },
@@ -95,6 +99,7 @@ const gestures = [
     group: 'Reviewing your text',
     rows: [
       ['Enter', 'Accept & paste to the current app'],
+      ['E', 'Edit the text yourself before accepting'],
       ['V', 'Send to a different window'],
     ],
   },
