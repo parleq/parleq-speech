@@ -105,6 +105,14 @@ public final class AudioRecorder {
     /// before touching SwiftUI state. Set to nil for headless capture.
     public var levelHandler: (@Sendable (Float) -> Void)?
 
+    /// B2: when set, every buffer's RAW peak amplitude (0…1, un-clamped) plus
+    /// the chunk's duration is pushed here so a live "are we hearing you?"
+    /// watchdog (MicSignalMonitor) can tell a dead mic from a quiet room. The
+    /// normalized `levelHandler` value can't make that distinction (it clamps
+    /// sub--50 dBFS to 0); the raw peak can. Called from the tap thread — hop
+    /// to MainActor before touching SwiftUI state. Set to nil to disable.
+    public var micSignalHandler: (@Sendable (Float, TimeInterval) -> Void)?
+
     /// When true, before starting capture we switch the engine's
     /// input device to the built-in mic if (and only if) the system
     /// default input is Bluetooth. This keeps BT headphones in A2DP
@@ -419,16 +427,24 @@ public final class AudioRecorder {
         // (quiet speech ≈ 0.4, raised voice ≈ 0.8, silence ≈ 0).
         // Buffer is small (~85 ms / ~1360 samples at 16 kHz) so an
         // in-line scalar pass is cheap on the audio thread.
-        if let levelHandler = levelHandler {
+        if levelHandler != nil || micSignalHandler != nil {
             var sumSq: Double = 0
+            var peak: Double = 0
             for i in 0..<outFrames {
                 let s = Double(channel[i]) / 32768.0
                 sumSq += s * s
+                let a = abs(s)
+                if a > peak { peak = a }
             }
             let rms = sqrt(sumSq / Double(max(1, outFrames)))
             let db = 20 * log10(max(rms, 1e-7))
             let normalized = Float(max(0, min(1, (db + 50) / 50)))
-            levelHandler(normalized)
+            levelHandler?(normalized)
+            // B2: raw peak + chunk duration for the dead-mic watchdog.
+            if let micSignalHandler {
+                let dt = Double(outFrames) / outputFormat.sampleRate
+                micSignalHandler(Float(peak), dt)
+            }
         }
 
         // Streaming hook: copy this chunk into a Data and push to

@@ -1206,6 +1206,12 @@ public final class OverlayModel: ObservableObject {
     /// keypress registered and the full cleaned result will auto-accept.
     /// Set by AppState.accept(); cleared on the terminal transition / cancel.
     @Published var pendingAcceptArmed: Bool = false
+    /// B2: true when the live mic watchdog has seen flat-zero input for ~1.5 s
+    /// during capture — the overlay's listening view shows a "⚠ not hearing
+    /// your mic" warning so a dead input is caught DURING the dictation
+    /// instead of vanishing. Set by AppState's mic-signal handler; cleared at
+    /// capture start and on any reset.
+    @Published var notHearingMic: Bool = false
     /// True when the current .cleaning pass is a REFINE (the raw-first
     /// change made `text.isEmpty` useless as the refine heuristic — the
     /// provisional transcript populates text immediately, which made
@@ -3097,7 +3103,17 @@ private struct OverlayContent: View {
     private func listeningIndicator(label: String?) -> some View {
         VStack(spacing: 10) {
             ParleqListeningIndicator(level: model.level, scale: 1.5)
-            if let label {
+            // B2: a sustained dead-mic reading escalates the listening hint to
+            // an explicit warning so a non-delivering mic is caught DURING the
+            // dictation, not after it silently vanishes. Overrides the normal
+            // listening label only while it's active.
+            if model.notHearingMic {
+                Text("⚠ Not hearing your mic — check your input device")
+                    .font(.system(size: 12, design: .rounded))
+                    .foregroundStyle(.orange)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+            } else if let label {
                 Text(label)
                     // SF Rounded gives the label a touch of warmth that
                     // pairs well with the rounded-rect listening bars,

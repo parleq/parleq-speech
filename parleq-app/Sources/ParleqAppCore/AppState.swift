@@ -205,6 +205,10 @@ public final class AppState {
     /// stream completes. Cleared on that auto-accept, on cancel (Esc), and
     /// on every reset path (resetPerDictationOverlayState).
     private var pendingAcceptOnCleanupComplete = false
+    /// B2: live dead-mic watchdog. Fed the raw mic peak during capture; flips
+    /// the overlay's "⚠ not hearing your mic" warning when input stays flat-
+    /// zero past the threshold. Reset at every capture start.
+    private var micSignalMonitor = MicSignalMonitor()
     /// Bumped every time the auto-accept timer is cancelled/re-armed.
     /// A fired Timer has already dispatched its `Task { accept() }` onto
     /// the MainActor by the time `invalidate()` runs, so invalidation
@@ -2594,11 +2598,26 @@ public final class AppState {
                 self?.recordingPulse.setLevel(value)
             }
         }
+        // B2: feed the raw mic peak to the dead-mic watchdog. Reset the monitor
+        // + warning for this fresh hold so a prior capture's flat-zero tail
+        // doesn't carry over.
+        micSignalMonitor.reset()
+        overlay.model.notHearingMic = false
+        recorder.micSignalHandler = { [weak self] peak, dt in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                let warn = self.micSignalMonitor.update(peak: peak, dt: dt)
+                if self.overlay.model.notHearingMic != warn {
+                    self.overlay.model.notHearingMic = warn
+                }
+            }
+        }
         do {
             try recorder.start()
         } catch {
             log("recorder start failed: \(error)")
             recorder.levelHandler = nil
+            recorder.micSignalHandler = nil
             return false
         }
         // OIDC pre-warm: refresh-if-needed overlaps recording + ASR so
@@ -3311,6 +3330,9 @@ public final class AppState {
         // applyResult's terminal transition — drop the pending accept.
         pendingAcceptOnCleanupComplete = false
         overlay.model.pendingAcceptArmed = false
+        // B2: drop any lingering dead-mic warning (only meaningful while
+        // capturing; the next capture re-arms its own monitor).
+        overlay.model.notHearingMic = false
     }
 
     // MARK: - Timer
