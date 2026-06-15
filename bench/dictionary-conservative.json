@@ -1,0 +1,45 @@
+{
+  "_comment": "Conservative variant: canonical terms only, no aliases. Tests fair biasing without alias-driven false positives.",
+  "terms": [
+    {
+      "term": "Parleq",
+      "aliases": []
+    },
+    {
+      "term": "Parakeet",
+      "aliases": []
+    },
+    {
+      "term": "FluidAudio",
+      "aliases": []
+    },
+    {
+      "term": "Bedrock",
+      "aliases": []
+    },
+    {
+      "term": "Vertex",
+      "aliases": []
+    },
+    {
+      "term": "Gemini",
+      "aliases": []
+    },
+    {
+      "term": "Keychain",
+      "aliases": []
+    },
+    {
+      "term": "Soto",
+      "aliases": []
+    },
+    {
+      "term": "Sherpa",
+      "aliases": []
+    },
+    {
+      "term": "Route 53",
+      "aliases": []
+    }
+  ]
+}

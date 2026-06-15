@@ -1,0 +1,1201 @@
+[
+  {
+    "biasing" : false,
+    "first_partial_ms" : 344.137708067894,
+    "hyp" : "the settings window and switch to the audio tab",
+    "id" : "g01-short-cmd-Samantha",
+    "latency_ms" : 757.342208981514,
+    "path" : "eou-whole",
+    "post_release_ms" : 757.319207906723,
+    "ref" : "Open the settings window and switch to the audio tab."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 102.79195892810822,
+    "hyp" : "the settings window and switch to the audio tag",
+    "id" : "g01-short-cmd-Daniel",
+    "latency_ms" : 458.40141701698303,
+    "path" : "eou-whole",
+    "post_release_ms" : 458.39737498760223,
+    "ref" : "Open the settings window and switch to the audio tab."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 122.71145796775818,
+    "hyp" : "in the settings window and switch to the audio tab",
+    "id" : "g01-short-cmd-Karen",
+    "latency_ms" : 447.120707988739,
+    "path" : "eou-whole",
+    "post_release_ms" : 447.1168329715729,
+    "ref" : "Open the settings window and switch to the audio tab."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 86.25008392333984,
+    "hyp" : "remind me to email the team before the stand up tomorrow",
+    "id" : "g02-short-note-Samantha",
+    "latency_ms" : 443.2670840024948,
+    "path" : "eou-whole",
+    "post_release_ms" : 443.26404201984406,
+    "ref" : "Remind me to email the team before the standup tomorrow."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 72.87254202365875,
+    "hyp" : "remind me to email the team before the stand up tomorrow",
+    "id" : "g02-short-note-Daniel",
+    "latency_ms" : 668.0696669816971,
+    "path" : "eou-whole",
+    "post_release_ms" : 668.065957903862,
+    "ref" : "Remind me to email the team before the standup tomorrow."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 87.17954194545746,
+    "hyp" : "remind me to email the team before the stand up tomorrow",
+    "id" : "g02-short-note-Karen",
+    "latency_ms" : 547.4375829696655,
+    "path" : "eou-whole",
+    "post_release_ms" : 547.4331250190735,
+    "ref" : "Remind me to email the team before the standup tomorrow."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 50.77733302116394,
+    "hyp" : "time does the meeting start this afternoon",
+    "id" : "g03-short-q-Samantha",
+    "latency_ms" : 229.12008392810822,
+    "path" : "eou-whole",
+    "post_release_ms" : 229.1166250705719,
+    "ref" : "What time does the meeting start this afternoon?"
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 67.82787501811981,
+    "hyp" : "what time does the meeting start this up",
+    "id" : "g03-short-q-Daniel",
+    "latency_ms" : 321.30425000190735,
+    "path" : "eou-whole",
+    "post_release_ms" : 321.3006669282913,
+    "ref" : "What time does the meeting start this afternoon?"
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 58.30912494659424,
+    "hyp" : "what time does the meeting start this afternoon",
+    "id" : "g03-short-q-Karen",
+    "latency_ms" : 290.10754096508026,
+    "path" : "eou-whole",
+    "post_release_ms" : 290.1032499074936,
+    "ref" : "What time does the meeting start this afternoon?"
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 56.0268748998642,
+    "hyp" : "envoys came to forty seven dollars fifty cents",
+    "id" : "g04-numbers-money-Samantha",
+    "latency_ms" : 336.5556250810623,
+    "path" : "eou-whole",
+    "post_release_ms" : 336.5518749952316,
+    "ref" : "The invoice came to forty seven dollars and fifty cents."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 47.355834007263184,
+    "hyp" : "invoice came to forty seven dollars and fifty cents",
+    "id" : "g04-numbers-money-Daniel",
+    "latency_ms" : 265.7950829267502,
+    "path" : "eou-whole",
+    "post_release_ms" : 265.79174995422363,
+    "ref" : "The invoice came to forty seven dollars and fifty cents."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 40.84700000286102,
+    "hyp" : "invoice came to forty seven dollars fifty cents",
+    "id" : "g04-numbers-money-Karen",
+    "latency_ms" : 265.4074159860611,
+    "path" : "eou-whole",
+    "post_release_ms" : 265.4045000076294,
+    "ref" : "The invoice came to forty seven dollars and fifty cents."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 80.38554096221924,
+    "hyp" : "schedule the review of march twentieth at nine thirty",
+    "id" : "g05-numbers-date-Samantha",
+    "latency_ms" : 357.69974994659424,
+    "path" : "eou-whole",
+    "post_release_ms" : 357.6965000629425,
+    "ref" : "Let's schedule the review for March twenty third at nine thirty."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 110.86766695976257,
+    "hyp" : "schedule the review for you for march twenty third at nine thirty",
+    "id" : "g05-numbers-date-Daniel",
+    "latency_ms" : 401.79816699028015,
+    "path" : "eou-whole",
+    "post_release_ms" : 401.7942500114441,
+    "ref" : "Let's schedule the review for March twenty third at nine thirty."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 71.15416693687439,
+    "hyp" : "schedule the review for march twenty third of nine thousand and thirty",
+    "id" : "g05-numbers-date-Karen",
+    "latency_ms" : 293.2730840444565,
+    "path" : "eou-whole",
+    "post_release_ms" : 293.2694170475006,
+    "ref" : "Let's schedule the review for March twenty third at nine thirty."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 79.98445796966553,
+    "hyp" : "version went from three point two percent to five point eight percent",
+    "id" : "g06-numbers-stats-Samantha",
+    "latency_ms" : 730.2500829696655,
+    "path" : "eou-whole",
+    "post_release_ms" : 730.2441250085831,
+    "ref" : "Conversion went from three point two percent to five point eight percent."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 55.55666708946228,
+    "hyp" : "conversion went from three point two percent to five point eight percent",
+    "id" : "g06-numbers-stats-Daniel",
+    "latency_ms" : 372.340833067894,
+    "path" : "eou-whole",
+    "post_release_ms" : 372.33662497997284,
+    "ref" : "Conversion went from three point two percent to five point eight percent."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 60.22724997997284,
+    "hyp" : "version went from three point two percent to five point eight percent",
+    "id" : "g06-numbers-stats-Karen",
+    "latency_ms" : 443.3203749656677,
+    "path" : "eou-whole",
+    "post_release_ms" : 443.31695902347565,
+    "ref" : "Conversion went from three point two percent to five point eight percent."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 61.589375019073486,
+    "hyp" : "can reach the front desk at extension for one two",
+    "id" : "g07-numbers-phone-Samantha",
+    "latency_ms" : 330.05945909023285,
+    "path" : "eou-whole",
+    "post_release_ms" : 330.0567079782486,
+    "ref" : "You can reach the front desk at extension four one two."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 49.515625,
+    "hyp" : "you can reach the front desk at extension four hundred and twelve",
+    "id" : "g07-numbers-phone-Daniel",
+    "latency_ms" : 339.07183396816254,
+    "path" : "eou-whole",
+    "post_release_ms" : 339.0688329935074,
+    "ref" : "You can reach the front desk at extension four one two."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 32.29733407497406,
+    "hyp" : "you can reach the front desk at extension four one two",
+    "id" : "g07-numbers-phone-Karen",
+    "latency_ms" : 292.3544579744339,
+    "path" : "eou-whole",
+    "post_release_ms" : 292.3507080078125,
+    "ref" : "You can reach the front desk at extension four one two."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 55.114458084106445,
+    "hyp" : "need three things a budget a timeline and an owner",
+    "id" : "g08-punct-list-Samantha",
+    "latency_ms" : 441.22587502002716,
+    "path" : "eou-whole",
+    "post_release_ms" : 441.22237503528595,
+    "ref" : "We need three things: a budget, a timeline, and an owner."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 38.02400004863739,
+    "hyp" : "we need three things a budget a timeline and an own",
+    "id" : "g08-punct-list-Daniel",
+    "latency_ms" : 346.9181669950485,
+    "path" : "eou-whole",
+    "post_release_ms" : 346.91508293151855,
+    "ref" : "We need three things: a budget, a timeline, and an owner."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 57.916082978248596,
+    "hyp" : "need three things a budget a timeline and an own",
+    "id" : "g08-punct-list-Karen",
+    "latency_ms" : 380.78250002861023,
+    "path" : "eou-whole",
+    "post_release_ms" : 380.77995800971985,
+    "ref" : "We need three things: a budget, a timeline, and an owner."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 37.633041977882385,
+    "hyp" : "she said the launch was in her words completely on track",
+    "id" : "g09-punct-quote-Samantha",
+    "latency_ms" : 340.029708981514,
+    "path" : "eou-whole",
+    "post_release_ms" : 340.02679097652435,
+    "ref" : "She said the launch was, in her words, completely on track."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 42.8882919549942,
+    "hyp" : "she said the launch was in her words completely on track",
+    "id" : "g09-punct-quote-Daniel",
+    "latency_ms" : 380.26195895671844,
+    "path" : "eou-whole",
+    "post_release_ms" : 380.2589999437332,
+    "ref" : "She said the launch was, in her words, completely on track."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 47.1599999666214,
+    "hyp" : "she said the launch was in her words completely on track",
+    "id" : "g09-punct-quote-Karen",
+    "latency_ms" : 381.3827500343323,
+    "path" : "eou-whole",
+    "post_release_ms" : 381.37979197502136,
+    "ref" : "She said the launch was, in her words, completely on track."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 52.542791962623596,
+    "hyp" : "plan is simple shift the figs then write the post mortem",
+    "id" : "g10-punct-dash-Samantha",
+    "latency_ms" : 299.97291600704193,
+    "path" : "eou-whole",
+    "post_release_ms" : 299.9702500104904,
+    "ref" : "The plan is simple, ship the fix, then write the postmortem."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 48.65495800971985,
+    "hyp" : "plan is simple ship the fix then write the post mortem",
+    "id" : "g10-punct-dash-Daniel",
+    "latency_ms" : 432.3350839614868,
+    "path" : "eou-whole",
+    "post_release_ms" : 432.33204102516174,
+    "ref" : "The plan is simple, ship the fix, then write the postmortem."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 54.15670895576477,
+    "hyp" : "plan is simple ship the figs then run the post more",
+    "id" : "g10-punct-dash-Karen",
+    "latency_ms" : 317.5721660852432,
+    "path" : "eou-whole",
+    "post_release_ms" : 317.5690829753876,
+    "ref" : "The plan is simple, ship the fix, then write the postmortem."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 59.67449998855591,
+    "hyp" : "spent the morning reviewing the proposal and i think the second option is stronger because it keeps the scope tight end the timeline realistic",
+    "id" : "g11-prose-medium-Samantha",
+    "latency_ms" : 745.6493330001831,
+    "path" : "eou-whole",
+    "post_release_ms" : 745.6257500648499,
+    "ref" : "I spent the morning reviewing the proposal and I think the second option is stronger because it keeps the scope tight and the timeline realistic."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 51.69941699504852,
+    "hyp" : "spent the morning reviewing the proposal and i think the second option is stronger because it keeps the scope tightened the timeline realistic",
+    "id" : "g11-prose-medium-Daniel",
+    "latency_ms" : 715.8583339452744,
+    "path" : "eou-whole",
+    "post_release_ms" : 715.855082988739,
+    "ref" : "I spent the morning reviewing the proposal and I think the second option is stronger because it keeps the scope tight and the timeline realistic."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 96.73691701889038,
+    "hyp" : "spent the morning reviewing the proposal and i think the second option is stronger because it keeps the scope tight and the timeline really listed",
+    "id" : "g11-prose-medium-Karen",
+    "latency_ms" : 665.4086669683456,
+    "path" : "eou-whole",
+    "post_release_ms" : 665.4052079916,
+    "ref" : "I spent the morning reviewing the proposal and I think the second option is stronger because it keeps the scope tight and the timeline realistic."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 52.19166696071625,
+    "hyp" : "customer was happy with the demo but they asked whether we could support single sign on before the end of the quarter",
+    "id" : "g12-prose-medium-Samantha",
+    "latency_ms" : 526.5248749256134,
+    "path" : "eou-whole",
+    "post_release_ms" : 526.521791934967,
+    "ref" : "The customer was happy with the demo but they asked whether we could support single sign on before the end of the quarter."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 68.59887492656708,
+    "hyp" : "customer was happy with the demo but they are asked whether we could support single sign on before the end of the quarter",
+    "id" : "g12-prose-medium-Daniel",
+    "latency_ms" : 610.3819160461426,
+    "path" : "eou-whole",
+    "post_release_ms" : 610.3787499666214,
+    "ref" : "The customer was happy with the demo but they asked whether we could support single sign on before the end of the quarter."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 81.1800000667572,
+    "hyp" : "customer was happy with the demo but they asked where we could support single sign on before the end of the quarter",
+    "id" : "g12-prose-medium-Karen",
+    "latency_ms" : 600.5582500696182,
+    "path" : "eou-whole",
+    "post_release_ms" : 600.555459022522,
+    "ref" : "The customer was happy with the demo but they asked whether we could support single sign on before the end of the quarter."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 52.545125007629395,
+    "hyp" : "is my son of where we landed we agreed to prioritize the onboarding flow of first then circle back to the dashboard once the data pipeline is stable and finally we will revisit pricing after we have a few more reference customers in hand",
+    "id" : "g13-prose-long-Samantha",
+    "latency_ms" : 1182.0493339300156,
+    "path" : "eou-whole",
+    "post_release_ms" : 1182.0455420017242,
+    "ref" : "Here is my summary of where we landed. We agreed to prioritize the onboarding flow first, then circle back to the dashboard once the data pipeline is stable, and finally we will revisit pricing after we have a few more reference customers in hand."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 45.70841598510742,
+    "hyp" : "here is my summary of where we landed we agreed to prioritize the onboarding flow first then circled back to the dashboard once the data pipeline is stable and finally we will revisit pricing on till we have a few more reference customers in hand",
+    "id" : "g13-prose-long-Daniel",
+    "latency_ms" : 1424.2726250886917,
+    "path" : "eou-whole",
+    "post_release_ms" : 1424.269541978836,
+    "ref" : "Here is my summary of where we landed. We agreed to prioritize the onboarding flow first, then circle back to the dashboard once the data pipeline is stable, and finally we will revisit pricing after we have a few more reference customers in hand."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 51.24204194545746,
+    "hyp" : "here is my summary of where we landed we agreed to prioritize the onboarding flow first then circle back to the dashboard once the data pipeline is stable and finally we will revisit pricing after we have a few more references customers in hand",
+    "id" : "g13-prose-long-Karen",
+    "latency_ms" : 1386.5513330698013,
+    "path" : "eou-whole",
+    "post_release_ms" : 1386.54891705513,
+    "ref" : "Here is my summary of where we landed. We agreed to prioritize the onboarding flow first, then circle back to the dashboard once the data pipeline is stable, and finally we will revisit pricing after we have a few more reference customers in hand."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 80.83200001716614,
+    "hyp" : "are a couple of risks worth calling out the first is the third party api had been flaky under load and the second is that we still do not have a clear owner for the migration which means it could slip if nobody picks it up this week",
+    "id" : "g14-prose-long-Samantha",
+    "latency_ms" : 1140.8979169130325,
+    "path" : "eou-whole",
+    "post_release_ms" : 1140.8949580192566,
+    "ref" : "There are a couple of risks worth calling out. The first is that the third party API has been flaky under load, and the second is that we still do not have a clear owner for the migration, which means it could slip if nobody picks it up this week."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 30.14116597175598,
+    "hyp" : "there are a couple of risks worth calling out the first is that the third party api has been flaky under load and the second is that we still do not have a clear owner for the migration which means it could slip if nobody picks it up this week",
+    "id" : "g14-prose-long-Daniel",
+    "latency_ms" : 1351.8809169530869,
+    "path" : "eou-whole",
+    "post_release_ms" : 1351.8771671056747,
+    "ref" : "There are a couple of risks worth calling out. The first is that the third party API has been flaky under load, and the second is that we still do not have a clear owner for the migration, which means it could slip if nobody picks it up this week."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 91.36679196357727,
+    "hyp" : "a couple of risks worth calling out the first is that the third party api has been flaky under load and the second is that we still do not have a clearer owner for the migration which mean it could slip if nobody picks it up this week",
+    "id" : "g14-prose-long-Karen",
+    "latency_ms" : 1248.5178340673447,
+    "path" : "eou-whole",
+    "post_release_ms" : 1248.5152090787888,
+    "ref" : "There are a couple of risks worth calling out. The first is that the third party API has been flaky under load, and the second is that we still do not have a clear owner for the migration, which means it could slip if nobody picks it up this week."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 97.79250001907349,
+    "hyp" : "and i could be wrong about this that we should hold the release until monday",
+    "id" : "g15-hedge-Samantha",
+    "latency_ms" : 400.0431669950485,
+    "path" : "eou-whole",
+    "post_release_ms" : 400.0398750305176,
+    "ref" : "I think, and I could be wrong about this, that we should hold the release until Monday."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 89.77612495422363,
+    "hyp" : "and i could be wrong about this that we should hold the release until monday",
+    "id" : "g15-hedge-Daniel",
+    "latency_ms" : 520.1228749752045,
+    "path" : "eou-whole",
+    "post_release_ms" : 520.119500041008,
+    "ref" : "I think, and I could be wrong about this, that we should hold the release until Monday."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 96.03512501716614,
+    "hyp" : "and i could be wrong about this that we should hold the release until monday",
+    "id" : "g15-hedge-Karen",
+    "latency_ms" : 488.7642500400543,
+    "path" : "eou-whole",
+    "post_release_ms" : 488.7601659297943,
+    "ref" : "I think, and I could be wrong about this, that we should hold the release until Monday."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 89.24737501144409,
+    "hyp" : "to sarah actually no send it to the whole group instead",
+    "id" : "g16-correction-Samantha",
+    "latency_ms" : 392.9059580564499,
+    "path" : "eou-whole",
+    "post_release_ms" : 392.90179109573364,
+    "ref" : "Send it to Sarah, actually no, send it to the whole group instead."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 67.59375,
+    "hyp" : "to sarah actually no send it to the whole group instead",
+    "id" : "g16-correction-Daniel",
+    "latency_ms" : 350.2829999923706,
+    "path" : "eou-whole",
+    "post_release_ms" : 350.2804170846939,
+    "ref" : "Send it to Sarah, actually no, send it to the whole group instead."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 106.51054203510284,
+    "hyp" : "to sarah actually no send it to the whole group instead",
+    "id" : "g16-correction-Karen",
+    "latency_ms" : 429.691290974617,
+    "path" : "eou-whole",
+    "post_release_ms" : 429.68850004673004,
+    "ref" : "Send it to Sarah, actually no, send it to the whole group instead."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 50.328208923339844,
+    "hyp" : "build failed because the tests we timed out after sixty seconds",
+    "id" : "g17-tech-generic-Samantha",
+    "latency_ms" : 403.21083295345306,
+    "path" : "eou-whole",
+    "post_release_ms" : 403.2080000638962,
+    "ref" : "The build failed because the test suite timed out after sixty seconds."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 45.27125000953674,
+    "hyp" : "build failed because the tests suite timed out after sixty seconds",
+    "id" : "g17-tech-generic-Daniel",
+    "latency_ms" : 942.9156249761581,
+    "path" : "eou-whole",
+    "post_release_ms" : 942.9122920036316,
+    "ref" : "The build failed because the test suite timed out after sixty seconds."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 153.4689999818802,
+    "hyp" : "build failed because the tests sweet timed out after sixty seconds",
+    "id" : "g17-tech-generic-Karen",
+    "latency_ms" : 482.7312500476837,
+    "path" : "eou-whole",
+    "post_release_ms" : 482.72529196739197,
+    "ref" : "The build failed because the test suite timed out after sixty seconds."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 52.096917033195496,
+    "hyp" : "back to last deploy and pin the dependency to the previous version",
+    "id" : "g18-tech-generic-Samantha",
+    "latency_ms" : 285.674791932106,
+    "path" : "eou-whole",
+    "post_release_ms" : 285.67179107666016,
+    "ref" : "Roll back the last deploy and pin the dependency to the previous version."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 44.47554099559784,
+    "hyp" : "back the last deployment in the dependency to the previous version",
+    "id" : "g18-tech-generic-Daniel",
+    "latency_ms" : 298.718542098999,
+    "path" : "eou-whole",
+    "post_release_ms" : 298.7156250476837,
+    "ref" : "Roll back the last deploy and pin the dependency to the previous version."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 56.756625056266785,
+    "hyp" : "back the last deploy and pin the dependency to the previous version",
+    "id" : "g18-tech-generic-Karen",
+    "latency_ms" : 320.43912494182587,
+    "path" : "eou-whole",
+    "post_release_ms" : 320.4360419511795,
+    "ref" : "Roll back the last deploy and pin the dependency to the previous version."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 60.71208298206329,
+    "hyp" : "a redry with x filmed back off and cap it at five at a ten attempts",
+    "id" : "g19-tech-generic-Samantha",
+    "latency_ms" : 422.77758407592773,
+    "path" : "eou-whole",
+    "post_release_ms" : 422.7748750448227,
+    "ref" : "Add a retry with exponential backoff and cap it at five attempts."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 94.07999992370605,
+    "hyp" : "retry with exponential back off and capit at five at ems",
+    "id" : "g19-tech-generic-Daniel",
+    "latency_ms" : 339.6697919368744,
+    "path" : "eou-whole",
+    "post_release_ms" : 339.6675419807434,
+    "ref" : "Add a retry with exponential backoff and cap it at five attempts."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 51.32445800304413,
+    "hyp" : "and retry with exponential back off and cap it at fivetenpm",
+    "id" : "g19-tech-generic-Karen",
+    "latency_ms" : 318.86841690540314,
+    "path" : "eou-whole",
+    "post_release_ms" : 318.86558389663696,
+    "ref" : "Add a retry with exponential backoff and cap it at five attempts."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 99.50445806980133,
+    "hyp" : "just following up on the thread from yesterday did we ever hear the back from the vendor",
+    "id" : "g20-conversational-Samantha",
+    "latency_ms" : 453.61387503147125,
+    "path" : "eou-whole",
+    "post_release_ms" : 453.61154198646545,
+    "ref" : "Hey, just following up on the thread from yesterday, did we ever hear back from the vendor?"
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 98.57329201698303,
+    "hyp" : "just following up on the thread from yesterday did we ever hear back from the vendor",
+    "id" : "g20-conversational-Daniel",
+    "latency_ms" : 486.6921249628067,
+    "path" : "eou-whole",
+    "post_release_ms" : 486.68937504291534,
+    "ref" : "Hey, just following up on the thread from yesterday, did we ever hear back from the vendor?"
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 77.62683296203613,
+    "hyp" : "hey just following up on the thread from yesterday did we ever hear back from the vendor",
+    "id" : "g20-conversational-Karen",
+    "latency_ms" : 435.54299998283386,
+    "path" : "eou-whole",
+    "post_release_ms" : 435.5405830144882,
+    "ref" : "Hey, just following up on the thread from yesterday, did we ever hear back from the vendor?"
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 34.80366599559784,
+    "hyp" : "thanks for putting this together it looks great i only have one small comment on the intro",
+    "id" : "g21-conversational-Samantha",
+    "latency_ms" : 489.64391589164734,
+    "path" : "eou-whole",
+    "post_release_ms" : 489.6414999961853,
+    "ref" : "Thanks for putting this together, it looks great, I only have one small comment on the intro."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 37.27420902252197,
+    "hyp" : "thanks for putting this together it looks great i only have one small comment on the intro",
+    "id" : "g21-conversational-Daniel",
+    "latency_ms" : 520.2642920017242,
+    "path" : "eou-whole",
+    "post_release_ms" : 520.2617499828339,
+    "ref" : "Thanks for putting this together, it looks great, I only have one small comment on the intro."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 65.17983400821686,
+    "hyp" : "for putting the looks great i only have one small comment on the intro",
+    "id" : "g21-conversational-Karen",
+    "latency_ms" : 555.9231250286102,
+    "path" : "eou-whole",
+    "post_release_ms" : 555.9202910661697,
+    "ref" : "Thanks for putting this together, it looks great, I only have one small comment on the intro."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 94.41441702842712,
+    "hyp" : "first back up the date of base then run the migration and finally restart the service",
+    "id" : "g22-instruction-Samantha",
+    "latency_ms" : 590.1950839757919,
+    "path" : "eou-whole",
+    "post_release_ms" : 590.1921659708023,
+    "ref" : "First, back up the database, then run the migration, and finally restart the service."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 99.0245829820633,
+    "hyp" : "first back up the database then run the migration and finally restart the service",
+    "id" : "g22-instruction-Daniel",
+    "latency_ms" : 653.8740420341492,
+    "path" : "eou-whole",
+    "post_release_ms" : 653.8710420131683,
+    "ref" : "First, back up the database, then run the migration, and finally restart the service."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 59.46741700172424,
+    "hyp" : "first back up the database then run the migration and finally restart the service",
+    "id" : "g22-instruction-Karen",
+    "latency_ms" : 641.6738339662552,
+    "path" : "eou-whole",
+    "post_release_ms" : 641.6707500219345,
+    "ref" : "First, back up the database, then run the migration, and finally restart the service."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 58.54187500476837,
+    "hyp" : "report shows we closed twelve deals in the first quarter which is up from seven last year",
+    "id" : "g23-mixed-Samantha",
+    "latency_ms" : 471.8231250047684,
+    "path" : "eou-whole",
+    "post_release_ms" : 471.81962502002716,
+    "ref" : "The report shows we closed twelve deals in the first quarter, which is up from seven last year."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 62.28487503528595,
+    "hyp" : "record shows we closed twelve deals in the first quarter which is up from seven last year",
+    "id" : "g23-mixed-Daniel",
+    "latency_ms" : 517.5955410003662,
+    "path" : "eou-whole",
+    "post_release_ms" : 517.5922080278397,
+    "ref" : "The report shows we closed twelve deals in the first quarter, which is up from seven last year."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 62.24458396434784,
+    "hyp" : "report shows we closed twelve deals in the first quarter which is up from seven last year",
+    "id" : "g23-mixed-Karen",
+    "latency_ms" : 574.0731669664383,
+    "path" : "eou-whole",
+    "post_release_ms" : 574.0702919960022,
+    "ref" : "The report shows we closed twelve deals in the first quarter, which is up from seven last year."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 43.36708307266235,
+    "hyp" : "the deadline to next friday and let everyone know in the channel",
+    "id" : "g24-mixed-Samantha",
+    "latency_ms" : 287.04116702079773,
+    "path" : "eou-whole",
+    "post_release_ms" : 287.0378749370575,
+    "ref" : "Move the deadline to next Friday and let everyone know in the channel."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 41.81908392906189,
+    "hyp" : "the deadline to next friday and let everyone know in the channel",
+    "id" : "g24-mixed-Daniel",
+    "latency_ms" : 331.77787494659424,
+    "path" : "eou-whole",
+    "post_release_ms" : 331.77504098415375,
+    "ref" : "Move the deadline to next Friday and let everyone know in the channel."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 55.33149993419647,
+    "hyp" : "the deadline to next friday and let everyone know in the channel",
+    "id" : "g24-mixed-Karen",
+    "latency_ms" : 303.3240829706192,
+    "path" : "eou-whole",
+    "post_release_ms" : 303.3211250305176,
+    "ref" : "Move the deadline to next Friday and let everyone know in the channel."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 41.60549998283386,
+    "hyp" : "dictated that this note using parlik on my mac",
+    "id" : "b01-parleq-Samantha",
+    "latency_ms" : 206.58787500858307,
+    "path" : "eou-whole",
+    "post_release_ms" : 206.5838339328766,
+    "ref" : "I dictated this note using Parleq on my Mac."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 45.026957988739014,
+    "hyp" : "dictated this note using parlec on my mag",
+    "id" : "b01-parleq-Daniel",
+    "latency_ms" : 218.56650006771088,
+    "path" : "eou-whole",
+    "post_release_ms" : 218.56416606903076,
+    "ref" : "I dictated this note using Parleq on my Mac."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 33.30708396434784,
+    "hyp" : "i digated this no using parleg on my mag",
+    "id" : "b01-parleq-Karen",
+    "latency_ms" : 223.5613750219345,
+    "path" : "eou-whole",
+    "post_release_ms" : 223.55887508392334,
+    "ref" : "I dictated this note using Parleq on my Mac."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 38.752707958221436,
+    "hyp" : "you add carlich to the list of approved applications",
+    "id" : "b02-parleq-Samantha",
+    "latency_ms" : 226.70241689682007,
+    "path" : "eou-whole",
+    "post_release_ms" : 226.6996669769287,
+    "ref" : "Can you add Parleq to the list of approved applications?"
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 45.20445799827576,
+    "hyp" : "you add garlic to the list of approved acclaims",
+    "id" : "b02-parleq-Daniel",
+    "latency_ms" : 237.90320801734924,
+    "path" : "eou-whole",
+    "post_release_ms" : 237.90049993991852,
+    "ref" : "Can you add Parleq to the list of approved applications?"
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 52.19824993610382,
+    "hyp" : "you had par leg to the list of approved applications",
+    "id" : "b02-parleq-Karen",
+    "latency_ms" : 228.9131669998169,
+    "path" : "eou-whole",
+    "post_release_ms" : 228.91020810604095,
+    "ref" : "Can you add Parleq to the list of approved applications?"
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 44.734875082969666,
+    "hyp" : "transcription runs onto parakeig model locally",
+    "id" : "b03-parakeet-Samantha",
+    "latency_ms" : 222.885125041008,
+    "path" : "eou-whole",
+    "post_release_ms" : 222.88116705417633,
+    "ref" : "The transcription runs on the Parakeet model locally."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 51.22350001335144,
+    "hyp" : "transcription runs on the parakeet model locally",
+    "id" : "b03-parakeet-Daniel",
+    "latency_ms" : 235.80750000476837,
+    "path" : "eou-whole",
+    "post_release_ms" : 235.80508291721344,
+    "ref" : "The transcription runs on the Parakeet model locally."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 51.807790994644165,
+    "hyp" : "transcription runs on the paraguay model locally",
+    "id" : "b03-parakeet-Karen",
+    "latency_ms" : 226.02837491035461,
+    "path" : "eou-whole",
+    "post_release_ms" : 226.02566599845886,
+    "ref" : "The transcription runs on the Parakeet model locally."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 54.6056250333786,
+    "hyp" : "use fluid audio for on device speech recognition",
+    "id" : "b04-fluidaudio-Samantha",
+    "latency_ms" : 269.64829194545746,
+    "path" : "eou-whole",
+    "post_release_ms" : 269.64575004577637,
+    "ref" : "We use FluidAudio for on device speech recognition."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 42.362833976745605,
+    "hyp" : "we use fluid audio for on device speech recognition",
+    "id" : "b04-fluidaudio-Daniel",
+    "latency_ms" : 257.6641249656677,
+    "path" : "eou-whole",
+    "post_release_ms" : 257.66100001335144,
+    "ref" : "We use FluidAudio for on device speech recognition."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 47.79804193973541,
+    "hyp" : "use fluid audio through on device speech recognition",
+    "id" : "b04-fluidaudio-Karen",
+    "latency_ms" : 260.31850004196167,
+    "path" : "eou-whole",
+    "post_release_ms" : 260.3156670331955,
+    "ref" : "We use FluidAudio for on device speech recognition."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 33.68708300590515,
+    "hyp" : "clean up step calls and model hosted on bedrock",
+    "id" : "b05-bedrock-Samantha",
+    "latency_ms" : 224.53454196453094,
+    "path" : "eou-whole",
+    "post_release_ms" : 224.53133404254913,
+    "ref" : "The cleanup step calls a model hosted on Bedrock."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 38.82566595077515,
+    "hyp" : "clean up step calls a model hosted on bedrock",
+    "id" : "b05-bedrock-Daniel",
+    "latency_ms" : 237.64370799064636,
+    "path" : "eou-whole",
+    "post_release_ms" : 237.64129102230072,
+    "ref" : "The cleanup step calls a model hosted on Bedrock."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 33.08908307552338,
+    "hyp" : "clean up step calls and model hostage on bedro",
+    "id" : "b05-bedrock-Karen",
+    "latency_ms" : 235.28049993515015,
+    "path" : "eou-whole",
+    "post_release_ms" : 235.27795898914337,
+    "ref" : "The cleanup step calls a model hosted on Bedrock."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 54.370415925979614,
+    "hyp" : "the request through vertex in the central region",
+    "id" : "b06-vertex-Samantha",
+    "latency_ms" : 213.39212501049042,
+    "path" : "eou-whole",
+    "post_release_ms" : 213.38791608810425,
+    "ref" : "Route the request through Vertex in the central region."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 47.250749945640564,
+    "hyp" : "the request through vertex in the central region",
+    "id" : "b06-vertex-Daniel",
+    "latency_ms" : 230.39508306980133,
+    "path" : "eou-whole",
+    "post_release_ms" : 230.39187490940094,
+    "ref" : "Route the request through Vertex in the central region."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 52.899749994277954,
+    "hyp" : "the request through vertex in the central reg",
+    "id" : "b06-vertex-Karen",
+    "latency_ms" : 230.82124996185303,
+    "path" : "eou-whole",
+    "post_release_ms" : 230.8182499408722,
+    "ref" : "Route the request through Vertex in the central region."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 67.20079207420349,
+    "hyp" : "default the abuses gemini for text cleanup",
+    "id" : "b07-gemini-Samantha",
+    "latency_ms" : 332.2497498989105,
+    "path" : "eou-whole",
+    "post_release_ms" : 332.24720799922943,
+    "ref" : "By default the app uses Gemini for text cleanup."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 85.4898750782013,
+    "hyp" : "a fall the abuses gemini four text cleanup",
+    "id" : "b07-gemini-Daniel",
+    "latency_ms" : 297.0937079191208,
+    "path" : "eou-whole",
+    "post_release_ms" : 297.09129190444946,
+    "ref" : "By default the app uses Gemini for text cleanup."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 51.33091700077057,
+    "hyp" : "default they abuse as gemini for text clean",
+    "id" : "b07-gemini-Karen",
+    "latency_ms" : 241.57095801830292,
+    "path" : "eou-whole",
+    "post_release_ms" : 241.56820905208588,
+    "ref" : "By default the app uses Gemini for text cleanup."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 47.543583035469055,
+    "hyp" : "api key is towards securely and the key chain",
+    "id" : "b08-keychain-Samantha",
+    "latency_ms" : 259.22525000572205,
+    "path" : "eou-whole",
+    "post_release_ms" : 259.22295904159546,
+    "ref" : "The API key is stored securely in the Keychain."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "",
+    "id" : "b08-keychain-Daniel",
+    "latency_ms" : 290.38033294677734,
+    "path" : "eou-whole",
+    "post_release_ms" : 290.3773750066757,
+    "ref" : "The API key is stored securely in the Keychain."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 71.12070798873901,
+    "hyp" : "api key is stored securely in the key chain",
+    "id" : "b08-keychain-Karen",
+    "latency_ms" : 281.7635838985443,
+    "path" : "eou-whole",
+    "post_release_ms" : 281.76029109954834,
+    "ref" : "The API key is stored securely in the Keychain."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 52.0005419254303,
+    "hyp" : "authentication is handled by the sodo library",
+    "id" : "b09-soto-Samantha",
+    "latency_ms" : 249.08145797252655,
+    "path" : "eou-whole",
+    "post_release_ms" : 249.07937502861023,
+    "ref" : "Authentication is handled by the Soto library."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 69.34429204463959,
+    "hyp" : "authentication is handled by the soto library",
+    "id" : "b09-soto-Daniel",
+    "latency_ms" : 257.0323749780655,
+    "path" : "eou-whole",
+    "post_release_ms" : 257.0295829772949,
+    "ref" : "Authentication is handled by the Soto library."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 56.67245805263519,
+    "hyp" : "authentication is handled by the soto library",
+    "id" : "b09-soto-Karen",
+    "latency_ms" : 283.66654098033905,
+    "path" : "eou-whole",
+    "post_release_ms" : 283.6634579896927,
+    "ref" : "Authentication is handled by the Soto library."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 46.97866702079773,
+    "hyp" : "can point it at a local sherpa and point instead",
+    "id" : "b10-sherpa-Samantha",
+    "latency_ms" : 219.46795892715454,
+    "path" : "eou-whole",
+    "post_release_ms" : 219.46549999713898,
+    "ref" : "You can point it at a local Sherpa endpoint instead."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 32.17266595363617,
+    "hyp" : "you can point it at a local sherpo and point instead",
+    "id" : "b10-sherpa-Daniel",
+    "latency_ms" : 227.01987504959106,
+    "path" : "eou-whole",
+    "post_release_ms" : 227.01695895195007,
+    "ref" : "You can point it at a local Sherpa endpoint instead."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 33.805999994277954,
+    "hyp" : "you can point it at a local sherburne and point instead",
+    "id" : "b10-sherpa-Karen",
+    "latency_ms" : 246.3926249742508,
+    "path" : "eou-whole",
+    "post_release_ms" : 246.39016699790955,
+    "ref" : "You can point it at a local Sherpa endpoint instead."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 49.49199998378754,
+    "hyp" : "update the road fifty three record before the cutover",
+    "id" : "b11-route53-Samantha",
+    "latency_ms" : 272.2526251077652,
+    "path" : "eou-whole",
+    "post_release_ms" : 272.2502920627594,
+    "ref" : "Update the Route 53 record before the cutover."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 86.45816695690155,
+    "hyp" : "rate the rude fifty three record before the cutover",
+    "id" : "b11-route53-Daniel",
+    "latency_ms" : 312.5260840654373,
+    "path" : "eou-whole",
+    "post_release_ms" : 312.52329194545746,
+    "ref" : "Update the Route 53 record before the cutover."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 78.28974997997284,
+    "hyp" : "they're route fifty three record bid for the cutover",
+    "id" : "b11-route53-Karen",
+    "latency_ms" : 332.4155830144882,
+    "path" : "eou-whole",
+    "post_release_ms" : 332.4122910499573,
+    "ref" : "Update the Route 53 record before the cutover."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 77.89479100704193,
+    "hyp" : "like sends the transcript to gemini for cleanup",
+    "id" : "b12-multi-Samantha",
+    "latency_ms" : 328.4982920885086,
+    "path" : "eou-whole",
+    "post_release_ms" : 328.4947919845581,
+    "ref" : "Parleq sends the transcript to Gemini for cleanup."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 120.312166929245,
+    "hyp" : "sends the transcript to gemini folk clean",
+    "id" : "b12-multi-Daniel",
+    "latency_ms" : 294.64079201221466,
+    "path" : "eou-whole",
+    "post_release_ms" : 294.6377919912338,
+    "ref" : "Parleq sends the transcript to Gemini for cleanup."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 63.736791014671326,
+    "hyp" : "alex sends the transcript to gemini for cleanup",
+    "id" : "b12-multi-Karen",
+    "latency_ms" : 296.52129209041595,
+    "path" : "eou-whole",
+    "post_release_ms" : 296.51841700077057,
+    "ref" : "Parleq sends the transcript to Gemini for cleanup."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 69.68512499332428,
+    "hyp" : "tested both bedrock and verdex for the cleaning model",
+    "id" : "b13-multi-Samantha",
+    "latency_ms" : 335.14391696453094,
+    "path" : "eou-whole",
+    "post_release_ms" : 335.1403750181198,
+    "ref" : "We tested both Bedrock and Vertex for the cleanup model."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 86.49650001525879,
+    "hyp" : "tested both bedrock and vertex for the cleanup model",
+    "id" : "b13-multi-Daniel",
+    "latency_ms" : 362.546875,
+    "path" : "eou-whole",
+    "post_release_ms" : 362.5437500476837,
+    "ref" : "We tested both Bedrock and Vertex for the cleanup model."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 66.60716700553894,
+    "hyp" : "tested both bedrock and vertex for the cleanup model",
+    "id" : "b13-multi-Karen",
+    "latency_ms" : 338.7459579706192,
+    "path" : "eou-whole",
+    "post_release_ms" : 338.7422080039978,
+    "ref" : "We tested both Bedrock and Vertex for the cleanup model."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 45.06512498855591,
+    "hyp" : "nice thing about parlik is that the audio never leaves the device",
+    "id" : "b14-parleq-ctx-Samantha",
+    "latency_ms" : 268.65925002098083,
+    "path" : "eou-whole",
+    "post_release_ms" : 268.65724992752075,
+    "ref" : "The nice thing about Parleq is that the audio never leaves the device."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 53.2005410194397,
+    "hyp" : "nice thing about parlec is that the audio never leaves the device",
+    "id" : "b14-parleq-ctx-Daniel",
+    "latency_ms" : 303.63445794582367,
+    "path" : "eou-whole",
+    "post_release_ms" : 303.6320410966873,
+    "ref" : "The nice thing about Parleq is that the audio never leaves the device."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 46.010416984558105,
+    "hyp" : "nice thing about parleg is that the audio never leaves the device",
+    "id" : "b14-parleq-ctx-Karen",
+    "latency_ms" : 368.49891698360443,
+    "path" : "eou-whole",
+    "post_release_ms" : 368.49574995040894,
+    "ref" : "The nice thing about Parleq is that the audio never leaves the device."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 38.30620801448822,
+    "hyp" : "fluid audio loads the parakeet model onto the neural engine",
+    "id" : "b15-parakeet-ctx-Samantha",
+    "latency_ms" : 316.53125,
+    "path" : "eou-whole",
+    "post_release_ms" : 316.5285840034485,
+    "ref" : "FluidAudio loads the Parakeet model onto the Neural Engine."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 47.124250054359436,
+    "hyp" : "fluid audio loads that's the parakeet model onto the neural engine",
+    "id" : "b15-parakeet-ctx-Daniel",
+    "latency_ms" : 336.73704195022583,
+    "path" : "eou-whole",
+    "post_release_ms" : 336.7346670627594,
+    "ref" : "FluidAudio loads the Parakeet model onto the Neural Engine."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 44.0616250038147,
+    "hyp" : "fluid audio loads the parakeet model onto the neural engine",
+    "id" : "b15-parakeet-ctx-Karen",
+    "latency_ms" : 278.7407499551773,
+    "path" : "eou-whole",
+    "post_release_ms" : 278.73654198646545,
+    "ref" : "FluidAudio loads the Parakeet model onto the Neural Engine."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 42.764707922935486,
+    "hyp" : "verdex service account lives in the keychain not in a file",
+    "id" : "b16-vertex-ctx-Samantha",
+    "latency_ms" : 381.6243749856949,
+    "path" : "eou-whole",
+    "post_release_ms" : 381.62170803546906,
+    "ref" : "The Vertex service account lives in the Keychain, not in a file."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 74.8252090215683,
+    "hyp" : "vertex service account lives in the keychain not in a file",
+    "id" : "b16-vertex-ctx-Daniel",
+    "latency_ms" : 430.0016670227051,
+    "path" : "eou-whole",
+    "post_release_ms" : 429.99866700172424,
+    "ref" : "The Vertex service account lives in the Keychain, not in a file."
+  },
+  {
+    "biasing" : false,
+    "first_partial_ms" : 97.85087502002716,
+    "hyp" : "vertex service account lives in the key chain not in a file",
+    "id" : "b16-vertex-ctx-Karen",
+    "latency_ms" : 441.929083108902,
+    "path" : "eou-whole",
+    "post_release_ms" : 441.9256670475006,
+    "ref" : "The Vertex service account lives in the Keychain, not in a file."
+  }
+]
