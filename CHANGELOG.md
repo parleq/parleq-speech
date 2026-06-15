@@ -4,6 +4,33 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-06-15
+
+A release focused on never losing a dictation — recover one you lost, plus fixes that stop dictations from being lost in the first place — alongside hands-free recording, in-place editing, configurable gestures, a gentler first run, and a rebuilt on-device model downloader.
+
+### Added
+
+- **Recover your last dictation.** If a dictation gets lost — you pressed Esc by mistake, double-tapped Enter too fast, or focus jumped to the wrong app — you can bring it back. Hold your dictation hotkey and tap **R**, or choose **Recover last dictation** from the menu bar, and Parleq re-runs your most recent recording through cleanup and drops it back into the review overlay. The audio is kept in memory only, never written to disk, and is cleared when you quit.
+- **Hands-free (continuous) recording.** Double-tap your hotkey and release to keep recording without holding the key down — handy for longer dictations. Tap once to stop. You can change what the double-tap-and-release does in Settings → Hotkey.
+- **Edit the transcript in place.** Press **E** in the review overlay to fix a word or two directly, instead of re-dictating or refining. ⌘↵ accepts the edit, Esc discards it.
+- **Configurable hotkey gestures.** Settings → Hotkey now lets you choose what a double-tap-and-release does — continuous recording, quick mode, plain dictation, or nothing — so the gesture fits how you work.
+- **A live "not hearing your mic" warning.** If your microphone stops delivering audio mid-dictation, the listening view now tells you — instead of you finding out only when nothing pastes.
+
+### Changed
+
+- **A hasty Enter during cleanup now waits for the full result.** Pressing Enter while cleanup was still streaming used to paste a half-finished fragment (or nothing) and cancel the rest. Now it shows a brief "Finishing…" cue and pastes the complete cleaned text the moment it's ready. Pressing Enter on the raw transcript before cleanup has started still accepts the raw text as-is, and Esc still cancels.
+- **A smoother first run.** Parleq no longer prompts for Accessibility access at launch before explaining why it's needed. The setup wizard now introduces the permission in context, and the app stays running and usable while you grant it.
+- **Rebuilt on-device model download.** Downloading the on-device cleanup model now shows real, byte-accurate progress and resumes where it left off if it's interrupted (even after a force-quit), instead of starting over.
+
+### Fixed
+
+- **Dictations no longer come back silent when another app changes your audio setup.** If another app — a video call, say — switched your microphone to a multi-channel format, Parleq could capture pure silence and discard the whole dictation ("as if I never spoke"). Capture now handles multi-channel input correctly, and rebuilds itself if your input device or format changes mid-dictation, keeping the audio you spoke after the change.
+- **A dead microphone is now reported, not hidden.** When a capture genuinely picks up no audio, Parleq shows "Didn't catch any audio — check your microphone" instead of silently closing, so you know to retry.
+- **The keyboard can no longer get stuck** if you revoke Accessibility access while Parleq is running.
+- **Fast double-taps are recognized again.** A timing floor added in 0.19.0 could reject quick double-taps (especially with Karabiner-Elements installed), silently degrading quick mode and continuous recording. Restored.
+
+[0.25.0]: https://github.com/parleq/parleq-speech/releases/tag/v0.25.0
+
 ## [0.24.2] - 2026-06-15
 
 Maintenance release: updates the on-device speech recognition engine to its latest version, with no change to dictation behavior.
