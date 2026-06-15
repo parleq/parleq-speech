@@ -45,7 +45,7 @@ cleanup option (see §"On-device LLM cleanup" below).
 
 | Package | Version | License | Source | Used for |
 |---|---|---|---|---|
-| FluidAudio | 0.15.3 | Apache-2.0 | https://github.com/FluidInference/FluidAudio | Parakeet TDT v3 ASR + CTC keyword spotting on the Apple Neural Engine. Called directly from `LocalASR.swift` since v0.9.0; previously wrapped in a bundled HTTP sidecar that has now been retired. |
+| FluidAudio | 0.14.8 | Apache-2.0 | https://github.com/FluidInference/FluidAudio | Parakeet TDT v3 ASR + CTC keyword spotting on the Apple Neural Engine. Called directly from `LocalASR.swift` since v0.9.0; previously wrapped in a bundled HTTP sidecar that has now been retired. Pinned to 0.14.x — 0.15.x's TDT-decode rework made custom-dictionary biasing over-fire (reverted in 0.25.1; see the pin comment in `parleq-app/Package.swift`). |
 
 ### LLM cleanup (AWS Bedrock path)
 
