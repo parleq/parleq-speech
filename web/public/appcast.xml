@@ -44,6 +44,13 @@
             <pubDate>Mon, 15 Jun 2026 18:17:52 +0000</pubDate>
             <sparkle:version>99</sparkle:version>
             <sparkle:shortVersionString>0.25.2</sparkle:shortVersionString>
+            <!-- Critical update: fixes the custom-dictionary over-firing
+                 regression in 0.24.2 / 0.25.0 / 0.25.1 (FluidAudio 0.14.8+).
+                 Unscoped, so anyone not yet on 0.25.2 gets the more insistent
+                 (non-skippable) Sparkle prompt instead of updating on their own
+                 cadence. Remove on the next release once the buggy builds have
+                 aged out of the field. -->
+            <sparkle:criticalUpdate></sparkle:criticalUpdate>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <sparkle:releaseNotesLink>https://github.com/parleq/parleq-speech/releases/tag/v0.25.2</sparkle:releaseNotesLink>
             <enclosure
