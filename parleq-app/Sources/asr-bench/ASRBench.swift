@@ -54,6 +54,13 @@ struct Args {
     var dictionary: String?
     var pacing = "realtime"
     var out = "bench/results/results.json"
+    // Vocab-rescorer tuning (biasing arm). Defaults mirror ParleqAppCore's
+    // VocabTuning (minSimilarity 0.65, cbw 2.0); margin defaults to the
+    // FluidAudio library default for the linked version when not set.
+    // Overridable so the over-fire/recall ROC can be swept without rebuilding.
+    var minSimilarity: Float = 0.65
+    var cbw: Float = 2.0
+    var margin: Double = -1   // <0 ⇒ use library default (don't pass)
 }
 
 func parseArgs() -> Args {
@@ -68,6 +75,9 @@ func parseArgs() -> Args {
         case "--dictionary": a.dictionary = next()
         case "--pacing": a.pacing = next() ?? a.pacing
         case "--out": a.out = next() ?? a.out
+        case "--min-similarity": a.minSimilarity = Float(next() ?? "") ?? a.minSimilarity
+        case "--cbw": a.cbw = Float(next() ?? "") ?? a.cbw
+        case "--margin": a.margin = Double(next() ?? "") ?? a.margin
         default:
             FileHandle.standardError.write("warning: unknown flag \(flag)\n".data(using: .utf8)!)
         }
@@ -163,8 +173,15 @@ struct DictTerm: Decodable { let term: String; let aliases: [String]? }
 /// ParleqAppCore/LocalASR.swift's VocabBox so the biasing arm reflects
 /// exactly what the app does. Same tuning constants.
 actor VocabEngine {
-    private static let minSimilarity: Float = 0.65
-    private static let cbw: Float = 2.0
+    let minSimilarity: Float
+    let cbw: Float
+    let margin: Double   // <0 ⇒ use library default
+
+    init(minSimilarity: Float = 0.65, cbw: Float = 2.0, margin: Double = -1) {
+        self.minSimilarity = minSimilarity
+        self.cbw = cbw
+        self.margin = margin
+    }
 
     private var spotter: CtcKeywordSpotter?
     private var tokenizer: CtcTokenizer?
@@ -191,7 +208,7 @@ actor VocabEngine {
                 tokenIds: nil, ctcTokenIds: ids
             )
         }
-        let vocab = CustomVocabularyContext(terms: tokenized, minSimilarity: Self.minSimilarity)
+        let vocab = CustomVocabularyContext(terms: tokenized, minSimilarity: minSimilarity)
         let resc = try await VocabularyRescorer.create(
             spotter: spot, vocabulary: vocab, config: .default, ctcModelDirectory: dir
         )
@@ -213,11 +230,20 @@ actor VocabEngine {
                 audioSamples: samples, customVocabulary: vocabulary
             )
             guard !spotted.logProbs.isEmpty else { return transcript }
-            let out = rescorer.ctcTokenRescore(
-                transcript: transcript, tokenTimings: timings,
-                logProbs: spotted.logProbs, frameDuration: spotted.frameDuration,
-                cbw: Self.cbw, minSimilarity: Self.minSimilarity
-            )
+            let out: VocabularyRescorer.RescoreOutput
+            if margin >= 0 {
+                out = rescorer.ctcTokenRescore(
+                    transcript: transcript, tokenTimings: timings,
+                    logProbs: spotted.logProbs, frameDuration: spotted.frameDuration,
+                    cbw: cbw, marginSeconds: margin, minSimilarity: minSimilarity
+                )
+            } else {
+                out = rescorer.ctcTokenRescore(
+                    transcript: transcript, tokenTimings: timings,
+                    logProbs: spotted.logProbs, frameDuration: spotted.frameDuration,
+                    cbw: cbw, minSimilarity: minSimilarity
+                )
+            }
             return out.wasModified ? out.text : transcript
         } catch {
             return transcript
@@ -413,8 +439,8 @@ struct ASRBench {
                 do {
                     let data = try Data(contentsOf: URL(fileURLWithPath: dictPath))
                     let dict = try JSONDecoder().decode(DictFile.self, from: data)
-                    err("loading CTC vocab boosting (\(dict.terms.count) terms; first run downloads ~97 MB)…")
-                    let v = VocabEngine()
+                    err("loading CTC vocab boosting (\(dict.terms.count) terms; minSim=\(args.minSimilarity) cbw=\(args.cbw) margin=\(args.margin < 0 ? "lib-default" : String(args.margin)); first run downloads ~97 MB)…")
+                    let v = VocabEngine(minSimilarity: args.minSimilarity, cbw: args.cbw, margin: args.margin)
                     try await v.load(terms: dict.terms)
                     vocab = v
                     err("vocab ready; will emit biasing=true rows too")
