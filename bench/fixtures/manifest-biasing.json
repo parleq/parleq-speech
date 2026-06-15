@@ -1,0 +1,696 @@
+{
+  "generator": "macOS say",
+  "format": "16 kHz mono 16-bit PCM WAV",
+  "voices": {
+    "Samantha": "us",
+    "Daniel": "gb",
+    "Karen": "au"
+  },
+  "clip_count": 48,
+  "clips": [
+    {
+      "id": "b01-parleq-Samantha",
+      "utterance_id": "b01-parleq",
+      "corpus": "biasing",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "biasing",
+      "terms": [
+        "Parleq"
+      ],
+      "reference_transcript": "I dictated this note using Parleq on my Mac.",
+      "file": "b01-parleq-Samantha.wav",
+      "duration_ms": 2608
+    },
+    {
+      "id": "b01-parleq-Daniel",
+      "utterance_id": "b01-parleq",
+      "corpus": "biasing",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "biasing",
+      "terms": [
+        "Parleq"
+      ],
+      "reference_transcript": "I dictated this note using Parleq on my Mac.",
+      "file": "b01-parleq-Daniel.wav",
+      "duration_ms": 2781
+    },
+    {
+      "id": "b01-parleq-Karen",
+      "utterance_id": "b01-parleq",
+      "corpus": "biasing",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "biasing",
+      "terms": [
+        "Parleq"
+      ],
+      "reference_transcript": "I dictated this note using Parleq on my Mac.",
+      "file": "b01-parleq-Karen.wav",
+      "duration_ms": 2818
+    },
+    {
+      "id": "b02-parleq-Samantha",
+      "utterance_id": "b02-parleq",
+      "corpus": "biasing",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "biasing",
+      "terms": [
+        "Parleq"
+      ],
+      "reference_transcript": "Can you add Parleq to the list of approved applications?",
+      "file": "b02-parleq-Samantha.wav",
+      "duration_ms": 2937
+    },
+    {
+      "id": "b02-parleq-Daniel",
+      "utterance_id": "b02-parleq",
+      "corpus": "biasing",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "biasing",
+      "terms": [
+        "Parleq"
+      ],
+      "reference_transcript": "Can you add Parleq to the list of approved applications?",
+      "file": "b02-parleq-Daniel.wav",
+      "duration_ms": 3067
+    },
+    {
+      "id": "b02-parleq-Karen",
+      "utterance_id": "b02-parleq",
+      "corpus": "biasing",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "biasing",
+      "terms": [
+        "Parleq"
+      ],
+      "reference_transcript": "Can you add Parleq to the list of approved applications?",
+      "file": "b02-parleq-Karen.wav",
+      "duration_ms": 2924
+    },
+    {
+      "id": "b03-parakeet-Samantha",
+      "utterance_id": "b03-parakeet",
+      "corpus": "biasing",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "biasing",
+      "terms": [
+        "Parakeet"
+      ],
+      "reference_transcript": "The transcription runs on the Parakeet model locally.",
+      "file": "b03-parakeet-Samantha.wav",
+      "duration_ms": 2880
+    },
+    {
+      "id": "b03-parakeet-Daniel",
+      "utterance_id": "b03-parakeet",
+      "corpus": "biasing",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "biasing",
+      "terms": [
+        "Parakeet"
+      ],
+      "reference_transcript": "The transcription runs on the Parakeet model locally.",
+      "file": "b03-parakeet-Daniel.wav",
+      "duration_ms": 2993
+    },
+    {
+      "id": "b03-parakeet-Karen",
+      "utterance_id": "b03-parakeet",
+      "corpus": "biasing",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "biasing",
+      "terms": [
+        "Parakeet"
+      ],
+      "reference_transcript": "The transcription runs on the Parakeet model locally.",
+      "file": "b03-parakeet-Karen.wav",
+      "duration_ms": 2883
+    },
+    {
+      "id": "b04-fluidaudio-Samantha",
+      "utterance_id": "b04-fluidaudio",
+      "corpus": "biasing",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "biasing",
+      "terms": [
+        "FluidAudio"
+      ],
+      "reference_transcript": "We use FluidAudio for on device speech recognition.",
+      "file": "b04-fluidaudio-Samantha.wav",
+      "duration_ms": 3056
+    },
+    {
+      "id": "b04-fluidaudio-Daniel",
+      "utterance_id": "b04-fluidaudio",
+      "corpus": "biasing",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "biasing",
+      "terms": [
+        "FluidAudio"
+      ],
+      "reference_transcript": "We use FluidAudio for on device speech recognition.",
+      "file": "b04-fluidaudio-Daniel.wav",
+      "duration_ms": 3160
+    },
+    {
+      "id": "b04-fluidaudio-Karen",
+      "utterance_id": "b04-fluidaudio",
+      "corpus": "biasing",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "biasing",
+      "terms": [
+        "FluidAudio"
+      ],
+      "reference_transcript": "We use FluidAudio for on device speech recognition.",
+      "file": "b04-fluidaudio-Karen.wav",
+      "duration_ms": 3130
+    },
+    {
+      "id": "b05-bedrock-Samantha",
+      "utterance_id": "b05-bedrock",
+      "corpus": "biasing",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "biasing",
+      "terms": [
+        "Bedrock"
+      ],
+      "reference_transcript": "The cleanup step calls a model hosted on Bedrock.",
+      "file": "b05-bedrock-Samantha.wav",
+      "duration_ms": 2822
+    },
+    {
+      "id": "b05-bedrock-Daniel",
+      "utterance_id": "b05-bedrock",
+      "corpus": "biasing",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "biasing",
+      "terms": [
+        "Bedrock"
+      ],
+      "reference_transcript": "The cleanup step calls a model hosted on Bedrock.",
+      "file": "b05-bedrock-Daniel.wav",
+      "duration_ms": 2958
+    },
+    {
+      "id": "b05-bedrock-Karen",
+      "utterance_id": "b05-bedrock",
+      "corpus": "biasing",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "biasing",
+      "terms": [
+        "Bedrock"
+      ],
+      "reference_transcript": "The cleanup step calls a model hosted on Bedrock.",
+      "file": "b05-bedrock-Karen.wav",
+      "duration_ms": 2802
+    },
+    {
+      "id": "b06-vertex-Samantha",
+      "utterance_id": "b06-vertex",
+      "corpus": "biasing",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "biasing",
+      "terms": [
+        "Vertex"
+      ],
+      "reference_transcript": "Route the request through Vertex in the central region.",
+      "file": "b06-vertex-Samantha.wav",
+      "duration_ms": 2596
+    },
+    {
+      "id": "b06-vertex-Daniel",
+      "utterance_id": "b06-vertex",
+      "corpus": "biasing",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "biasing",
+      "terms": [
+        "Vertex"
+      ],
+      "reference_transcript": "Route the request through Vertex in the central region.",
+      "file": "b06-vertex-Daniel.wav",
+      "duration_ms": 2824
+    },
+    {
+      "id": "b06-vertex-Karen",
+      "utterance_id": "b06-vertex",
+      "corpus": "biasing",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "biasing",
+      "terms": [
+        "Vertex"
+      ],
+      "reference_transcript": "Route the request through Vertex in the central region.",
+      "file": "b06-vertex-Karen.wav",
+      "duration_ms": 2845
+    },
+    {
+      "id": "b07-gemini-Samantha",
+      "utterance_id": "b07-gemini",
+      "corpus": "biasing",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "biasing",
+      "terms": [
+        "Gemini"
+      ],
+      "reference_transcript": "By default the app uses Gemini for text cleanup.",
+      "file": "b07-gemini-Samantha.wav",
+      "duration_ms": 3023
+    },
+    {
+      "id": "b07-gemini-Daniel",
+      "utterance_id": "b07-gemini",
+      "corpus": "biasing",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "biasing",
+      "terms": [
+        "Gemini"
+      ],
+      "reference_transcript": "By default the app uses Gemini for text cleanup.",
+      "file": "b07-gemini-Daniel.wav",
+      "duration_ms": 3102
+    },
+    {
+      "id": "b07-gemini-Karen",
+      "utterance_id": "b07-gemini",
+      "corpus": "biasing",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "biasing",
+      "terms": [
+        "Gemini"
+      ],
+      "reference_transcript": "By default the app uses Gemini for text cleanup.",
+      "file": "b07-gemini-Karen.wav",
+      "duration_ms": 2958
+    },
+    {
+      "id": "b08-keychain-Samantha",
+      "utterance_id": "b08-keychain",
+      "corpus": "biasing",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "biasing",
+      "terms": [
+        "Keychain"
+      ],
+      "reference_transcript": "The API key is stored securely in the Keychain.",
+      "file": "b08-keychain-Samantha.wav",
+      "duration_ms": 2866
+    },
+    {
+      "id": "b08-keychain-Daniel",
+      "utterance_id": "b08-keychain",
+      "corpus": "biasing",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "biasing",
+      "terms": [
+        "Keychain"
+      ],
+      "reference_transcript": "The API key is stored securely in the Keychain.",
+      "file": "b08-keychain-Daniel.wav",
+      "duration_ms": 2958
+    },
+    {
+      "id": "b08-keychain-Karen",
+      "utterance_id": "b08-keychain",
+      "corpus": "biasing",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "biasing",
+      "terms": [
+        "Keychain"
+      ],
+      "reference_transcript": "The API key is stored securely in the Keychain.",
+      "file": "b08-keychain-Karen.wav",
+      "duration_ms": 2883
+    },
+    {
+      "id": "b09-soto-Samantha",
+      "utterance_id": "b09-soto",
+      "corpus": "biasing",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "biasing",
+      "terms": [
+        "Soto"
+      ],
+      "reference_transcript": "Authentication is handled by the Soto library.",
+      "file": "b09-soto-Samantha.wav",
+      "duration_ms": 2790
+    },
+    {
+      "id": "b09-soto-Daniel",
+      "utterance_id": "b09-soto",
+      "corpus": "biasing",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "biasing",
+      "terms": [
+        "Soto"
+      ],
+      "reference_transcript": "Authentication is handled by the Soto library.",
+      "file": "b09-soto-Daniel.wav",
+      "duration_ms": 2859
+    },
+    {
+      "id": "b09-soto-Karen",
+      "utterance_id": "b09-soto",
+      "corpus": "biasing",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "biasing",
+      "terms": [
+        "Soto"
+      ],
+      "reference_transcript": "Authentication is handled by the Soto library.",
+      "file": "b09-soto-Karen.wav",
+      "duration_ms": 2662
+    },
+    {
+      "id": "b10-sherpa-Samantha",
+      "utterance_id": "b10-sherpa",
+      "corpus": "biasing",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "biasing",
+      "terms": [
+        "Sherpa"
+      ],
+      "reference_transcript": "You can point it at a local Sherpa endpoint instead.",
+      "file": "b10-sherpa-Samantha.wav",
+      "duration_ms": 2721
+    },
+    {
+      "id": "b10-sherpa-Daniel",
+      "utterance_id": "b10-sherpa",
+      "corpus": "biasing",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "biasing",
+      "terms": [
+        "Sherpa"
+      ],
+      "reference_transcript": "You can point it at a local Sherpa endpoint instead.",
+      "file": "b10-sherpa-Daniel.wav",
+      "duration_ms": 2858
+    },
+    {
+      "id": "b10-sherpa-Karen",
+      "utterance_id": "b10-sherpa",
+      "corpus": "biasing",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "biasing",
+      "terms": [
+        "Sherpa"
+      ],
+      "reference_transcript": "You can point it at a local Sherpa endpoint instead.",
+      "file": "b10-sherpa-Karen.wav",
+      "duration_ms": 2719
+    },
+    {
+      "id": "b11-route53-Samantha",
+      "utterance_id": "b11-route53",
+      "corpus": "biasing",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "biasing",
+      "terms": [
+        "Route 53"
+      ],
+      "reference_transcript": "Update the Route 53 record before the cutover.",
+      "file": "b11-route53-Samantha.wav",
+      "duration_ms": 2839
+    },
+    {
+      "id": "b11-route53-Daniel",
+      "utterance_id": "b11-route53",
+      "corpus": "biasing",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "biasing",
+      "terms": [
+        "Route 53"
+      ],
+      "reference_transcript": "Update the Route 53 record before the cutover.",
+      "file": "b11-route53-Daniel.wav",
+      "duration_ms": 2999
+    },
+    {
+      "id": "b11-route53-Karen",
+      "utterance_id": "b11-route53",
+      "corpus": "biasing",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "biasing",
+      "terms": [
+        "Route 53"
+      ],
+      "reference_transcript": "Update the Route 53 record before the cutover.",
+      "file": "b11-route53-Karen.wav",
+      "duration_ms": 2817
+    },
+    {
+      "id": "b12-multi-Samantha",
+      "utterance_id": "b12-multi",
+      "corpus": "biasing",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "biasing",
+      "terms": [
+        "Parleq",
+        "Gemini"
+      ],
+      "reference_transcript": "Parleq sends the transcript to Gemini for cleanup.",
+      "file": "b12-multi-Samantha.wav",
+      "duration_ms": 2879
+    },
+    {
+      "id": "b12-multi-Daniel",
+      "utterance_id": "b12-multi",
+      "corpus": "biasing",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "biasing",
+      "terms": [
+        "Parleq",
+        "Gemini"
+      ],
+      "reference_transcript": "Parleq sends the transcript to Gemini for cleanup.",
+      "file": "b12-multi-Daniel.wav",
+      "duration_ms": 2844
+    },
+    {
+      "id": "b12-multi-Karen",
+      "utterance_id": "b12-multi",
+      "corpus": "biasing",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "biasing",
+      "terms": [
+        "Parleq",
+        "Gemini"
+      ],
+      "reference_transcript": "Parleq sends the transcript to Gemini for cleanup.",
+      "file": "b12-multi-Karen.wav",
+      "duration_ms": 2942
+    },
+    {
+      "id": "b13-multi-Samantha",
+      "utterance_id": "b13-multi",
+      "corpus": "biasing",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "biasing",
+      "terms": [
+        "Bedrock",
+        "Vertex"
+      ],
+      "reference_transcript": "We tested both Bedrock and Vertex for the cleanup model.",
+      "file": "b13-multi-Samantha.wav",
+      "duration_ms": 3033
+    },
+    {
+      "id": "b13-multi-Daniel",
+      "utterance_id": "b13-multi",
+      "corpus": "biasing",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "biasing",
+      "terms": [
+        "Bedrock",
+        "Vertex"
+      ],
+      "reference_transcript": "We tested both Bedrock and Vertex for the cleanup model.",
+      "file": "b13-multi-Daniel.wav",
+      "duration_ms": 3183
+    },
+    {
+      "id": "b13-multi-Karen",
+      "utterance_id": "b13-multi",
+      "corpus": "biasing",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "biasing",
+      "terms": [
+        "Bedrock",
+        "Vertex"
+      ],
+      "reference_transcript": "We tested both Bedrock and Vertex for the cleanup model.",
+      "file": "b13-multi-Karen.wav",
+      "duration_ms": 3165
+    },
+    {
+      "id": "b14-parleq-ctx-Samantha",
+      "utterance_id": "b14-parleq-ctx",
+      "corpus": "biasing",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "biasing",
+      "terms": [
+        "Parleq"
+      ],
+      "reference_transcript": "The nice thing about Parleq is that the audio never leaves the device.",
+      "file": "b14-parleq-ctx-Samantha.wav",
+      "duration_ms": 3553
+    },
+    {
+      "id": "b14-parleq-ctx-Daniel",
+      "utterance_id": "b14-parleq-ctx",
+      "corpus": "biasing",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "biasing",
+      "terms": [
+        "Parleq"
+      ],
+      "reference_transcript": "The nice thing about Parleq is that the audio never leaves the device.",
+      "file": "b14-parleq-ctx-Daniel.wav",
+      "duration_ms": 3817
+    },
+    {
+      "id": "b14-parleq-ctx-Karen",
+      "utterance_id": "b14-parleq-ctx",
+      "corpus": "biasing",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "biasing",
+      "terms": [
+        "Parleq"
+      ],
+      "reference_transcript": "The nice thing about Parleq is that the audio never leaves the device.",
+      "file": "b14-parleq-ctx-Karen.wav",
+      "duration_ms": 3510
+    },
+    {
+      "id": "b15-parakeet-ctx-Samantha",
+      "utterance_id": "b15-parakeet-ctx",
+      "corpus": "biasing",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "biasing",
+      "terms": [
+        "Parakeet",
+        "FluidAudio"
+      ],
+      "reference_transcript": "FluidAudio loads the Parakeet model onto the Neural Engine.",
+      "file": "b15-parakeet-ctx-Samantha.wav",
+      "duration_ms": 3334
+    },
+    {
+      "id": "b15-parakeet-ctx-Daniel",
+      "utterance_id": "b15-parakeet-ctx",
+      "corpus": "biasing",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "biasing",
+      "terms": [
+        "Parakeet",
+        "FluidAudio"
+      ],
+      "reference_transcript": "FluidAudio loads the Parakeet model onto the Neural Engine.",
+      "file": "b15-parakeet-ctx-Daniel.wav",
+      "duration_ms": 3446
+    },
+    {
+      "id": "b15-parakeet-ctx-Karen",
+      "utterance_id": "b15-parakeet-ctx",
+      "corpus": "biasing",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "biasing",
+      "terms": [
+        "Parakeet",
+        "FluidAudio"
+      ],
+      "reference_transcript": "FluidAudio loads the Parakeet model onto the Neural Engine.",
+      "file": "b15-parakeet-ctx-Karen.wav",
+      "duration_ms": 3329
+    },
+    {
+      "id": "b16-vertex-ctx-Samantha",
+      "utterance_id": "b16-vertex-ctx",
+      "corpus": "biasing",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "biasing",
+      "terms": [
+        "Vertex",
+        "Keychain"
+      ],
+      "reference_transcript": "The Vertex service account lives in the Keychain, not in a file.",
+      "file": "b16-vertex-ctx-Samantha.wav",
+      "duration_ms": 3576
+    },
+    {
+      "id": "b16-vertex-ctx-Daniel",
+      "utterance_id": "b16-vertex-ctx",
+      "corpus": "biasing",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "biasing",
+      "terms": [
+        "Vertex",
+        "Keychain"
+      ],
+      "reference_transcript": "The Vertex service account lives in the Keychain, not in a file.",
+      "file": "b16-vertex-ctx-Daniel.wav",
+      "duration_ms": 3854
+    },
+    {
+      "id": "b16-vertex-ctx-Karen",
+      "utterance_id": "b16-vertex-ctx",
+      "corpus": "biasing",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "biasing",
+      "terms": [
+        "Vertex",
+        "Keychain"
+      ],
+      "reference_transcript": "The Vertex service account lives in the Keychain, not in a file.",
+      "file": "b16-vertex-ctx-Karen.wav",
+      "duration_ms": 3719
+    }
+  ]
+}
