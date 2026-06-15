@@ -42,7 +42,7 @@ let package = Package(
         // simplify supervision, and shed the Hummingbird dependency.
         // Same 0.14.x pin the retired sidecar used so first-run model
         // downloads land on a known-good FluidAudio revision.
-        .package(url: "https://github.com/FluidInference/FluidAudio.git", "0.14.3"..<"0.15.0"),
+        .package(url: "https://github.com/FluidInference/FluidAudio.git", "0.15.3"..<"0.16.0"),
         // Sparkle — auto-update framework. Checks an EdDSA-signed
         // appcast.xml on parleq.app for newer releases and runs the
         // user-prompted download/install/relaunch flow. Used by
