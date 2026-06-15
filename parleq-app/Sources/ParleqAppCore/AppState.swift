@@ -209,6 +209,10 @@ public final class AppState {
     /// the overlay's "⚠ not hearing your mic" warning when input stays flat-
     /// zero past the threshold. Reset at every capture start.
     private var micSignalMonitor = MicSignalMonitor()
+    /// A2: debounce for the audio config-change rebuild. A device/format change
+    /// posts a burst of notifications; coalesce them into one rebuild ~250 ms
+    /// after the last so we don't thrash the engine.
+    private var audioConfigRebuildTask: Task<Void, Never>?
     /// Bumped every time the auto-accept timer is cancelled/re-armed.
     /// A fired Timer has already dispatched its `Task { accept() }` onto
     /// the MainActor by the time `invalidate()` runs, so invalidation
@@ -2612,6 +2616,14 @@ public final class AppState {
                 }
             }
         }
+        // A2: rebuild the tap + converter if the engine reconfigures mid-flight
+        // (another app flips the default input to multichannel, the route
+        // changes). Drop any rebuild queued against a prior capture first.
+        audioConfigRebuildTask?.cancel()
+        audioConfigRebuildTask = nil
+        recorder.onConfigurationChange = { [weak self] in
+            Task { @MainActor in self?.handleAudioConfigurationChange() }
+        }
         do {
             try recorder.start()
         } catch {
@@ -2633,6 +2645,23 @@ public final class AppState {
             Task { _ = try? await session.accessToken() }
         }
         return true
+    }
+
+    /// A2: debounced handler for AVAudioEngine config changes. A single
+    /// device/format change posts a burst of notifications; coalesce them into
+    /// one rebuild ~250 ms after the last. The rebuild itself (engine stop +
+    /// tap/converter rebuild on a fresh format) runs on the MainActor inside
+    /// AudioRecorder, so it never races a capture start/stop. No-op when the
+    /// recorder isn't actively capturing (the next start() re-queries anyway).
+    @MainActor
+    private func handleAudioConfigurationChange() {
+        audioConfigRebuildTask?.cancel()
+        audioConfigRebuildTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            guard let self, !Task.isCancelled else { return }
+            self.log("audio configuration changed mid-capture — rebuilding tap + converter")
+            self.recorder.handleConfigurationChange()
+        }
     }
 
     private func finalizeCapture(asRefine: Bool) {

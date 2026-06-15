@@ -59,6 +59,21 @@ public final class AudioRecorder {
     private let outputFormat: AVAudioFormat
     private var accumulated: [Int16] = []
     private var isRunning = false
+    /// A2 (lost-dictation fix): observer token for
+    /// `.AVAudioEngineConfigurationChange`, registered for the lifetime of the
+    /// recorder. macOS posts this when the engine's I/O configuration changes
+    /// mid-flight — e.g. another app (FaceTime/Zoom/Teams) flips the default
+    /// input to a multichannel format, or the routed device changes. When that
+    /// happens during an active capture, the tap + converter were built for the
+    /// OLD format and would feed silence/garbage for the rest of the utterance
+    /// (the all-zero "as if I never dictated" tail). We rebuild them against a
+    /// fresh format so the capture continues correctly.
+    private var configChangeObserver: NSObjectProtocol?
+    /// A2: fired (off the main thread) when the engine reconfigures mid-flight.
+    /// AppState owns the debounce + the MainActor hop and calls back into
+    /// `handleConfigurationChange()` — keeping all engine mutation on the main
+    /// queue alongside start()/stop(). Set to nil to ignore config changes.
+    public var onConfigurationChange: (@Sendable () -> Void)?
     /// Gates whether the tap-callback path appends new samples into
     /// `accumulated`. Toggled by `pause()` / `resume()` so the engine
     /// can stay warm across a latched-compose interruption (e.g.
@@ -149,6 +164,74 @@ public final class AudioRecorder {
             channels: 1,
             interleaved: true
         )!
+        // A2: watch for mid-flight engine reconfiguration (default-input format
+        // flip, route change). Scoped to THIS engine. The handler only defers
+        // work — it never touches the engine inline (doing so races
+        // AVAudioEngine teardown; cf. Hex #236).
+        configChangeObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange,
+            object: engine,
+            queue: nil
+        ) { [weak self] _ in
+            // Defer entirely — never touch the engine inside this callback
+            // (it can fire on the render/HAL thread and racing AVAudioEngine
+            // teardown here deadlocks; cf. Hex #236). AppState debounces and
+            // calls handleConfigurationChange() back on the main queue.
+            self?.onConfigurationChange?()
+        }
+    }
+
+    deinit {
+        if let configChangeObserver {
+            NotificationCenter.default.removeObserver(configChangeObserver)
+        }
+    }
+
+    /// A2: rebuild the converter + tap against a freshly-re-queried input format
+    /// so an in-progress capture survives a mid-flight format/route change. The
+    /// accumulated samples are deliberately preserved — the utterance continues
+    /// across the change rather than being dropped. No-op when not actively
+    /// capturing: the next start() already re-queries the format and rebuilds.
+    ///
+    /// MUST be called on the main queue (AppState's debounced handler does), so
+    /// it never races the public start()/stop(). engine.stop() drains the
+    /// render thread before we swap `converter`, mirroring stop()'s ordering.
+    public func handleConfigurationChange() {
+        guard isRunning else {
+            logStderr("[parleq] audio[configchange]: idle — next start() will pick up the new format")
+            return
+        }
+        let input = engine.inputNode
+        // Stop the engine + remove the tap FIRST. engine.stop() drains the
+        // render thread, so no tap callback is mid-process() when we swap
+        // `converter` below — the same ordering the public stop() relies on.
+        engine.stop()
+        input.removeTap(onBus: 0)
+        applyInputDeviceOverride(on: input, context: "configchange")
+        let newFormat = input.inputFormat(forBus: 0)
+        guard let conv = AVAudioConverter(from: newFormat, to: outputFormat) else {
+            // Leave isRunning = true so the eventual stop() still returns the
+            // samples captured BEFORE the change — better to recover the first
+            // half than to drop the whole utterance on a rare rebuild failure.
+            logStderr("[parleq] audio[configchange]: converter rebuild failed; preserving captured-so-far audio")
+            return
+        }
+        // A1 channelMap again — the new format may itself be multichannel.
+        conv.channelMap = AudioRecorder.converterChannelMap(
+            outputChannels: outputFormat.channelCount)
+        converter = conv
+        input.installTap(onBus: 0, bufferSize: 4096, format: newFormat) { [weak self] buf, _ in
+            self?.process(buffer: buf)
+        }
+        do {
+            engine.prepare()
+            try engine.start()
+            logStderr("[parleq] audio[configchange]: rebuilt tap + converter on new input format; capture continues")
+        } catch {
+            // As above: keep isRunning so stop() returns the captured-so-far
+            // audio instead of discarding the whole utterance.
+            logStderr("[parleq] audio[configchange]: engine restart failed; preserving captured-so-far audio: \(error)")
+        }
     }
 
     /// Pre-instantiate the engine's input audio unit and apply the
