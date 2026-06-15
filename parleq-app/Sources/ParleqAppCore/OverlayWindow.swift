@@ -1200,6 +1200,12 @@ public final class OverlayModel: ObservableObject {
     /// kills the in-flight LLM stream. Cleared by the first streamed
     /// chunk's text replacement (via update()).
     @Published var provisionalText: Bool = false
+    /// C1 (eager-accept deferral): true while an Enter pressed during
+    /// .cleaning is being held until the cleanup stream completes. The
+    /// footer shows a subtle "Finishing…" cue so the user knows the
+    /// keypress registered and the full cleaned result will auto-accept.
+    /// Set by AppState.accept(); cleared on the terminal transition / cancel.
+    @Published var pendingAcceptArmed: Bool = false
     /// True when the current .cleaning pass is a REFINE (the raw-first
     /// change made `text.isEmpty` useless as the refine heuristic — the
     /// provisional transcript populates text immediately, which made
@@ -3142,7 +3148,14 @@ private struct OverlayContent: View {
                 Text("Release \(hotkeyLabel) when done")
             }
         case .cleaning:
-            Text("[Esc] cancel")
+            // C1: a deferred eager-accept shows a subtle "Finishing…" cue so
+            // the user knows the Enter registered and the full cleaned result
+            // will paste itself the moment the stream completes.
+            if model.pendingAcceptArmed {
+                Text("Finishing… will accept   [Esc] cancel")
+            } else {
+                Text("[Esc] cancel")
+            }
         case .awaitingAccept:
             // #85: in edit mode, show the editor keymap; otherwise the review
             // gestures plus the [E] edit affordance.

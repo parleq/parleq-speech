@@ -194,6 +194,13 @@ public final class AppState {
     /// working. Reset by every fresh capture and by closeAndReset.
     private var lastCleanupFailed: Bool = false
     private var autoAcceptTimer: Timer?
+    /// C1 (eager-accept deferral): set when the user presses Enter during
+    /// .cleaning before the cleaned result is final. Instead of pasting a
+    /// half-streamed fragment + cancelling the stream, we hold the accept;
+    /// applyResult() auto-accepts the full cleaned text the instant the
+    /// stream completes. Cleared on that auto-accept, on cancel (Esc), and
+    /// on every reset path (resetPerDictationOverlayState).
+    private var pendingAcceptOnCleanupComplete = false
     /// Bumped every time the auto-accept timer is cancelled/re-armed.
     /// A fired Timer has already dispatched its `Task { accept() }` onto
     /// the MainActor by the time `invalidate()` runs, so invalidation
@@ -1748,36 +1755,52 @@ public final class AppState {
             NSSound.beep()
             return
         }
-        // Raw-first live accept (task #53, maintainer-specified
-        // kill-it semantics): accepting during .cleaning takes
-        // whatever is visible — the provisional raw transcript, or a
-        // partially streamed cleanup — and CANCELS the in-flight LLM
-        // stream (the user chose not to wait; no background completion,
-        // no resurrection). The visible text becomes currentText, and
-        // history records it as not-cleaned when it was the raw
-        // provisional. Empty text (no ASR result yet) beeps instead of
-        // pasting nothing.
+        // Accept during .cleaning (task #53 raw-first; C1 eager-accept
+        // deferral). Two outcomes, decided by EagerAccept.resolve:
+        //  • The full raw/prior transcript is on screen provisionally → the
+        //    user is deliberately taking the raw as-is. Keep the original
+        //    "kill-it" semantics: paste it and cancel the in-flight stream.
+        //  • A partial cleanup is streaming, or nothing's shown yet → DON'T
+        //    paste a fragment (or beep on empty) and discard the rest. Arm a
+        //    pending-accept; applyResult() auto-accepts the FULL cleaned
+        //    result the instant the stream completes (Jeff's hasty-Enter fix).
+        //    Esc still cancels.
         if phase == .cleaning {
             let visible = overlay.model.text
-            guard !visible.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                NSSound.beep()
+            let visibleIsEmpty = visible
+                .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            switch EagerAccept.resolve(
+                provisionalRawShown: overlay.model.provisionalText,
+                visibleIsEmpty: visibleIsEmpty
+            ) {
+            case .deferUntilComplete:
+                // Idempotent: a second hasty Enter while already armed is a
+                // no-op (the stream is still finishing).
+                if !pendingAcceptOnCleanupComplete {
+                    pendingAcceptOnCleanupComplete = true
+                    overlay.model.pendingAcceptArmed = true
+                    // Nothing to auto-accept yet — no review timer to run.
+                    cancelAutoAcceptTimer()
+                    log("accept during cleaning: deferred — will auto-accept full cleaned result on completion")
+                }
                 return
+            case .acceptVisibleNow:
+                inFlightTask?.cancel()
+                inFlightTask = nil
+                // Kill-it semantics extend to a chained refine still awaiting
+                // its baseline: cancel the background first cleanup and
+                // release the gate so the suspended refine task wakes and
+                // bails. The visible text (the refine view's current content)
+                // is what gets pasted. No-op outside the chained window.
+                teardownChainedRefine()
+                currentText = visible
+                lastCleanupFailed = overlay.model.provisionalText
+                // The cancelled stream never reported latency — don't let
+                // the PREVIOUS dictation's value leak into this entry's
+                // stats metadata.
+                lastLLMLatencyMs = nil
+                log("accept during cleaning: provisional raw accepted, LLM stream cancelled")
             }
-            inFlightTask?.cancel()
-            inFlightTask = nil
-            // Kill-it semantics extend to a chained refine still awaiting
-            // its baseline: cancel the background first cleanup and
-            // release the gate so the suspended refine task wakes and
-            // bails. The visible text (the refine view's current content)
-            // is what gets pasted. No-op outside the chained window.
-            teardownChainedRefine()
-            currentText = visible
-            lastCleanupFailed = overlay.model.provisionalText
-            // The cancelled stream never reported latency — don't let
-            // the PREVIOUS dictation's value leak into this entry's
-            // stats metadata.
-            lastLLMLatencyMs = nil
-            log("accept during cleaning: \(overlay.model.provisionalText ? "provisional raw" : "partial stream") accepted, LLM stream cancelled")
         }
         phase = .pasting
         cancelAutoAcceptTimer()
@@ -3075,6 +3098,18 @@ public final class AppState {
         // any later count increase while .awaitingAccept, which suspends
         // the walk-away auto-accept timer (intent to refine).
         didAttachReferenceDuringReview = false
+        // C1: a hasty Enter during .cleaning armed a pending-accept. The full
+        // cleaned text is in hand now (currentText set above, review overlay
+        // shown), so accept it immediately rather than opening the review for
+        // a keypress the user already made. If accept() bails (help overlay
+        // open / unresolved image-conflict) it leaves phase == .awaitingAccept
+        // — fall through to the normal review + auto-accept timer.
+        if pendingAcceptOnCleanupComplete {
+            pendingAcceptOnCleanupComplete = false
+            overlay.model.pendingAcceptArmed = false
+            accept()
+            if phase != .awaitingAccept { return }
+        }
         startAutoAcceptTimer()
     }
 
@@ -3176,6 +3211,12 @@ public final class AppState {
         // so the id survives across the full copy → refine → accept
         // sequence within one overlay session.
         currentSessionEntryID = nil
+        // C1: a deferred eager-accept must never survive into the next
+        // dictation. Cleared here so cancel (Esc), the empty-ASR exit, and
+        // the pipeline-failed exit — all of which reset without reaching
+        // applyResult's terminal transition — drop the pending accept.
+        pendingAcceptOnCleanupComplete = false
+        overlay.model.pendingAcceptArmed = false
     }
 
     // MARK: - Timer
