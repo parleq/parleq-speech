@@ -3175,7 +3175,11 @@ private struct OverlayContent: View {
             if model.continuousRecording {
                 Text("Recording… [tap \(hotkeyLabel)] stop   [Esc] cancel")
             } else {
-                Text("Release \(hotkeyLabel) when done")
+                // [R] recover is accurate here: during a normal hold-to-talk
+                // capture the hotkey IS held, so tapping R is the hold+R gesture
+                // (abort this capture, bring back the last dictation). Omitted
+                // from the continuous footer, where the hotkey isn't held.
+                Text("Release \(hotkeyLabel) when done   ·   [R] recover last")
             }
         case .cleaning:
             // C1: a deferred eager-accept shows a subtle "Finishing…" cue so
