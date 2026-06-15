@@ -155,6 +155,10 @@ public final class AppState {
     /// redundancy because the menu-bar badge is the only thing
     /// quick-mode users will see.
     public var onCleanupResult: (@MainActor (String?) -> Void)?
+    /// B3: fires when a fresh-capture audio buffer becomes available to
+    /// recover (true on the first retained capture of a session). main.swift
+    /// wires it to enable/disable the menu-bar "Recover last dictation" item.
+    public var onRecoverableDictationChanged: (@MainActor (Bool) -> Void)?
     private var pasteTarget: PasteTarget?
     /// User-chosen send-to destination (picked via V during review).
     /// When set, accept() pastes here instead of the default target.
@@ -267,6 +271,14 @@ public final class AppState {
     /// already-cleaned text. Reset at the start of each fresh capture
     /// and cleared in closeAndReset().
     private var lastRawTranscript: String = ""
+    /// B3 (recover last dictation): the most recent FRESH capture's audio
+    /// (16 kHz mono WAV bytes) + its duration, retained so hold+R or the
+    /// menu-bar "Recover last dictation" item can re-run ASR + cleanup on it
+    /// when the user loses the result (Esc, hasty double-Enter, focus change).
+    /// **Memory-only** — overwritten by the next fresh dictation, wiped on
+    /// quit; never written to disk (compliance invariant #1). nil until the
+    /// first successful fresh capture this session.
+    private var lastDictationAudio: (wav: Data, durationMs: Int)?
     /// Whether the most recent LLM turn was a REFINE — drives
     /// switchModelAndRecleanup's re-run shape (task #41): after a
     /// refine, lastRawTranscript holds the refine INSTRUCTION, and
@@ -2082,6 +2094,59 @@ public final class AppState {
         ParleqAppWindowController.shared.show()
     }
 
+    /// B3: re-run ASR + cleanup on the retained audio of the most recent fresh
+    /// dictation and drop the result into the review overlay. Reached two ways:
+    ///   • hold-hotkey + R — fires mid-hold; aborts the in-flight capture (we're
+    ///     recovering the PREVIOUS dictation, not this one) and re-runs.
+    ///   • the menu-bar "Recover last dictation" item — fires from .idle.
+    /// No-ops with a beep when nothing is retained (fresh launch, or the last
+    /// capture was dead-input and never retained — that case pairs with B1).
+    /// Memory-only: the buffer is the same retained bytes, never re-read from
+    /// disk.
+    @MainActor
+    public func recoverLastDictation() {
+        guard RecoveryEligibility.canRecover(hasRetainedAudio: lastDictationAudio != nil),
+              let retained = lastDictationAudio else {
+            log("recover-last-dictation: nothing retained to recover")
+            NSSound.beep()
+            return
+        }
+        log("recover-last-dictation: re-running ASR + cleanup on retained \(retained.wav.count / 1024) KB")
+        // hold+R fires during an active capture — tear it down and discard its
+        // audio (we're replacing it with the recovered dictation). All of these
+        // are no-ops on the menu-bar path, which fires from .idle.
+        if recorder.isCapturing { _ = try? recorder.stop() }
+        recorder.chunkHandler = nil
+        streamingSession?.cancel()
+        streamingSession = nil
+        inFlightTask?.cancel()
+        inFlightTask = nil
+        teardownChainedRefine()
+        cancelAutoAcceptTimer()
+        cancelPendingOverlayShow()
+        cancelPendingRefine()
+        if windowPickerWindow.isVisible { dismissPicker() }
+        if overlay.model.isPickingWindow { endHoldPickMode() }
+        // Start a fresh session for the recovered dictation, pointed at the
+        // current frontmost app (recover can be invoked from idle via the menu,
+        // or mid-hold via hold+R; in both cases the user's target is whatever's
+        // frontmost now). Clear any stale per-dictation overlay state first.
+        resetPerDictationOverlayState()
+        pasteTarget = Paster.captureFrontmost()
+        resetFreshDictationState()
+        // Keep the speaking-time stat honest — the retained buffer's measured
+        // duration, not 0 (resetFreshDictationState cleared it).
+        lastAudioDurationMs = retained.durationMs
+        runCleanupPipeline(wavData: retained.wav, asRefine: false)
+    }
+
+    /// hold-hotkey + R entry point (HotkeyListener.onRPressed). Thin wrapper so
+    /// the gesture wiring reads symmetrically with pPressedDuringHold.
+    @MainActor
+    public func rPressedDuringHold() {
+        recoverLastDictation()
+    }
+
     /// Called from HotkeyListener.onCPressed when the user taps C while
     /// the dictation hotkey is held. Attaches the *current* frontmost
     /// window of the app that was frontmost at hotkey-down (the app's
@@ -2253,8 +2318,12 @@ public final class AppState {
         accept()
     }
 
-    private func startFreshCapture() {
-        pasteTarget = Paster.captureFrontmost()
+    /// Reset the per-dictation scalar state shared by a fresh capture and a B3
+    /// recovery re-run. Does NOT touch the recorder, the latched-compose state
+    /// machine, or `pasteTarget` — the caller establishes the recorder/target
+    /// for its own context (startFreshCapture opens the mic; recovery feeds a
+    /// retained buffer).
+    private func resetFreshDictationState() {
         chosenDestination = nil
         currentText = ""
         lastRawTranscript = ""
@@ -2283,6 +2352,11 @@ public final class AppState {
         // is cleared by resetPerDictationOverlayState() when the
         // session ends (accept / cancel / dismiss).
         currentSessionEntryID = UUID()
+    }
+
+    private func startFreshCapture() {
+        pasteTarget = Paster.captureFrontmost()
+        resetFreshDictationState()
         guard openRecorder() else { return }
         // Advance the latched-compose state machine so a subsequent
         // hotkeyUp(spaceWasPressedDuringHold: true) can transition
@@ -2649,6 +2723,27 @@ public final class AppState {
         // marking the boundary of a new dictation session.
         lastAudioDurationMs += max(0, Int(capture.durationSeconds * 1000))
 
+        // B3 (recover last dictation): retain this fresh capture's audio so
+        // hold+R / the menu-bar item can re-run it if the user loses the
+        // result (Esc, a hasty double-Enter, a focus change). Memory-only —
+        // overwritten by the next fresh dictation and wiped on quit; never
+        // written to disk (compliance invariant #1). Refine turns don't
+        // overwrite the recoverable buffer: you recover the dictation, not an
+        // in-place edit of it.
+        if !asRefine {
+            let wasUnavailable = (lastDictationAudio == nil)
+            lastDictationAudio = (capture.wavData, max(0, Int(capture.durationSeconds * 1000)))
+            if wasUnavailable { onRecoverableDictationChanged?(true) }
+        }
+
+        runCleanupPipeline(wavData: capture.wavData, asRefine: asRefine)
+    }
+
+    /// Run batch ASR + LLM cleanup/refine on `wavData` and route the result to
+    /// the review overlay (or the quick-mode direct paste). Extracted from
+    /// finalizeCapture so B3 recovery (recoverLastDictation) can push a
+    /// retained buffer through the identical pipeline.
+    private func runCleanupPipeline(wavData: Data, asRefine: Bool) {
         phase = .cleaning
         if quickMode {
             // In quick mode we don't show the overlay — the user
@@ -2678,7 +2773,7 @@ public final class AppState {
         // captured value here is only the seed.
         var priorText = currentText
         let asrClient = self.asr
-        let wavBytes = capture.wavData
+        let wavBytes = wavData
         inFlightTask = Task { @MainActor [weak self] in
             do {
                 // Batch ASR via /inference (Parakeet TDT v3) — uploads
@@ -2687,7 +2782,6 @@ public final class AppState {
                 // no end-of-utterance truncation either. Typical
                 // post-release latency on representative human-voice
                 // recordings was ~64 ms p50 for 5 s clips.
-                _ = session  // captured for compatibility; unused now
                 // Re-read the dictionary from disk once per utterance.
                 // Used by both the ASR pass (term list — biases
                 // recognition via CTC keyword spotting) and the LLM

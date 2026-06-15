@@ -171,6 +171,11 @@ public final class HotkeyListener {
     /// front window as a reference. Same hold-threshold treatment as
     /// P so a brief Option-C still types ç.
     private static let cKeyCode: Int64 = 0x08
+    /// R key (US layout). B3 "hold-hotkey + R" recovers the LAST dictation:
+    /// abort the current capture and re-run ASR + cleanup on the retained
+    /// audio buffer. Same hold-threshold treatment as P/C so a brief Option-R
+    /// (® on some layouts) still passes through.
+    private static let rKeyCode: Int64 = 0x0F
 
     /// Timing-only gesture-classifier trace; opt-in like PARLEQ_VOCAB_TRACE —
     /// see the chatter/double-tap field bug. Env is launch-stable; read once.
@@ -201,6 +206,11 @@ public final class HotkeyListener {
     /// reference without opening the picker — the shortcut for "use
     /// what I'm looking at as context."
     private let onCPressed: (() -> Void)?
+    /// Fires the FIRST time R is pressed during a single hotkey hold.
+    /// B3 "hold-hotkey + R" recovers the last dictation — AppState's handler
+    /// aborts the in-flight capture and re-runs the retained audio buffer.
+    /// The gesture is "instead of dictating, bring back my last one."
+    private let onRPressed: (() -> Void)?
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     // Press-state tracking: CGEventTap delivers a flagsChanged event
@@ -256,6 +266,8 @@ public final class HotkeyListener {
     private var pPressedThisHold = false
     /// Mirror of pPressedThisHold for the "hold-hotkey + C" gesture.
     private var cPressedThisHold = false
+    /// Mirror of pPressedThisHold for the "hold-hotkey + R" recover gesture.
+    private var rPressedThisHold = false
     /// #83: whether THIS hold's key-down was classified as a double-tap. Read at
     /// key-up to decide double-tap-and-release (continuous) vs -and-hold (quick).
     private var doubleTapThisHold = false
@@ -280,6 +292,8 @@ public final class HotkeyListener {
     private var pendingPKeyUpToSwallow = false
     /// C-key counterpart of pendingPKeyUpToSwallow.
     private var pendingCKeyUpToSwallow = false
+    /// R-key counterpart of pendingPKeyUpToSwallow.
+    private var pendingRKeyUpToSwallow = false
 
     public init(
         binding: HotkeyBinding = .defaultBinding,
@@ -287,7 +301,8 @@ public final class HotkeyListener {
         onKeyUp: @escaping (HotkeyUpEvent) -> Void,
         onSpacePressed: (() -> Void)? = nil,
         onPPressed: (() -> Void)? = nil,
-        onCPressed: (() -> Void)? = nil
+        onCPressed: (() -> Void)? = nil,
+        onRPressed: (() -> Void)? = nil
     ) {
         self.binding = binding
         self.onKeyDown = onKeyDown
@@ -295,6 +310,7 @@ public final class HotkeyListener {
         self.onSpacePressed = onSpacePressed
         self.onPPressed = onPPressed
         self.onCPressed = onCPressed
+        self.onRPressed = onRPressed
     }
 
     /// True once the event tap is installed. #82: lets the launch path re-attempt
@@ -433,6 +449,7 @@ public final class HotkeyListener {
             spacePressedThisHold = false
             pPressedThisHold = false
             cPressedThisHold = false
+            rPressedThisHold = false
             doubleTapThisHold = isDoubleTap   // #83: remembered for the key-up classifier
             // Record the hold-start time for the P-gesture's
             // hold-threshold gate (see pHoldThreshold).
@@ -601,6 +618,30 @@ public final class HotkeyListener {
             }
             return false
         }
+        // R-during-hold path (B3 recover-last-dictation). Same shape and
+        // hold-threshold as P/C, so a brief Option-R still types its normal
+        // character; only a deliberate hold engages the recover gesture.
+        if keyCode == HotkeyListener.rKeyCode {
+            if keyDown {
+                let elapsed = Date().timeIntervalSinceReferenceDate - keyDownAt
+                if elapsed < pHoldThreshold {
+                    return false
+                }
+                let firstPressThisHold = !rPressedThisHold
+                rPressedThisHold = true
+                pendingRKeyUpToSwallow = true
+                if firstPressThisHold {
+                    onRPressed?()
+                }
+                return true
+            }
+            if pendingRKeyUpToSwallow {
+                if isAutorepeat { return true }
+                pendingRKeyUpToSwallow = false
+                return false
+            }
+            return false
+        }
         return false
     }
 
@@ -624,6 +665,10 @@ public final class HotkeyListener {
         }
         if keyCode == HotkeyListener.cKeyCode, pendingCKeyUpToSwallow {
             pendingCKeyUpToSwallow = false
+            return true
+        }
+        if keyCode == HotkeyListener.rKeyCode, pendingRKeyUpToSwallow {
+            pendingRKeyUpToSwallow = false
             return true
         }
         return false

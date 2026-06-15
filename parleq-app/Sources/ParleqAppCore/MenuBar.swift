@@ -52,6 +52,9 @@ public final class MenuBar: NSObject {
     /// Hidden once the wizard completes or a provider is saved. Driven by
     /// setNeedsSetupPrompt(_:).
     private let finishSetupMenuItem: NSMenuItem
+    /// B3 "Recover last dictation" action. Disabled until AppState reports a
+    /// retained capture this session (see `canRecoverLastDictation`).
+    private let recoverLastDictationMenuItem: NSMenuItem
     // Recent Dictations submenu removed in 0.14.0 PR 3 (#218).
     // The canonical surface for browsing history is now the Recent
     // Dictations section in the Parleq app window (open via
@@ -89,6 +92,10 @@ public final class MenuBar: NSObject {
     /// SetupWizardController; works regardless of whether the
     /// wizard already ran on first launch (#21 step 6).
     public var onOpenWizard: (() -> Void)?
+    /// Closure invoked when the user picks "Recover last dictation" (B3).
+    /// Wired to AppState.recoverLastDictation(), which re-runs the retained
+    /// audio of the most recent dictation through ASR + cleanup.
+    public var onRecoverLastDictation: (() -> Void)?
     /// Closure invoked when the user picks "Check for Updates…".
     /// Wired to `SPUStandardUpdaterController.checkForUpdates(nil)`
     /// in ParleqApp.main. Sparkle handles the UI from there — the
@@ -124,6 +131,14 @@ public final class MenuBar: NSObject {
         }
     }
 
+    /// B3: whether a dictation is available to recover. AppState flips this on
+    /// the first retained fresh capture of a session; drives the enabled state
+    /// of the "Recover last dictation" menu item so it's dimmed when there's
+    /// nothing to recover.
+    public var canRecoverLastDictation: Bool = false {
+        didSet { recoverLastDictationMenuItem.isEnabled = canRecoverLastDictation }
+    }
+
     /// The user's dictation hotkey name (e.g. "right Option"), captured
     /// at launch. Used in the status label so it adapts to a rebind —
     /// the hotkey is a restart-required setting, so the launch-time value
@@ -141,6 +156,8 @@ public final class MenuBar: NSObject {
         localModelRestartMenuItem = NSMenuItem(
             title: "Restart to finish enabling on-device", action: nil, keyEquivalent: "")
         finishSetupMenuItem = NSMenuItem(title: "Finish setup…", action: nil, keyEquivalent: "")
+        recoverLastDictationMenuItem = NSMenuItem(
+            title: "Recover last dictation", action: nil, keyEquivalent: "")
         microphoneMenuItem = NSMenuItem(
             title: "Microphone",
             action: nil,
@@ -159,6 +176,11 @@ public final class MenuBar: NSObject {
         finishSetupMenuItem.target = self
         finishSetupMenuItem.action = #selector(runSetup)
         finishSetupMenuItem.isHidden = true
+        recoverLastDictationMenuItem.target = self
+        recoverLastDictationMenuItem.action = #selector(recoverLastDictation)
+        recoverLastDictationMenuItem.isEnabled = false
+        recoverLastDictationMenuItem.toolTip =
+            "Re-run your most recent dictation if you lost it. Tip: hold your dictation hotkey and tap R from anywhere."
 
         let hotkeyItem = NSMenuItem(
             title: "Hotkey: \(hotkeyDisplayName)",
@@ -258,6 +280,7 @@ public final class MenuBar: NSObject {
         menu.addItem(.separator())
         menu.addItem(settingsItem)
         menu.addItem(microphoneMenuItem)
+        menu.addItem(recoverLastDictationMenuItem)
         menu.addItem(.separator())
         menu.addItem(checkForUpdatesItem)
         menu.addItem(runSetupItem)
@@ -271,6 +294,10 @@ public final class MenuBar: NSObject {
 
     @objc private func presentSettings() {
         onOpenSettings?()
+    }
+
+    @objc private func recoverLastDictation() {
+        onRecoverLastDictation?()
     }
 
     @objc private func runSetup() {

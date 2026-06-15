@@ -1019,6 +1019,14 @@ struct ParleqApp {
             stateBox.value?.onCleanupResult = { message in
                 menuBar.setCleanupFailure(message)
             }
+            // B3: enable the "Recover last dictation" menu item once a fresh
+            // capture has been retained this session.
+            menuBar.onRecoverLastDictation = {
+                Task { @MainActor in stateBox.value?.recoverLastDictation() }
+            }
+            stateBox.value?.onRecoverableDictationChanged = { available in
+                menuBar.canRecoverLastDictation = available
+            }
 
             // On-device LLM model download progress → menu-bar status line.
             // Mirrors the LocalASR onReadyChanged pattern for the speech engine.
@@ -1260,6 +1268,17 @@ struct ParleqApp {
                 // captures the frontmost window as a reference.
                 Task { @MainActor in
                     stateBox.value?.cPressedDuringHold()
+                }
+            },
+            onRPressed: {
+                // B3 "hold-hotkey + R = recover last dictation" gesture.
+                // Edge-triggered the first time R lands during a
+                // dictation-hotkey hold; the listener has already
+                // consumed the R keyDown + matching keyUp so the focused
+                // app doesn't see a stray r. AppState aborts the in-flight
+                // capture and re-runs the retained last-dictation audio.
+                Task { @MainActor in
+                    stateBox.value?.rPressedDuringHold()
                 }
             }
         )
