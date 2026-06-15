@@ -2570,19 +2570,29 @@ public final class AppState {
         // path that shouldn't be reachable today) falls through to
         // ASR rather than getting suppressed by SilenceDetector's
         // zero-default voicedDuration fallback.
+        // A3: classify the capture so a DEAD mic (full-length but ~zero samples
+        // — a capture failure) is distinguished from genuine quiet/silence. Both
+        // skip the pipeline today; B1 will surface .deadInput to the user instead
+        // of hiding silently. `peakRMS≈0` is the maintainer's "as if I never
+        // dictated" signature.
         let silence = SilenceDetector.analyze(wavData: capture.wavData)
-        if silence.isAnalyzable && silence.voicedDurationSeconds < 0.05 {
-            log("captured audio voiced=\(String(format: "%.3f", silence.voicedDurationSeconds))s peak=\(String(format: "%.4f", silence.peakRMS)); skipping pipeline (silence)")
+        let health = CaptureHealth.classify(
+            durationSeconds: capture.durationSeconds,
+            peakRMS: silence.peakRMS,
+            voicedSeconds: silence.voicedDurationSeconds,
+            isAnalyzable: silence.isAnalyzable)
+        if health == .deadInput || health == .quietSilence {
+            if health == .deadInput {
+                log("captured audio peak=\(String(format: "%.4f", silence.peakRMS)) voiced=\(String(format: "%.3f", silence.voicedDurationSeconds))s — DEAD INPUT (mic delivered no audio); skipping pipeline")
+            } else {
+                log("captured audio voiced=\(String(format: "%.3f", silence.voicedDurationSeconds))s peak=\(String(format: "%.4f", silence.peakRMS)); skipping pipeline (silence)")
+            }
             cancelPendingOverlayShow()
             session?.cancel()
-            // Mirror the empty-transcript branch below: on a silent
-            // REFINE attempt, keep the prior text on screen so the
-            // user can still accept the unmodified version (a silent
-            // refine isn't a "cancel everything" gesture — the user
-            // may have meant to confirm the existing text and didn't
-            // realize they needed to actively speak). On a silent
-            // INITIAL dictation there is no prior text, so the
-            // full-reset is the right end state.
+            // On a silent/dead REFINE attempt, keep the prior text on screen so
+            // the user can still accept the unmodified version; on an INITIAL
+            // capture there's no prior text, so reset. (B1 will instead surface
+            // a "didn't catch audio" notice for .deadInput on an initial capture.)
             if asRefine, !currentText.isEmpty {
                 applyResult(currentText)
             } else {
