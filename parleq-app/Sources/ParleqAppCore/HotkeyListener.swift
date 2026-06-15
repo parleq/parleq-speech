@@ -366,16 +366,20 @@ public final class HotkeyListener {
     public func reconcileWithAccessibility() {
         let trusted = AXIsProcessTrusted()
         if trusted, eventTap == nil {
-            try? start()
-            logHotkey("hotkey: tap re-armed (Accessibility granted)")
+            // RoboRev follow-up: log the ACTUAL outcome. `try? start()` would
+            // emit the "re-armed" success line even when start() threw (e.g.
+            // tapCreateFailed), hiding the failure from app.log and leaving the
+            // user with a dead hotkey and no diagnostic.
+            do {
+                try start()
+                logStderr("[parleq] hotkey: tap re-armed (Accessibility granted)")
+            } catch {
+                logStderr("[parleq] hotkey: tap re-arm failed: \(error)")
+            }
         } else if !trusted, eventTap != nil {
             teardown()
-            logHotkey("hotkey: tap torn down (Accessibility revoked)")
+            logStderr("[parleq] hotkey: tap torn down (Accessibility revoked)")
         }
-    }
-
-    private func logHotkey(_ message: String) {
-        FileHandle.standardError.write("[parleq] \(message)\n".data(using: .utf8) ?? Data())
     }
 
     public func start() throws {
@@ -753,4 +757,13 @@ public struct HotkeyUpEvent {
 // permissions step drive the actual prompt (Permissions.requestAccessibility).
 private func ensureAccessibility() -> Bool {
     AXIsProcessTrusted()
+}
+
+// File-private stderr logger matching the convention in AudioRecorder.swift /
+// Permissions.swift / LocalASR.swift (callers include the "[parleq] " prefix).
+// Replaces the former bespoke `logHotkey` instance method (RoboRev follow-up).
+private func logStderr(_ message: String) {
+    if let data = (message + "\n").data(using: .utf8) {
+        FileHandle.standardError.write(data)
+    }
 }

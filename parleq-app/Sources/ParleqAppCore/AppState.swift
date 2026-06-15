@@ -890,6 +890,12 @@ public final class AppState {
             // `finalizeCapture(asRefine: true)` so the prior text
             // isn't dropped. See `latchedFromRefining` docstring.
             phase = latchedFromRefining ? .refining : .capturing
+            // B2 follow-up (RoboRev): a fresh latched hold begins here, but
+            // resume() doesn't route through openRecorder(), so clear the
+            // dead-mic watchdog explicitly — otherwise a prior hold's flat-zero
+            // tail can trip a spurious "not hearing your mic" early in this one.
+            micSignalMonitor.reset()
+            overlay.model.notHearingMic = false
             recorder.resume()
             log("hotkeyDown in latched compose → \(latchedFromRefining ? "latched-refining" : "latchedRecording"); audio resumed")
             return
@@ -903,6 +909,10 @@ public final class AppState {
             dismissPicker()
             composeState = nextComposeState(composeState, event: .hotkeyDown)
             phase = latchedFromRefining ? .refining : .capturing
+            // B2 follow-up (RoboRev): same as the latched branch — a fresh hold
+            // resumes outside openRecorder(), so reset the dead-mic watchdog.
+            micSignalMonitor.reset()
+            overlay.model.notHearingMic = false
             recorder.resume()
             log("hotkeyDown while picker open → \(latchedFromRefining ? "refining" : "latchedRecording"); audio resumed")
             return
@@ -1937,6 +1947,12 @@ public final class AppState {
         // the chained window.
         teardownChainedRefine()
         cancelAutoAcceptTimer()
+        // A2 follow-up (RoboRev): drop any queued config-change rebuild so a
+        // debounce task armed just before this cancel can't fire afterward.
+        // (The handler's `guard isRunning` already makes it a no-op, but this
+        // avoids the dangling MainActor dispatch.)
+        audioConfigRebuildTask?.cancel()
+        audioConfigRebuildTask = nil
         cancelPendingOverlayShow()
         cancelPendingRefine()
         cancelStagingPickTimer()
@@ -2148,6 +2164,10 @@ public final class AppState {
         inFlightTask = nil
         teardownChainedRefine()
         cancelAutoAcceptTimer()
+        // A2 follow-up (RoboRev): cancel any pending rebuild from the aborted
+        // capture so it can't fire during the recovery re-run.
+        audioConfigRebuildTask?.cancel()
+        audioConfigRebuildTask = nil
         cancelPendingOverlayShow()
         cancelPendingRefine()
         if windowPickerWindow.isVisible { dismissPicker() }
@@ -2545,6 +2565,13 @@ public final class AppState {
         // fresh refine task without touching the cleanup we just moved.
         inFlightTask = nil
         cancelAutoAcceptTimer()
+        // C1 follow-up (RoboRev): pressing the hotkey to chain a refine is a
+        // fresh intent — drop any deferred eager-accept armed by an earlier
+        // Enter during this same .cleaning. Otherwise the refine's terminal
+        // applyResult would fire the pending accept and auto-paste the refine
+        // result WITHOUT a review step.
+        pendingAcceptOnCleanupComplete = false
+        overlay.model.pendingAcceptArmed = false
         phase = .refining
         // Symmetric with startRefineCapture: advance the latched-compose
         // state machine so press-Space-during-hold works in this refine
@@ -2658,6 +2685,13 @@ public final class AppState {
             log("recorder start failed: \(error)")
             recorder.levelHandler = nil
             recorder.micSignalHandler = nil
+            // A2 follow-up (RoboRev): clear the config-change callback + any
+            // queued rebuild too, so a route change while idle after a failed
+            // start doesn't fire a spurious handler. Symmetric with the other
+            // handler clears above.
+            recorder.onConfigurationChange = nil
+            audioConfigRebuildTask?.cancel()
+            audioConfigRebuildTask = nil
             return false
         }
         // OIDC pre-warm: refresh-if-needed overlaps recording + ASR so
