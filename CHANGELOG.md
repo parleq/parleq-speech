@@ -4,6 +4,16 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.25.2] - 2026-06-15
+
+A follow-up hotfix: 0.25.1 reverted the speech engine to the wrong version and didn't fully fix the dictionary regression.
+
+### Fixed
+
+- **Custom dictionary over-insertion is now actually fixed.** 0.25.1 reverted the on-device speech engine to FluidAudio 0.14.8, believing the over-aggressive dictionary biasing was introduced in 0.15.x. It wasn't — the regression was introduced in FluidAudio 0.14.8 itself (an upstream rework of the vocabulary-rescoring pipeline, tuned only against long, distinctive terms), so reverting to 0.14.8 still over-fired (ordinary words replaced by your dictionary terms, even with cleanup turned off). Pinned the engine to exactly **0.14.5**, the version 0.24.1 shipped, so transcription and dictionary biasing behave as they did then. The 0.25.1 pin also used a version *range* that silently resolved to the newest 0.14.x; the engine is now pinned to an exact version.
+
+[0.25.2]: https://github.com/parleq/parleq-speech/releases/tag/v0.25.2
+
 ## [0.25.1] - 2026-06-15
 
 A hotfix for a speech-recognition regression introduced in 0.25.0.

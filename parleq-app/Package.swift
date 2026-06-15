@@ -41,19 +41,55 @@ let package = Package(
         // the main app in v0.9.0 to drop the local listening socket,
         // simplify supervision, and shed the Hummingbird dependency.
         //
-        // PINNED TO 0.14.x — DO NOT re-bump past 0.15.0 without first
-        // running the bench biasing arm against a REAL multi-term
-        // dictionary (bench/dictionary-realworld.json). 0.15.x reworked
-        // the TDT decode pipeline (DualDecodeArbitration / ChunkProcessor
-        // / new encoderPrecision); that shifts the CTC scores the
-        // *unchanged* vocabulary rescorer consumes (the CustomVocabulary/
-        // code + thresholds are byte-identical 0.14.8↔0.15.3), so custom-
-        // dictionary biasing wildly over-fires — ordinary words get
-        // replaced by dictionary terms. Briefly shipped as 0.15.3 in
-        // 0.25.0 (#91); reverted in 0.25.1. Our pre-ship bench called the
-        // bump "safe" because it only tested biasing with ONE synthetic
-        // term — the real-dictionary arm is the guard that would've caught it.
-        .package(url: "https://github.com/FluidInference/FluidAudio.git", "0.14.3"..<"0.15.0"),
+        // PINNED TO EXACTLY 0.14.5 — the last release before an
+        // over-aggressive CTC vocab-rescorer regression. DO NOT widen this
+        // range without first running the bench biasing arm against a REAL
+        // multi-term dictionary (bench/dictionary-realworld.json).
+        //
+        // Root cause: upstream commit 410044d1 ("Fix/word boost
+        // improvements", PR #634), FIRST RELEASED IN 0.14.8. It reworked
+        // the CTC vocab-rescoring pipeline — blank-aware DP rewrite (changes
+        // the similarity scores), a -1-frame TDT emission-delay timestamp
+        // correction, and defaultMarginSeconds 0.5 -> 0.10. Validated only
+        // against earnings22 (company names) + FDA drug-name benchmarks —
+        // distinctive multi-syllable terms where false positives on common
+        // English are structurally rare. For Parleq's short / English-
+        // rhyming dictionary terms it over-fires: ordinary words get
+        // replaced by dictionary terms, even with LLM cleanup disabled.
+        // Our explicit cbw=2.0 / minSimilarity=0.65 overrides can't
+        // compensate — the DP rewrite changes the scores those thresholds
+        // gate, and the margin/timestamp changes come from the core ASR
+        // path (config: .default), not overridable per-call.
+        //
+        // The bug is 0.14.8-specific: PR #634 is the only biasing-path
+        // commit in 0.14.5..0.14.8, and it landed in 0.14.8. Confirmed by
+        // version bisect (0.24.1=0.14.5 vs 0.24.2=0.15.3) AND by the bench
+        // over-fire arm: identical generic dictionary + 54-clip overfire
+        // corpus produced 12 over-fires on 0.14.5 vs 52 on 0.14.8 (~4x,
+        // spreading from 2 terms to 6). We pin 0.14.5 — the version 0.24.1
+        // shipped and the empirically-verified-good config.
+        //
+        // NB 0.14.5 is the pre-regression baseline, not zero over-fire:
+        // short collision-prone terms (CRAN~"ran", Redis~"ready") still
+        // over-fire ~12/54 with LLM cleanup OFF; that residual is inherent
+        // to ASR biasing on such terms (mitigate per-term with
+        // biasing:"llmOnly"), NOT the PR #634 regression.
+        //
+        // The 0.25.1 hotfix tried to revert but used a "0.14.3..<0.15.0"
+        // range, which SwiftPM resolved to the newest in-range 0.14.8 —
+        // still buggy. An exact pin is required, not a range. Widen only
+        // after the upstream fix is tagged AND the gate below passes.
+        //
+        // REGRESSION GATE before any future bump:
+        //   python3 bench/gen_fixtures.py --corpora overfire \
+        //     --manifest bench/fixtures/manifest-overfire.json
+        //   swift build --product asr-bench
+        //   ./.build/debug/asr-bench --manifest bench/fixtures/manifest-overfire.json \
+        //     --wav-dir bench/fixtures --paths batch \
+        //     --dictionary bench/dictionary-overfire.json --out bench/results/overfire-<ver>.json
+        //   python3 bench/score_overfire.py bench/results/overfire-<ver>.json \
+        //     bench/dictionary-overfire.json   # expect total_overfires ~12, alarm near ~52
+        .package(url: "https://github.com/FluidInference/FluidAudio.git", "0.14.5"..<"0.14.6"),
         // Sparkle — auto-update framework. Checks an EdDSA-signed
         // appcast.xml on parleq.app for newer releases and runs the
         // user-prompted download/install/relaunch flow. Used by
