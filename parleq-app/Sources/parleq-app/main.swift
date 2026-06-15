@@ -1303,27 +1303,26 @@ struct ParleqApp {
         }
         let listenerBox = ListenerBox()
         listenerBox.value = listener
-        // #82: re-attempt arming whenever Parleq becomes active again — fires
-        // when the user returns after granting Accessibility (wizard prompt or
-        // System Settings). Idempotent: armingDecision returns .alreadyArmed
-        // once the tap is installed, and start() itself no-ops when armed.
+        // #82 + keyboard-lockout fix: reconcile the event tap with Accessibility
+        // trust whenever Parleq becomes active (e.g. returning from System
+        // Settings after granting OR revoking). reconcileWithAccessibility()
+        // arms on grant and TEARS THE TAP DOWN on revoke — so a revoked, keyboard-
+        // intercepting tap can never linger and lock the keyboard.
         NotificationCenter.default.addObserver(
             forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
         ) { [listenerBox] _ in
-            MainActor.assumeIsolated {
-                guard let listener = listenerBox.value,
-                      case .arm = LaunchPermissions.armingDecision(
-                          armed: listener.isArmed,
-                          accessibilityGranted: LaunchPermissions.accessibilityGranted)
-                else { return }
-                do {
-                    try listener.start()
-                    logStderr("[parleq] hotkey: listener armed after Accessibility granted (#82)")
-                } catch {
-                    logStderr("[parleq] hotkey: re-arm failed: \(error)")
-                }
-            }
+            MainActor.assumeIsolated { listenerBox.value?.reconcileWithAccessibility() }
         }
+        // Periodic safety reconciler (~1s): catches an Accessibility revoke even
+        // when Parleq isn't activated and even if no tap-disabled callback fires,
+        // guaranteeing the keyboard is freed within ~1s of losing trust. Cheap
+        // (AXIsProcessTrusted is a fast probe). Also re-arms when trust returns.
+        let accessibilityReconciler = Timer.scheduledTimer(
+            withTimeInterval: 1.0, repeats: true
+        ) { [listenerBox] _ in
+            MainActor.assumeIsolated { listenerBox.value?.reconcileWithAccessibility() }
+        }
+        accessibilityReconciler.tolerance = 0.5   // let the OS coalesce; not time-critical
         NotificationCenter.default.addObserver(
             forName: .parleqOverlayDelayChanged,
             object: nil,

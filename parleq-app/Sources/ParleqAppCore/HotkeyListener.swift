@@ -284,6 +284,61 @@ public final class HotkeyListener {
     /// start() when Accessibility is granted later without installing a second tap.
     public var isArmed: Bool { eventTap != nil }
 
+    // MARK: - Keyboard-lockout safety (Accessibility revoke)
+
+    /// Why macOS disabled our event tap.
+    public enum TapDisableReason: Sendable { case timeout, userInput }
+    /// What to do about it.
+    public enum TapDisabledAction: Sendable, Equatable { case reEnable, tearDown }
+
+    /// The old code re-enabled the keyboard-intercepting `.defaultTap` on EVERY
+    /// disable. On an Accessibility *revoke*, macOS disables the tap and the
+    /// blind re-enable fought it back on, leaving a tap that intercepts keyboard
+    /// events but can no longer pass them → the user's keyboard locks up
+    /// (trackpad is unaffected; mouse isn't in our event mask). The rule:
+    /// - `.timeout` (callback genuinely too slow) → re-enable, but only if we're
+    ///   still trusted (never re-arm a tap the system revoked).
+    /// - `.userInput` (the system/user-disabled signal, i.e. the revoke case) →
+    ///   ALWAYS tear down. Don't trust `AXIsProcessTrusted()` here — it can lag a
+    ///   revoke; the periodic reconciler re-arms if we're legitimately still
+    ///   trusted.
+    public static func actionForTapDisabled(
+        reason: TapDisableReason, accessibilityTrusted: Bool
+    ) -> TapDisabledAction {
+        switch reason {
+        case .timeout: return accessibilityTrusted ? .reEnable : .tearDown
+        case .userInput: return .tearDown
+        }
+    }
+
+    /// Remove the event tap from the run loop and release it, so it stops
+    /// intercepting keyboard events. Idempotent. After teardown `isArmed` is
+    /// false, so the reconciler / #82 arm-on-grant path will reinstall it once
+    /// Accessibility is (re)granted.
+    public func teardown() {
+        if let source = runLoopSource {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes)
+        }
+        if let tap = eventTap {
+            CGEvent.tapEnable(tap: tap, enable: false)
+        }
+        runLoopSource = nil
+        eventTap = nil
+    }
+
+    /// Reconcile tap state with current Accessibility trust. Safety net that runs
+    /// periodically (and on app-activation): tears the tap down if trust was
+    /// revoked (frees the keyboard even if no disable callback fired), and
+    /// re-arms it if trust returned. Cheap; AXIsProcessTrusted() is a fast probe.
+    public func reconcileWithAccessibility() {
+        let trusted = AXIsProcessTrusted()
+        if trusted, eventTap == nil {
+            try? start()
+        } else if !trusted, eventTap != nil {
+            teardown()
+        }
+    }
+
     public func start() throws {
         // Idempotent: a re-attempt after the user grants Accessibility must not
         // install a second tap. The launch wiring also guards this via
@@ -575,24 +630,28 @@ public final class HotkeyListener {
                 return nil
             }
             return Unmanaged.passUnretained(event)
-        case .tapDisabledByTimeout:
-            // macOS disables .defaultTap callbacks that take too
-            // long. Re-enable so hotkey detection survives extreme
-            // system load (unlikely to ever happen given how fast
-            // this callback is, but the standard CGEventTap
-            // pattern). Without this the tap stays dead and no
-            // amount of hotkey pressing would register again until
-            // the user restarts Parleq.
-            if let tap = listener.eventTap {
-                CGEvent.tapEnable(tap: tap, enable: true)
-            }
-            return Unmanaged.passUnretained(event)
-        case .tapDisabledByUserInput:
-            // Similar to timeout — user-input disable also wants
-            // an explicit re-enable. Rare in practice but covered
-            // for symmetry.
-            if let tap = listener.eventTap {
-                CGEvent.tapEnable(tap: tap, enable: true)
+        case .tapDisabledByTimeout, .tapDisabledByUserInput:
+            // macOS disabled our keyboard event tap. Deciding whether to
+            // re-enable is SAFETY-CRITICAL: blindly re-enabling on an
+            // Accessibility revoke fights macOS and locks the user's keyboard
+            // (the tap keeps intercepting keystrokes it can no longer pass).
+            // actionForTapDisabled encodes the rule (see its doc).
+            let reason: TapDisableReason =
+                (type == .tapDisabledByTimeout) ? .timeout : .userInput
+            switch HotkeyListener.actionForTapDisabled(
+                reason: reason, accessibilityTrusted: AXIsProcessTrusted()
+            ) {
+            case .reEnable:
+                if let tap = listener.eventTap {
+                    CGEvent.tapEnable(tap: tap, enable: true)
+                }
+            case .tearDown:
+                // Lost Accessibility (or the system disabled us) → remove the tap
+                // so it stops intercepting the keyboard. We're on the main run
+                // loop (the tap's source lives there), so a synchronous teardown
+                // is safe; isArmed flips false so the reconciler re-installs the
+                // tap once trust returns.
+                listener.teardown()
             }
             return Unmanaged.passUnretained(event)
         default:
