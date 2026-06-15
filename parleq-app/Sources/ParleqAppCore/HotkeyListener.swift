@@ -132,10 +132,27 @@ public final class HotkeyListener {
     /// this threshold. Observed chatter is ~0 ms (down+up pair emitted
     /// by the keyboard driver within the same flagsChanged flush).
     private static let chatterDebounce: TimeInterval = 0.04
-    /// A real double-tap has a humanly-possible release→press gap; a
-    /// re-press within this window is keyboard/driver chatter re-emitting
-    /// the modifier, not a person tapping twice. See handle(event:).
-    private static let minHumanTapGap: TimeInterval = 0.04
+    /// A re-press within this gap of the prior release is keyboard/driver
+    /// chatter re-emitting the modifier, not a person tapping twice.
+    ///
+    /// History: 0.19.0 (#73) introduced this lower bound at 40 ms to kill
+    /// phantom chatter, but 40 ms also rejected genuinely-fast human double-taps
+    /// — measured at 29–33 ms for some users (worse under Karabiner-Elements,
+    /// which reposts events and compresses the inter-tap gap), silently breaking
+    /// quick mode + continuous recording for them. The phantom-chatter defense is
+    /// really the `chatterDebounce` HOLD-duration gate above (a chatter "tap" has
+    /// ~0 ms hold, so it never arms the window); this gap floor only needs to
+    /// exceed a near-instant re-emit (sub-~6 ms observed). Lowered to 12 ms:
+    /// rejects chatter, accepts fast human taps. (Config-overridable later if
+    /// heavy remappers still compress below this.)
+    private static let minHumanTapGap: TimeInterval = 0.012
+
+    /// Whether a release→press `gap` (seconds) is a deliberate double-tap: above
+    /// the chatter floor and within the double-tap window. Pure + testable so the
+    /// 0.19.0 fast-tap regression stays fixed.
+    public static func classifiesAsDoubleTap(gap: TimeInterval) -> Bool {
+        gap >= minHumanTapGap && gap < doubleTapWindow
+    }
 
     /// Virtual keycode for the Space bar on US/QWERTY. macOS
     /// dispatches Space by keyCode regardless of layout, same as
@@ -334,9 +351,15 @@ public final class HotkeyListener {
         let trusted = AXIsProcessTrusted()
         if trusted, eventTap == nil {
             try? start()
+            logHotkey("hotkey: tap re-armed (Accessibility granted)")
         } else if !trusted, eventTap != nil {
             teardown()
+            logHotkey("hotkey: tap torn down (Accessibility revoked)")
         }
+    }
+
+    private func logHotkey(_ message: String) {
+        FileHandle.standardError.write("[parleq] \(message)\n".data(using: .utf8) ?? Data())
     }
 
     public func start() throws {
@@ -401,8 +424,7 @@ public final class HotkeyListener {
         if isDown {
             let now = Date().timeIntervalSinceReferenceDate
             let gap = now - lastKeyUpAt
-            let isDoubleTap = gap < HotkeyListener.doubleTapWindow
-                && gap >= HotkeyListener.minHumanTapGap
+            let isDoubleTap = HotkeyListener.classifiesAsDoubleTap(gap: gap)
             // maskShift covers both left and right Shift.
             let isShiftHeld = event.flags.contains(.maskShift)
             // Reset the per-hold space + P flags at every fresh
