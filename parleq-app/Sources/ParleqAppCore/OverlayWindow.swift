@@ -3175,11 +3175,11 @@ private struct OverlayContent: View {
             if model.continuousRecording {
                 Text("Recording… [tap \(hotkeyLabel)] stop   [Esc] cancel")
             } else {
-                // [R] recover is accurate here: during a normal hold-to-talk
-                // capture the hotkey IS held, so tapping R is the hold+R gesture
-                // (abort this capture, bring back the last dictation). Omitted
-                // from the continuous footer, where the hotkey isn't held.
-                Text("Release \(hotkeyLabel) when done   ·   [R] recover last")
+                // Note: during a real hold-to-talk capture composeState is
+                // .recording, so OverlayHintStrip (not this stateFooter) renders
+                // — the "R: recover" hint lives there. This branch only shows
+                // when composeState == .idle (rare for .capturing).
+                Text("Release \(hotkeyLabel) when done")
             }
         case .cleaning:
             // C1: a deferred eager-accept shows a subtle "Finishing…" cue so

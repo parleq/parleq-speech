@@ -70,14 +70,14 @@ struct OverlayHintStrip: View {
                     if spaceArmedDuringHold {
                         Text("Picker opens on release · Esc to cancel")
                     } else {
-                        Text("Release: done · Space: attach a window · C: this window · P: Parleq")
+                        Text("Release: done · Space: attach · C: this window · P: Parleq · R: recover")
                     }
                 } else {
                     // Reference windows are off, so there's no Space
                     // gesture to teach — but the hold-hotkey + P gesture
-                    // (summon the Parleq window) still works, so keep
-                    // that hint visible.
-                    Text("Release: done · P: open Parleq")
+                    // (summon the Parleq window) and hold+R (recover the
+                    // last dictation) still work, so keep those visible.
+                    Text("Release: done · P: open Parleq · R: recover")
                 }
 
             case .pickerOpen:
