@@ -13,9 +13,21 @@ Press a global hotkey, speak, see post-processed text appear in a floating overl
 
 > **Status:** in active personal use. The bundled Mac path (FluidAudio Parakeet TDT v3 on the Apple Neural Engine for ASR + your choice of on-device MLX cleanup, Gemini, OpenAI, Vertex AI, AWS Bedrock, or Azure OpenAI for cleanup) works end-to-end.
 
-> **Requirements:** macOS 14 (Sonoma) or later on **Apple Silicon** (M1 / M2 / M3 / M4). The binary is built `arm64`-only; Intel Macs can mount the DMG but won't be able to launch the app. Validating Intel-Mac behavior more formally is tracked in [#1](https://github.com/parleq/parleq-speech/issues/1).
+> **Requirements:** macOS 14 (Sonoma) or later on **Apple Silicon** (M1 / M2 / M3 / M4). The binary is built `arm64`-only; Intel Macs can mount the DMG but won't be able to launch the app. See [Supported hardware](#supported-hardware) for the full capability matrix.
 
 **Website:** <https://parleq.app> — landing page with an end-user-friendly download path. Source under [`web/`](web/), deployed by GitHub Actions on every push to `main`.
+
+## Supported hardware
+
+Parleq requires **Apple Silicon**. The bundled binary is `arm64`-only for two independent reasons: the on-device speech model (Parakeet TDT v3) runs on the **Apple Neural Engine**, and the optional on-device cleanup tier runs on **Apple MLX**, which only targets Apple Silicon GPUs. Intel Macs can mount the DMG and drag `Parleq.app` to Applications, but launching it fails with macOS's `Bad CPU type` error (Rosetta translates Intel→ARM, not the reverse).
+
+| Tier | Hardware | On-device ASR | On-device cleanup (MLX) | Cloud cleanup |
+|---|---|---|---|---|
+| **Recommended** | Apple Silicon (M1+), 16 GB+ | ✅ ANE · ~64 ms · ~150 MB | ✅ (needs 12 GB+ RAM) | ✅ |
+| **Supported** | Apple Silicon (M1+), 8 GB | ✅ ANE | ⚠️ below the 12 GB minimum — strongly cautioned; use cloud cleanup or skip cleanup | ✅ |
+| **Not supported** | Intel / any non-Apple-Silicon Mac | ❌ app won't launch (`arm64`-only) | ❌ | ❌ |
+
+**Why there's no Intel build.** Beyond the launch blocker, on-device ASR on Intel would fall back to CoreML on the CPU/GPU with no Neural Engine — an estimated 5–20× slower, which undercuts the low-latency core of the product — and the MLX cleanup tier can't run on Intel at all. A cloud-only x86_64 build (no bundled ASR, cleanup via a remote OpenAI-compatible `asr.endpoint` + a cloud LLM) would only be worth shipping for a concrete enterprise fleet that needs it. Background and the decision are in [#1](https://github.com/parleq/parleq-speech/issues/1).
 
 ## What's distinctive
 
