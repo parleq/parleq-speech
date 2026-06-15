@@ -1898,14 +1898,31 @@ public final class AppState {
             dismissPicker()
         case .capturing, .refining:
             // Stop the recorder so the audio engine releases its
-            // input tap; the returned WAV bytes are discarded
-            // (we're cancelling the utterance). Also cancel the
-            // streaming ASR session so the upload connection
-            // closes immediately instead of waiting for body close.
-            _ = try? recorder.stop()
+            // input tap. Also cancel the streaming ASR session so the
+            // upload connection closes immediately instead of waiting
+            // for body close.
+            let cancelledCapture = try? recorder.stop()
             recorder.chunkHandler = nil
             streamingSession?.cancel()
             streamingSession = nil
+            // B3: a mid-hold Esc is a fat-finger loss too. Before discarding
+            // the cancelled utterance, retain its audio as the recoverable
+            // buffer IF it's a real, voiced FRESH capture (not a refine — you
+            // recover the dictation, not an edit; and not an accidental
+            // sub-200ms tap or a dead/silent hold). Then hold+R / the menu can
+            // bring it back, same as a lost reviewed dictation.
+            if phase == .capturing, let cancelledCapture {
+                let s = SilenceDetector.analyze(wavData: cancelledCapture.wavData)
+                let health = CaptureHealth.classify(
+                    durationSeconds: cancelledCapture.durationSeconds,
+                    peakRMS: s.peakRMS,
+                    voicedSeconds: s.voicedDurationSeconds,
+                    isAnalyzable: s.isAnalyzable)
+                if health == .ok {
+                    retainRecoverableAudio(cancelledCapture)
+                    log("cancel during capture: retained \(cancelledCapture.wavData.count / 1024) KB for recovery")
+                }
+            }
         case .cleaning, .awaitingAccept:
             break
         }
@@ -2153,6 +2170,17 @@ public final class AppState {
     @MainActor
     public func rPressedDuringHold() {
         recoverLastDictation()
+    }
+
+    /// B3: stash a fresh capture's audio as the recoverable buffer. Memory-only
+    /// (compliance invariant #1); fires onRecoverableDictationChanged the first
+    /// time a buffer becomes available so the menu item enables. Called from
+    /// both the normal finalize path AND a mid-hold cancel (Esc) — a cancelled
+    /// dictation is a fat-finger loss too, and recovery is exactly for that.
+    private func retainRecoverableAudio(_ capture: AudioRecorder.Capture) {
+        let wasUnavailable = (lastDictationAudio == nil)
+        lastDictationAudio = (capture.wavData, max(0, Int(capture.durationSeconds * 1000)))
+        if wasUnavailable { onRecoverableDictationChanged?(true) }
     }
 
     /// Called from HotkeyListener.onCPressed when the user taps C while
@@ -2779,9 +2807,7 @@ public final class AppState {
         // overwrite the recoverable buffer: you recover the dictation, not an
         // in-place edit of it.
         if !asRefine {
-            let wasUnavailable = (lastDictationAudio == nil)
-            lastDictationAudio = (capture.wavData, max(0, Int(capture.durationSeconds * 1000)))
-            if wasUnavailable { onRecoverableDictationChanged?(true) }
+            retainRecoverableAudio(capture)
         }
 
         runCleanupPipeline(wavData: capture.wavData, asRefine: asRefine)
