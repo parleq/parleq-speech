@@ -59,3 +59,6 @@ third_party/fluidaudio-sidecar/.swiftpm/
 # local-only working artifacts; not part of the codebase.
 .superpowers/
 docs/superpowers/
+
+# asr-bench local Python venv (deps installed on demand)
+bench/.venv/

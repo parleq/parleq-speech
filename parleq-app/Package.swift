@@ -13,6 +13,11 @@ let package = Package(
     ],
     products: [
         .executable(name: "parleq-app", targets: ["parleq-app"]),
+        // asr-bench — dev-only ASR benchmark CLI. Separate product so it
+        // is never part of the app bundle (make-app.sh builds only the
+        // parleq-app product). Depends on FluidAudio alone, not
+        // ParleqAppCore, so a build doesn't pull in MLX/Soto.
+        .executable(name: "asr-bench", targets: ["asr-bench"]),
     ],
     dependencies: [
         // Soto — community Swift AWS SDK. Used for Bedrock Runtime
@@ -101,6 +106,17 @@ let package = Package(
             name: "parleq-app",
             dependencies: ["ParleqAppCore"],
             path: "Sources/parleq-app"
+        ),
+        // asr-bench — dev-only ASR benchmark. FluidAudio-only on purpose
+        // (see the product comment above). Build with
+        // `swift build --product asr-bench` to avoid compiling the rest
+        // of the app graph.
+        .executableTarget(
+            name: "asr-bench",
+            dependencies: [
+                .product(name: "FluidAudio", package: "FluidAudio"),
+            ],
+            path: "Sources/asr-bench"
         ),
         .testTarget(
             name: "ParleqAppCoreTests",

@@ -1,0 +1,15 @@
+{
+  "_comment": "Custom-dictionary terms for the biasing arm of the benchmark. Mirrors the shape Parleq's config.dictionary.terms uses (term + aliases). The bench loads this when --dictionary is passed; aliases are the common ASR mis-hearings the CTC rescorer maps back to the canonical term.",
+  "terms": [
+    { "term": "Parleq",     "aliases": ["parlay", "parlez", "par lake", "parlex"] },
+    { "term": "Parakeet",   "aliases": ["pair a keet", "para keet"] },
+    { "term": "FluidAudio", "aliases": ["fluid audio"] },
+    { "term": "Bedrock",    "aliases": ["bed rock"] },
+    { "term": "Vertex",     "aliases": ["vortex", "vertec"] },
+    { "term": "Gemini",     "aliases": ["gemoni", "jiminy"] },
+    { "term": "Keychain",   "aliases": ["key chain"] },
+    { "term": "Soto",       "aliases": ["soda", "saito"] },
+    { "term": "Sherpa",     "aliases": ["sherpas", "sherba"] },
+    { "term": "Route 53",   "aliases": ["route fifty three", "root fifty three"] }
+  ]
+}

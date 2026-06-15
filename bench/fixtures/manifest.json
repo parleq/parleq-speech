@@ -1,0 +1,1560 @@
+{
+  "generator": "macOS say",
+  "format": "16 kHz mono 16-bit PCM WAV",
+  "voices": {
+    "Samantha": "us",
+    "Daniel": "gb",
+    "Karen": "au"
+  },
+  "clip_count": 120,
+  "clips": [
+    {
+      "id": "g01-short-cmd-Samantha",
+      "utterance_id": "g01-short-cmd",
+      "corpus": "general",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "short",
+      "terms": [],
+      "reference_transcript": "Open the settings window and switch to the audio tab.",
+      "file": "g01-short-cmd-Samantha.wav",
+      "duration_ms": 2849
+    },
+    {
+      "id": "g01-short-cmd-Daniel",
+      "utterance_id": "g01-short-cmd",
+      "corpus": "general",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "short",
+      "terms": [],
+      "reference_transcript": "Open the settings window and switch to the audio tab.",
+      "file": "g01-short-cmd-Daniel.wav",
+      "duration_ms": 2854
+    },
+    {
+      "id": "g01-short-cmd-Karen",
+      "utterance_id": "g01-short-cmd",
+      "corpus": "general",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "short",
+      "terms": [],
+      "reference_transcript": "Open the settings window and switch to the audio tab.",
+      "file": "g01-short-cmd-Karen.wav",
+      "duration_ms": 2865
+    },
+    {
+      "id": "g02-short-note-Samantha",
+      "utterance_id": "g02-short-note",
+      "corpus": "general",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "short",
+      "terms": [],
+      "reference_transcript": "Remind me to email the team before the standup tomorrow.",
+      "file": "g02-short-note-Samantha.wav",
+      "duration_ms": 3119
+    },
+    {
+      "id": "g02-short-note-Daniel",
+      "utterance_id": "g02-short-note",
+      "corpus": "general",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "short",
+      "terms": [],
+      "reference_transcript": "Remind me to email the team before the standup tomorrow.",
+      "file": "g02-short-note-Daniel.wav",
+      "duration_ms": 3045
+    },
+    {
+      "id": "g02-short-note-Karen",
+      "utterance_id": "g02-short-note",
+      "corpus": "general",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "short",
+      "terms": [],
+      "reference_transcript": "Remind me to email the team before the standup tomorrow.",
+      "file": "g02-short-note-Karen.wav",
+      "duration_ms": 3100
+    },
+    {
+      "id": "g03-short-q-Samantha",
+      "utterance_id": "g03-short-q",
+      "corpus": "general",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "short",
+      "terms": [],
+      "reference_transcript": "What time does the meeting start this afternoon?",
+      "file": "g03-short-q-Samantha.wav",
+      "duration_ms": 2382
+    },
+    {
+      "id": "g03-short-q-Daniel",
+      "utterance_id": "g03-short-q",
+      "corpus": "general",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "short",
+      "terms": [],
+      "reference_transcript": "What time does the meeting start this afternoon?",
+      "file": "g03-short-q-Daniel.wav",
+      "duration_ms": 2672
+    },
+    {
+      "id": "g03-short-q-Karen",
+      "utterance_id": "g03-short-q",
+      "corpus": "general",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "short",
+      "terms": [],
+      "reference_transcript": "What time does the meeting start this afternoon?",
+      "file": "g03-short-q-Karen.wav",
+      "duration_ms": 2526
+    },
+    {
+      "id": "g04-numbers-money-Samantha",
+      "utterance_id": "g04-numbers-money",
+      "corpus": "general",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "numbers",
+      "terms": [],
+      "reference_transcript": "The invoice came to forty seven dollars and fifty cents.",
+      "file": "g04-numbers-money-Samantha.wav",
+      "duration_ms": 3226
+    },
+    {
+      "id": "g04-numbers-money-Daniel",
+      "utterance_id": "g04-numbers-money",
+      "corpus": "general",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "numbers",
+      "terms": [],
+      "reference_transcript": "The invoice came to forty seven dollars and fifty cents.",
+      "file": "g04-numbers-money-Daniel.wav",
+      "duration_ms": 3272
+    },
+    {
+      "id": "g04-numbers-money-Karen",
+      "utterance_id": "g04-numbers-money",
+      "corpus": "general",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "numbers",
+      "terms": [],
+      "reference_transcript": "The invoice came to forty seven dollars and fifty cents.",
+      "file": "g04-numbers-money-Karen.wav",
+      "duration_ms": 3080
+    },
+    {
+      "id": "g05-numbers-date-Samantha",
+      "utterance_id": "g05-numbers-date",
+      "corpus": "general",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "numbers",
+      "terms": [],
+      "reference_transcript": "Let's schedule the review for March twenty third at nine thirty.",
+      "file": "g05-numbers-date-Samantha.wav",
+      "duration_ms": 3081
+    },
+    {
+      "id": "g05-numbers-date-Daniel",
+      "utterance_id": "g05-numbers-date",
+      "corpus": "general",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "numbers",
+      "terms": [],
+      "reference_transcript": "Let's schedule the review for March twenty third at nine thirty.",
+      "file": "g05-numbers-date-Daniel.wav",
+      "duration_ms": 3486
+    },
+    {
+      "id": "g05-numbers-date-Karen",
+      "utterance_id": "g05-numbers-date",
+      "corpus": "general",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "numbers",
+      "terms": [],
+      "reference_transcript": "Let's schedule the review for March twenty third at nine thirty.",
+      "file": "g05-numbers-date-Karen.wav",
+      "duration_ms": 3172
+    },
+    {
+      "id": "g06-numbers-stats-Samantha",
+      "utterance_id": "g06-numbers-stats",
+      "corpus": "general",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "numbers",
+      "terms": [],
+      "reference_transcript": "Conversion went from three point two percent to five point eight percent.",
+      "file": "g06-numbers-stats-Samantha.wav",
+      "duration_ms": 3715
+    },
+    {
+      "id": "g06-numbers-stats-Daniel",
+      "utterance_id": "g06-numbers-stats",
+      "corpus": "general",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "numbers",
+      "terms": [],
+      "reference_transcript": "Conversion went from three point two percent to five point eight percent.",
+      "file": "g06-numbers-stats-Daniel.wav",
+      "duration_ms": 3879
+    },
+    {
+      "id": "g06-numbers-stats-Karen",
+      "utterance_id": "g06-numbers-stats",
+      "corpus": "general",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "numbers",
+      "terms": [],
+      "reference_transcript": "Conversion went from three point two percent to five point eight percent.",
+      "file": "g06-numbers-stats-Karen.wav",
+      "duration_ms": 3934
+    },
+    {
+      "id": "g07-numbers-phone-Samantha",
+      "utterance_id": "g07-numbers-phone",
+      "corpus": "general",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "numbers",
+      "terms": [],
+      "reference_transcript": "You can reach the front desk at extension four one two.",
+      "file": "g07-numbers-phone-Samantha.wav",
+      "duration_ms": 2988
+    },
+    {
+      "id": "g07-numbers-phone-Daniel",
+      "utterance_id": "g07-numbers-phone",
+      "corpus": "general",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "numbers",
+      "terms": [],
+      "reference_transcript": "You can reach the front desk at extension four one two.",
+      "file": "g07-numbers-phone-Daniel.wav",
+      "duration_ms": 3323
+    },
+    {
+      "id": "g07-numbers-phone-Karen",
+      "utterance_id": "g07-numbers-phone",
+      "corpus": "general",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "numbers",
+      "terms": [],
+      "reference_transcript": "You can reach the front desk at extension four one two.",
+      "file": "g07-numbers-phone-Karen.wav",
+      "duration_ms": 2975
+    },
+    {
+      "id": "g08-punct-list-Samantha",
+      "utterance_id": "g08-punct-list",
+      "corpus": "general",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "punct",
+      "terms": [],
+      "reference_transcript": "We need three things: a budget, a timeline, and an owner.",
+      "file": "g08-punct-list-Samantha.wav",
+      "duration_ms": 3776
+    },
+    {
+      "id": "g08-punct-list-Daniel",
+      "utterance_id": "g08-punct-list",
+      "corpus": "general",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "punct",
+      "terms": [],
+      "reference_transcript": "We need three things: a budget, a timeline, and an owner.",
+      "file": "g08-punct-list-Daniel.wav",
+      "duration_ms": 3903
+    },
+    {
+      "id": "g08-punct-list-Karen",
+      "utterance_id": "g08-punct-list",
+      "corpus": "general",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "punct",
+      "terms": [],
+      "reference_transcript": "We need three things: a budget, a timeline, and an owner.",
+      "file": "g08-punct-list-Karen.wav",
+      "duration_ms": 3699
+    },
+    {
+      "id": "g09-punct-quote-Samantha",
+      "utterance_id": "g09-punct-quote",
+      "corpus": "general",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "punct",
+      "terms": [],
+      "reference_transcript": "She said the launch was, in her words, completely on track.",
+      "file": "g09-punct-quote-Samantha.wav",
+      "duration_ms": 3690
+    },
+    {
+      "id": "g09-punct-quote-Daniel",
+      "utterance_id": "g09-punct-quote",
+      "corpus": "general",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "punct",
+      "terms": [],
+      "reference_transcript": "She said the launch was, in her words, completely on track.",
+      "file": "g09-punct-quote-Daniel.wav",
+      "duration_ms": 4122
+    },
+    {
+      "id": "g09-punct-quote-Karen",
+      "utterance_id": "g09-punct-quote",
+      "corpus": "general",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "punct",
+      "terms": [],
+      "reference_transcript": "She said the launch was, in her words, completely on track.",
+      "file": "g09-punct-quote-Karen.wav",
+      "duration_ms": 3653
+    },
+    {
+      "id": "g10-punct-dash-Samantha",
+      "utterance_id": "g10-punct-dash",
+      "corpus": "general",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "punct",
+      "terms": [],
+      "reference_transcript": "The plan is simple, ship the fix, then write the postmortem.",
+      "file": "g10-punct-dash-Samantha.wav",
+      "duration_ms": 3588
+    },
+    {
+      "id": "g10-punct-dash-Daniel",
+      "utterance_id": "g10-punct-dash",
+      "corpus": "general",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "punct",
+      "terms": [],
+      "reference_transcript": "The plan is simple, ship the fix, then write the postmortem.",
+      "file": "g10-punct-dash-Daniel.wav",
+      "duration_ms": 3924
+    },
+    {
+      "id": "g10-punct-dash-Karen",
+      "utterance_id": "g10-punct-dash",
+      "corpus": "general",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "punct",
+      "terms": [],
+      "reference_transcript": "The plan is simple, ship the fix, then write the postmortem.",
+      "file": "g10-punct-dash-Karen.wav",
+      "duration_ms": 3661
+    },
+    {
+      "id": "g11-prose-medium-Samantha",
+      "utterance_id": "g11-prose-medium",
+      "corpus": "general",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "prose",
+      "terms": [],
+      "reference_transcript": "I spent the morning reviewing the proposal and I think the second option is stronger because it keeps the scope tight and the timeline realistic.",
+      "file": "g11-prose-medium-Samantha.wav",
+      "duration_ms": 7264
+    },
+    {
+      "id": "g11-prose-medium-Daniel",
+      "utterance_id": "g11-prose-medium",
+      "corpus": "general",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "prose",
+      "terms": [],
+      "reference_transcript": "I spent the morning reviewing the proposal and I think the second option is stronger because it keeps the scope tight and the timeline realistic.",
+      "file": "g11-prose-medium-Daniel.wav",
+      "duration_ms": 7237
+    },
+    {
+      "id": "g11-prose-medium-Karen",
+      "utterance_id": "g11-prose-medium",
+      "corpus": "general",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "prose",
+      "terms": [],
+      "reference_transcript": "I spent the morning reviewing the proposal and I think the second option is stronger because it keeps the scope tight and the timeline realistic.",
+      "file": "g11-prose-medium-Karen.wav",
+      "duration_ms": 7323
+    },
+    {
+      "id": "g12-prose-medium-Samantha",
+      "utterance_id": "g12-prose-medium",
+      "corpus": "general",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "prose",
+      "terms": [],
+      "reference_transcript": "The customer was happy with the demo but they asked whether we could support single sign on before the end of the quarter.",
+      "file": "g12-prose-medium-Samantha.wav",
+      "duration_ms": 5736
+    },
+    {
+      "id": "g12-prose-medium-Daniel",
+      "utterance_id": "g12-prose-medium",
+      "corpus": "general",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "prose",
+      "terms": [],
+      "reference_transcript": "The customer was happy with the demo but they asked whether we could support single sign on before the end of the quarter.",
+      "file": "g12-prose-medium-Daniel.wav",
+      "duration_ms": 5826
+    },
+    {
+      "id": "g12-prose-medium-Karen",
+      "utterance_id": "g12-prose-medium",
+      "corpus": "general",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "prose",
+      "terms": [],
+      "reference_transcript": "The customer was happy with the demo but they asked whether we could support single sign on before the end of the quarter.",
+      "file": "g12-prose-medium-Karen.wav",
+      "duration_ms": 5612
+    },
+    {
+      "id": "g13-prose-long-Samantha",
+      "utterance_id": "g13-prose-long",
+      "corpus": "general",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "prose",
+      "terms": [],
+      "reference_transcript": "Here is my summary of where we landed. We agreed to prioritize the onboarding flow first, then circle back to the dashboard once the data pipeline is stable, and finally we will revisit pricing after we have a few more reference customers in hand.",
+      "file": "g13-prose-long-Samantha.wav",
+      "duration_ms": 13638
+    },
+    {
+      "id": "g13-prose-long-Daniel",
+      "utterance_id": "g13-prose-long",
+      "corpus": "general",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "prose",
+      "terms": [],
+      "reference_transcript": "Here is my summary of where we landed. We agreed to prioritize the onboarding flow first, then circle back to the dashboard once the data pipeline is stable, and finally we will revisit pricing after we have a few more reference customers in hand.",
+      "file": "g13-prose-long-Daniel.wav",
+      "duration_ms": 14234
+    },
+    {
+      "id": "g13-prose-long-Karen",
+      "utterance_id": "g13-prose-long",
+      "corpus": "general",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "prose",
+      "terms": [],
+      "reference_transcript": "Here is my summary of where we landed. We agreed to prioritize the onboarding flow first, then circle back to the dashboard once the data pipeline is stable, and finally we will revisit pricing after we have a few more reference customers in hand.",
+      "file": "g13-prose-long-Karen.wav",
+      "duration_ms": 13657
+    },
+    {
+      "id": "g14-prose-long-Samantha",
+      "utterance_id": "g14-prose-long",
+      "corpus": "general",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "prose",
+      "terms": [],
+      "reference_transcript": "There are a couple of risks worth calling out. The first is that the third party API has been flaky under load, and the second is that we still do not have a clear owner for the migration, which means it could slip if nobody picks it up this week.",
+      "file": "g14-prose-long-Samantha.wav",
+      "duration_ms": 12909
+    },
+    {
+      "id": "g14-prose-long-Daniel",
+      "utterance_id": "g14-prose-long",
+      "corpus": "general",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "prose",
+      "terms": [],
+      "reference_transcript": "There are a couple of risks worth calling out. The first is that the third party API has been flaky under load, and the second is that we still do not have a clear owner for the migration, which means it could slip if nobody picks it up this week.",
+      "file": "g14-prose-long-Daniel.wav",
+      "duration_ms": 13619
+    },
+    {
+      "id": "g14-prose-long-Karen",
+      "utterance_id": "g14-prose-long",
+      "corpus": "general",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "prose",
+      "terms": [],
+      "reference_transcript": "There are a couple of risks worth calling out. The first is that the third party API has been flaky under load, and the second is that we still do not have a clear owner for the migration, which means it could slip if nobody picks it up this week.",
+      "file": "g14-prose-long-Karen.wav",
+      "duration_ms": 13072
+    },
+    {
+      "id": "g15-hedge-Samantha",
+      "utterance_id": "g15-hedge",
+      "corpus": "general",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "hedge",
+      "terms": [],
+      "reference_transcript": "I think, and I could be wrong about this, that we should hold the release until Monday.",
+      "file": "g15-hedge-Samantha.wav",
+      "duration_ms": 4594
+    },
+    {
+      "id": "g15-hedge-Daniel",
+      "utterance_id": "g15-hedge",
+      "corpus": "general",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "hedge",
+      "terms": [],
+      "reference_transcript": "I think, and I could be wrong about this, that we should hold the release until Monday.",
+      "file": "g15-hedge-Daniel.wav",
+      "duration_ms": 4857
+    },
+    {
+      "id": "g15-hedge-Karen",
+      "utterance_id": "g15-hedge",
+      "corpus": "general",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "hedge",
+      "terms": [],
+      "reference_transcript": "I think, and I could be wrong about this, that we should hold the release until Monday.",
+      "file": "g15-hedge-Karen.wav",
+      "duration_ms": 4746
+    },
+    {
+      "id": "g16-correction-Samantha",
+      "utterance_id": "g16-correction",
+      "corpus": "general",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "correction",
+      "terms": [],
+      "reference_transcript": "Send it to Sarah, actually no, send it to the whole group instead.",
+      "file": "g16-correction-Samantha.wav",
+      "duration_ms": 4020
+    },
+    {
+      "id": "g16-correction-Daniel",
+      "utterance_id": "g16-correction",
+      "corpus": "general",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "correction",
+      "terms": [],
+      "reference_transcript": "Send it to Sarah, actually no, send it to the whole group instead.",
+      "file": "g16-correction-Daniel.wav",
+      "duration_ms": 4192
+    },
+    {
+      "id": "g16-correction-Karen",
+      "utterance_id": "g16-correction",
+      "corpus": "general",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "correction",
+      "terms": [],
+      "reference_transcript": "Send it to Sarah, actually no, send it to the whole group instead.",
+      "file": "g16-correction-Karen.wav",
+      "duration_ms": 4021
+    },
+    {
+      "id": "g17-tech-generic-Samantha",
+      "utterance_id": "g17-tech-generic",
+      "corpus": "general",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "tech",
+      "terms": [],
+      "reference_transcript": "The build failed because the test suite timed out after sixty seconds.",
+      "file": "g17-tech-generic-Samantha.wav",
+      "duration_ms": 3750
+    },
+    {
+      "id": "g17-tech-generic-Daniel",
+      "utterance_id": "g17-tech-generic",
+      "corpus": "general",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "tech",
+      "terms": [],
+      "reference_transcript": "The build failed because the test suite timed out after sixty seconds.",
+      "file": "g17-tech-generic-Daniel.wav",
+      "duration_ms": 4131
+    },
+    {
+      "id": "g17-tech-generic-Karen",
+      "utterance_id": "g17-tech-generic",
+      "corpus": "general",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "tech",
+      "terms": [],
+      "reference_transcript": "The build failed because the test suite timed out after sixty seconds.",
+      "file": "g17-tech-generic-Karen.wav",
+      "duration_ms": 3812
+    },
+    {
+      "id": "g18-tech-generic-Samantha",
+      "utterance_id": "g18-tech-generic",
+      "corpus": "general",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "tech",
+      "terms": [],
+      "reference_transcript": "Roll back the last deploy and pin the dependency to the previous version.",
+      "file": "g18-tech-generic-Samantha.wav",
+      "duration_ms": 3769
+    },
+    {
+      "id": "g18-tech-generic-Daniel",
+      "utterance_id": "g18-tech-generic",
+      "corpus": "general",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "tech",
+      "terms": [],
+      "reference_transcript": "Roll back the last deploy and pin the dependency to the previous version.",
+      "file": "g18-tech-generic-Daniel.wav",
+      "duration_ms": 3857
+    },
+    {
+      "id": "g18-tech-generic-Karen",
+      "utterance_id": "g18-tech-generic",
+      "corpus": "general",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "tech",
+      "terms": [],
+      "reference_transcript": "Roll back the last deploy and pin the dependency to the previous version.",
+      "file": "g18-tech-generic-Karen.wav",
+      "duration_ms": 3868
+    },
+    {
+      "id": "g19-tech-generic-Samantha",
+      "utterance_id": "g19-tech-generic",
+      "corpus": "general",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "tech",
+      "terms": [],
+      "reference_transcript": "Add a retry with exponential backoff and cap it at five attempts.",
+      "file": "g19-tech-generic-Samantha.wav",
+      "duration_ms": 3770
+    },
+    {
+      "id": "g19-tech-generic-Daniel",
+      "utterance_id": "g19-tech-generic",
+      "corpus": "general",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "tech",
+      "terms": [],
+      "reference_transcript": "Add a retry with exponential backoff and cap it at five attempts.",
+      "file": "g19-tech-generic-Daniel.wav",
+      "duration_ms": 3881
+    },
+    {
+      "id": "g19-tech-generic-Karen",
+      "utterance_id": "g19-tech-generic",
+      "corpus": "general",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "tech",
+      "terms": [],
+      "reference_transcript": "Add a retry with exponential backoff and cap it at five attempts.",
+      "file": "g19-tech-generic-Karen.wav",
+      "duration_ms": 3600
+    },
+    {
+      "id": "g20-conversational-Samantha",
+      "utterance_id": "g20-conversational",
+      "corpus": "general",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "convo",
+      "terms": [],
+      "reference_transcript": "Hey, just following up on the thread from yesterday, did we ever hear back from the vendor?",
+      "file": "g20-conversational-Samantha.wav",
+      "duration_ms": 4914
+    },
+    {
+      "id": "g20-conversational-Daniel",
+      "utterance_id": "g20-conversational",
+      "corpus": "general",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "convo",
+      "terms": [],
+      "reference_transcript": "Hey, just following up on the thread from yesterday, did we ever hear back from the vendor?",
+      "file": "g20-conversational-Daniel.wav",
+      "duration_ms": 5104
+    },
+    {
+      "id": "g20-conversational-Karen",
+      "utterance_id": "g20-conversational",
+      "corpus": "general",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "convo",
+      "terms": [],
+      "reference_transcript": "Hey, just following up on the thread from yesterday, did we ever hear back from the vendor?",
+      "file": "g20-conversational-Karen.wav",
+      "duration_ms": 4984
+    },
+    {
+      "id": "g21-conversational-Samantha",
+      "utterance_id": "g21-conversational",
+      "corpus": "general",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "convo",
+      "terms": [],
+      "reference_transcript": "Thanks for putting this together, it looks great, I only have one small comment on the intro.",
+      "file": "g21-conversational-Samantha.wav",
+      "duration_ms": 5214
+    },
+    {
+      "id": "g21-conversational-Daniel",
+      "utterance_id": "g21-conversational",
+      "corpus": "general",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "convo",
+      "terms": [],
+      "reference_transcript": "Thanks for putting this together, it looks great, I only have one small comment on the intro.",
+      "file": "g21-conversational-Daniel.wav",
+      "duration_ms": 5563
+    },
+    {
+      "id": "g21-conversational-Karen",
+      "utterance_id": "g21-conversational",
+      "corpus": "general",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "convo",
+      "terms": [],
+      "reference_transcript": "Thanks for putting this together, it looks great, I only have one small comment on the intro.",
+      "file": "g21-conversational-Karen.wav",
+      "duration_ms": 5290
+    },
+    {
+      "id": "g22-instruction-Samantha",
+      "utterance_id": "g22-instruction",
+      "corpus": "general",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "instruction",
+      "terms": [],
+      "reference_transcript": "First, back up the database, then run the migration, and finally restart the service.",
+      "file": "g22-instruction-Samantha.wav",
+      "duration_ms": 5330
+    },
+    {
+      "id": "g22-instruction-Daniel",
+      "utterance_id": "g22-instruction",
+      "corpus": "general",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "instruction",
+      "terms": [],
+      "reference_transcript": "First, back up the database, then run the migration, and finally restart the service.",
+      "file": "g22-instruction-Daniel.wav",
+      "duration_ms": 5861
+    },
+    {
+      "id": "g22-instruction-Karen",
+      "utterance_id": "g22-instruction",
+      "corpus": "general",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "instruction",
+      "terms": [],
+      "reference_transcript": "First, back up the database, then run the migration, and finally restart the service.",
+      "file": "g22-instruction-Karen.wav",
+      "duration_ms": 5673
+    },
+    {
+      "id": "g23-mixed-Samantha",
+      "utterance_id": "g23-mixed",
+      "corpus": "general",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "mixed",
+      "terms": [],
+      "reference_transcript": "The report shows we closed twelve deals in the first quarter, which is up from seven last year.",
+      "file": "g23-mixed-Samantha.wav",
+      "duration_ms": 5039
+    },
+    {
+      "id": "g23-mixed-Daniel",
+      "utterance_id": "g23-mixed",
+      "corpus": "general",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "mixed",
+      "terms": [],
+      "reference_transcript": "The report shows we closed twelve deals in the first quarter, which is up from seven last year.",
+      "file": "g23-mixed-Daniel.wav",
+      "duration_ms": 5352
+    },
+    {
+      "id": "g23-mixed-Karen",
+      "utterance_id": "g23-mixed",
+      "corpus": "general",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "mixed",
+      "terms": [],
+      "reference_transcript": "The report shows we closed twelve deals in the first quarter, which is up from seven last year.",
+      "file": "g23-mixed-Karen.wav",
+      "duration_ms": 5159
+    },
+    {
+      "id": "g24-mixed-Samantha",
+      "utterance_id": "g24-mixed",
+      "corpus": "general",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "mixed",
+      "terms": [],
+      "reference_transcript": "Move the deadline to next Friday and let everyone know in the channel.",
+      "file": "g24-mixed-Samantha.wav",
+      "duration_ms": 3348
+    },
+    {
+      "id": "g24-mixed-Daniel",
+      "utterance_id": "g24-mixed",
+      "corpus": "general",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "mixed",
+      "terms": [],
+      "reference_transcript": "Move the deadline to next Friday and let everyone know in the channel.",
+      "file": "g24-mixed-Daniel.wav",
+      "duration_ms": 3555
+    },
+    {
+      "id": "g24-mixed-Karen",
+      "utterance_id": "g24-mixed",
+      "corpus": "general",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "mixed",
+      "terms": [],
+      "reference_transcript": "Move the deadline to next Friday and let everyone know in the channel.",
+      "file": "g24-mixed-Karen.wav",
+      "duration_ms": 3520
+    },
+    {
+      "id": "b01-parleq-Samantha",
+      "utterance_id": "b01-parleq",
+      "corpus": "biasing",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "biasing",
+      "terms": [
+        "Parleq"
+      ],
+      "reference_transcript": "I dictated this note using Parleq on my Mac.",
+      "file": "b01-parleq-Samantha.wav",
+      "duration_ms": 2608
+    },
+    {
+      "id": "b01-parleq-Daniel",
+      "utterance_id": "b01-parleq",
+      "corpus": "biasing",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "biasing",
+      "terms": [
+        "Parleq"
+      ],
+      "reference_transcript": "I dictated this note using Parleq on my Mac.",
+      "file": "b01-parleq-Daniel.wav",
+      "duration_ms": 2781
+    },
+    {
+      "id": "b01-parleq-Karen",
+      "utterance_id": "b01-parleq",
+      "corpus": "biasing",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "biasing",
+      "terms": [
+        "Parleq"
+      ],
+      "reference_transcript": "I dictated this note using Parleq on my Mac.",
+      "file": "b01-parleq-Karen.wav",
+      "duration_ms": 2818
+    },
+    {
+      "id": "b02-parleq-Samantha",
+      "utterance_id": "b02-parleq",
+      "corpus": "biasing",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "biasing",
+      "terms": [
+        "Parleq"
+      ],
+      "reference_transcript": "Can you add Parleq to the list of approved applications?",
+      "file": "b02-parleq-Samantha.wav",
+      "duration_ms": 2937
+    },
+    {
+      "id": "b02-parleq-Daniel",
+      "utterance_id": "b02-parleq",
+      "corpus": "biasing",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "biasing",
+      "terms": [
+        "Parleq"
+      ],
+      "reference_transcript": "Can you add Parleq to the list of approved applications?",
+      "file": "b02-parleq-Daniel.wav",
+      "duration_ms": 3067
+    },
+    {
+      "id": "b02-parleq-Karen",
+      "utterance_id": "b02-parleq",
+      "corpus": "biasing",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "biasing",
+      "terms": [
+        "Parleq"
+      ],
+      "reference_transcript": "Can you add Parleq to the list of approved applications?",
+      "file": "b02-parleq-Karen.wav",
+      "duration_ms": 2924
+    },
+    {
+      "id": "b03-parakeet-Samantha",
+      "utterance_id": "b03-parakeet",
+      "corpus": "biasing",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "biasing",
+      "terms": [
+        "Parakeet"
+      ],
+      "reference_transcript": "The transcription runs on the Parakeet model locally.",
+      "file": "b03-parakeet-Samantha.wav",
+      "duration_ms": 2880
+    },
+    {
+      "id": "b03-parakeet-Daniel",
+      "utterance_id": "b03-parakeet",
+      "corpus": "biasing",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "biasing",
+      "terms": [
+        "Parakeet"
+      ],
+      "reference_transcript": "The transcription runs on the Parakeet model locally.",
+      "file": "b03-parakeet-Daniel.wav",
+      "duration_ms": 2993
+    },
+    {
+      "id": "b03-parakeet-Karen",
+      "utterance_id": "b03-parakeet",
+      "corpus": "biasing",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "biasing",
+      "terms": [
+        "Parakeet"
+      ],
+      "reference_transcript": "The transcription runs on the Parakeet model locally.",
+      "file": "b03-parakeet-Karen.wav",
+      "duration_ms": 2883
+    },
+    {
+      "id": "b04-fluidaudio-Samantha",
+      "utterance_id": "b04-fluidaudio",
+      "corpus": "biasing",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "biasing",
+      "terms": [
+        "FluidAudio"
+      ],
+      "reference_transcript": "We use FluidAudio for on device speech recognition.",
+      "file": "b04-fluidaudio-Samantha.wav",
+      "duration_ms": 3056
+    },
+    {
+      "id": "b04-fluidaudio-Daniel",
+      "utterance_id": "b04-fluidaudio",
+      "corpus": "biasing",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "biasing",
+      "terms": [
+        "FluidAudio"
+      ],
+      "reference_transcript": "We use FluidAudio for on device speech recognition.",
+      "file": "b04-fluidaudio-Daniel.wav",
+      "duration_ms": 3160
+    },
+    {
+      "id": "b04-fluidaudio-Karen",
+      "utterance_id": "b04-fluidaudio",
+      "corpus": "biasing",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "biasing",
+      "terms": [
+        "FluidAudio"
+      ],
+      "reference_transcript": "We use FluidAudio for on device speech recognition.",
+      "file": "b04-fluidaudio-Karen.wav",
+      "duration_ms": 3130
+    },
+    {
+      "id": "b05-bedrock-Samantha",
+      "utterance_id": "b05-bedrock",
+      "corpus": "biasing",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "biasing",
+      "terms": [
+        "Bedrock"
+      ],
+      "reference_transcript": "The cleanup step calls a model hosted on Bedrock.",
+      "file": "b05-bedrock-Samantha.wav",
+      "duration_ms": 2822
+    },
+    {
+      "id": "b05-bedrock-Daniel",
+      "utterance_id": "b05-bedrock",
+      "corpus": "biasing",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "biasing",
+      "terms": [
+        "Bedrock"
+      ],
+      "reference_transcript": "The cleanup step calls a model hosted on Bedrock.",
+      "file": "b05-bedrock-Daniel.wav",
+      "duration_ms": 2958
+    },
+    {
+      "id": "b05-bedrock-Karen",
+      "utterance_id": "b05-bedrock",
+      "corpus": "biasing",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "biasing",
+      "terms": [
+        "Bedrock"
+      ],
+      "reference_transcript": "The cleanup step calls a model hosted on Bedrock.",
+      "file": "b05-bedrock-Karen.wav",
+      "duration_ms": 2802
+    },
+    {
+      "id": "b06-vertex-Samantha",
+      "utterance_id": "b06-vertex",
+      "corpus": "biasing",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "biasing",
+      "terms": [
+        "Vertex"
+      ],
+      "reference_transcript": "Route the request through Vertex in the central region.",
+      "file": "b06-vertex-Samantha.wav",
+      "duration_ms": 2596
+    },
+    {
+      "id": "b06-vertex-Daniel",
+      "utterance_id": "b06-vertex",
+      "corpus": "biasing",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "biasing",
+      "terms": [
+        "Vertex"
+      ],
+      "reference_transcript": "Route the request through Vertex in the central region.",
+      "file": "b06-vertex-Daniel.wav",
+      "duration_ms": 2824
+    },
+    {
+      "id": "b06-vertex-Karen",
+      "utterance_id": "b06-vertex",
+      "corpus": "biasing",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "biasing",
+      "terms": [
+        "Vertex"
+      ],
+      "reference_transcript": "Route the request through Vertex in the central region.",
+      "file": "b06-vertex-Karen.wav",
+      "duration_ms": 2845
+    },
+    {
+      "id": "b07-gemini-Samantha",
+      "utterance_id": "b07-gemini",
+      "corpus": "biasing",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "biasing",
+      "terms": [
+        "Gemini"
+      ],
+      "reference_transcript": "By default the app uses Gemini for text cleanup.",
+      "file": "b07-gemini-Samantha.wav",
+      "duration_ms": 3023
+    },
+    {
+      "id": "b07-gemini-Daniel",
+      "utterance_id": "b07-gemini",
+      "corpus": "biasing",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "biasing",
+      "terms": [
+        "Gemini"
+      ],
+      "reference_transcript": "By default the app uses Gemini for text cleanup.",
+      "file": "b07-gemini-Daniel.wav",
+      "duration_ms": 3102
+    },
+    {
+      "id": "b07-gemini-Karen",
+      "utterance_id": "b07-gemini",
+      "corpus": "biasing",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "biasing",
+      "terms": [
+        "Gemini"
+      ],
+      "reference_transcript": "By default the app uses Gemini for text cleanup.",
+      "file": "b07-gemini-Karen.wav",
+      "duration_ms": 2958
+    },
+    {
+      "id": "b08-keychain-Samantha",
+      "utterance_id": "b08-keychain",
+      "corpus": "biasing",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "biasing",
+      "terms": [
+        "Keychain"
+      ],
+      "reference_transcript": "The API key is stored securely in the Keychain.",
+      "file": "b08-keychain-Samantha.wav",
+      "duration_ms": 2866
+    },
+    {
+      "id": "b08-keychain-Daniel",
+      "utterance_id": "b08-keychain",
+      "corpus": "biasing",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "biasing",
+      "terms": [
+        "Keychain"
+      ],
+      "reference_transcript": "The API key is stored securely in the Keychain.",
+      "file": "b08-keychain-Daniel.wav",
+      "duration_ms": 2958
+    },
+    {
+      "id": "b08-keychain-Karen",
+      "utterance_id": "b08-keychain",
+      "corpus": "biasing",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "biasing",
+      "terms": [
+        "Keychain"
+      ],
+      "reference_transcript": "The API key is stored securely in the Keychain.",
+      "file": "b08-keychain-Karen.wav",
+      "duration_ms": 2883
+    },
+    {
+      "id": "b09-soto-Samantha",
+      "utterance_id": "b09-soto",
+      "corpus": "biasing",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "biasing",
+      "terms": [
+        "Soto"
+      ],
+      "reference_transcript": "Authentication is handled by the Soto library.",
+      "file": "b09-soto-Samantha.wav",
+      "duration_ms": 2790
+    },
+    {
+      "id": "b09-soto-Daniel",
+      "utterance_id": "b09-soto",
+      "corpus": "biasing",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "biasing",
+      "terms": [
+        "Soto"
+      ],
+      "reference_transcript": "Authentication is handled by the Soto library.",
+      "file": "b09-soto-Daniel.wav",
+      "duration_ms": 2859
+    },
+    {
+      "id": "b09-soto-Karen",
+      "utterance_id": "b09-soto",
+      "corpus": "biasing",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "biasing",
+      "terms": [
+        "Soto"
+      ],
+      "reference_transcript": "Authentication is handled by the Soto library.",
+      "file": "b09-soto-Karen.wav",
+      "duration_ms": 2662
+    },
+    {
+      "id": "b10-sherpa-Samantha",
+      "utterance_id": "b10-sherpa",
+      "corpus": "biasing",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "biasing",
+      "terms": [
+        "Sherpa"
+      ],
+      "reference_transcript": "You can point it at a local Sherpa endpoint instead.",
+      "file": "b10-sherpa-Samantha.wav",
+      "duration_ms": 2721
+    },
+    {
+      "id": "b10-sherpa-Daniel",
+      "utterance_id": "b10-sherpa",
+      "corpus": "biasing",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "biasing",
+      "terms": [
+        "Sherpa"
+      ],
+      "reference_transcript": "You can point it at a local Sherpa endpoint instead.",
+      "file": "b10-sherpa-Daniel.wav",
+      "duration_ms": 2858
+    },
+    {
+      "id": "b10-sherpa-Karen",
+      "utterance_id": "b10-sherpa",
+      "corpus": "biasing",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "biasing",
+      "terms": [
+        "Sherpa"
+      ],
+      "reference_transcript": "You can point it at a local Sherpa endpoint instead.",
+      "file": "b10-sherpa-Karen.wav",
+      "duration_ms": 2719
+    },
+    {
+      "id": "b11-route53-Samantha",
+      "utterance_id": "b11-route53",
+      "corpus": "biasing",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "biasing",
+      "terms": [
+        "Route 53"
+      ],
+      "reference_transcript": "Update the Route 53 record before the cutover.",
+      "file": "b11-route53-Samantha.wav",
+      "duration_ms": 2839
+    },
+    {
+      "id": "b11-route53-Daniel",
+      "utterance_id": "b11-route53",
+      "corpus": "biasing",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "biasing",
+      "terms": [
+        "Route 53"
+      ],
+      "reference_transcript": "Update the Route 53 record before the cutover.",
+      "file": "b11-route53-Daniel.wav",
+      "duration_ms": 2999
+    },
+    {
+      "id": "b11-route53-Karen",
+      "utterance_id": "b11-route53",
+      "corpus": "biasing",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "biasing",
+      "terms": [
+        "Route 53"
+      ],
+      "reference_transcript": "Update the Route 53 record before the cutover.",
+      "file": "b11-route53-Karen.wav",
+      "duration_ms": 2817
+    },
+    {
+      "id": "b12-multi-Samantha",
+      "utterance_id": "b12-multi",
+      "corpus": "biasing",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "biasing",
+      "terms": [
+        "Parleq",
+        "Gemini"
+      ],
+      "reference_transcript": "Parleq sends the transcript to Gemini for cleanup.",
+      "file": "b12-multi-Samantha.wav",
+      "duration_ms": 2879
+    },
+    {
+      "id": "b12-multi-Daniel",
+      "utterance_id": "b12-multi",
+      "corpus": "biasing",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "biasing",
+      "terms": [
+        "Parleq",
+        "Gemini"
+      ],
+      "reference_transcript": "Parleq sends the transcript to Gemini for cleanup.",
+      "file": "b12-multi-Daniel.wav",
+      "duration_ms": 2844
+    },
+    {
+      "id": "b12-multi-Karen",
+      "utterance_id": "b12-multi",
+      "corpus": "biasing",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "biasing",
+      "terms": [
+        "Parleq",
+        "Gemini"
+      ],
+      "reference_transcript": "Parleq sends the transcript to Gemini for cleanup.",
+      "file": "b12-multi-Karen.wav",
+      "duration_ms": 2942
+    },
+    {
+      "id": "b13-multi-Samantha",
+      "utterance_id": "b13-multi",
+      "corpus": "biasing",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "biasing",
+      "terms": [
+        "Bedrock",
+        "Vertex"
+      ],
+      "reference_transcript": "We tested both Bedrock and Vertex for the cleanup model.",
+      "file": "b13-multi-Samantha.wav",
+      "duration_ms": 3033
+    },
+    {
+      "id": "b13-multi-Daniel",
+      "utterance_id": "b13-multi",
+      "corpus": "biasing",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "biasing",
+      "terms": [
+        "Bedrock",
+        "Vertex"
+      ],
+      "reference_transcript": "We tested both Bedrock and Vertex for the cleanup model.",
+      "file": "b13-multi-Daniel.wav",
+      "duration_ms": 3183
+    },
+    {
+      "id": "b13-multi-Karen",
+      "utterance_id": "b13-multi",
+      "corpus": "biasing",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "biasing",
+      "terms": [
+        "Bedrock",
+        "Vertex"
+      ],
+      "reference_transcript": "We tested both Bedrock and Vertex for the cleanup model.",
+      "file": "b13-multi-Karen.wav",
+      "duration_ms": 3165
+    },
+    {
+      "id": "b14-parleq-ctx-Samantha",
+      "utterance_id": "b14-parleq-ctx",
+      "corpus": "biasing",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "biasing",
+      "terms": [
+        "Parleq"
+      ],
+      "reference_transcript": "The nice thing about Parleq is that the audio never leaves the device.",
+      "file": "b14-parleq-ctx-Samantha.wav",
+      "duration_ms": 3553
+    },
+    {
+      "id": "b14-parleq-ctx-Daniel",
+      "utterance_id": "b14-parleq-ctx",
+      "corpus": "biasing",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "biasing",
+      "terms": [
+        "Parleq"
+      ],
+      "reference_transcript": "The nice thing about Parleq is that the audio never leaves the device.",
+      "file": "b14-parleq-ctx-Daniel.wav",
+      "duration_ms": 3817
+    },
+    {
+      "id": "b14-parleq-ctx-Karen",
+      "utterance_id": "b14-parleq-ctx",
+      "corpus": "biasing",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "biasing",
+      "terms": [
+        "Parleq"
+      ],
+      "reference_transcript": "The nice thing about Parleq is that the audio never leaves the device.",
+      "file": "b14-parleq-ctx-Karen.wav",
+      "duration_ms": 3510
+    },
+    {
+      "id": "b15-parakeet-ctx-Samantha",
+      "utterance_id": "b15-parakeet-ctx",
+      "corpus": "biasing",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "biasing",
+      "terms": [
+        "Parakeet",
+        "FluidAudio"
+      ],
+      "reference_transcript": "FluidAudio loads the Parakeet model onto the Neural Engine.",
+      "file": "b15-parakeet-ctx-Samantha.wav",
+      "duration_ms": 3334
+    },
+    {
+      "id": "b15-parakeet-ctx-Daniel",
+      "utterance_id": "b15-parakeet-ctx",
+      "corpus": "biasing",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "biasing",
+      "terms": [
+        "Parakeet",
+        "FluidAudio"
+      ],
+      "reference_transcript": "FluidAudio loads the Parakeet model onto the Neural Engine.",
+      "file": "b15-parakeet-ctx-Daniel.wav",
+      "duration_ms": 3446
+    },
+    {
+      "id": "b15-parakeet-ctx-Karen",
+      "utterance_id": "b15-parakeet-ctx",
+      "corpus": "biasing",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "biasing",
+      "terms": [
+        "Parakeet",
+        "FluidAudio"
+      ],
+      "reference_transcript": "FluidAudio loads the Parakeet model onto the Neural Engine.",
+      "file": "b15-parakeet-ctx-Karen.wav",
+      "duration_ms": 3329
+    },
+    {
+      "id": "b16-vertex-ctx-Samantha",
+      "utterance_id": "b16-vertex-ctx",
+      "corpus": "biasing",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "biasing",
+      "terms": [
+        "Vertex",
+        "Keychain"
+      ],
+      "reference_transcript": "The Vertex service account lives in the Keychain, not in a file.",
+      "file": "b16-vertex-ctx-Samantha.wav",
+      "duration_ms": 3576
+    },
+    {
+      "id": "b16-vertex-ctx-Daniel",
+      "utterance_id": "b16-vertex-ctx",
+      "corpus": "biasing",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "biasing",
+      "terms": [
+        "Vertex",
+        "Keychain"
+      ],
+      "reference_transcript": "The Vertex service account lives in the Keychain, not in a file.",
+      "file": "b16-vertex-ctx-Daniel.wav",
+      "duration_ms": 3854
+    },
+    {
+      "id": "b16-vertex-ctx-Karen",
+      "utterance_id": "b16-vertex-ctx",
+      "corpus": "biasing",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "biasing",
+      "terms": [
+        "Vertex",
+        "Keychain"
+      ],
+      "reference_transcript": "The Vertex service account lives in the Keychain, not in a file.",
+      "file": "b16-vertex-ctx-Karen.wav",
+      "duration_ms": 3719
+    }
+  ]
+}

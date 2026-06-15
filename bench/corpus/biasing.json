@@ -1,0 +1,21 @@
+{
+  "_comment": "Dictionary-biasing corpus. Each utterance embeds one or more Parleq-domain terms that a generic ASR model tends to mis-transcribe without vocabulary boosting. The `text` is the reference (correct spelling). The `terms` field lists which dictionary terms the utterance exercises (informational; the actual boosting vocabulary is bench/dictionary.json). Terms are chosen to be pronounceable in running speech (not spelled-out initialisms) so the fixtures resemble real dictation rather than letter-by-letter spelling.",
+  "utterances": [
+    { "id": "b01-parleq",      "terms": ["Parleq"],              "text": "I dictated this note using Parleq on my Mac." },
+    { "id": "b02-parleq",      "terms": ["Parleq"],              "text": "Can you add Parleq to the list of approved applications?" },
+    { "id": "b03-parakeet",    "terms": ["Parakeet"],           "text": "The transcription runs on the Parakeet model locally." },
+    { "id": "b04-fluidaudio",  "terms": ["FluidAudio"],         "text": "We use FluidAudio for on device speech recognition." },
+    { "id": "b05-bedrock",     "terms": ["Bedrock"],            "text": "The cleanup step calls a model hosted on Bedrock." },
+    { "id": "b06-vertex",      "terms": ["Vertex"],             "text": "Route the request through Vertex in the central region." },
+    { "id": "b07-gemini",      "terms": ["Gemini"],             "text": "By default the app uses Gemini for text cleanup." },
+    { "id": "b08-keychain",    "terms": ["Keychain"],           "text": "The API key is stored securely in the Keychain." },
+    { "id": "b09-soto",        "terms": ["Soto"],               "text": "Authentication is handled by the Soto library." },
+    { "id": "b10-sherpa",      "terms": ["Sherpa"],             "text": "You can point it at a local Sherpa endpoint instead." },
+    { "id": "b11-route53",     "terms": ["Route 53"],           "text": "Update the Route 53 record before the cutover." },
+    { "id": "b12-multi",       "terms": ["Parleq","Gemini"],    "text": "Parleq sends the transcript to Gemini for cleanup." },
+    { "id": "b13-multi",       "terms": ["Bedrock","Vertex"],   "text": "We tested both Bedrock and Vertex for the cleanup model." },
+    { "id": "b14-parleq-ctx",  "terms": ["Parleq"],             "text": "The nice thing about Parleq is that the audio never leaves the device." },
+    { "id": "b15-parakeet-ctx","terms": ["Parakeet","FluidAudio"], "text": "FluidAudio loads the Parakeet model onto the Neural Engine." },
+    { "id": "b16-vertex-ctx",  "terms": ["Vertex","Keychain"],  "text": "The Vertex service account lives in the Keychain, not in a file." }
+  ]
+}

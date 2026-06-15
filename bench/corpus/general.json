@@ -1,0 +1,29 @@
+{
+  "_comment": "General dictation corpus for the ASR benchmark. Freshly authored, Parleq-appropriate dictation-shaped utterances (not the private Keavi finance corpus). Each entry: id, text (== reference transcript fed to the TTS generator), category. WER scoring normalizes numbers/punctuation via the Whisper text normalizer, so references are written naturally.",
+  "utterances": [
+    { "id": "g01-short-cmd",      "category": "short",   "text": "Open the settings window and switch to the audio tab." },
+    { "id": "g02-short-note",     "category": "short",   "text": "Remind me to email the team before the standup tomorrow." },
+    { "id": "g03-short-q",        "category": "short",   "text": "What time does the meeting start this afternoon?" },
+    { "id": "g04-numbers-money",  "category": "numbers", "text": "The invoice came to forty seven dollars and fifty cents." },
+    { "id": "g05-numbers-date",   "category": "numbers", "text": "Let's schedule the review for March twenty third at nine thirty." },
+    { "id": "g06-numbers-stats",  "category": "numbers", "text": "Conversion went from three point two percent to five point eight percent." },
+    { "id": "g07-numbers-phone",  "category": "numbers", "text": "You can reach the front desk at extension four one two." },
+    { "id": "g08-punct-list",     "category": "punct",   "text": "We need three things: a budget, a timeline, and an owner." },
+    { "id": "g09-punct-quote",    "category": "punct",   "text": "She said the launch was, in her words, completely on track." },
+    { "id": "g10-punct-dash",     "category": "punct",   "text": "The plan is simple, ship the fix, then write the postmortem." },
+    { "id": "g11-prose-medium",   "category": "prose",   "text": "I spent the morning reviewing the proposal and I think the second option is stronger because it keeps the scope tight and the timeline realistic." },
+    { "id": "g12-prose-medium",   "category": "prose",   "text": "The customer was happy with the demo but they asked whether we could support single sign on before the end of the quarter." },
+    { "id": "g13-prose-long",     "category": "prose",   "text": "Here is my summary of where we landed. We agreed to prioritize the onboarding flow first, then circle back to the dashboard once the data pipeline is stable, and finally we will revisit pricing after we have a few more reference customers in hand." },
+    { "id": "g14-prose-long",     "category": "prose",   "text": "There are a couple of risks worth calling out. The first is that the third party API has been flaky under load, and the second is that we still do not have a clear owner for the migration, which means it could slip if nobody picks it up this week." },
+    { "id": "g15-hedge",          "category": "hedge",   "text": "I think, and I could be wrong about this, that we should hold the release until Monday." },
+    { "id": "g16-correction",     "category": "correction", "text": "Send it to Sarah, actually no, send it to the whole group instead." },
+    { "id": "g17-tech-generic",   "category": "tech",    "text": "The build failed because the test suite timed out after sixty seconds." },
+    { "id": "g18-tech-generic",   "category": "tech",    "text": "Roll back the last deploy and pin the dependency to the previous version." },
+    { "id": "g19-tech-generic",   "category": "tech",    "text": "Add a retry with exponential backoff and cap it at five attempts." },
+    { "id": "g20-conversational", "category": "convo",   "text": "Hey, just following up on the thread from yesterday, did we ever hear back from the vendor?" },
+    { "id": "g21-conversational", "category": "convo",   "text": "Thanks for putting this together, it looks great, I only have one small comment on the intro." },
+    { "id": "g22-instruction",    "category": "instruction", "text": "First, back up the database, then run the migration, and finally restart the service." },
+    { "id": "g23-mixed",          "category": "mixed",   "text": "The report shows we closed twelve deals in the first quarter, which is up from seven last year." },
+    { "id": "g24-mixed",          "category": "mixed",   "text": "Move the deadline to next Friday and let everyone know in the channel." }
+  ]
+}
