@@ -76,6 +76,9 @@ def main():
     ap.add_argument("--voices", default=",".join(VOICE_ACCENT.keys()))
     ap.add_argument("--manifest", default=None,
                     help="manifest path (default <out>/manifest.json)")
+    ap.add_argument("--corpora", default="general,biasing",
+                    help="comma-separated corpus names to synthesize (each is "
+                         "<corpus-dir>/<name>.json). Default: general,biasing")
     args = ap.parse_args()
 
     voices = [v.strip() for v in args.voices.split(",") if v.strip()]
@@ -83,8 +86,8 @@ def main():
     manifest_path = args.manifest or os.path.join(args.out, "manifest.json")
 
     corpora = [
-        ("general", os.path.join(args.corpus_dir, "general.json")),
-        ("biasing", os.path.join(args.corpus_dir, "biasing.json")),
+        (name.strip(), os.path.join(args.corpus_dir, f"{name.strip()}.json"))
+        for name in args.corpora.split(",") if name.strip()
     ]
 
     clips = []

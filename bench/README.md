@@ -49,6 +49,34 @@ bench/dictionary.json` enables vocab boosting where the path supports it.
 `--pacing realtime|max` controls how streaming chunks are fed (realtime = ~1×
 audio speed, yields the user-felt post-release latency; max = throughput).
 
+## Over-fire regression gate (FluidAudio bumps)
+
+`corpus/overfire.json` is the inverse of `biasing.json`: ordinary dictation that
+contains **no** dictionary term but plenty of words acoustically near the
+`dictionary-overfire.json` terms (`ran`~CRAN, `sync`~Snyk, `ready`~Redis, …).
+Run it through the biasing arm and any dictionary term that appears is a *false
+positive* — an over-fire. This is the gate that catches the FluidAudio-0.14.8
+over-firing regression (PR #634); see the pin comment in `parleq-app/Package.swift`.
+
+```bash
+python3 bench/gen_fixtures.py --corpora overfire \
+    --manifest bench/fixtures/manifest-overfire.json
+cd parleq-app && swift build --product asr-bench && cd ..
+./parleq-app/.build/debug/asr-bench \
+    --manifest bench/fixtures/manifest-overfire.json --wav-dir bench/fixtures \
+    --paths batch --dictionary bench/dictionary-overfire.json \
+    --out bench/results/overfire-<ver>.json
+python3 bench/score_overfire.py bench/results/overfire-<ver>.json \
+    bench/dictionary-overfire.json
+```
+
+Baseline (committed `results/overfire-0.14.5.json` vs `overfire-0.14.8.json`):
+**~12 over-fires on the good 0.14.5, ~52 on the regressed 0.14.8.** A future bump
+passes the gate only if it stays near the 0.14.5 baseline. (The 0.14.5 residual is
+inherent to ASR-biasing short collision-prone terms, not a regression — mitigate
+per-term with `biasing: "llmOnly"`.) `score_overfire.py` ends with a machine-readable
+JSON summary line for CI diffing.
+
 ## Notes
 
 - WER is scored after Whisper inverse-text-normalization, so number formatting and

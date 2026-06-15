@@ -1,0 +1,23 @@
+{
+  "_comment": "Over-firing (false-positive) corpus for the dictionary-biasing regression gate. Every utterance is ordinary dictation that contains NO term from bench/dictionary-overfire.json, but DOES contain ordinary words acoustically near those terms (e.g. 'ran'/'grab'/'cram' ~ CRAN, 'sync'/'sink' ~ Snyk, 'ready'/'radish' ~ Redis, \"Kate's\"/'crates' ~ k8s, 'everything' ~ ultrathink, 'bonus'/'sonnet' ~ Sonnet Opus). The reference transcript is the correct text. Run through the biasing arm with dictionary-overfire.json: the CORRECT output equals the reference, so any dictionary term that appears is a false positive (an over-fire). Measured baseline (this generic dictionary, 3-voice set): FluidAudio 0.14.5 ~12 over-fires; 0.14.8 (the PR #634 regression) ~52. `terms: []` everywhere on purpose.",
+  "utterances": [
+    { "id": "o01-cran-ran",     "terms": [], "category": "overfire", "text": "The overnight job ran twice but still finished on time." },
+    { "id": "o02-cran-grab",    "terms": [], "category": "overfire", "text": "Could you grab the latest logs before the demo starts?" },
+    { "id": "o03-cran-cram",    "terms": [], "category": "overfire", "text": "We had to cram the whole roadmap into a single slide." },
+    { "id": "o04-cran-crane",   "terms": [], "category": "overfire", "text": "The crane lifted the steel beams into place by noon." },
+    { "id": "o05-cran-can",     "terms": [], "category": "overfire", "text": "Can the team review the draft before we send it out?" },
+    { "id": "o06-snyk-sync",    "terms": [], "category": "overfire", "text": "Please sync the branch before you open the pull request." },
+    { "id": "o07-snyk-sink",    "terms": [], "category": "overfire", "text": "The sink in the break room is leaking again this week." },
+    { "id": "o08-redis-ready",  "terms": [], "category": "overfire", "text": "The room is ready as soon as the guests arrive." },
+    { "id": "o09-redis-radish", "terms": [], "category": "overfire", "text": "The radish in the garden salad was crisp and fresh." },
+    { "id": "o10-k8s-kates",    "terms": [], "category": "overfire", "text": "Kate's laptop is sitting in the lab this morning." },
+    { "id": "o11-k8s-crates",   "terms": [], "category": "overfire", "text": "Stack the empty crates by the loading door." },
+    { "id": "o12-worktree-tree","terms": [], "category": "overfire", "text": "We sketched the decision tree for every edge case." },
+    { "id": "o13-worktree-work","terms": [], "category": "overfire", "text": "It took a lot of careful work to get the release out." },
+    { "id": "o14-ultra-every",  "terms": [], "category": "overfire", "text": "I think everything is ready for the launch tomorrow morning." },
+    { "id": "o15-ultra-ult",    "terms": [], "category": "overfire", "text": "Ultimately we shipped it a full week ahead of schedule." },
+    { "id": "o16-sonnet-bonus", "terms": [], "category": "overfire", "text": "The bonus payout lands at the very end of the quarter." },
+    { "id": "o17-sonnet-sonnet","terms": [], "category": "overfire", "text": "She read a short sonnet at the opening ceremony." },
+    { "id": "o18-e2e-easy",     "terms": [], "category": "overfire", "text": "The new tool is easy to use and quick to learn." }
+  ]
+}
