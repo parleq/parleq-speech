@@ -1332,6 +1332,20 @@ public final class OverlayModel: ObservableObject {
         // rather than reusing stale data.
         let isActiveCapture = (state == .capturing) || (state == .refining)
         self.microphoneName = isActiveCapture ? microphoneName : nil
+        // Moving to a real dictation phase supersedes any dead-input notice
+        // (B1). Clearing it here stops the notice from rendering over a fresh
+        // capture AND defuses its pending 2.5s auto-hide timer — whose guard
+        // checks `transientNotice == message` — so the timer can't fire
+        // mid-capture and hide() the live overlay (which would also collapse a
+        // B3 recovery overlay).
+        //
+        // Gated on `state != .initializing` because `.initializing` is the
+        // notice's OWN display vehicle: showTransientNotice() sets the notice
+        // and then calls show(.initializing), which routes through THIS method
+        // (show → update). An unconditional clear would null the notice the
+        // instant it's shown, silently breaking B1. Every other state is a real
+        // phase that should supersede a stale notice. (RoboRev B1/B3/B2 follow-up.)
+        if state != .initializing { self.transientNotice = nil }
         // Cleanup-failure message is only relevant in
         // `.awaitingAccept` — that's where the user reviews the
         // text + decides whether to paste raw. Cleared elsewhere
