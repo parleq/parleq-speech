@@ -1832,6 +1832,12 @@ public final class AppState {
 
     /// User cancelled (Esc) or some external abort.
     public func cancel() {
+        // B1: a transient capture-failure notice (dead mic) is shown in idle
+        // phase; Esc dismisses it early. Handle before the phase switch.
+        if overlay.model.transientNotice != nil {
+            overlay.hide()
+            return
+        }
         // The init overlay is shown in idle phase, so it would be
         // missed by the phase switch below. Handle it explicitly.
         if initializingOverlayShowing {
@@ -2591,14 +2597,19 @@ public final class AppState {
             session?.cancel()
             // On a silent/dead REFINE attempt, keep the prior text on screen so
             // the user can still accept the unmodified version; on an INITIAL
-            // capture there's no prior text, so reset. (B1 will instead surface
-            // a "didn't catch audio" notice for .deadInput on an initial capture.)
+            // capture there's no prior text.
             if asRefine, !currentText.isEmpty {
                 applyResult(currentText)
             } else {
                 resetPerDictationOverlayState()
                 phase = .idle
-                overlay.hide()
+                if health == .deadInput {
+                    // B1: a dead mic delivered no audio — tell the user instead of
+                    // vanishing, so they know it failed and can re-dictate.
+                    overlay.showTransientNotice("Didn't catch any audio — check your microphone.")
+                } else {
+                    overlay.hide()
+                }
             }
             return
         }

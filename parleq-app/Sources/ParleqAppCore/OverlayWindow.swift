@@ -799,8 +799,28 @@ public final class OverlayWindow {
         // satisfy that description (review finding; no current reader
         // is affected, but a future one would be).
         lastFiniteMeasuredHeight = 0
+        model.transientNotice = nil   // B1: clear any capture-failure notice
         panel.orderOut(nil)
     }
+
+    /// B1: show a brief, self-dismissing notice (e.g. a dead-mic capture
+    /// failure) instead of letting the overlay vanish silently. Reuses the
+    /// normal show() machinery (the `.initializing` state is just a vehicle —
+    /// `content`/`footer` render the notice while `transientNotice` is set), and
+    /// auto-hides after `duration` unless superseded. Esc closes it early (via
+    /// the panel's cancel path, which AppState routes to hide()).
+    public func showTransientNotice(_ message: String, duration: TimeInterval = 2.5) {
+        model.transientNotice = message
+        show(state: .initializing, text: "")
+        noticeGeneration &+= 1
+        let gen = noticeGeneration
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [weak self] in
+            guard let self, self.noticeGeneration == gen,
+                  self.model.transientNotice == message else { return }
+            self.hide()
+        }
+    }
+    private var noticeGeneration = 0
 
     // MARK: - Position
 
@@ -1065,6 +1085,12 @@ public final class OverlayModel: ObservableObject {
     /// left via ⌘S (save), ⌘Return (commit+accept), or Esc (discard).
     @Published var editing: Bool = false
     @Published var editableText: String = ""
+
+    /// B1: when set, the overlay shows this transient notice (e.g. "Didn't catch
+    /// any audio — check your microphone") instead of the state-based content —
+    /// so a dead-input capture is visible + re-dictatable rather than vanishing.
+    /// Cleared on hide()/next show().
+    @Published var transientNotice: String? = nil
     /// Normalized 0…1 mic level pushed by AudioRecorder during
     /// capture. Drives the SoundWaveBars view in the .capturing
     /// state. Resets to 0 when the overlay is shown for a new
@@ -2825,6 +2851,25 @@ private struct OverlayContent: View {
 
     @ViewBuilder
     private var content: some View {
+        if let notice = model.transientNotice {
+            // B1: transient capture-failure notice (dead mic), shown instead of
+            // any state content.
+            HStack(spacing: 10) {
+                Image(systemName: "mic.slash.fill")
+                    .foregroundStyle(.orange)
+                Text(notice)
+                    .font(.system(size: 15))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxWidth: .infinity, minHeight: ChromeSlotMetrics.contentMin, alignment: .leading)
+        } else {
+            stateContent
+        }
+    }
+
+    @ViewBuilder
+    private var stateContent: some View {
         switch model.state {
         case .initializing:
             // Two sub-states:
@@ -3074,6 +3119,15 @@ private struct OverlayContent: View {
 
     @ViewBuilder
     private var footer: some View {
+        if model.transientNotice != nil {
+            Text("[Esc] dismiss")   // B1: notice auto-dismisses; Esc closes it early
+        } else {
+            stateFooter
+        }
+    }
+
+    @ViewBuilder
+    private var stateFooter: some View {
         switch model.state {
         case .initializing:
             Text("[Esc] dismiss")
