@@ -196,7 +196,7 @@ private struct HelpContent: View {
         }
         both.append(HelpRow(keys: "Esc", desc: "Cancel"))
         both.append(HelpRow(keys: "P", desc: "Cancel and show the Parleq window"))
-        both.append(HelpRow(keys: "R", desc: "Recover your last dictation — re-runs it"))
+        both.append(HelpRow(keys: "Hold the hotkey + R", desc: "Recover your last dictation — re-runs it (also in the menu bar)"))
         both.append(HelpRow(keys: "? or /", desc: "Show this help"))
 
         return [
