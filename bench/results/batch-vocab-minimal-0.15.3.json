@@ -1,0 +1,1922 @@
+[
+  {
+    "biasing" : false,
+    "hyp" : "Open the settings window and switch to the audio tab.",
+    "id" : "g01-short-cmd-Samantha",
+    "latency_ms" : 87.11745810508728,
+    "path" : "batch",
+    "ref" : "Open the settings window and switch to the audio tab."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Parleq window and switch to the audio tab.",
+    "id" : "g01-short-cmd-Samantha",
+    "latency_ms" : 329.30312514305115,
+    "path" : "batch",
+    "ref" : "Open the settings window and switch to the audio tab."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Open the settings window and switch to the audio tab.",
+    "id" : "g01-short-cmd-Daniel",
+    "latency_ms" : 80.28079104423523,
+    "path" : "batch",
+    "ref" : "Open the settings window and switch to the audio tab."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Open the settings window and switch to the audio tab.",
+    "id" : "g01-short-cmd-Daniel",
+    "latency_ms" : 307.0332499742508,
+    "path" : "batch",
+    "ref" : "Open the settings window and switch to the audio tab."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Open the settings window and switch to the audio tab.",
+    "id" : "g01-short-cmd-Karen",
+    "latency_ms" : 80.68091702461243,
+    "path" : "batch",
+    "ref" : "Open the settings window and switch to the audio tab."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Open the settings window and switch to the audio tab.",
+    "id" : "g01-short-cmd-Karen",
+    "latency_ms" : 298.5853340625763,
+    "path" : "batch",
+    "ref" : "Open the settings window and switch to the audio tab."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Remind me to email the team before the stand-up tomorrow.",
+    "id" : "g02-short-note-Samantha",
+    "latency_ms" : 79.43741703033447,
+    "path" : "batch",
+    "ref" : "Remind me to email the team before the standup tomorrow."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Parleq the team before the stand-up tomorrow.",
+    "id" : "g02-short-note-Samantha",
+    "latency_ms" : 306.224583029747,
+    "path" : "batch",
+    "ref" : "Remind me to email the team before the standup tomorrow."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Remind me to email the team before the stand-up tomorrow.",
+    "id" : "g02-short-note-Daniel",
+    "latency_ms" : 82.28004097938538,
+    "path" : "batch",
+    "ref" : "Remind me to email the team before the standup tomorrow."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Remind me to email the team before the stand-up tomorrow.",
+    "id" : "g02-short-note-Daniel",
+    "latency_ms" : 302.55512392520905,
+    "path" : "batch",
+    "ref" : "Remind me to email the team before the standup tomorrow."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Remind me to email the team before the stand-up tomorrow.",
+    "id" : "g02-short-note-Karen",
+    "latency_ms" : 79.63566601276398,
+    "path" : "batch",
+    "ref" : "Remind me to email the team before the standup tomorrow."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Remind me to email the team before the stand-up tomorrow.",
+    "id" : "g02-short-note-Karen",
+    "latency_ms" : 299.7436660528183,
+    "path" : "batch",
+    "ref" : "Remind me to email the team before the standup tomorrow."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "What time does the meeting start this afternoon?",
+    "id" : "g03-short-q-Samantha",
+    "latency_ms" : 77.54662501811981,
+    "path" : "batch",
+    "ref" : "What time does the meeting start this afternoon?"
+  },
+  {
+    "biasing" : true,
+    "hyp" : "What time does the meeting start this afternoon?",
+    "id" : "g03-short-q-Samantha",
+    "latency_ms" : 288.31954205036163,
+    "path" : "batch",
+    "ref" : "What time does the meeting start this afternoon?"
+  },
+  {
+    "biasing" : false,
+    "hyp" : "What time does the meeting start this afternoon?",
+    "id" : "g03-short-q-Daniel",
+    "latency_ms" : 77.905916929245,
+    "path" : "batch",
+    "ref" : "What time does the meeting start this afternoon?"
+  },
+  {
+    "biasing" : true,
+    "hyp" : "What time does the meeting start this afternoon?",
+    "id" : "g03-short-q-Daniel",
+    "latency_ms" : 291.1999168395996,
+    "path" : "batch",
+    "ref" : "What time does the meeting start this afternoon?"
+  },
+  {
+    "biasing" : false,
+    "hyp" : "What time does the meeting start this afternoon?",
+    "id" : "g03-short-q-Karen",
+    "latency_ms" : 75.62629210948944,
+    "path" : "batch",
+    "ref" : "What time does the meeting start this afternoon?"
+  },
+  {
+    "biasing" : true,
+    "hyp" : "What time does the meeting start this afternoon?",
+    "id" : "g03-short-q-Karen",
+    "latency_ms" : 289.89220809936523,
+    "path" : "batch",
+    "ref" : "What time does the meeting start this afternoon?"
+  },
+  {
+    "biasing" : false,
+    "hyp" : "The invoice came to $47.50.",
+    "id" : "g04-numbers-money-Samantha",
+    "latency_ms" : 78.43879199028015,
+    "path" : "batch",
+    "ref" : "The invoice came to forty seven dollars and fifty cents."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "The invoice came to $47.50.",
+    "id" : "g04-numbers-money-Samantha",
+    "latency_ms" : 292.74637508392334,
+    "path" : "batch",
+    "ref" : "The invoice came to forty seven dollars and fifty cents."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "The invoice came to forty-seven dollars and fifty cents.",
+    "id" : "g04-numbers-money-Daniel",
+    "latency_ms" : 80.17454195022583,
+    "path" : "batch",
+    "ref" : "The invoice came to forty seven dollars and fifty cents."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "The invoice came to forty-seven dollars and fifty cents.",
+    "id" : "g04-numbers-money-Daniel",
+    "latency_ms" : 299.37216687202454,
+    "path" : "batch",
+    "ref" : "The invoice came to forty seven dollars and fifty cents."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "The invoice came to $47.50.",
+    "id" : "g04-numbers-money-Karen",
+    "latency_ms" : 76.62800002098083,
+    "path" : "batch",
+    "ref" : "The invoice came to forty seven dollars and fifty cents."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Parleq came to Parleq",
+    "id" : "g04-numbers-money-Karen",
+    "latency_ms" : 315.678915977478,
+    "path" : "batch",
+    "ref" : "The invoice came to forty seven dollars and fifty cents."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Let's schedule the review for March 23rd at 9 30.",
+    "id" : "g05-numbers-date-Samantha",
+    "latency_ms" : 88.72695803642273,
+    "path" : "batch",
+    "ref" : "Let's schedule the review for March twenty third at nine thirty."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Let's schedule the review for March 23rd at 9 30.",
+    "id" : "g05-numbers-date-Samantha",
+    "latency_ms" : 307.0962920188904,
+    "path" : "batch",
+    "ref" : "Let's schedule the review for March twenty third at nine thirty."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Let's schedule the review for March 23rd at 9.30.",
+    "id" : "g05-numbers-date-Daniel",
+    "latency_ms" : 82.5567079782486,
+    "path" : "batch",
+    "ref" : "Let's schedule the review for March twenty third at nine thirty."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Let's schedule the review for March 23rd at Parleq",
+    "id" : "g05-numbers-date-Daniel",
+    "latency_ms" : 304.0780419111252,
+    "path" : "batch",
+    "ref" : "Let's schedule the review for March twenty third at nine thirty."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Let's schedule the review for March 23 at 9 30.",
+    "id" : "g05-numbers-date-Karen",
+    "latency_ms" : 86.06079196929932,
+    "path" : "batch",
+    "ref" : "Let's schedule the review for March twenty third at nine thirty."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Parleq the review for March 23 at 9 30.",
+    "id" : "g05-numbers-date-Karen",
+    "latency_ms" : 316.26345789432526,
+    "path" : "batch",
+    "ref" : "Let's schedule the review for March twenty third at nine thirty."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Conversion went from 3.2% to 5.8%.",
+    "id" : "g06-numbers-stats-Samantha",
+    "latency_ms" : 80.74208295345306,
+    "path" : "batch",
+    "ref" : "Conversion went from three point two percent to five point eight percent."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Conversion went Parleq to 5.8%.",
+    "id" : "g06-numbers-stats-Samantha",
+    "latency_ms" : 311.06349992752075,
+    "path" : "batch",
+    "ref" : "Conversion went from three point two percent to five point eight percent."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Conversion went from 3.2% to 5.8%.",
+    "id" : "g06-numbers-stats-Daniel",
+    "latency_ms" : 83.33779203891754,
+    "path" : "batch",
+    "ref" : "Conversion went from three point two percent to five point eight percent."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Parleq from Parleq to Parleq",
+    "id" : "g06-numbers-stats-Daniel",
+    "latency_ms" : 323.04504203796387,
+    "path" : "batch",
+    "ref" : "Conversion went from three point two percent to five point eight percent."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Conversion went from 3.2% to 5.8%.",
+    "id" : "g06-numbers-stats-Karen",
+    "latency_ms" : 81.14925003051758,
+    "path" : "batch",
+    "ref" : "Conversion went from three point two percent to five point eight percent."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Conversion went from Parleq",
+    "id" : "g06-numbers-stats-Karen",
+    "latency_ms" : 313.1999169588089,
+    "path" : "batch",
+    "ref" : "Conversion went from three point two percent to five point eight percent."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "You can reach the front desk at extension 412.",
+    "id" : "g07-numbers-phone-Samantha",
+    "latency_ms" : 78.29408407211304,
+    "path" : "batch",
+    "ref" : "You can reach the front desk at extension four one two."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "You can reach the front desk at extension Parleq",
+    "id" : "g07-numbers-phone-Samantha",
+    "latency_ms" : 298.6192090511322,
+    "path" : "batch",
+    "ref" : "You can reach the front desk at extension four one two."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "You can reach the front desk at extension 412.",
+    "id" : "g07-numbers-phone-Daniel",
+    "latency_ms" : 77.21458303928375,
+    "path" : "batch",
+    "ref" : "You can reach the front desk at extension four one two."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "You can reach the front desk at extension 412.",
+    "id" : "g07-numbers-phone-Daniel",
+    "latency_ms" : 301.30341601371765,
+    "path" : "batch",
+    "ref" : "You can reach the front desk at extension four one two."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "You can reach the front desk at extension 412.",
+    "id" : "g07-numbers-phone-Karen",
+    "latency_ms" : 82.22083306312561,
+    "path" : "batch",
+    "ref" : "You can reach the front desk at extension four one two."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "You can reach the Parleq extension 412.",
+    "id" : "g07-numbers-phone-Karen",
+    "latency_ms" : 313.24925005435944,
+    "path" : "batch",
+    "ref" : "You can reach the front desk at extension four one two."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "We need three things, a budget, a timeline, and an owner.",
+    "id" : "g08-punct-list-Samantha",
+    "latency_ms" : 84.31570899486542,
+    "path" : "batch",
+    "ref" : "We need three things: a budget, a timeline, and an owner."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Parleq things, a budget, a timeline, and an owner.",
+    "id" : "g08-punct-list-Samantha",
+    "latency_ms" : 318.6529589891434,
+    "path" : "batch",
+    "ref" : "We need three things: a budget, a timeline, and an owner."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "We need three things, a budget, a timeline, and an owner.",
+    "id" : "g08-punct-list-Daniel",
+    "latency_ms" : 82.03237497806549,
+    "path" : "batch",
+    "ref" : "We need three things: a budget, a timeline, and an owner."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Parleq a budget, a timeline, and an owner.",
+    "id" : "g08-punct-list-Daniel",
+    "latency_ms" : 322.63095796108246,
+    "path" : "batch",
+    "ref" : "We need three things: a budget, a timeline, and an owner."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "We need three things, a budget, a timeline, and an owner.",
+    "id" : "g08-punct-list-Karen",
+    "latency_ms" : 80.70404100418091,
+    "path" : "batch",
+    "ref" : "We need three things: a budget, a timeline, and an owner."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Parleq things, a budget, a timeline, and an owner.",
+    "id" : "g08-punct-list-Karen",
+    "latency_ms" : 312.0401660203934,
+    "path" : "batch",
+    "ref" : "We need three things: a budget, a timeline, and an owner."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "She said the launch was, in her words, completely on track.",
+    "id" : "g09-punct-quote-Samantha",
+    "latency_ms" : 82.06895804405212,
+    "path" : "batch",
+    "ref" : "She said the launch was, in her words, completely on track."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "She said the launch was, in her words, completely on track.",
+    "id" : "g09-punct-quote-Samantha",
+    "latency_ms" : 306.57541608810425,
+    "path" : "batch",
+    "ref" : "She said the launch was, in her words, completely on track."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "She said the launch was, in her words, completely on track.",
+    "id" : "g09-punct-quote-Daniel",
+    "latency_ms" : 80.4595000743866,
+    "path" : "batch",
+    "ref" : "She said the launch was, in her words, completely on track."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "She said the launch was, in her words, completely on track.",
+    "id" : "g09-punct-quote-Daniel",
+    "latency_ms" : 312.9563341140747,
+    "path" : "batch",
+    "ref" : "She said the launch was, in her words, completely on track."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "She said the launch was, in her words, completely on track.",
+    "id" : "g09-punct-quote-Karen",
+    "latency_ms" : 82.33975005149841,
+    "path" : "batch",
+    "ref" : "She said the launch was, in her words, completely on track."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "She said the launch was, in her words, Parleq",
+    "id" : "g09-punct-quote-Karen",
+    "latency_ms" : 321.0909171104431,
+    "path" : "batch",
+    "ref" : "She said the launch was, in her words, completely on track."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "The plan is simple, ship the fix, then write the postmortem.",
+    "id" : "g10-punct-dash-Samantha",
+    "latency_ms" : 85.38870799541473,
+    "path" : "batch",
+    "ref" : "The plan is simple, ship the fix, then write the postmortem."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "The plan is simple, ship the fix, then write the postmortem.",
+    "id" : "g10-punct-dash-Samantha",
+    "latency_ms" : 309.9716659784317,
+    "path" : "batch",
+    "ref" : "The plan is simple, ship the fix, then write the postmortem."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "The plan is simple, ship the fix, then write the post mortem.",
+    "id" : "g10-punct-dash-Daniel",
+    "latency_ms" : 81.41666603088379,
+    "path" : "batch",
+    "ref" : "The plan is simple, ship the fix, then write the postmortem."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "The plan is simple, ship the fix, then write the post mortem.",
+    "id" : "g10-punct-dash-Daniel",
+    "latency_ms" : 306.68454098701477,
+    "path" : "batch",
+    "ref" : "The plan is simple, ship the fix, then write the postmortem."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "The plan is simple, ship the figs, then write the post mortem.",
+    "id" : "g10-punct-dash-Karen",
+    "latency_ms" : 83.18891596794128,
+    "path" : "batch",
+    "ref" : "The plan is simple, ship the fix, then write the postmortem."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "The plan is simple, ship the figs, then write the post mortem.",
+    "id" : "g10-punct-dash-Karen",
+    "latency_ms" : 307.73049998283386,
+    "path" : "batch",
+    "ref" : "The plan is simple, ship the fix, then write the postmortem."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "I spent the morning reviewing the proposal and I think the second option is stronger because it keeps the scope tight and the timeline realistic.",
+    "id" : "g11-prose-medium-Samantha",
+    "latency_ms" : 95.81704092025757,
+    "path" : "batch",
+    "ref" : "I spent the morning reviewing the proposal and I think the second option is stronger because it keeps the scope tight and the timeline realistic."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "I spent the morning reviewing the proposal and I think the second option is stronger Parleq scope tight and the timeline realistic.",
+    "id" : "g11-prose-medium-Samantha",
+    "latency_ms" : 356.40462493896484,
+    "path" : "batch",
+    "ref" : "I spent the morning reviewing the proposal and I think the second option is stronger because it keeps the scope tight and the timeline realistic."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "I spent the morning reviewing the proposal and I think the second option is stronger because it keeps the scope tight and the timeline realistic.",
+    "id" : "g11-prose-medium-Daniel",
+    "latency_ms" : 91.06220805644989,
+    "path" : "batch",
+    "ref" : "I spent the morning reviewing the proposal and I think the second option is stronger because it keeps the scope tight and the timeline realistic."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "I spent the morning reviewing the proposal and I think the second option is stronger because it keeps the scope tight and the timeline realistic.",
+    "id" : "g11-prose-medium-Daniel",
+    "latency_ms" : 341.98137402534485,
+    "path" : "batch",
+    "ref" : "I spent the morning reviewing the proposal and I think the second option is stronger because it keeps the scope tight and the timeline realistic."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "I spent the morning reviewing the proposal and I think the second option is stronger because it keeps the scope tight and the timeline realistic.",
+    "id" : "g11-prose-medium-Karen",
+    "latency_ms" : 93.16250002384186,
+    "path" : "batch",
+    "ref" : "I spent the morning reviewing the proposal and I think the second option is stronger because it keeps the scope tight and the timeline realistic."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Parleq the morning reviewing the proposal and I think the second option is stronger because it keeps the scope tight and the timeline realistic.",
+    "id" : "g11-prose-medium-Karen",
+    "latency_ms" : 352.71625006198883,
+    "path" : "batch",
+    "ref" : "I spent the morning reviewing the proposal and I think the second option is stronger because it keeps the scope tight and the timeline realistic."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "The customer was happy with the demo but they asked whether we could support single sign-on before the end of the quarter.",
+    "id" : "g12-prose-medium-Samantha",
+    "latency_ms" : 93.32358300685883,
+    "path" : "batch",
+    "ref" : "The customer was happy with the demo but they asked whether we could support single sign on before the end of the quarter."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Parleq was happy with the demo but they asked whether we could support single sign-on before the end of the quarter.",
+    "id" : "g12-prose-medium-Samantha",
+    "latency_ms" : 348.11849999427795,
+    "path" : "batch",
+    "ref" : "The customer was happy with the demo but they asked whether we could support single sign on before the end of the quarter."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "The customer was happy with the demo but they asked whether we could support single sign-on before the end of the quarter.",
+    "id" : "g12-prose-medium-Daniel",
+    "latency_ms" : 92.30041694641113,
+    "path" : "batch",
+    "ref" : "The customer was happy with the demo but they asked whether we could support single sign on before the end of the quarter."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "The customer was happy with the demo but they asked whether we could support single sign-on before the end of the quarter.",
+    "id" : "g12-prose-medium-Daniel",
+    "latency_ms" : 332.1078759431839,
+    "path" : "batch",
+    "ref" : "The customer was happy with the demo but they asked whether we could support single sign on before the end of the quarter."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "The customer was happy with the demo but they asked whether we could support single sign-on before the end of the quarter.",
+    "id" : "g12-prose-medium-Karen",
+    "latency_ms" : 87.29991602897644,
+    "path" : "batch",
+    "ref" : "The customer was happy with the demo but they asked whether we could support single sign on before the end of the quarter."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "The customer was happy with the demo but they asked whether we could support single sign-on before the end of the quarter.",
+    "id" : "g12-prose-medium-Karen",
+    "latency_ms" : 320.9149160385132,
+    "path" : "batch",
+    "ref" : "The customer was happy with the demo but they asked whether we could support single sign on before the end of the quarter."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Here is my summary of where we landed, we agreed to prioritize the onboarding flow first, then circle back to the dashboard once the data pipeline is stable, and finally we will revisit pricing after we have a few more reference customers in hand.",
+    "id" : "g13-prose-long-Samantha",
+    "latency_ms" : 111.15533411502838,
+    "path" : "batch",
+    "ref" : "Here is my summary of where we landed. We agreed to prioritize the onboarding flow first, then circle back to the dashboard once the data pipeline is stable, and finally we will revisit pricing after we have a few more reference customers in hand."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Here Parleq of where we landed, Parleq Parleq flow first, then circle back to the dashboard once the data pipeline is stable, and finally we will revisit pricing after we have a few more reference customers in hand.",
+    "id" : "g13-prose-long-Samantha",
+    "latency_ms" : 435.2185010910034,
+    "path" : "batch",
+    "ref" : "Here is my summary of where we landed. We agreed to prioritize the onboarding flow first, then circle back to the dashboard once the data pipeline is stable, and finally we will revisit pricing after we have a few more reference customers in hand."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Here is my summary of where we landed, we agreed to prioritize the onboarding flow first, then circle back to the dashboard once the data pipeline is stable, and finally we will revisit pricing after we have a few more reference customers in hand.",
+    "id" : "g13-prose-long-Daniel",
+    "latency_ms" : 120.42691707611084,
+    "path" : "batch",
+    "ref" : "Here is my summary of where we landed. We agreed to prioritize the onboarding flow first, then circle back to the dashboard once the data pipeline is stable, and finally we will revisit pricing after we have a few more reference customers in hand."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Here is my summary of where we landed, we agreed to prioritize the onboarding flow first, then circle back to the dashboard once the data pipeline is stable, and finally we will revisit pricing after we have a few more reference customers in hand.",
+    "id" : "g13-prose-long-Daniel",
+    "latency_ms" : 415.59595906734467,
+    "path" : "batch",
+    "ref" : "Here is my summary of where we landed. We agreed to prioritize the onboarding flow first, then circle back to the dashboard once the data pipeline is stable, and finally we will revisit pricing after we have a few more reference customers in hand."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Here is my summary of where we landed, we agreed to prioritize the onboarding flow first, then circle back to the dashboard once the data pipeline is stable, and finally we will revisit pricing after we have a few more reference customers in hand.",
+    "id" : "g13-prose-long-Karen",
+    "latency_ms" : 114.7306660413742,
+    "path" : "batch",
+    "ref" : "Here is my summary of where we landed. We agreed to prioritize the onboarding flow first, then circle back to the dashboard once the data pipeline is stable, and finally we will revisit pricing after we have a few more reference customers in hand."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Here is my summary of where we landed, we agreed to prioritize the onboarding flow first, then circle back to the dashboard once the data pipeline is stable, and finally we will revisit pricing after we have a few more reference customers in hand.",
+    "id" : "g13-prose-long-Karen",
+    "latency_ms" : 413.6250820159912,
+    "path" : "batch",
+    "ref" : "Here is my summary of where we landed. We agreed to prioritize the onboarding flow first, then circle back to the dashboard once the data pipeline is stable, and finally we will revisit pricing after we have a few more reference customers in hand."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "There are a couple of risks worth calling out, the first is that the third party API has been flaky underload, and the second is that we still do not have a clear owner for the migration, which means it could slip if nobody picks it up this week.",
+    "id" : "g14-prose-long-Samantha",
+    "latency_ms" : 104.38575005531311,
+    "path" : "batch",
+    "ref" : "There are a couple of risks worth calling out. The first is that the third party API has been flaky under load, and the second is that we still do not have a clear owner for the migration, which means it could slip if nobody picks it up this week."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "There are a couple Parleq out, the first is that the third party API has been flaky underload, and the second is that we still do not have a clear owner for the migration, which means it could slip if nobody picks it up this week.",
+    "id" : "g14-prose-long-Samantha",
+    "latency_ms" : 403.0761661529541,
+    "path" : "batch",
+    "ref" : "There are a couple of risks worth calling out. The first is that the third party API has been flaky under load, and the second is that we still do not have a clear owner for the migration, which means it could slip if nobody picks it up this week."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "There are a couple of risks worth calling out, the first is that the third party API has been flaky under load, and the second is that we still do not have a clear owner for the migration, which means it could slip if nobody picks it up this week.",
+    "id" : "g14-prose-long-Daniel",
+    "latency_ms" : 105.39595794677734,
+    "path" : "batch",
+    "ref" : "There are a couple of risks worth calling out. The first is that the third party API has been flaky under load, and the second is that we still do not have a clear owner for the migration, which means it could slip if nobody picks it up this week."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "There are a couple of risks worth calling out, the first is that the third Parleq API has been flaky under load, and the second is that we still do not have a clear owner for the migration, which means it could slip if nobody picks it Parleq",
+    "id" : "g14-prose-long-Daniel",
+    "latency_ms" : 407.87020802497864,
+    "path" : "batch",
+    "ref" : "There are a couple of risks worth calling out. The first is that the third party API has been flaky under load, and the second is that we still do not have a clear owner for the migration, which means it could slip if nobody picks it up this week."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "There are a couple of risks worth calling out. The first is that the third party API has been flaky underload, and the second is that we still do not have a clear owner for the migration, which means it could slip if nobody picks it up this week.",
+    "id" : "g14-prose-long-Karen",
+    "latency_ms" : 104.61737501621246,
+    "path" : "batch",
+    "ref" : "There are a couple of risks worth calling out. The first is that the third party API has been flaky under load, and the second is that we still do not have a clear owner for the migration, which means it could slip if nobody picks it up this week."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "There are a couple of risks worth calling out. The first is that the third party API has been flaky underload, and the second is that we still do not have a clear owner for the migration, which means it could slip if nobody picks it up this week.",
+    "id" : "g14-prose-long-Karen",
+    "latency_ms" : 391.10454201698303,
+    "path" : "batch",
+    "ref" : "There are a couple of risks worth calling out. The first is that the third party API has been flaky under load, and the second is that we still do not have a clear owner for the migration, which means it could slip if nobody picks it up this week."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "I think, and I could be wrong about this, that we should hold the release until Monday.",
+    "id" : "g15-hedge-Samantha",
+    "latency_ms" : 85.80425000190735,
+    "path" : "batch",
+    "ref" : "I think, and I could be wrong about this, that we should hold the release until Monday."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "I think, and I could be wrong about this, that we should hold Parleq",
+    "id" : "g15-hedge-Samantha",
+    "latency_ms" : 340.5390830039978,
+    "path" : "batch",
+    "ref" : "I think, and I could be wrong about this, that we should hold the release until Monday."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "I think, and I could be wrong about this, that we should hold the release until Monday.",
+    "id" : "g15-hedge-Daniel",
+    "latency_ms" : 84.04725003242493,
+    "path" : "batch",
+    "ref" : "I think, and I could be wrong about this, that we should hold the release until Monday."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "I think, and I could be wrong about this, that we should hold the release until Monday.",
+    "id" : "g15-hedge-Daniel",
+    "latency_ms" : 319.3298751115799,
+    "path" : "batch",
+    "ref" : "I think, and I could be wrong about this, that we should hold the release until Monday."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "I think, and I could be wrong about this, that we should hold the release until Monday.",
+    "id" : "g15-hedge-Karen",
+    "latency_ms" : 84.94187498092651,
+    "path" : "batch",
+    "ref" : "I think, and I could be wrong about this, that we should hold the release until Monday."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "I think, and I could be wrong about this, that we should hold the release until Monday.",
+    "id" : "g15-hedge-Karen",
+    "latency_ms" : 318.1753749847412,
+    "path" : "batch",
+    "ref" : "I think, and I could be wrong about this, that we should hold the release until Monday."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Send it to Sarah, actually no, send it to the whole group instead.",
+    "id" : "g16-correction-Samantha",
+    "latency_ms" : 84.25570797920227,
+    "path" : "batch",
+    "ref" : "Send it to Sarah, actually no, send it to the whole group instead."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Send it to Sarah, actually no, send it to the whole group instead.",
+    "id" : "g16-correction-Samantha",
+    "latency_ms" : 315.011332988739,
+    "path" : "batch",
+    "ref" : "Send it to Sarah, actually no, send it to the whole group instead."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Send it to Sarah, actually no, send it to the whole group instead.",
+    "id" : "g16-correction-Daniel",
+    "latency_ms" : 85.00458407402039,
+    "path" : "batch",
+    "ref" : "Send it to Sarah, actually no, send it to the whole group instead."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Parleq actually no, send it to the whole group instead.",
+    "id" : "g16-correction-Daniel",
+    "latency_ms" : 326.00591707229614,
+    "path" : "batch",
+    "ref" : "Send it to Sarah, actually no, send it to the whole group instead."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Send it to Sarah, actually no, send it to the whole group instead.",
+    "id" : "g16-correction-Karen",
+    "latency_ms" : 86.58579194545746,
+    "path" : "batch",
+    "ref" : "Send it to Sarah, actually no, send it to the whole group instead."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Parleq actually no, send it to the whole group instead.",
+    "id" : "g16-correction-Karen",
+    "latency_ms" : 319.4232919216156,
+    "path" : "batch",
+    "ref" : "Send it to Sarah, actually no, send it to the whole group instead."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "The build failed because the test suite timed out after 60 seconds.",
+    "id" : "g17-tech-generic-Samantha",
+    "latency_ms" : 80.86008298397064,
+    "path" : "batch",
+    "ref" : "The build failed because the test suite timed out after sixty seconds."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "The build failed because the test suite timed out after 60 seconds.",
+    "id" : "g17-tech-generic-Samantha",
+    "latency_ms" : 302.71945798397064,
+    "path" : "batch",
+    "ref" : "The build failed because the test suite timed out after sixty seconds."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "The build failed because the test suite timed out after 60 seconds.",
+    "id" : "g17-tech-generic-Daniel",
+    "latency_ms" : 81.61412501335144,
+    "path" : "batch",
+    "ref" : "The build failed because the test suite timed out after sixty seconds."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "The build failed because the test suite timed out after 60 seconds.",
+    "id" : "g17-tech-generic-Daniel",
+    "latency_ms" : 314.98054099082947,
+    "path" : "batch",
+    "ref" : "The build failed because the test suite timed out after sixty seconds."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "The build failed because the test suite timed out after 60 seconds.",
+    "id" : "g17-tech-generic-Karen",
+    "latency_ms" : 82.29879105091095,
+    "path" : "batch",
+    "ref" : "The build failed because the test suite timed out after sixty seconds."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Parleq because the test suite timed out after 60 seconds.",
+    "id" : "g17-tech-generic-Karen",
+    "latency_ms" : 319.2433331012726,
+    "path" : "batch",
+    "ref" : "The build failed because the test suite timed out after sixty seconds."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Roll back the last deploy and pin the dependency to the previous version.",
+    "id" : "g18-tech-generic-Samantha",
+    "latency_ms" : 87.61766707897186,
+    "path" : "batch",
+    "ref" : "Roll back the last deploy and pin the dependency to the previous version."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Roll back the last deploy and pin the Parleq to the previous version.",
+    "id" : "g18-tech-generic-Samantha",
+    "latency_ms" : 322.28079211711884,
+    "path" : "batch",
+    "ref" : "Roll back the last deploy and pin the dependency to the previous version."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Roll back the last deploy and pin the dependency to the previous version.",
+    "id" : "g18-tech-generic-Daniel",
+    "latency_ms" : 83.41416704654694,
+    "path" : "batch",
+    "ref" : "Roll back the last deploy and pin the dependency to the previous version."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Parleq the last deploy and pin the dependency to the previous version.",
+    "id" : "g18-tech-generic-Daniel",
+    "latency_ms" : 316.2847920656204,
+    "path" : "batch",
+    "ref" : "Roll back the last deploy and pin the dependency to the previous version."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Roll back the last deploy and pin the dependency to the previous version.",
+    "id" : "g18-tech-generic-Karen",
+    "latency_ms" : 81.0691249370575,
+    "path" : "batch",
+    "ref" : "Roll back the last deploy and pin the dependency to the previous version."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Roll back the last deploy and pin the Parleq the Parleq",
+    "id" : "g18-tech-generic-Karen",
+    "latency_ms" : 328.62570786476135,
+    "path" : "batch",
+    "ref" : "Roll back the last deploy and pin the dependency to the previous version."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Add a retry with exponential back off and cap it at five attempts.",
+    "id" : "g19-tech-generic-Samantha",
+    "latency_ms" : 81.34191691875458,
+    "path" : "batch",
+    "ref" : "Add a retry with exponential backoff and cap it at five attempts."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Parleq exponential back off and cap it at five attempts.",
+    "id" : "g19-tech-generic-Samantha",
+    "latency_ms" : 316.31462490558624,
+    "path" : "batch",
+    "ref" : "Add a retry with exponential backoff and cap it at five attempts."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Add a retry with exponential back off and cap it at 5 attempts.",
+    "id" : "g19-tech-generic-Daniel",
+    "latency_ms" : 87.61220908164978,
+    "path" : "batch",
+    "ref" : "Add a retry with exponential backoff and cap it at five attempts."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Add a retry with exponential back off and cap it at 5 attempts.",
+    "id" : "g19-tech-generic-Daniel",
+    "latency_ms" : 321.7160841226578,
+    "path" : "batch",
+    "ref" : "Add a retry with exponential backoff and cap it at five attempts."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Add a retry with exponential back off and cap it at 5 attempts.",
+    "id" : "g19-tech-generic-Karen",
+    "latency_ms" : 86.25654208660126,
+    "path" : "batch",
+    "ref" : "Add a retry with exponential backoff and cap it at five attempts."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Add a retry with exponential back off and cap it at 5 attempts.",
+    "id" : "g19-tech-generic-Karen",
+    "latency_ms" : 308.85925006866455,
+    "path" : "batch",
+    "ref" : "Add a retry with exponential backoff and cap it at five attempts."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Hey, just following up on the thread from yesterday, did we ever hear back from the vendor?",
+    "id" : "g20-conversational-Samantha",
+    "latency_ms" : 86.53812503814697,
+    "path" : "batch",
+    "ref" : "Hey, just following up on the thread from yesterday, did we ever hear back from the vendor?"
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Hey, just following up on the thread from yesterday, did we ever hear back from the vendor?",
+    "id" : "g20-conversational-Samantha",
+    "latency_ms" : 317.1701250076294,
+    "path" : "batch",
+    "ref" : "Hey, just following up on the thread from yesterday, did we ever hear back from the vendor?"
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Hey, just following up on the thread from yesterday, did we ever hear back from the vendor?",
+    "id" : "g20-conversational-Daniel",
+    "latency_ms" : 88.62024998664856,
+    "path" : "batch",
+    "ref" : "Hey, just following up on the thread from yesterday, did we ever hear back from the vendor?"
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Hey, just following up on the thread from yesterday, did we ever hear back from the vendor?",
+    "id" : "g20-conversational-Daniel",
+    "latency_ms" : 325.67375004291534,
+    "path" : "batch",
+    "ref" : "Hey, just following up on the thread from yesterday, did we ever hear back from the vendor?"
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Hey, just following up on the thread from yesterday, did we ever hear back from the vendor?",
+    "id" : "g20-conversational-Karen",
+    "latency_ms" : 87.02708303928375,
+    "path" : "batch",
+    "ref" : "Hey, just following up on the thread from yesterday, did we ever hear back from the vendor?"
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Hey, just following up on the thread from yesterday, did we ever hear back from the vendor?",
+    "id" : "g20-conversational-Karen",
+    "latency_ms" : 310.2190001010895,
+    "path" : "batch",
+    "ref" : "Hey, just following up on the thread from yesterday, did we ever hear back from the vendor?"
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Thanks for putting this together, it looks great, I only have one small comment on the intro.",
+    "id" : "g21-conversational-Samantha",
+    "latency_ms" : 87.82966601848602,
+    "path" : "batch",
+    "ref" : "Thanks for putting this together, it looks great, I only have one small comment on the intro."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Thanks for putting this together, it looks great, I only have one small comment on the intro.",
+    "id" : "g21-conversational-Samantha",
+    "latency_ms" : 317.957249045372,
+    "path" : "batch",
+    "ref" : "Thanks for putting this together, it looks great, I only have one small comment on the intro."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Thanks for putting this together, it looks great. I only have one small comment on the intro.",
+    "id" : "g21-conversational-Daniel",
+    "latency_ms" : 86.00404107570648,
+    "path" : "batch",
+    "ref" : "Thanks for putting this together, it looks great, I only have one small comment on the intro."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Thanks for putting this together, it looks great. I only have one small comment on the intro.",
+    "id" : "g21-conversational-Daniel",
+    "latency_ms" : 314.6334580183029,
+    "path" : "batch",
+    "ref" : "Thanks for putting this together, it looks great, I only have one small comment on the intro."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Thanks for putting this together, it looks great, I only have one small comment on the intro.",
+    "id" : "g21-conversational-Karen",
+    "latency_ms" : 87.18129098415375,
+    "path" : "batch",
+    "ref" : "Thanks for putting this together, it looks great, I only have one small comment on the intro."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Parleq putting this together, it looks great, I only have one small comment on the intro.",
+    "id" : "g21-conversational-Karen",
+    "latency_ms" : 330.26120698451996,
+    "path" : "batch",
+    "ref" : "Thanks for putting this together, it looks great, I only have one small comment on the intro."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "First, back up the database, then run the migration, and finally restart the service.",
+    "id" : "g22-instruction-Samantha",
+    "latency_ms" : 83.29937505722046,
+    "path" : "batch",
+    "ref" : "First, back up the database, then run the migration, and finally restart the service."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "First, back up the database, then run the migration, and finally restart the service.",
+    "id" : "g22-instruction-Samantha",
+    "latency_ms" : 323.71979105472565,
+    "path" : "batch",
+    "ref" : "First, back up the database, then run the migration, and finally restart the service."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "First, back up the database, then run the migration, and finally restart the service.",
+    "id" : "g22-instruction-Daniel",
+    "latency_ms" : 83.62612509727478,
+    "path" : "batch",
+    "ref" : "First, back up the database, then run the migration, and finally restart the service."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "First, back up the database, then run the migration, and finally restart the service.",
+    "id" : "g22-instruction-Daniel",
+    "latency_ms" : 325.9624590873718,
+    "path" : "batch",
+    "ref" : "First, back up the database, then run the migration, and finally restart the service."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "First, back up the database, then run the migration, and finally restart the service.",
+    "id" : "g22-instruction-Karen",
+    "latency_ms" : 83.45512509346008,
+    "path" : "batch",
+    "ref" : "First, back up the database, then run the migration, and finally restart the service."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "First, back up the database, then run the migration, and finally restart the service.",
+    "id" : "g22-instruction-Karen",
+    "latency_ms" : 318.95675003528595,
+    "path" : "batch",
+    "ref" : "First, back up the database, then run the migration, and finally restart the service."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "The report shows we closed 12 deals in the first quarter, which is up from seven last year.",
+    "id" : "g23-mixed-Samantha",
+    "latency_ms" : 83.78724992275238,
+    "path" : "batch",
+    "ref" : "The report shows we closed twelve deals in the first quarter, which is up from seven last year."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "The report shows we closed 12 deals in the first quarter, which is up from seven last year.",
+    "id" : "g23-mixed-Samantha",
+    "latency_ms" : 314.9163329601288,
+    "path" : "batch",
+    "ref" : "The report shows we closed twelve deals in the first quarter, which is up from seven last year."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "The report shows we closed 12 deals in the first quarter, which is up from 7 last year.",
+    "id" : "g23-mixed-Daniel",
+    "latency_ms" : 83.33020901679993,
+    "path" : "batch",
+    "ref" : "The report shows we closed twelve deals in the first quarter, which is up from seven last year."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "The report shows we closed 12 deals in the first quarter, which is up from 7 last year.",
+    "id" : "g23-mixed-Daniel",
+    "latency_ms" : 313.83145892620087,
+    "path" : "batch",
+    "ref" : "The report shows we closed twelve deals in the first quarter, which is up from seven last year."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "The report shows we closed 12 deals in the first quarter, which is up from seven last year.",
+    "id" : "g23-mixed-Karen",
+    "latency_ms" : 82.11775004863739,
+    "path" : "batch",
+    "ref" : "The report shows we closed twelve deals in the first quarter, which is up from seven last year."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "The report shows we closed 12 deals in the first quarter, which is up Parleq",
+    "id" : "g23-mixed-Karen",
+    "latency_ms" : 323.44375002384186,
+    "path" : "batch",
+    "ref" : "The report shows we closed twelve deals in the first quarter, which is up from seven last year."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Move the deadline to next Friday and let everyone know in the channel.",
+    "id" : "g24-mixed-Samantha",
+    "latency_ms" : 81.4389580488205,
+    "path" : "batch",
+    "ref" : "Move the deadline to next Friday and let everyone know in the channel."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Parleq next Friday and let everyone know in the channel.",
+    "id" : "g24-mixed-Samantha",
+    "latency_ms" : 317.4327081441879,
+    "path" : "batch",
+    "ref" : "Move the deadline to next Friday and let everyone know in the channel."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Move the deadline to next Friday and let everyone know in the channel.",
+    "id" : "g24-mixed-Daniel",
+    "latency_ms" : 78.96045804023743,
+    "path" : "batch",
+    "ref" : "Move the deadline to next Friday and let everyone know in the channel."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Move the deadline to next Friday and let everyone know in the channel.",
+    "id" : "g24-mixed-Daniel",
+    "latency_ms" : 301.62945795059204,
+    "path" : "batch",
+    "ref" : "Move the deadline to next Friday and let everyone know in the channel."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Move the deadline to next Friday and let everyone know in the channel.",
+    "id" : "g24-mixed-Karen",
+    "latency_ms" : 83.78804206848145,
+    "path" : "batch",
+    "ref" : "Move the deadline to next Friday and let everyone know in the channel."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Move the deadline to next Friday and let everyone know in the channel.",
+    "id" : "g24-mixed-Karen",
+    "latency_ms" : 304.4312080144882,
+    "path" : "batch",
+    "ref" : "Move the deadline to next Friday and let everyone know in the channel."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "I dictated this note using Parlaq on my Mac.",
+    "id" : "b01-parleq-Samantha",
+    "latency_ms" : 76.86441707611084,
+    "path" : "batch",
+    "ref" : "I dictated this note using Parleq on my Mac."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "I dictated this note using Parleq on my Mac.",
+    "id" : "b01-parleq-Samantha",
+    "latency_ms" : 294.80654203891754,
+    "path" : "batch",
+    "ref" : "I dictated this note using Parleq on my Mac."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "I dictated this note using Parlac on my Mac.",
+    "id" : "b01-parleq-Daniel",
+    "latency_ms" : 77.15316605567932,
+    "path" : "batch",
+    "ref" : "I dictated this note using Parleq on my Mac."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "I dictated this note using Parleq on my Mac.",
+    "id" : "b01-parleq-Daniel",
+    "latency_ms" : 309.7758320569992,
+    "path" : "batch",
+    "ref" : "I dictated this note using Parleq on my Mac."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "I dictated this note using Parlek on my Mac.",
+    "id" : "b01-parleq-Karen",
+    "latency_ms" : 78.92841601371765,
+    "path" : "batch",
+    "ref" : "I dictated this note using Parleq on my Mac."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "I dictated this note using Parleq on my Mac.",
+    "id" : "b01-parleq-Karen",
+    "latency_ms" : 311.564041018486,
+    "path" : "batch",
+    "ref" : "I dictated this note using Parleq on my Mac."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Can you add Parlac to the list of approved applications?",
+    "id" : "b02-parleq-Samantha",
+    "latency_ms" : 79.41383302211761,
+    "path" : "batch",
+    "ref" : "Can you add Parleq to the list of approved applications?"
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Can you add Parleq to the list of approved Parleq",
+    "id" : "b02-parleq-Samantha",
+    "latency_ms" : 316.6637500524521,
+    "path" : "batch",
+    "ref" : "Can you add Parleq to the list of approved applications?"
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Can you add Parlek to the list of approved applications?",
+    "id" : "b02-parleq-Daniel",
+    "latency_ms" : 77.28745794296265,
+    "path" : "batch",
+    "ref" : "Can you add Parleq to the list of approved applications?"
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Can you add Parleq to the list of Parleq",
+    "id" : "b02-parleq-Daniel",
+    "latency_ms" : 316.0509579181671,
+    "path" : "batch",
+    "ref" : "Can you add Parleq to the list of approved applications?"
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Can you add Parleg to the list of approved applications?",
+    "id" : "b02-parleq-Karen",
+    "latency_ms" : 74.75300002098083,
+    "path" : "batch",
+    "ref" : "Can you add Parleq to the list of approved applications?"
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Can you add Parleq to the list of approved applications?",
+    "id" : "b02-parleq-Karen",
+    "latency_ms" : 296.2410839796066,
+    "path" : "batch",
+    "ref" : "Can you add Parleq to the list of approved applications?"
+  },
+  {
+    "biasing" : false,
+    "hyp" : "The transcription runs on the parakeet model locally.",
+    "id" : "b03-parakeet-Samantha",
+    "latency_ms" : 73.59166705608368,
+    "path" : "batch",
+    "ref" : "The transcription runs on the Parakeet model locally."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "The Parleq Parleq",
+    "id" : "b03-parakeet-Samantha",
+    "latency_ms" : 327.12400007247925,
+    "path" : "batch",
+    "ref" : "The transcription runs on the Parakeet model locally."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "The transcription runs on the parakeet model locally.",
+    "id" : "b03-parakeet-Daniel",
+    "latency_ms" : 74.49495804309845,
+    "path" : "batch",
+    "ref" : "The transcription runs on the Parakeet model locally."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "The Parleq runs on the Parleq",
+    "id" : "b03-parakeet-Daniel",
+    "latency_ms" : 309.172208070755,
+    "path" : "batch",
+    "ref" : "The transcription runs on the Parakeet model locally."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "The transcription runs on the parakeet model locally.",
+    "id" : "b03-parakeet-Karen",
+    "latency_ms" : 76.43158292770386,
+    "path" : "batch",
+    "ref" : "The transcription runs on the Parakeet model locally."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "The transcription runs on the parakeet model Parleq",
+    "id" : "b03-parakeet-Karen",
+    "latency_ms" : 301.0052080154419,
+    "path" : "batch",
+    "ref" : "The transcription runs on the Parakeet model locally."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "We use fluid audio for on-device speech recognition.",
+    "id" : "b04-fluidaudio-Samantha",
+    "latency_ms" : 79.86916697025299,
+    "path" : "batch",
+    "ref" : "We use FluidAudio for on device speech recognition."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "We use Parleq on-device Parleq",
+    "id" : "b04-fluidaudio-Samantha",
+    "latency_ms" : 317.1629168987274,
+    "path" : "batch",
+    "ref" : "We use FluidAudio for on device speech recognition."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "We use fluid audio for on-device speech recognition.",
+    "id" : "b04-fluidaudio-Daniel",
+    "latency_ms" : 84.51754200458527,
+    "path" : "batch",
+    "ref" : "We use FluidAudio for on device speech recognition."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Parleq audio for on-device speech recognition.",
+    "id" : "b04-fluidaudio-Daniel",
+    "latency_ms" : 310.74433302879333,
+    "path" : "batch",
+    "ref" : "We use FluidAudio for on device speech recognition."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "We use fluid audio for on-device speech recognition.",
+    "id" : "b04-fluidaudio-Karen",
+    "latency_ms" : 78.3874579668045,
+    "path" : "batch",
+    "ref" : "We use FluidAudio for on device speech recognition."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "We use fluid audio for on-device speech recognition.",
+    "id" : "b04-fluidaudio-Karen",
+    "latency_ms" : 303.3750410079956,
+    "path" : "batch",
+    "ref" : "We use FluidAudio for on device speech recognition."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "The cleanup step calls a model hosted on bedrock.",
+    "id" : "b05-bedrock-Samantha",
+    "latency_ms" : 83.66679191589355,
+    "path" : "batch",
+    "ref" : "The cleanup step calls a model hosted on Bedrock."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "The cleanup step calls a model hosted on bedrock.",
+    "id" : "b05-bedrock-Samantha",
+    "latency_ms" : 300.4357919692993,
+    "path" : "batch",
+    "ref" : "The cleanup step calls a model hosted on Bedrock."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "The cleanup step calls a model hosted on bedrock.",
+    "id" : "b05-bedrock-Daniel",
+    "latency_ms" : 81.58425009250641,
+    "path" : "batch",
+    "ref" : "The cleanup step calls a model hosted on Bedrock."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "The cleanup step calls a model hosted on bedrock.",
+    "id" : "b05-bedrock-Daniel",
+    "latency_ms" : 302.49733304977417,
+    "path" : "batch",
+    "ref" : "The cleanup step calls a model hosted on Bedrock."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "The cleanup step calls a model hosted on bedrock.",
+    "id" : "b05-bedrock-Karen",
+    "latency_ms" : 79.19916605949402,
+    "path" : "batch",
+    "ref" : "The cleanup step calls a model hosted on Bedrock."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Parleq a model hosted on bedrock.",
+    "id" : "b05-bedrock-Karen",
+    "latency_ms" : 314.47445702552795,
+    "path" : "batch",
+    "ref" : "The cleanup step calls a model hosted on Bedrock."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Route the request through vertex in the central region.",
+    "id" : "b06-vertex-Samantha",
+    "latency_ms" : 78.17137491703033,
+    "path" : "batch",
+    "ref" : "Route the request through Vertex in the central region."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Route the request through vertex in the central region.",
+    "id" : "b06-vertex-Samantha",
+    "latency_ms" : 296.34766697883606,
+    "path" : "batch",
+    "ref" : "Route the request through Vertex in the central region."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Route the request through vertex in the central region.",
+    "id" : "b06-vertex-Daniel",
+    "latency_ms" : 78.59912502765656,
+    "path" : "batch",
+    "ref" : "Route the request through Vertex in the central region."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Route the request through vertex in the central region.",
+    "id" : "b06-vertex-Daniel",
+    "latency_ms" : 294.03725004196167,
+    "path" : "batch",
+    "ref" : "Route the request through Vertex in the central region."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Route the request through vertex in the central region.",
+    "id" : "b06-vertex-Karen",
+    "latency_ms" : 79.23475003242493,
+    "path" : "batch",
+    "ref" : "Route the request through Vertex in the central region."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Parleq vertex Parleq",
+    "id" : "b06-vertex-Karen",
+    "latency_ms" : 322.9539170265198,
+    "path" : "batch",
+    "ref" : "Route the request through Vertex in the central region."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "By default the app uses Gemini for text cleanup.",
+    "id" : "b07-gemini-Samantha",
+    "latency_ms" : 80.48445904254913,
+    "path" : "batch",
+    "ref" : "By default the app uses Gemini for text cleanup."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "By default the app uses Gemini for text cleanup.",
+    "id" : "b07-gemini-Samantha",
+    "latency_ms" : 295.44458401203156,
+    "path" : "batch",
+    "ref" : "By default the app uses Gemini for text cleanup."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "By default the app uses Gemini for text cleanup.",
+    "id" : "b07-gemini-Daniel",
+    "latency_ms" : 78.74983406066895,
+    "path" : "batch",
+    "ref" : "By default the app uses Gemini for text cleanup."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "By default the app Parleq Parleq",
+    "id" : "b07-gemini-Daniel",
+    "latency_ms" : 311.84595906734467,
+    "path" : "batch",
+    "ref" : "By default the app uses Gemini for text cleanup."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "By default the app uses Gemini for text cleanup.",
+    "id" : "b07-gemini-Karen",
+    "latency_ms" : 78.2775000333786,
+    "path" : "batch",
+    "ref" : "By default the app uses Gemini for text cleanup."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "By default the Parleq for text cleanup.",
+    "id" : "b07-gemini-Karen",
+    "latency_ms" : 308.1495829820633,
+    "path" : "batch",
+    "ref" : "By default the app uses Gemini for text cleanup."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "The API key is stored securely in the keychain.",
+    "id" : "b08-keychain-Samantha",
+    "latency_ms" : 77.7462089061737,
+    "path" : "batch",
+    "ref" : "The API key is stored securely in the Keychain."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "The API key is stored securely in the keychain.",
+    "id" : "b08-keychain-Samantha",
+    "latency_ms" : 297.05416691303253,
+    "path" : "batch",
+    "ref" : "The API key is stored securely in the Keychain."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "The API key is stored securely in the keychain.",
+    "id" : "b08-keychain-Daniel",
+    "latency_ms" : 76.5891250371933,
+    "path" : "batch",
+    "ref" : "The API key is stored securely in the Keychain."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Parleq is stored securely in the keychain.",
+    "id" : "b08-keychain-Daniel",
+    "latency_ms" : 303.4924581050873,
+    "path" : "batch",
+    "ref" : "The API key is stored securely in the Keychain."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "The API key is stored securely in the keychain.",
+    "id" : "b08-keychain-Karen",
+    "latency_ms" : 78.02687501907349,
+    "path" : "batch",
+    "ref" : "The API key is stored securely in the Keychain."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "The API key is stored securely in the keychain.",
+    "id" : "b08-keychain-Karen",
+    "latency_ms" : 299.6067500114441,
+    "path" : "batch",
+    "ref" : "The API key is stored securely in the Keychain."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Authentication is handled by the Soto Library.",
+    "id" : "b09-soto-Samantha",
+    "latency_ms" : 77.50904202461243,
+    "path" : "batch",
+    "ref" : "Authentication is handled by the Soto library."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Authentication is handled by the Soto Library.",
+    "id" : "b09-soto-Samantha",
+    "latency_ms" : 308.91216695308685,
+    "path" : "batch",
+    "ref" : "Authentication is handled by the Soto library."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Authentication is handled by the Soto library.",
+    "id" : "b09-soto-Daniel",
+    "latency_ms" : 79.14499998092651,
+    "path" : "batch",
+    "ref" : "Authentication is handled by the Soto library."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Authentication is handled by the Soto library.",
+    "id" : "b09-soto-Daniel",
+    "latency_ms" : 309.50279104709625,
+    "path" : "batch",
+    "ref" : "Authentication is handled by the Soto library."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Authentication is handled by the Soto library.",
+    "id" : "b09-soto-Karen",
+    "latency_ms" : 79.54275000095367,
+    "path" : "batch",
+    "ref" : "Authentication is handled by the Soto library."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Authentication is handled by the Soto library.",
+    "id" : "b09-soto-Karen",
+    "latency_ms" : 304.39800000190735,
+    "path" : "batch",
+    "ref" : "Authentication is handled by the Soto library."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "You can point it at a local Sherpa endpoint instead.",
+    "id" : "b10-sherpa-Samantha",
+    "latency_ms" : 80.96633291244507,
+    "path" : "batch",
+    "ref" : "You can point it at a local Sherpa endpoint instead."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "You can point it at a local Sherpa endpoint instead.",
+    "id" : "b10-sherpa-Samantha",
+    "latency_ms" : 311.0459989309311,
+    "path" : "batch",
+    "ref" : "You can point it at a local Sherpa endpoint instead."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "You can point it at a local Sherpa endpoint instead.",
+    "id" : "b10-sherpa-Daniel",
+    "latency_ms" : 78.41758298873901,
+    "path" : "batch",
+    "ref" : "You can point it at a local Sherpa endpoint instead."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "You can point it at a local Sherpa endpoint instead.",
+    "id" : "b10-sherpa-Daniel",
+    "latency_ms" : 305.348375082016,
+    "path" : "batch",
+    "ref" : "You can point it at a local Sherpa endpoint instead."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "You can point it at a local Sherpa endpoint instead.",
+    "id" : "b10-sherpa-Karen",
+    "latency_ms" : 79.68475008010864,
+    "path" : "batch",
+    "ref" : "You can point it at a local Sherpa endpoint instead."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "You can point it at a local Parleq",
+    "id" : "b10-sherpa-Karen",
+    "latency_ms" : 321.1573750972748,
+    "path" : "batch",
+    "ref" : "You can point it at a local Sherpa endpoint instead."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Update the route 53 record before the cutover.",
+    "id" : "b11-route53-Samantha",
+    "latency_ms" : 81.92412495613098,
+    "path" : "batch",
+    "ref" : "Update the Route 53 record before the cutover."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Update the route 53 record before the cutover.",
+    "id" : "b11-route53-Samantha",
+    "latency_ms" : 302.9174579381943,
+    "path" : "batch",
+    "ref" : "Update the Route 53 record before the cutover."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Update the root 53 record before the cutover.",
+    "id" : "b11-route53-Daniel",
+    "latency_ms" : 77.88458395004272,
+    "path" : "batch",
+    "ref" : "Update the Route 53 record before the cutover."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Update the root 53 record before the cutover.",
+    "id" : "b11-route53-Daniel",
+    "latency_ms" : 296.2641259431839,
+    "path" : "batch",
+    "ref" : "Update the Route 53 record before the cutover."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Update the route 53 record before the cutover.",
+    "id" : "b11-route53-Karen",
+    "latency_ms" : 79.5518330335617,
+    "path" : "batch",
+    "ref" : "Update the Route 53 record before the cutover."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Parleq record before the cutover.",
+    "id" : "b11-route53-Karen",
+    "latency_ms" : 313.5240830183029,
+    "path" : "batch",
+    "ref" : "Update the Route 53 record before the cutover."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Parlach sends the transcript to Gemini for cleanup.",
+    "id" : "b12-multi-Samantha",
+    "latency_ms" : 81.77004098892212,
+    "path" : "batch",
+    "ref" : "Parleq sends the transcript to Gemini for cleanup."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Parleq sends the transcript to Gemini for cleanup.",
+    "id" : "b12-multi-Samantha",
+    "latency_ms" : 308.5787500143051,
+    "path" : "batch",
+    "ref" : "Parleq sends the transcript to Gemini for cleanup."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Alex sends the transcript to Gemini for cleanup.",
+    "id" : "b12-multi-Daniel",
+    "latency_ms" : 82.92258298397064,
+    "path" : "batch",
+    "ref" : "Parleq sends the transcript to Gemini for cleanup."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Alex sends the transcript to Gemini for cleanup.",
+    "id" : "b12-multi-Daniel",
+    "latency_ms" : 302.67925000190735,
+    "path" : "batch",
+    "ref" : "Parleq sends the transcript to Gemini for cleanup."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Parlek sends the transcript to Gemini for cleanup.",
+    "id" : "b12-multi-Karen",
+    "latency_ms" : 79.48112499713898,
+    "path" : "batch",
+    "ref" : "Parleq sends the transcript to Gemini for cleanup."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Parleq sends the transcript to Gemini for cleanup.",
+    "id" : "b12-multi-Karen",
+    "latency_ms" : 308.3784580230713,
+    "path" : "batch",
+    "ref" : "Parleq sends the transcript to Gemini for cleanup."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "We tested both bedrock and vertex for the cleanup model.",
+    "id" : "b13-multi-Samantha",
+    "latency_ms" : 81.1736249923706,
+    "path" : "batch",
+    "ref" : "We tested both Bedrock and Vertex for the cleanup model."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "We tested both Parleq the Parleq",
+    "id" : "b13-multi-Samantha",
+    "latency_ms" : 318.155709028244,
+    "path" : "batch",
+    "ref" : "We tested both Bedrock and Vertex for the cleanup model."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "We tested both bedrock and vertex for the cleanup model.",
+    "id" : "b13-multi-Daniel",
+    "latency_ms" : 80.56129097938538,
+    "path" : "batch",
+    "ref" : "We tested both Bedrock and Vertex for the cleanup model."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Parleq both bedrock and vertex for the cleanup model.",
+    "id" : "b13-multi-Daniel",
+    "latency_ms" : 304.3814569711685,
+    "path" : "batch",
+    "ref" : "We tested both Bedrock and Vertex for the cleanup model."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "We tested both bedrock and vertex for the cleanup model.",
+    "id" : "b13-multi-Karen",
+    "latency_ms" : 83.52391695976257,
+    "path" : "batch",
+    "ref" : "We tested both Bedrock and Vertex for the cleanup model."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "We tested both bedrock and vertex for the Parleq",
+    "id" : "b13-multi-Karen",
+    "latency_ms" : 315.1238750219345,
+    "path" : "batch",
+    "ref" : "We tested both Bedrock and Vertex for the cleanup model."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "The nice thing about Parlek is that the audio never leaves the device.",
+    "id" : "b14-parleq-ctx-Samantha",
+    "latency_ms" : 82.70379197597504,
+    "path" : "batch",
+    "ref" : "The nice thing about Parleq is that the audio never leaves the device."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "The nice thing about Parleq is that the audio never leaves the device.",
+    "id" : "b14-parleq-ctx-Samantha",
+    "latency_ms" : 313.9828749895096,
+    "path" : "batch",
+    "ref" : "The nice thing about Parleq is that the audio never leaves the device."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "The nice thing about Parlek is that the audio never leaves the device.",
+    "id" : "b14-parleq-ctx-Daniel",
+    "latency_ms" : 88.02425003051758,
+    "path" : "batch",
+    "ref" : "The nice thing about Parleq is that the audio never leaves the device."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "The nice thing about Parleq is that the audio never leaves the device.",
+    "id" : "b14-parleq-ctx-Daniel",
+    "latency_ms" : 323.53404104709625,
+    "path" : "batch",
+    "ref" : "The nice thing about Parleq is that the audio never leaves the device."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "The nice thing about Parlek is that the audio never leaves the device.",
+    "id" : "b14-parleq-ctx-Karen",
+    "latency_ms" : 83.3179589509964,
+    "path" : "batch",
+    "ref" : "The nice thing about Parleq is that the audio never leaves the device."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "The nice thing about Parleq is that the audio never leaves the device.",
+    "id" : "b14-parleq-ctx-Karen",
+    "latency_ms" : 316.9712508916855,
+    "path" : "batch",
+    "ref" : "The nice thing about Parleq is that the audio never leaves the device."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Fluid audio loads the parakeet model onto the neural engine.",
+    "id" : "b15-parakeet-ctx-Samantha",
+    "latency_ms" : 82.12037491798401,
+    "path" : "batch",
+    "ref" : "FluidAudio loads the Parakeet model onto the Neural Engine."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Parleq parakeet model onto the neural engine.",
+    "id" : "b15-parakeet-ctx-Samantha",
+    "latency_ms" : 325.96537494659424,
+    "path" : "batch",
+    "ref" : "FluidAudio loads the Parakeet model onto the Neural Engine."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Fluid Audio loads the parakeet model onto the neural engine.",
+    "id" : "b15-parakeet-ctx-Daniel",
+    "latency_ms" : 83.46054196357727,
+    "path" : "batch",
+    "ref" : "FluidAudio loads the Parakeet model onto the Neural Engine."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Fluid Audio loads the parakeet model onto the neural engine.",
+    "id" : "b15-parakeet-ctx-Daniel",
+    "latency_ms" : 313.0621670484543,
+    "path" : "batch",
+    "ref" : "FluidAudio loads the Parakeet model onto the Neural Engine."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "Fluid Audio loads the parakeet model onto the Neural Engine.",
+    "id" : "b15-parakeet-ctx-Karen",
+    "latency_ms" : 84.81174993515015,
+    "path" : "batch",
+    "ref" : "FluidAudio loads the Parakeet model onto the Neural Engine."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "Fluid Audio loads the parakeet model onto the Parleq",
+    "id" : "b15-parakeet-ctx-Karen",
+    "latency_ms" : 315.19570899009705,
+    "path" : "batch",
+    "ref" : "FluidAudio loads the Parakeet model onto the Neural Engine."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "The Verdex service account lives in the keychain, not in a file.",
+    "id" : "b16-vertex-ctx-Samantha",
+    "latency_ms" : 84.01150000095367,
+    "path" : "batch",
+    "ref" : "The Vertex service account lives in the Keychain, not in a file."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "The Verdex Parleq in the keychain, not in a file.",
+    "id" : "b16-vertex-ctx-Samantha",
+    "latency_ms" : 322.59300005435944,
+    "path" : "batch",
+    "ref" : "The Vertex service account lives in the Keychain, not in a file."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "The Vertex service account lives in the keychain, not in a file.",
+    "id" : "b16-vertex-ctx-Daniel",
+    "latency_ms" : 85.75908291339874,
+    "path" : "batch",
+    "ref" : "The Vertex service account lives in the Keychain, not in a file."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "The Vertex service account lives in the keychain, not in a file.",
+    "id" : "b16-vertex-ctx-Daniel",
+    "latency_ms" : 309.49062490463257,
+    "path" : "batch",
+    "ref" : "The Vertex service account lives in the Keychain, not in a file."
+  },
+  {
+    "biasing" : false,
+    "hyp" : "The vertex service account lives in the keychain, not in a file.",
+    "id" : "b16-vertex-ctx-Karen",
+    "latency_ms" : 79.4099589586258,
+    "path" : "batch",
+    "ref" : "The Vertex service account lives in the Keychain, not in a file."
+  },
+  {
+    "biasing" : true,
+    "hyp" : "The vertex service account lives in the keychain, not in a file.",
+    "id" : "b16-vertex-ctx-Karen",
+    "latency_ms" : 301.52933394908905,
+    "path" : "batch",
+    "ref" : "The Vertex service account lives in the Keychain, not in a file."
+  }
+]

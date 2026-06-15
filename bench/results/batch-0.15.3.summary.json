@@ -1,0 +1,13 @@
+[
+  {
+    "path": "batch",
+    "biasing": false,
+    "n": 120,
+    "mean_wer_pct": 4.25,
+    "median_wer_pct": 0.0,
+    "perfect": 87,
+    "latency_p50_ms": 79,
+    "latency_p95_ms": 90,
+    "first_partial_p50_ms": null
+  }
+]

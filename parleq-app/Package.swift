@@ -13,6 +13,11 @@ let package = Package(
     ],
     products: [
         .executable(name: "parleq-app", targets: ["parleq-app"]),
+        // asr-bench — dev-only ASR benchmark CLI. Separate product so it
+        // is never part of the app bundle (make-app.sh builds only the
+        // parleq-app product). Depends on FluidAudio alone, not
+        // ParleqAppCore, so a build doesn't pull in MLX/Soto.
+        .executable(name: "asr-bench", targets: ["asr-bench"]),
     ],
     dependencies: [
         // Soto — community Swift AWS SDK. Used for Bedrock Runtime
@@ -37,7 +42,7 @@ let package = Package(
         // simplify supervision, and shed the Hummingbird dependency.
         // Same 0.14.x pin the retired sidecar used so first-run model
         // downloads land on a known-good FluidAudio revision.
-        .package(url: "https://github.com/FluidInference/FluidAudio.git", "0.14.3"..<"0.15.0"),
+        .package(url: "https://github.com/FluidInference/FluidAudio.git", "0.15.3"..<"0.16.0"),
         // Sparkle — auto-update framework. Checks an EdDSA-signed
         // appcast.xml on parleq.app for newer releases and runs the
         // user-prompted download/install/relaunch flow. Used by
@@ -101,6 +106,17 @@ let package = Package(
             name: "parleq-app",
             dependencies: ["ParleqAppCore"],
             path: "Sources/parleq-app"
+        ),
+        // asr-bench — dev-only ASR benchmark. FluidAudio-only on purpose
+        // (see the product comment above). Build with
+        // `swift build --product asr-bench` to avoid compiling the rest
+        // of the app graph.
+        .executableTarget(
+            name: "asr-bench",
+            dependencies: [
+                .product(name: "FluidAudio", package: "FluidAudio"),
+            ],
+            path: "Sources/asr-bench"
         ),
         .testTarget(
             name: "ParleqAppCoreTests",

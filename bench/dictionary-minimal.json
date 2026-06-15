@@ -1,0 +1,6 @@
+{
+  "_comment": "Minimal dictionary matching the app's shipped default: a single term with its real aliases. Tests realistic biasing.",
+  "terms": [
+    { "term": "Parleq", "aliases": ["parlay", "parlez"] }
+  ]
+}

@@ -4,6 +4,16 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.24.2] - 2026-06-15
+
+Maintenance release: updates the on-device speech recognition engine to its latest version, with no change to dictation behavior.
+
+### Changed
+
+- **Updated the on-device speech recognition engine (FluidAudio) to 0.15.3.** A routine dependency update. Transcription accuracy and latency are unchanged — verified equivalent to the previous version before shipping.
+
+[0.24.2]: https://github.com/parleq/parleq-speech/releases/tag/v0.24.2
+
 ## [0.24.1] - 2026-06-13
 
 On-device cleanup polish: a restart prompt that actually appears when the model is ready, a clearer (and cancellable) download experience, and Parleq's own name recognized out of the box.
