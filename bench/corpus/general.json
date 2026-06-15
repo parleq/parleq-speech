@@ -1,5 +1,5 @@
 {
-  "_comment": "General dictation corpus for the ASR benchmark. Freshly authored, Parleq-appropriate dictation-shaped utterances (not the private Keavi finance corpus). Each entry: id, text (== reference transcript fed to the TTS generator), category. WER scoring normalizes numbers/punctuation via the Whisper text normalizer, so references are written naturally.",
+  "_comment": "General dictation corpus for the ASR benchmark. Freshly authored, Parleq-appropriate dictation-shaped utterances. Each entry: id, text (== reference transcript fed to the TTS generator), category. WER scoring normalizes numbers/punctuation via the Whisper text normalizer, so references are written naturally.",
   "utterances": [
     { "id": "g01-short-cmd",      "category": "short",   "text": "Open the settings window and switch to the audio tab." },
     { "id": "g02-short-note",     "category": "short",   "text": "Remind me to email the team before the standup tomorrow." },

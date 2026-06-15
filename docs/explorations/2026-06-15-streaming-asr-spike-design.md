@@ -50,19 +50,17 @@ link FluidAudio directly.
 
 ## Prior art
 
-The established ASR-testing pattern lives in the private
-`/Users/jonyoder/Dev/voice-permeable-interfaces` repo: an AWS Polly TTS fixture
-pipeline (16 kHz mono 16-bit WAV + a manifest pairing each WAV → reference
-transcript) and a `jiwer` + Whisper-normalizer WER harness emitting per-clip rows
-and an aggregate summary. (Note: the voice-fixture + WER half of that prior art is
-**Python**, not Go; the Go `toolcall-research` CLI there is an LLM tool-calling
-harness and does not touch ASR.)
+The methodology reuses a pattern from an earlier internal ASR-evaluation effort: a
+TTS fixture pipeline (16 kHz mono 16-bit WAV + a manifest pairing each WAV →
+reference transcript) and a `jiwer` + Whisper-normalizer WER harness emitting
+per-clip rows and an aggregate summary.
 
-We **borrow the methodology, not the assets.** The Polly corpus there is
-finance-shaped ("Keavi") and private, so it is **not** vendored into this public
-repo. Instead we author a fresh, Parleq-appropriate corpus and commit it here (see
-Fixtures). The WER-scoring approach (`jiwer` + Whisper normalizer) is reimplemented
-as a small committed script in this repo so the benchmark is self-contained.
+We **borrow the methodology, not the assets.** That earlier corpus is domain-specific
+and not ours to publish, so it is **not** vendored into this public repo. Instead we
+author a fresh, Parleq-appropriate corpus and commit it here (see Fixtures), generated
+from macOS `say` so it needs no third-party TTS credentials. The WER-scoring approach
+(`jiwer` + Whisper normalizer) is reimplemented as a small committed script so the
+benchmark is fully self-contained.
 
 ## Mergeability & safety
 
@@ -74,8 +72,8 @@ as a small committed script in this repo so the benchmark is self-contained.
   the `parleq-app` target, and are **not** copied by `parleq-app/scripts/make-app.sh`.
   A verification step confirms a built `.app` contains none of them.
 - **No proprietary data in the public repo.** Fixtures are freshly authored
-  dictation-shaped utterances (plus a dictionary-biasing set); the private Keavi
-  corpus is not committed.
+  dictation-shaped utterances (plus a dictionary-biasing set); no internal or
+  third-party corpus is committed.
 - **The FluidAudio bump is staged.** The bench tool + fixtures + this doc are
   mergeable regardless of results. The **0.14.5 → 0.15.3 bump** in `Package.swift` /
   `Package.resolved` merges only if the Phase 2 regression gate passes.
@@ -130,12 +128,11 @@ summary table   path × { mean/median WER, post-release p50/p95, first-partial p
      to exercise vocab boosting (goal #3).
    - **Generator** — a committed script using **macOS `say`** by default (creds-free,
      any contributor can regenerate/extend), emitting 16 kHz mono 16-bit WAV + a
-     manifest pairing WAV → reference transcript. (AWS Polly optional via a flag for
-     contributors who want accent variety.)
+     manifest pairing WAV → reference transcript.
 
 3. **`score-wer.py` (committed)** — small `jiwer` + Whisper-normalizer (ITN) scorer
-   that consumes the `results.json` rows and emits the summary table. Self-contained;
-   no dependency on the private prior-art repo.
+   that consumes the `results.json` rows and emits the summary table. Self-contained,
+   with no external repo dependency.
 
 ## Phases
 
@@ -178,8 +175,8 @@ regression** — the central tradeoff for adoption.
 
 ## Risks / dependencies
 
-- **macOS `say`** is the default fixture generator (built-in, creds-free). AWS Polly
-  is optional and only needed by contributors who want accent variety.
+- **macOS `say`** is the fixture generator (built-in, creds-free); no third-party
+  TTS service or credentials are required.
 - **0.15.3 batch-API drift** could require fixes to keep `ParleqAppCore` compiling.
   Captured as a Phase 2 finding; the bump merges only behind the passing gate.
 - **Fair latency** depends on pacing: only `--pacing realtime` yields the user-felt

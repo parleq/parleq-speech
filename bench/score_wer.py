@@ -3,7 +3,7 @@
 
 Self-contained reimplementation of the prior-art WER methodology (Whisper English
 text normalizer for inverse-text-normalization, then jiwer for WER) so the
-benchmark has no dependency on the private voice-permeable-interfaces repo.
+benchmark is fully self-contained with no external dependencies.
 
 Input: a results.json produced by `asr-bench`, an array of rows:
     { "id", "path", "ref", "hyp", "latency_ms", "post_release_ms",
