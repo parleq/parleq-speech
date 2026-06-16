@@ -29,6 +29,7 @@ Usage:
     --add /tmp/stress.json bench/fixtures/manifest-stress.json
 """
 import argparse
+import itertools
 import json
 import re
 
@@ -39,6 +40,32 @@ EXPLICIT = {
     "worktree": ["work tree"],
     "ultrathink": ["ultra think"],   # 'ultra thing' is a MISHEAR, not a clean split
 }
+
+# Phase 14/15: acronym terms with digits (E2E, k8s) are spoken char-by-char with
+# the DIGIT pronounced as a word — and crucially its HOMOPHONES (2 -> "to"/"two"),
+# which is exactly what the ASR writes ("E to E"). The plain letter<->digit split
+# (camel_split) only yields the literal "e 2 e" and so misses these. The most
+# common confident error in the Ph14 budget (E2E split, 6/14).
+DIGIT_WORDS = {
+    "0": ["zero", "oh"], "1": ["one"], "2": ["two", "to", "too"], "3": ["three"],
+    "4": ["four", "for"], "5": ["five"], "6": ["six"], "7": ["seven"],
+    "8": ["eight", "ate"], "9": ["nine"],
+}
+
+
+def acronym_forms(term):
+    """Multi-word spoken forms of a digit-bearing acronym, char-by-char, with
+    digit homophones (E2E -> 'e two e'/'e to e'; k8s -> 'k eight s'/'k ate s')."""
+    if not re.search(r"\d", term):
+        return set()
+    opts = []
+    for ch in term:
+        if ch.isdigit():
+            opts.append(DIGIT_WORDS.get(ch, [ch]))
+        elif ch.isalpha():
+            opts.append([ch.lower()])
+    forms = {" ".join(combo) for combo in itertools.product(*opts)}
+    return {f for f in forms if " " in f}
 
 
 def camel_split(term):
@@ -60,6 +87,7 @@ def spoken_forms(term):
         forms.add(cs)
     for f in EXPLICIT.get(low, []):
         forms.add(f)
+    forms |= acronym_forms(term)          # Phase 15: digit-homophone acronym forms
     # drop any "form" identical to the canonical single token
     return {f for f in forms if " " in f}
 
