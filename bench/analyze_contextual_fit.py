@@ -218,10 +218,15 @@ def main():
     # argmax / discrimination control: does a term/stress-intended utterance
     # match its OWN term's blurb best among all blurbs in this set?
     print("\n=== argmax control: correct blurb ranked #1 among all blurbs ===")
-    _argmax_control(toks, refs, blurb_map, use_embed)
+    _argmax_control(toks, refs, blurb_map, terms, use_embed)
 
 
-def _argmax_control(toks, refs, blurb_map, use_embed):
+def _argmax_control(toks, refs, blurb_map, terms, use_embed):
+    """For each term/stress clip: the ambiguous word fixes the ground-truth term
+    (via grapheme proximity, same as score_clip). Excluding that word, does the
+    surrounding context rank the correct term's blurb #1 among all blurbs?
+    Excluding the target word matters — otherwise the term word itself leaks into
+    the context and inflates the control (must mirror score_clip)."""
     score = embed_cosine if use_embed else keyword_overlap
     hits = total = 0
     for cid, tlist in toks.items():
@@ -229,15 +234,14 @@ def _argmax_control(toks, refs, blurb_map, use_embed):
             continue
         if not refs.get(cid, {}).get("ref", ""):
             continue
-        # the intended term is the clip id's middle field: cNN-<term>[-...]
-        intended = cid.split("-")[1] if "-" in cid else ""
-        match = next((t for t in blurb_map if t.lower() == intended.lower()), None)
-        if match is None:
+        words = ac.group_words(tlist)
+        tgt, prox, who = target_word(words, terms)
+        if tgt is None or who not in blurb_map:
             continue
-        context = " ".join(w["word"] for w in ac.group_words(tlist))
+        context = " ".join(w["word"] for w in words if w is not tgt)
         ranked = sorted(blurb_map, key=lambda t: score(context, sanitize_blurb(blurb_map[t])), reverse=True)
         total += 1
-        hits += int(ranked[0] == match)
+        hits += int(ranked[0] == who)
     if total:
         print(f"  top-1 accuracy: {hits}/{total} ({hits/total:.0%})  (chance ~ 1/{len(blurb_map)})")
     else:
