@@ -54,3 +54,32 @@ def sanitize_blurb(text):
         first = re.split(r"[.,;]", text)[0]
         out = _CONFUSE.split(first)[0].strip()
     return re.sub(r"\s+", " ", out)
+
+
+# ---- keyword overlap (zero-model baseline) ------------------------------
+from wordfreq import zipf_frequency
+
+_STOP = set("a an the of to in on for and or with is are be been was were this that "
+            "it its as at by from your you our we i me my they them he she his her "
+            "do does did not no yes so but if then than into out up down over under".split())
+
+
+def content_words(text):
+    return [w for w in re.findall(r"[a-z0-9]+", text.lower())
+            if w not in _STOP and len(w) > 1]
+
+
+def _rarity(w):
+    # zipf: ~7=very common, <3=rare; unknown -> 0. Rarer shared words weigh more.
+    return max(0.0, 8.0 - zipf_frequency(w, "en"))
+
+
+def keyword_overlap(context, blurb):
+    """Rarity-weighted fraction of the blurb's content words present in the
+    context. 0..1; rare shared words (proper nouns, jargon) count for more."""
+    cw, bw = set(content_words(context)), set(content_words(blurb))
+    if not bw:
+        return 0.0
+    num = sum(_rarity(w) for w in (cw & bw))
+    den = sum(_rarity(w) for w in bw)
+    return num / den if den else 0.0

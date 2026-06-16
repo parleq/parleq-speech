@@ -20,6 +20,15 @@ def test_sanitize_passes_clean_blurb():
     out = cf.sanitize_blurb("in-memory key-value data store")
     assert out == "in-memory key-value data store", out
 
+def test_keyword_overlap_discriminates():
+    blurb = cf.sanitize_blurb("developer security vulnerability scanner")
+    term_ctx = "run the security scan and audit dependencies before merge"
+    common_ctx = "keep the two folders in order overnight"
+    assert cf.keyword_overlap(term_ctx, blurb) > cf.keyword_overlap(common_ctx, blurb)
+
+def test_keyword_overlap_zero_when_disjoint():
+    assert cf.keyword_overlap("totally unrelated chatter", "in-memory key-value data store") == 0.0
+
 if __name__ == "__main__":
     n = 0
     for name, fn in sorted(globals().items()):
