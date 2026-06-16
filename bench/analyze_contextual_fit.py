@@ -101,3 +101,148 @@ def embed_cosine(a, b):
     import numpy as np
     va, vb = _embedder().encode([a, b], normalize_embeddings=True)
     return float(np.dot(va, vb))
+
+
+# ---- labels + separation AUC --------------------------------------------
+def label_for(clip_id):
+    """c* = term-intended (positive), o* = common-intended (negative),
+    s* = stress (positive, argmax-control only)."""
+    p = clip_id[0].lower()
+    return {"c": "term", "o": "common", "s": "stress"}.get(p, "other")
+
+
+def auc_high(pos, neg):
+    """P(positive_score > negative_score). HIGH score should mean term-intended,
+    so this is the separation AUC (0.5 = useless, 1.0 = perfect)."""
+    if not pos or not neg:
+        return float("nan")
+    wins = ties = 0
+    for p in pos:
+        for n in neg:
+            if p > n:
+                wins += 1
+            elif p == n:
+                ties += 1
+    return (wins + 0.5 * ties) / (len(pos) * len(neg))
+
+
+# ---- per-clip scoring ----------------------------------------------------
+def target_word(words, terms, near=0.6):
+    """The hyp word closest to any dictionary term (the ambiguous word).
+    Returns (word_dict, prox, canon_term) or (None, 0, None)."""
+    best = (None, 0.0, None)
+    for w in words:
+        prox, who = pp.proximity(w["word"], terms)
+        if prox > best[1]:
+            best = (w, prox, who)
+    return best if best[1] >= near else (None, 0.0, None)
+
+
+def score_clip(words, blurb_map, terms, use_embed):
+    """Pick the ambiguous word, build context = all OTHER words, score the
+    context against that term's sanitized blurb. Returns a row or None."""
+    tgt, prox, who = target_word(words, terms)
+    if tgt is None or who not in blurb_map:
+        return None
+    context = " ".join(w["word"] for w in words if w is not tgt)
+    blurb = sanitize_blurb(blurb_map[who])
+    row = {"term": who, "target": tgt["word"], "conf": tgt["conf_min"],
+           "kw": keyword_overlap(context, blurb)}
+    if use_embed:
+        row["emb"] = embed_cosine(context, blurb)
+    return row
+
+
+def load_blurbs(path):
+    """Dictionary-shaped {'terms':[{'term','context'}]} -> {term: blurb}."""
+    d = json.load(open(path))
+    return {e["term"]: e.get("context", "") for e in d["terms"] if e.get("context", "").strip()}
+
+
+def _print_auc(rows, key, label):
+    pos = [r[key] for r in rows if r["label"] == "term"]
+    neg = [r[key] for r in rows if r["label"] == "common"]
+    print(f"  {label:<10} AUC={auc_high(pos, neg):.3f}   "
+          f"(term n={len(pos)} mean={_mean(pos):.3f} | common n={len(neg)} mean={_mean(neg):.3f})")
+
+
+def _mean(xs):
+    return sum(xs) / len(xs) if xs else float("nan")
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--tokens", required=True)
+    ap.add_argument("--results", required=True)
+    ap.add_argument("--blurbs", required=True)
+    ap.add_argument("--conf-threshold", type=float, default=0.97)
+    ap.add_argument("--no-embed", action="store_true")
+    args = ap.parse_args()
+    use_embed = not args.no_embed
+
+    toks = defaultdict(list)
+    for line in open(args.tokens):
+        line = line.strip()
+        if line:
+            r = json.loads(line)
+            toks[r["id"]].append(r)
+    refs = {r["id"]: r for r in json.load(open(args.results)) if not r.get("biasing")}
+    blurb_map = load_blurbs(args.blurbs)
+    terms = pp.load_terms(args.blurbs)
+
+    rows = []
+    for cid, tlist in toks.items():
+        ref = refs.get(cid, {}).get("ref", "")
+        if not ref:
+            continue
+        words = ac.group_words(tlist)
+        r = score_clip(words, blurb_map, terms, use_embed)
+        if r is None:
+            continue
+        r["cid"] = cid
+        r["label"] = label_for(cid)
+        rows.append(r)
+
+    keys = ["kw"] + (["emb"] if use_embed else [])
+    sep = [r for r in rows if r["label"] in ("term", "common")]
+    print(f"=== separation (all {len(sep)} c/o clips) — blurbs={args.blurbs} ===")
+    for k in keys:
+        _print_auc(sep, k, "keyword" if k == "kw" else "embed")
+
+    hi = [r for r in sep if r["conf"] >= args.conf_threshold]
+    print(f"\n=== conditioned: confident slice (conf>={args.conf_threshold}, "
+          f"{len(hi)} clips) — the class-3 residual acoustics can't flag ===")
+    for k in keys:
+        _print_auc(hi, k, "keyword" if k == "kw" else "embed")
+
+    # argmax / discrimination control: does a term/stress-intended utterance
+    # match its OWN term's blurb best among all blurbs in this set?
+    print("\n=== argmax control: correct blurb ranked #1 among all blurbs ===")
+    _argmax_control(toks, refs, blurb_map, use_embed)
+
+
+def _argmax_control(toks, refs, blurb_map, use_embed):
+    score = embed_cosine if use_embed else keyword_overlap
+    hits = total = 0
+    for cid, tlist in toks.items():
+        if label_for(cid) not in ("term", "stress"):
+            continue
+        if not refs.get(cid, {}).get("ref", ""):
+            continue
+        # the intended term is the clip id's middle field: cNN-<term>[-...]
+        intended = cid.split("-")[1] if "-" in cid else ""
+        match = next((t for t in blurb_map if t.lower() == intended.lower()), None)
+        if match is None:
+            continue
+        context = " ".join(w["word"] for w in ac.group_words(tlist))
+        ranked = sorted(blurb_map, key=lambda t: score(context, sanitize_blurb(blurb_map[t])), reverse=True)
+        total += 1
+        hits += int(ranked[0] == match)
+    if total:
+        print(f"  top-1 accuracy: {hits}/{total} ({hits/total:.0%})  (chance ~ 1/{len(blurb_map)})")
+    else:
+        print("  (no scorable term/stress clips for this blurb set)")
+
+
+if __name__ == "__main__":
+    main()

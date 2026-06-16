@@ -20,6 +20,16 @@ def test_sanitize_passes_clean_blurb():
     out = cf.sanitize_blurb("in-memory key-value data store")
     assert out == "in-memory key-value data store", out
 
+def test_label_from_clip_id():
+    assert cf.label_for("c07-snyk-jon") == "term"
+    assert cf.label_for("o06-snyk-sync-jon") == "common"
+    assert cf.label_for("s13-numba-jon") == "stress"
+
+def test_auc_high_perfect_separation():
+    # higher score for positives => AUC 1.0
+    assert cf.auc_high([0.8, 0.9], [0.1, 0.2]) == 1.0
+    assert cf.auc_high([0.1], [0.9]) == 0.0
+
 def test_keyword_overlap_discriminates():
     blurb = cf.sanitize_blurb("developer security vulnerability scanner")
     term_ctx = "run the security scan and audit dependencies before merge"
