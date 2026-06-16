@@ -83,3 +83,21 @@ def keyword_overlap(context, blurb):
     num = sum(_rarity(w) for w in (cw & bw))
     den = sum(_rarity(w) for w in bw)
     return num / den if den else 0.0
+
+
+# ---- tiny sentence embedder (proxy for on-device NLContextualEmbedding) -
+_MODEL = None
+
+
+def _embedder():
+    global _MODEL
+    if _MODEL is None:
+        from sentence_transformers import SentenceTransformer
+        _MODEL = SentenceTransformer("all-MiniLM-L6-v2")
+    return _MODEL
+
+
+def embed_cosine(a, b):
+    import numpy as np
+    va, vb = _embedder().encode([a, b], normalize_embeddings=True)
+    return float(np.dot(va, vb))
