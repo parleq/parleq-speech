@@ -25,7 +25,7 @@ The transcript is one lossy view (a prior), not ground truth. The model's **acou
 
 Every term-recovery falls into one of three classes, each with a handler of escalating cost:
 
-**Class 1 — compound split** (`work tree`→worktree). The model heard it right, didn't join. **Handler: deterministic compound-join** — match a term's spoken form (camelCase split + aliases) in the transcript, join to canonical. Local, no acoustics, dictionary-scoped (can't over-fire to a term the user doesn't have). **[validated Ph7]** recall 40→84%, 0 false-joins, real-audio-robust.
+**Class 1 — compound split** (`work tree`→worktree). The model heard it right, didn't join. **Handler: deterministic compound-join** — match a term's spoken form (camelCase split + aliases) in the transcript, join to canonical. Local, no acoustics, dictionary-scoped (can't over-fire to a term the user doesn't have). **[validated Ph7]** recall 40→84%, 0 false-joins, real-audio-robust. **[Ph14 gap]** the joiner catches clean concatenations but **misses acronym-letter-splits with digit/letter homophones** (`E to E`/`E two E`→`E2E`) — the single most common *confident* error in the Ph14 budget (6/14). Extending Ph7 to acronym joins is the next-highest-value deterministic build.
 
 **Class 2 — clean-common-word mishear** (`number`→Numba). The model wrote a common word but was *measurably unsure*. **Handler: confidence × dictionary gate** — a word near a user term with confidence below the correct-word floor (~0.97) ⇒ recover toward the term; near a term but *high* confidence ⇒ leave it (it's the genuine common word — this is simultaneously the over-fire fix). Local. **[validated Ph6]** real-audio AUC 0.96, 100% recovery @ ~15% false-flag.
 
@@ -70,9 +70,9 @@ Destination is a conditioning prior on intent: clean-for-code ≠ clean-for-chat
 
 ## What's validated vs. what needs building
 
-- **Validated on real audio:** confidence localizes error (Ph5); class-1 join (Ph7); class-2 confidence×dictionary (Ph6); class-3 via LLM context (Ph8).
-- **Principled, needs data/build:** class-3 local usage-prior (needs a populated correction journal); contextual-fit (needs the experiment below); the uncertainty surface + trust metric; destination conditioning.
-- **Ruled out earlier:** competitor-CTC-margin gate (Ph1); blanket frequency suppression as a universal fix (Ph4c).
+- **Validated on real audio:** confidence localizes error (Ph5); class-1 join (Ph7); class-2 confidence×dictionary (Ph6); class-3 via LLM context (Ph8); contextual-fit as a moderate local class-3 signal (Ph9); phonetic trigger (Ph11); the trust surface (Ph12); **error-space coverage — the 3 classes + surface account for ~100% of real errors, ≈0 genuinely-uncovered confident residual (Ph14)**.
+- **Principled, needs data/build:** class-3 local **usage-prior is non-discriminative without real per-user data** (Ph10 — needs a populated correction journal to help at all); the acronym-join extension of Ph7 (Ph14); destination conditioning; the app-side uncertainty surface.
+- **Ruled out earlier:** competitor-CTC-margin gate (Ph1); blanket frequency suppression as a universal fix (Ph4c); a data-free (frequency) usage-prior for class 3 (Ph10).
 
 ## Open questions / next experiments (post-trunk)
 
