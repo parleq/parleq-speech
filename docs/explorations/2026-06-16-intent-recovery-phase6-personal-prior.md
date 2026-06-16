@@ -59,9 +59,21 @@ At T≈0.97 the rule recovers ~72% of term intent while touching ~1% of genuine 
 - **Detector, not recovery mechanism:** the rule decides *when* a word is a likely term-mishear; turning it into the term still needs the rescorer / LLM / a user tap. That's the routing the reframe intends.
 - Small N (141 near-term words), single real speaker.
 
+## Real-audio check (preliminary — TEMPERS the synthetic result)
+
+Ran the same A/B separation on the real human recordings (speaker jon). **It does not replicate — and the test is both underpowered and term-mismatched:**
+
+- **ROC-AUC 0.69** (vs 0.964 synthetic); rule at T=0.97 → 57% recovery / 25% false-flag (vs 72%/1%).
+- Class B is tiny (7 near-term error words) and splits into two types confidence does **not** flag:
+  - **confident mishears** — `sneak`→Snyk at conf 0.95–0.97 (real "Snyk" genuinely sounds like "sneak"; the model is sure);
+  - **segmentation, not mishearing** — `work`/`tree`→worktree at 0.96–0.996 (the model heard it right, just didn't join the compound — confidence is *correctly* high; this needs a joiner, not an uncertainty signal).
+- **The human set doesn't contain the stress terms** (`Numba`/`Dask`/`Deno`) the synthetic result leaned on — real ASR transcribed the colliding terms it *does* contain (CRAN/Redis) correctly, leaving almost no genuine acoustic mis-hears to test. So this neither confirms nor cleanly refutes Phase 6.
+
+**Verdict:** the strong synthetic 0.96 is optimistic; on real speech the confidently-wrong tail (Phase 5) and a distinct *segmentation* error class blunt the rule. Treat Phase 6 as **promising-but-unvalidated on real audio**. This echoes Phase 4b/Phase 5: synthetic systematically overstates the acoustic signal. The proper real-audio test requires recording the **stress-colliding** sentences (clean-common-word terms) — the must-do before trusting this rule.
+
 ## Next experiments
 
-1. **Real-audio validation of the rule** (record more, re-measure A/B separation on human speech).
+1. **Real-audio validation of the rule — record the stress-colliding set** (Numba/Dask/Deno…) so Class B contains genuine clean-common-word mis-hears, not just Snyk/worktree. The current human set can't test Phase 6's actual claim.
 2. **Richer personal prior:** add usage frequency / correction-journal history as a term-prior; does it recover the confidently-wrong tail (the 28%)?
 3. **Phonetic proximity** to widen Class-B coverage.
 
