@@ -66,7 +66,7 @@ Because confidence is calibrated (≥0.99 ⇒ ~99% correct, Ph5), the engine can
 
 ## Destination conditioning (#3)
 
-Destination is a conditioning prior on intent: clean-for-code ≠ clean-for-chat ≠ clean-for-doc (number formatting, casing, symbol expansion all shift). A late-stage, additive conditioning input once the core exists. (Bridges to the private routing vision — keep that framing out of public artifacts.)
+Destination is a conditioning prior on intent: clean-for-code ≠ clean-for-chat ≠ clean-for-doc (number formatting, casing, symbol expansion all shift). A late-stage, additive conditioning input once the core exists. (Bridges to the private routing vision — keep that framing out of public artifacts.) **[feasible, Ph17]** `...phase17-destination.md`: conditioning the cleanup prompt on destination produces appropriately different output (6/8 utterances diverge, 92% of expected markers) — but the value is in **formatting/tone** (chat markdown, code casing/flags/framing, email greeting), not number/symbol normalization (those are correctly destination-*invariant*). Cheap, additive prompt lever, no new model/network hop; maps onto the **existing per-app preset mechanism** (`preset_app_defaults`) — a destination/app carries a formatting profile folded into the same single cleanup call.
 
 ## What's validated vs. what needs building
 
