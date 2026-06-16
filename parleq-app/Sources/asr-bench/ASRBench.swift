@@ -45,6 +45,24 @@ struct ResultRow: Encodable {
     var biasing: Bool
 }
 
+// One row per APPLIED replacement (research instrument, --dump-replacements).
+// `replacementScore` is the BOOSTED vocab CTC score (vocabCtcScore +
+// adaptiveCbw); `originalScore` is the raw original-word CTC score. The
+// gate that fired is `replacementScore > originalScore`. The raw
+// competitor margin a competitor-relative gate (A1) would use is
+// `replacementScore - cbw - originalScore` (exact for short terms where
+// adaptiveCbw == flat cbw; an approximation for terms longer than the
+// adaptive reference token count). Emitted as JSONL.
+struct DumpRow: Encodable {
+    let id: String
+    let originalWord: String
+    let originalScore: Float
+    let replacementWord: String?
+    let replacementScore: Float?
+    let reason: String
+    let cbw: Float
+}
+
 // MARK: - Arg parsing (tiny; no ArgumentParser dep)
 
 struct Args {
@@ -61,6 +79,9 @@ struct Args {
     var minSimilarity: Float = 0.65
     var cbw: Float = 2.0
     var margin: Double = -1   // <0 ⇒ use library default (don't pass)
+    // Research instrument: when set, write one JSONL row per applied
+    // replacement (per-match CTC scores) to this path. Off by default.
+    var dumpReplacements: String?
 }
 
 func parseArgs() -> Args {
@@ -78,6 +99,7 @@ func parseArgs() -> Args {
         case "--min-similarity": a.minSimilarity = Float(next() ?? "") ?? a.minSimilarity
         case "--cbw": a.cbw = Float(next() ?? "") ?? a.cbw
         case "--margin": a.margin = Double(next() ?? "") ?? a.margin
+        case "--dump-replacements": a.dumpReplacements = next()
         default:
             FileHandle.standardError.write("warning: unknown flag \(flag)\n".data(using: .utf8)!)
         }
@@ -220,16 +242,20 @@ actor VocabEngine {
     }
 
     /// Rescore one transcript against the loaded vocabulary. Returns the
-    /// (possibly) corrected text. Best-effort: returns the input text on
-    /// any miss, matching LocalASR's fall-through behavior.
-    func rescore(samples: [Float], transcript: String, timings: [TokenTiming]?) async -> String {
+    /// (possibly) corrected text plus the per-match replacement records
+    /// (for the --dump-replacements instrument). Best-effort: returns the
+    /// input text and no replacements on any miss, matching LocalASR's
+    /// fall-through behavior.
+    func rescore(
+        samples: [Float], transcript: String, timings: [TokenTiming]?
+    ) async -> (text: String, replacements: [VocabularyRescorer.RescoringResult]) {
         guard let spotter, let rescorer, let vocabulary,
-              let timings, !timings.isEmpty else { return transcript }
+              let timings, !timings.isEmpty else { return (transcript, []) }
         do {
             let spotted = try await spotter.spotKeywordsWithLogProbs(
                 audioSamples: samples, customVocabulary: vocabulary
             )
-            guard !spotted.logProbs.isEmpty else { return transcript }
+            guard !spotted.logProbs.isEmpty else { return (transcript, []) }
             let out: VocabularyRescorer.RescoreOutput
             if margin >= 0 {
                 out = rescorer.ctcTokenRescore(
@@ -244,9 +270,9 @@ actor VocabEngine {
                     cbw: cbw, minSimilarity: minSimilarity
                 )
             }
-            return out.wasModified ? out.text : transcript
+            return (out.wasModified ? out.text : transcript, out.replacements)
         } catch {
-            return transcript
+            return (transcript, [])
         }
     }
 }
@@ -421,6 +447,7 @@ struct ASRBench {
         err("paths: \(args.paths.joined(separator: ", "))")
 
         var rows: [ResultRow] = []
+        var dumpRows: [DumpRow] = []
 
         if args.paths.contains("batch") {
             let engine = BatchEngine()
@@ -463,7 +490,7 @@ struct ASRBench {
                     ))
                     if let vocab {
                         let t0 = nowMs()
-                        let boosted = await vocab.rescore(
+                        let (boosted, replacements) = await vocab.rescore(
                             samples: samples, transcript: text, timings: timings
                         )
                         rows.append(ResultRow(
@@ -471,6 +498,16 @@ struct ASRBench {
                             hyp: boosted, latency_ms: ms + (nowMs() - t0),
                             post_release_ms: nil, first_partial_ms: nil, biasing: true
                         ))
+                        if args.dumpReplacements != nil {
+                            for r in replacements {
+                                dumpRows.append(DumpRow(
+                                    id: clip.id,
+                                    originalWord: r.originalWord, originalScore: r.originalScore,
+                                    replacementWord: r.replacementWord, replacementScore: r.replacementScore,
+                                    reason: r.reason, cbw: args.cbw
+                                ))
+                            }
+                        }
                     }
                     if i % 20 == 0 { err("  batch \(i)/\(manifest.clips.count)") }
                 } catch {
@@ -546,6 +583,27 @@ struct ASRBench {
         } catch {
             err("failed to write results: \(error)")
             exit(1)
+        }
+
+        // Write the per-match replacement dump (JSONL) if requested.
+        if let dumpPath = args.dumpReplacements {
+            let dumpURL = URL(fileURLWithPath: dumpPath)
+            try? FileManager.default.createDirectory(
+                at: dumpURL.deletingLastPathComponent(), withIntermediateDirectories: true
+            )
+            let lineEnc = JSONEncoder()
+            lineEnc.outputFormatting = [.sortedKeys]
+            let lines = dumpRows.compactMap { row -> String? in
+                guard let data = try? lineEnc.encode(row) else { return nil }
+                return String(data: data, encoding: .utf8)
+            }
+            do {
+                try (lines.joined(separator: "\n") + (lines.isEmpty ? "" : "\n"))
+                    .write(to: dumpURL, atomically: true, encoding: .utf8)
+                err("wrote \(dumpRows.count) replacement rows -> \(dumpPath)")
+            } catch {
+                err("failed to write replacement dump: \(error)")
+            }
         }
     }
 }
