@@ -1,0 +1,13 @@
+{
+  "_comment": "Phase 9 contextual-fit probe — PUBLIC-SAFE secondary blurb set. Frozen in the design doc Appendix A (blind-authored 2026-06-16 from definitions, before any test sentence was read). Dictionary-shaped so it loads with load_terms(). The PRIMARY set is the maintainer's git-ignored bench/dictionary-work.json.",
+  "terms": [
+    { "term": "CRAN", "context": "R-language package repository" },
+    { "term": "Snyk", "context": "developer security vulnerability scanner" },
+    { "term": "Redis", "context": "in-memory key-value data store" },
+    { "term": "k8s", "context": "Kubernetes container orchestration", "aliases": ["kubernetes"] },
+    { "term": "worktree", "context": "git branch working-directory feature" },
+    { "term": "ultrathink", "context": "AI assistant deep-reasoning mode" },
+    { "term": "E2E", "context": "end-to-end software testing", "aliases": ["end-to-end"] },
+    { "term": "Sonnet Opus", "context": "Claude AI model tiers", "aliases": ["Sonitor Opus"] }
+  ]
+}
