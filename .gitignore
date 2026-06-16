@@ -66,3 +66,7 @@ bench/.venv/
 # Local-only: real work-machine dictionary used for personal over-fire repro.
 # Customer-identifying term cluster — never commit (see bench/dictionary-overfire.json for the public gate).
 bench/dictionary-work.json
+
+# Real human voice recordings — personal voice data, never commit to the public repo.
+bench/fixtures-human/
+bench/fixtures/manifest-human*.json
