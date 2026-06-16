@@ -1,0 +1,48 @@
+{
+  "_comment": "Phase 9 contextual-fit expansion (public terms only — Snyk/CRAN/Redis/k8s). For each term: 5 term-intended (cNN-<term>) and 5 common-word-intended (oNN-<term>-<commonword>) utterances, all distinct sentences. Term sentences evoke the term's domain; common sentences use a genuine near-homophone in an ordinary, non-technical context (so they should NOT match the term's blurb). Recorded by the maintainer (git-ignored audio); used by analyze_contextual_fit.py. Blurbs were frozen before these sentences were written. IDs start at 20 to avoid colliding with the existing c01-16/o01-18 human clips.",
+  "utterances": [
+    { "id": "c20-snyk", "category": "contextfit", "terms": ["Snyk"], "text": "Run the Snyk scan on the pull request before we merge it." },
+    { "id": "c21-snyk", "category": "contextfit", "terms": ["Snyk"], "text": "Snyk flagged a critical vulnerability in one of our transitive dependencies." },
+    { "id": "c22-snyk", "category": "contextfit", "terms": ["Snyk"], "text": "Add the Snyk token to the CI secrets so the security gate runs on every build." },
+    { "id": "c23-snyk", "category": "contextfit", "terms": ["Snyk"], "text": "We bumped the library version after Snyk reported the advisory." },
+    { "id": "c24-snyk", "category": "contextfit", "terms": ["Snyk"], "text": "Snyk keeps failing the pipeline because of that high severity issue." },
+    { "id": "o20-snyk-sync", "category": "contextfit", "terms": [], "text": "I need to sync my phone and laptop before the trip tomorrow." },
+    { "id": "o21-snyk-sink", "category": "contextfit", "terms": [], "text": "The kitchen sink is clogged again, so I called the plumber." },
+    { "id": "o22-snyk-sneak", "category": "contextfit", "terms": [], "text": "Please don't sneak up on me like that, you scared me." },
+    { "id": "o23-snyk-sync", "category": "contextfit", "terms": [], "text": "Let the vacation photos sync to the cloud overnight." },
+    { "id": "o24-snyk-sink", "category": "contextfit", "terms": [], "text": "An overloaded boat can sink in rough water." },
+
+    { "id": "c25-cran", "category": "contextfit", "terms": ["CRAN"], "text": "Submit the package to CRAN once the checks pass cleanly." },
+    { "id": "c26-cran", "category": "contextfit", "terms": ["CRAN"], "text": "CRAN rejected the upload because of a note in the examples." },
+    { "id": "c27-cran", "category": "contextfit", "terms": ["CRAN"], "text": "Install that library straight from CRAN, not from GitHub." },
+    { "id": "c28-cran", "category": "contextfit", "terms": ["CRAN"], "text": "The CRAN maintainers asked us to fix the documentation warnings." },
+    { "id": "c29-cran", "category": "contextfit", "terms": ["CRAN"], "text": "Our R package finally landed on CRAN after three revisions." },
+    { "id": "o25-cran-ran", "category": "contextfit", "terms": [], "text": "The overnight job ran twice but still finished on time." },
+    { "id": "o26-cran-crane", "category": "contextfit", "terms": [], "text": "The construction crane lifted the steel beams onto the roof." },
+    { "id": "o27-cran-cram", "category": "contextfit", "terms": [], "text": "Don't cram everything into one suitcase or it'll burst." },
+    { "id": "o28-cran-can", "category": "contextfit", "terms": [], "text": "Can you grab a can of soda from the fridge?" },
+    { "id": "o29-cran-ran", "category": "contextfit", "terms": [], "text": "She ran the marathon in under four hours." },
+
+    { "id": "c30-redis", "category": "contextfit", "terms": ["Redis"], "text": "Cache the session tokens in Redis so the lookups stay fast." },
+    { "id": "c31-redis", "category": "contextfit", "terms": ["Redis"], "text": "Redis ran out of memory and started evicting keys." },
+    { "id": "c32-redis", "category": "contextfit", "terms": ["Redis"], "text": "Use a Redis sorted set to build the leaderboard." },
+    { "id": "c33-redis", "category": "contextfit", "terms": ["Redis"], "text": "We moved the rate limiter into Redis to share state across nodes." },
+    { "id": "c34-redis", "category": "contextfit", "terms": ["Redis"], "text": "Flush the Redis cache after the deploy so stale entries clear." },
+    { "id": "o30-redis-ready", "category": "contextfit", "terms": [], "text": "Dinner's ready, come to the table before it gets cold." },
+    { "id": "o31-redis-radish", "category": "contextfit", "terms": [], "text": "Add a sliced radish to the salad for some crunch." },
+    { "id": "o32-redis-ready", "category": "contextfit", "terms": [], "text": "Are you ready for the presentation this afternoon?" },
+    { "id": "o33-redis-reddish", "category": "contextfit", "terms": [], "text": "The sky turned a reddish orange at sunset." },
+    { "id": "o34-redis-ready", "category": "contextfit", "terms": [], "text": "Get the kids ready for school, we're running late." },
+
+    { "id": "c35-k8s", "category": "contextfit", "terms": ["k8s"], "text": "Deploy the service to the k8s cluster in the staging namespace." },
+    { "id": "c36-k8s", "category": "contextfit", "terms": ["k8s"], "text": "The k8s pod keeps crash looping because of a bad config map." },
+    { "id": "c37-k8s", "category": "contextfit", "terms": ["k8s"], "text": "Scale the k8s deployment up to five replicas for the launch." },
+    { "id": "c38-k8s", "category": "contextfit", "terms": ["k8s"], "text": "Check the k8s logs to see why the ingress is returning errors." },
+    { "id": "c39-k8s", "category": "contextfit", "terms": ["k8s"], "text": "We migrated the cron jobs to k8s scheduled jobs last sprint." },
+    { "id": "o35-k8s-kates", "category": "contextfit", "terms": [], "text": "Kate's presentation went really well this morning." },
+    { "id": "o36-k8s-crates", "category": "contextfit", "terms": [], "text": "Stack the crates by the loading dock for pickup." },
+    { "id": "o37-k8s-kates", "category": "contextfit", "terms": [], "text": "We're meeting at Kate's place for dinner on Friday." },
+    { "id": "o38-k8s-crates", "category": "contextfit", "terms": [], "text": "The warehouse shipped twelve crates of supplies." },
+    { "id": "o39-k8s-kates", "category": "contextfit", "terms": [], "text": "Kate's just been promoted to lead the design team." }
+  ]
+}
