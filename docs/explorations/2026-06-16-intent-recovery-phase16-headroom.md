@@ -1,7 +1,7 @@
 # Intent-recovery Phase 16 — headroom / oracle (should we build our own small LLM?)
 
 **Date:** 2026-06-16
-**Status:** Decision experiment. Quantifies the accuracy a *custom small correction model* could add over what Parleq already has, to answer the "build our own small LLM?" question with evidence. Uses the shipped cleanup LLM (Vertex `gemini-2.5-flash`) over the **public** clips only (no proprietary text to the cloud). Single speaker, 74 clips — directional.
+**Status:** Decision experiment — **scoped to one question that turned out to be the wrong one** (see Phase 18). This phase asks "can a custom small model beat the cleanup *LLM* at cleanup?" (answer: no). But the actual goal is "match the LLM's dictionary-aware correction *locally*, to skip an LLM pass per dictation" — answered in **`...phase18-local-correction-ceiling.md`**, where a small learned corrector *is* motivated. Read Ph16 as "don't build a model to beat the LLM," and Ph18 as "a model to *avoid* the LLM on the hot path is the real opportunity." Quantifies the accuracy a *custom small correction model* could add over what Parleq already has, to answer the "build our own small LLM?" question with evidence. Uses the shipped cleanup LLM (Vertex `gemini-2.5-flash`) over the **public** clips only (no proprietary text to the cloud). Single speaker, 74 clips — directional.
 
 ## The argument being tested
 
