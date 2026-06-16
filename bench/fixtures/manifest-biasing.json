@@ -4,9 +4,11 @@
   "voices": {
     "Samantha": "us",
     "Daniel": "gb",
-    "Karen": "au"
+    "Karen": "au",
+    "Rishi": "unknown",
+    "Tara": "unknown"
   },
-  "clip_count": 48,
+  "clip_count": 80,
   "clips": [
     {
       "id": "b01-parleq-Samantha",
@@ -51,6 +53,34 @@
       "duration_ms": 2818
     },
     {
+      "id": "b01-parleq-Rishi",
+      "utterance_id": "b01-parleq",
+      "corpus": "biasing",
+      "voice": "Rishi",
+      "accent": "unknown",
+      "category": "biasing",
+      "terms": [
+        "Parleq"
+      ],
+      "reference_transcript": "I dictated this note using Parleq on my Mac.",
+      "file": "b01-parleq-Rishi.wav",
+      "duration_ms": 2986
+    },
+    {
+      "id": "b01-parleq-Tara",
+      "utterance_id": "b01-parleq",
+      "corpus": "biasing",
+      "voice": "Tara",
+      "accent": "unknown",
+      "category": "biasing",
+      "terms": [
+        "Parleq"
+      ],
+      "reference_transcript": "I dictated this note using Parleq on my Mac.",
+      "file": "b01-parleq-Tara.wav",
+      "duration_ms": 2697
+    },
+    {
       "id": "b02-parleq-Samantha",
       "utterance_id": "b02-parleq",
       "corpus": "biasing",
@@ -91,6 +121,34 @@
       "reference_transcript": "Can you add Parleq to the list of approved applications?",
       "file": "b02-parleq-Karen.wav",
       "duration_ms": 2924
+    },
+    {
+      "id": "b02-parleq-Rishi",
+      "utterance_id": "b02-parleq",
+      "corpus": "biasing",
+      "voice": "Rishi",
+      "accent": "unknown",
+      "category": "biasing",
+      "terms": [
+        "Parleq"
+      ],
+      "reference_transcript": "Can you add Parleq to the list of approved applications?",
+      "file": "b02-parleq-Rishi.wav",
+      "duration_ms": 3351
+    },
+    {
+      "id": "b02-parleq-Tara",
+      "utterance_id": "b02-parleq",
+      "corpus": "biasing",
+      "voice": "Tara",
+      "accent": "unknown",
+      "category": "biasing",
+      "terms": [
+        "Parleq"
+      ],
+      "reference_transcript": "Can you add Parleq to the list of approved applications?",
+      "file": "b02-parleq-Tara.wav",
+      "duration_ms": 3044
     },
     {
       "id": "b03-parakeet-Samantha",
@@ -135,6 +193,34 @@
       "duration_ms": 2883
     },
     {
+      "id": "b03-parakeet-Rishi",
+      "utterance_id": "b03-parakeet",
+      "corpus": "biasing",
+      "voice": "Rishi",
+      "accent": "unknown",
+      "category": "biasing",
+      "terms": [
+        "Parakeet"
+      ],
+      "reference_transcript": "The transcription runs on the Parakeet model locally.",
+      "file": "b03-parakeet-Rishi.wav",
+      "duration_ms": 3132
+    },
+    {
+      "id": "b03-parakeet-Tara",
+      "utterance_id": "b03-parakeet",
+      "corpus": "biasing",
+      "voice": "Tara",
+      "accent": "unknown",
+      "category": "biasing",
+      "terms": [
+        "Parakeet"
+      ],
+      "reference_transcript": "The transcription runs on the Parakeet model locally.",
+      "file": "b03-parakeet-Tara.wav",
+      "duration_ms": 2875
+    },
+    {
       "id": "b04-fluidaudio-Samantha",
       "utterance_id": "b04-fluidaudio",
       "corpus": "biasing",
@@ -175,6 +261,34 @@
       "reference_transcript": "We use FluidAudio for on device speech recognition.",
       "file": "b04-fluidaudio-Karen.wav",
       "duration_ms": 3130
+    },
+    {
+      "id": "b04-fluidaudio-Rishi",
+      "utterance_id": "b04-fluidaudio",
+      "corpus": "biasing",
+      "voice": "Rishi",
+      "accent": "unknown",
+      "category": "biasing",
+      "terms": [
+        "FluidAudio"
+      ],
+      "reference_transcript": "We use FluidAudio for on device speech recognition.",
+      "file": "b04-fluidaudio-Rishi.wav",
+      "duration_ms": 3248
+    },
+    {
+      "id": "b04-fluidaudio-Tara",
+      "utterance_id": "b04-fluidaudio",
+      "corpus": "biasing",
+      "voice": "Tara",
+      "accent": "unknown",
+      "category": "biasing",
+      "terms": [
+        "FluidAudio"
+      ],
+      "reference_transcript": "We use FluidAudio for on device speech recognition.",
+      "file": "b04-fluidaudio-Tara.wav",
+      "duration_ms": 2939
     },
     {
       "id": "b05-bedrock-Samantha",
@@ -219,6 +333,34 @@
       "duration_ms": 2802
     },
     {
+      "id": "b05-bedrock-Rishi",
+      "utterance_id": "b05-bedrock",
+      "corpus": "biasing",
+      "voice": "Rishi",
+      "accent": "unknown",
+      "category": "biasing",
+      "terms": [
+        "Bedrock"
+      ],
+      "reference_transcript": "The cleanup step calls a model hosted on Bedrock.",
+      "file": "b05-bedrock-Rishi.wav",
+      "duration_ms": 3062
+    },
+    {
+      "id": "b05-bedrock-Tara",
+      "utterance_id": "b05-bedrock",
+      "corpus": "biasing",
+      "voice": "Tara",
+      "accent": "unknown",
+      "category": "biasing",
+      "terms": [
+        "Bedrock"
+      ],
+      "reference_transcript": "The cleanup step calls a model hosted on Bedrock.",
+      "file": "b05-bedrock-Tara.wav",
+      "duration_ms": 2841
+    },
+    {
       "id": "b06-vertex-Samantha",
       "utterance_id": "b06-vertex",
       "corpus": "biasing",
@@ -259,6 +401,34 @@
       "reference_transcript": "Route the request through Vertex in the central region.",
       "file": "b06-vertex-Karen.wav",
       "duration_ms": 2845
+    },
+    {
+      "id": "b06-vertex-Rishi",
+      "utterance_id": "b06-vertex",
+      "corpus": "biasing",
+      "voice": "Rishi",
+      "accent": "unknown",
+      "category": "biasing",
+      "terms": [
+        "Vertex"
+      ],
+      "reference_transcript": "Route the request through Vertex in the central region.",
+      "file": "b06-vertex-Rishi.wav",
+      "duration_ms": 3027
+    },
+    {
+      "id": "b06-vertex-Tara",
+      "utterance_id": "b06-vertex",
+      "corpus": "biasing",
+      "voice": "Tara",
+      "accent": "unknown",
+      "category": "biasing",
+      "terms": [
+        "Vertex"
+      ],
+      "reference_transcript": "Route the request through Vertex in the central region.",
+      "file": "b06-vertex-Tara.wav",
+      "duration_ms": 2779
     },
     {
       "id": "b07-gemini-Samantha",
@@ -303,6 +473,34 @@
       "duration_ms": 2958
     },
     {
+      "id": "b07-gemini-Rishi",
+      "utterance_id": "b07-gemini",
+      "corpus": "biasing",
+      "voice": "Rishi",
+      "accent": "unknown",
+      "category": "biasing",
+      "terms": [
+        "Gemini"
+      ],
+      "reference_transcript": "By default the app uses Gemini for text cleanup.",
+      "file": "b07-gemini-Rishi.wav",
+      "duration_ms": 3469
+    },
+    {
+      "id": "b07-gemini-Tara",
+      "utterance_id": "b07-gemini",
+      "corpus": "biasing",
+      "voice": "Tara",
+      "accent": "unknown",
+      "category": "biasing",
+      "terms": [
+        "Gemini"
+      ],
+      "reference_transcript": "By default the app uses Gemini for text cleanup.",
+      "file": "b07-gemini-Tara.wav",
+      "duration_ms": 2710
+    },
+    {
       "id": "b08-keychain-Samantha",
       "utterance_id": "b08-keychain",
       "corpus": "biasing",
@@ -343,6 +541,34 @@
       "reference_transcript": "The API key is stored securely in the Keychain.",
       "file": "b08-keychain-Karen.wav",
       "duration_ms": 2883
+    },
+    {
+      "id": "b08-keychain-Rishi",
+      "utterance_id": "b08-keychain",
+      "corpus": "biasing",
+      "voice": "Rishi",
+      "accent": "unknown",
+      "category": "biasing",
+      "terms": [
+        "Keychain"
+      ],
+      "reference_transcript": "The API key is stored securely in the Keychain.",
+      "file": "b08-keychain-Rishi.wav",
+      "duration_ms": 3213
+    },
+    {
+      "id": "b08-keychain-Tara",
+      "utterance_id": "b08-keychain",
+      "corpus": "biasing",
+      "voice": "Tara",
+      "accent": "unknown",
+      "category": "biasing",
+      "terms": [
+        "Keychain"
+      ],
+      "reference_transcript": "The API key is stored securely in the Keychain.",
+      "file": "b08-keychain-Tara.wav",
+      "duration_ms": 2941
     },
     {
       "id": "b09-soto-Samantha",
@@ -387,6 +613,34 @@
       "duration_ms": 2662
     },
     {
+      "id": "b09-soto-Rishi",
+      "utterance_id": "b09-soto",
+      "corpus": "biasing",
+      "voice": "Rishi",
+      "accent": "unknown",
+      "category": "biasing",
+      "terms": [
+        "Soto"
+      ],
+      "reference_transcript": "Authentication is handled by the Soto library.",
+      "file": "b09-soto-Rishi.wav",
+      "duration_ms": 3020
+    },
+    {
+      "id": "b09-soto-Tara",
+      "utterance_id": "b09-soto",
+      "corpus": "biasing",
+      "voice": "Tara",
+      "accent": "unknown",
+      "category": "biasing",
+      "terms": [
+        "Soto"
+      ],
+      "reference_transcript": "Authentication is handled by the Soto library.",
+      "file": "b09-soto-Tara.wav",
+      "duration_ms": 2837
+    },
+    {
       "id": "b10-sherpa-Samantha",
       "utterance_id": "b10-sherpa",
       "corpus": "biasing",
@@ -429,6 +683,34 @@
       "duration_ms": 2719
     },
     {
+      "id": "b10-sherpa-Rishi",
+      "utterance_id": "b10-sherpa",
+      "corpus": "biasing",
+      "voice": "Rishi",
+      "accent": "unknown",
+      "category": "biasing",
+      "terms": [
+        "Sherpa"
+      ],
+      "reference_transcript": "You can point it at a local Sherpa endpoint instead.",
+      "file": "b10-sherpa-Rishi.wav",
+      "duration_ms": 3483
+    },
+    {
+      "id": "b10-sherpa-Tara",
+      "utterance_id": "b10-sherpa",
+      "corpus": "biasing",
+      "voice": "Tara",
+      "accent": "unknown",
+      "category": "biasing",
+      "terms": [
+        "Sherpa"
+      ],
+      "reference_transcript": "You can point it at a local Sherpa endpoint instead.",
+      "file": "b10-sherpa-Tara.wav",
+      "duration_ms": 2759
+    },
+    {
       "id": "b11-route53-Samantha",
       "utterance_id": "b11-route53",
       "corpus": "biasing",
@@ -469,6 +751,34 @@
       "reference_transcript": "Update the Route 53 record before the cutover.",
       "file": "b11-route53-Karen.wav",
       "duration_ms": 2817
+    },
+    {
+      "id": "b11-route53-Rishi",
+      "utterance_id": "b11-route53",
+      "corpus": "biasing",
+      "voice": "Rishi",
+      "accent": "unknown",
+      "category": "biasing",
+      "terms": [
+        "Route 53"
+      ],
+      "reference_transcript": "Update the Route 53 record before the cutover.",
+      "file": "b11-route53-Rishi.wav",
+      "duration_ms": 2901
+    },
+    {
+      "id": "b11-route53-Tara",
+      "utterance_id": "b11-route53",
+      "corpus": "biasing",
+      "voice": "Tara",
+      "accent": "unknown",
+      "category": "biasing",
+      "terms": [
+        "Route 53"
+      ],
+      "reference_transcript": "Update the Route 53 record before the cutover.",
+      "file": "b11-route53-Tara.wav",
+      "duration_ms": 2932
     },
     {
       "id": "b12-multi-Samantha",
@@ -516,6 +826,36 @@
       "duration_ms": 2942
     },
     {
+      "id": "b12-multi-Rishi",
+      "utterance_id": "b12-multi",
+      "corpus": "biasing",
+      "voice": "Rishi",
+      "accent": "unknown",
+      "category": "biasing",
+      "terms": [
+        "Parleq",
+        "Gemini"
+      ],
+      "reference_transcript": "Parleq sends the transcript to Gemini for cleanup.",
+      "file": "b12-multi-Rishi.wav",
+      "duration_ms": 3107
+    },
+    {
+      "id": "b12-multi-Tara",
+      "utterance_id": "b12-multi",
+      "corpus": "biasing",
+      "voice": "Tara",
+      "accent": "unknown",
+      "category": "biasing",
+      "terms": [
+        "Parleq",
+        "Gemini"
+      ],
+      "reference_transcript": "Parleq sends the transcript to Gemini for cleanup.",
+      "file": "b12-multi-Tara.wav",
+      "duration_ms": 2766
+    },
+    {
       "id": "b13-multi-Samantha",
       "utterance_id": "b13-multi",
       "corpus": "biasing",
@@ -561,6 +901,36 @@
       "duration_ms": 3165
     },
     {
+      "id": "b13-multi-Rishi",
+      "utterance_id": "b13-multi",
+      "corpus": "biasing",
+      "voice": "Rishi",
+      "accent": "unknown",
+      "category": "biasing",
+      "terms": [
+        "Bedrock",
+        "Vertex"
+      ],
+      "reference_transcript": "We tested both Bedrock and Vertex for the cleanup model.",
+      "file": "b13-multi-Rishi.wav",
+      "duration_ms": 3643
+    },
+    {
+      "id": "b13-multi-Tara",
+      "utterance_id": "b13-multi",
+      "corpus": "biasing",
+      "voice": "Tara",
+      "accent": "unknown",
+      "category": "biasing",
+      "terms": [
+        "Bedrock",
+        "Vertex"
+      ],
+      "reference_transcript": "We tested both Bedrock and Vertex for the cleanup model.",
+      "file": "b13-multi-Tara.wav",
+      "duration_ms": 3130
+    },
+    {
       "id": "b14-parleq-ctx-Samantha",
       "utterance_id": "b14-parleq-ctx",
       "corpus": "biasing",
@@ -601,6 +971,34 @@
       "reference_transcript": "The nice thing about Parleq is that the audio never leaves the device.",
       "file": "b14-parleq-ctx-Karen.wav",
       "duration_ms": 3510
+    },
+    {
+      "id": "b14-parleq-ctx-Rishi",
+      "utterance_id": "b14-parleq-ctx",
+      "corpus": "biasing",
+      "voice": "Rishi",
+      "accent": "unknown",
+      "category": "biasing",
+      "terms": [
+        "Parleq"
+      ],
+      "reference_transcript": "The nice thing about Parleq is that the audio never leaves the device.",
+      "file": "b14-parleq-ctx-Rishi.wav",
+      "duration_ms": 3991
+    },
+    {
+      "id": "b14-parleq-ctx-Tara",
+      "utterance_id": "b14-parleq-ctx",
+      "corpus": "biasing",
+      "voice": "Tara",
+      "accent": "unknown",
+      "category": "biasing",
+      "terms": [
+        "Parleq"
+      ],
+      "reference_transcript": "The nice thing about Parleq is that the audio never leaves the device.",
+      "file": "b14-parleq-ctx-Tara.wav",
+      "duration_ms": 3429
     },
     {
       "id": "b15-parakeet-ctx-Samantha",
@@ -648,6 +1046,36 @@
       "duration_ms": 3329
     },
     {
+      "id": "b15-parakeet-ctx-Rishi",
+      "utterance_id": "b15-parakeet-ctx",
+      "corpus": "biasing",
+      "voice": "Rishi",
+      "accent": "unknown",
+      "category": "biasing",
+      "terms": [
+        "Parakeet",
+        "FluidAudio"
+      ],
+      "reference_transcript": "FluidAudio loads the Parakeet model onto the Neural Engine.",
+      "file": "b15-parakeet-ctx-Rishi.wav",
+      "duration_ms": 3780
+    },
+    {
+      "id": "b15-parakeet-ctx-Tara",
+      "utterance_id": "b15-parakeet-ctx",
+      "corpus": "biasing",
+      "voice": "Tara",
+      "accent": "unknown",
+      "category": "biasing",
+      "terms": [
+        "Parakeet",
+        "FluidAudio"
+      ],
+      "reference_transcript": "FluidAudio loads the Parakeet model onto the Neural Engine.",
+      "file": "b15-parakeet-ctx-Tara.wav",
+      "duration_ms": 3584
+    },
+    {
       "id": "b16-vertex-ctx-Samantha",
       "utterance_id": "b16-vertex-ctx",
       "corpus": "biasing",
@@ -691,6 +1119,36 @@
       "reference_transcript": "The Vertex service account lives in the Keychain, not in a file.",
       "file": "b16-vertex-ctx-Karen.wav",
       "duration_ms": 3719
+    },
+    {
+      "id": "b16-vertex-ctx-Rishi",
+      "utterance_id": "b16-vertex-ctx",
+      "corpus": "biasing",
+      "voice": "Rishi",
+      "accent": "unknown",
+      "category": "biasing",
+      "terms": [
+        "Vertex",
+        "Keychain"
+      ],
+      "reference_transcript": "The Vertex service account lives in the Keychain, not in a file.",
+      "file": "b16-vertex-ctx-Rishi.wav",
+      "duration_ms": 4015
+    },
+    {
+      "id": "b16-vertex-ctx-Tara",
+      "utterance_id": "b16-vertex-ctx",
+      "corpus": "biasing",
+      "voice": "Tara",
+      "accent": "unknown",
+      "category": "biasing",
+      "terms": [
+        "Vertex",
+        "Keychain"
+      ],
+      "reference_transcript": "The Vertex service account lives in the Keychain, not in a file.",
+      "file": "b16-vertex-ctx-Tara.wav",
+      "duration_ms": 3542
     }
   ]
 }
