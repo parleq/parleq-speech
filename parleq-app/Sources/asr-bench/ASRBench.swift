@@ -63,6 +63,19 @@ struct DumpRow: Encodable {
     let cbw: Float
 }
 
+// One row per TDT token of the RAW transcription (research instrument,
+// --dump-tokens), carrying the model's own per-token confidence. Used to test
+// whether acoustic confidence localizes errors/ambiguity (issue #100 Phase 5).
+struct TokenRow: Encodable {
+    let id: String
+    let idx: Int
+    let token: String
+    let tokenId: Int
+    let startTime: Double
+    let endTime: Double
+    let confidence: Float
+}
+
 // MARK: - Arg parsing (tiny; no ArgumentParser dep)
 
 struct Args {
@@ -82,6 +95,9 @@ struct Args {
     // Research instrument: when set, write one JSONL row per applied
     // replacement (per-match CTC scores) to this path. Off by default.
     var dumpReplacements: String?
+    // Research instrument: when set, write one JSONL row per TDT token of the
+    // raw transcription (token + model confidence + timing). Off by default.
+    var dumpTokens: String?
 }
 
 func parseArgs() -> Args {
@@ -100,6 +116,7 @@ func parseArgs() -> Args {
         case "--cbw": a.cbw = Float(next() ?? "") ?? a.cbw
         case "--margin": a.margin = Double(next() ?? "") ?? a.margin
         case "--dump-replacements": a.dumpReplacements = next()
+        case "--dump-tokens": a.dumpTokens = next()
         default:
             FileHandle.standardError.write("warning: unknown flag \(flag)\n".data(using: .utf8)!)
         }
@@ -448,6 +465,7 @@ struct ASRBench {
 
         var rows: [ResultRow] = []
         var dumpRows: [DumpRow] = []
+        var tokenRows: [TokenRow] = []
 
         if args.paths.contains("batch") {
             let engine = BatchEngine()
@@ -488,6 +506,14 @@ struct ASRBench {
                         hyp: text, latency_ms: ms, post_release_ms: nil,
                         first_partial_ms: nil, biasing: false
                     ))
+                    if args.dumpTokens != nil, let timings {
+                        for (k, t) in timings.enumerated() {
+                            tokenRows.append(TokenRow(
+                                id: clip.id, idx: k, token: t.token, tokenId: t.tokenId,
+                                startTime: t.startTime, endTime: t.endTime, confidence: t.confidence
+                            ))
+                        }
+                    }
                     if let vocab {
                         let t0 = nowMs()
                         let (boosted, replacements) = await vocab.rescore(
@@ -603,6 +629,27 @@ struct ASRBench {
                 err("wrote \(dumpRows.count) replacement rows -> \(dumpPath)")
             } catch {
                 err("failed to write replacement dump: \(error)")
+            }
+        }
+
+        // Write the per-token confidence dump (JSONL) if requested.
+        if let tokPath = args.dumpTokens {
+            let tokURL = URL(fileURLWithPath: tokPath)
+            try? FileManager.default.createDirectory(
+                at: tokURL.deletingLastPathComponent(), withIntermediateDirectories: true
+            )
+            let lineEnc = JSONEncoder()
+            lineEnc.outputFormatting = [.sortedKeys]
+            let lines = tokenRows.compactMap { row -> String? in
+                guard let data = try? lineEnc.encode(row) else { return nil }
+                return String(data: data, encoding: .utf8)
+            }
+            do {
+                try (lines.joined(separator: "\n") + (lines.isEmpty ? "" : "\n"))
+                    .write(to: tokURL, atomically: true, encoding: .utf8)
+                err("wrote \(tokenRows.count) token rows -> \(tokPath)")
+            } catch {
+                err("failed to write token dump: \(error)")
             }
         }
     }
