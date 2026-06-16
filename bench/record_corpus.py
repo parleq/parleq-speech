@@ -60,11 +60,14 @@ def record_one(out_path, device):
     ffmpeg writes 16 kHz mono WAV from the chosen avfoundation audio input;
     SIGINT finalizes the file gracefully (same approach as transcription-bench)."""
     cmd = [
-        "ffmpeg", "-loglevel", "error",
+        "ffmpeg", "-loglevel", "error", "-nostdin",
         "-f", "avfoundation", "-i", device,
         "-ar", "16000", "-ac", "1", "-y", out_path,
     ]
-    proc = subprocess.Popen(cmd)
+    # CRITICAL: deny ffmpeg the terminal's stdin, otherwise it consumes the
+    # Enter keypress meant to stop recording (Python's input() never sees it,
+    # so "press Enter to stop" hangs). -nostdin + DEVNULL both ensure this.
+    proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL)
     try:
         input("  🎙  recording… press Enter to STOP")
     finally:
