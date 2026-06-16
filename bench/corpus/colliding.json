@@ -1,0 +1,21 @@
+{
+  "_comment": "Colliding TRUE-positive corpus (Phase 2, issue #100). Each utterance genuinely contains a short dictionary term from dictionary-overfire.json (CRAN/Redis/Snyk/k8s/E2E/worktree/ultrathink) whose mis-ASR collides with a common English word. This is the recall arm the over-fire set lacks: when ASR mishears the term as a real word and the rescorer correctly fixes it, the candidate lexicon gate (Phase 1 Finding 3) would SUPPRESS that fix — so this corpus measures the gate's recall cost on exactly the case where it hurts. Caveat: macOS `say` may pronounce abbreviations (k8s, E2E) unlike a human; treat those terms' results as lower-confidence than the word-like terms (CRAN/Redis/Snyk).",
+  "utterances": [
+    { "id": "c01-cran", "terms": ["CRAN"], "category": "colliding", "text": "Install the forecast package directly from CRAN." },
+    { "id": "c02-cran", "terms": ["CRAN"], "category": "colliding", "text": "Is that library on CRAN yet, or only on GitHub?" },
+    { "id": "c03-cran", "terms": ["CRAN"], "category": "colliding", "text": "We pin every dependency to a CRAN snapshot for reproducibility." },
+    { "id": "c04-redis", "terms": ["Redis"], "category": "colliding", "text": "We cache the session tokens in Redis." },
+    { "id": "c05-redis", "terms": ["Redis"], "category": "colliding", "text": "The Redis instance ran out of memory last night." },
+    { "id": "c06-redis", "terms": ["Redis"], "category": "colliding", "text": "Move the rate limiter over to Redis before the launch." },
+    { "id": "c07-snyk", "terms": ["Snyk"], "category": "colliding", "text": "Run the Snyk scan before you merge that branch." },
+    { "id": "c08-snyk", "terms": ["Snyk"], "category": "colliding", "text": "Snyk flagged a vulnerability in the logging dependency." },
+    { "id": "c09-snyk", "terms": ["Snyk"], "category": "colliding", "text": "Did the Snyk report clear after the upgrade?" },
+    { "id": "c10-k8s", "terms": ["k8s"], "category": "colliding", "text": "Deploy the payments service to the k8s cluster." },
+    { "id": "c11-k8s", "terms": ["k8s"], "category": "colliding", "text": "Our k8s nodes are running low on capacity again." },
+    { "id": "c12-e2e", "terms": ["E2E"], "category": "colliding", "text": "Make sure the E2E tests pass before you cut the release." },
+    { "id": "c13-e2e", "terms": ["E2E"], "category": "colliding", "text": "The E2E suite caught that regression early." },
+    { "id": "c14-worktree", "terms": ["worktree"], "category": "colliding", "text": "Create a new worktree for that feature branch." },
+    { "id": "c15-worktree", "terms": ["worktree"], "category": "colliding", "text": "I built the fix in a separate worktree to keep main clean." },
+    { "id": "c16-ultrathink", "terms": ["ultrathink"], "category": "colliding", "text": "Turn on ultrathink for the harder planning prompts." }
+  ]
+}

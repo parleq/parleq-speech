@@ -1,0 +1,684 @@
+{
+  "generator": "macOS say",
+  "format": "16 kHz mono 16-bit PCM WAV",
+  "voices": {
+    "Samantha": "us",
+    "Daniel": "gb",
+    "Karen": "au"
+  },
+  "clip_count": 48,
+  "clips": [
+    {
+      "id": "c01-cran-Samantha",
+      "utterance_id": "c01-cran",
+      "corpus": "colliding",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "colliding",
+      "terms": [
+        "CRAN"
+      ],
+      "reference_transcript": "Install the forecast package directly from CRAN.",
+      "file": "c01-cran-Samantha.wav",
+      "duration_ms": 2749
+    },
+    {
+      "id": "c01-cran-Daniel",
+      "utterance_id": "c01-cran",
+      "corpus": "colliding",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "colliding",
+      "terms": [
+        "CRAN"
+      ],
+      "reference_transcript": "Install the forecast package directly from CRAN.",
+      "file": "c01-cran-Daniel.wav",
+      "duration_ms": 3080
+    },
+    {
+      "id": "c01-cran-Karen",
+      "utterance_id": "c01-cran",
+      "corpus": "colliding",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "colliding",
+      "terms": [
+        "CRAN"
+      ],
+      "reference_transcript": "Install the forecast package directly from CRAN.",
+      "file": "c01-cran-Karen.wav",
+      "duration_ms": 2871
+    },
+    {
+      "id": "c02-cran-Samantha",
+      "utterance_id": "c02-cran",
+      "corpus": "colliding",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "colliding",
+      "terms": [
+        "CRAN"
+      ],
+      "reference_transcript": "Is that library on CRAN yet, or only on GitHub?",
+      "file": "c02-cran-Samantha.wav",
+      "duration_ms": 3132
+    },
+    {
+      "id": "c02-cran-Daniel",
+      "utterance_id": "c02-cran",
+      "corpus": "colliding",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "colliding",
+      "terms": [
+        "CRAN"
+      ],
+      "reference_transcript": "Is that library on CRAN yet, or only on GitHub?",
+      "file": "c02-cran-Daniel.wav",
+      "duration_ms": 3150
+    },
+    {
+      "id": "c02-cran-Karen",
+      "utterance_id": "c02-cran",
+      "corpus": "colliding",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "colliding",
+      "terms": [
+        "CRAN"
+      ],
+      "reference_transcript": "Is that library on CRAN yet, or only on GitHub?",
+      "file": "c02-cran-Karen.wav",
+      "duration_ms": 2977
+    },
+    {
+      "id": "c03-cran-Samantha",
+      "utterance_id": "c03-cran",
+      "corpus": "colliding",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "colliding",
+      "terms": [
+        "CRAN"
+      ],
+      "reference_transcript": "We pin every dependency to a CRAN snapshot for reproducibility.",
+      "file": "c03-cran-Samantha.wav",
+      "duration_ms": 3810
+    },
+    {
+      "id": "c03-cran-Daniel",
+      "utterance_id": "c03-cran",
+      "corpus": "colliding",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "colliding",
+      "terms": [
+        "CRAN"
+      ],
+      "reference_transcript": "We pin every dependency to a CRAN snapshot for reproducibility.",
+      "file": "c03-cran-Daniel.wav",
+      "duration_ms": 3915
+    },
+    {
+      "id": "c03-cran-Karen",
+      "utterance_id": "c03-cran",
+      "corpus": "colliding",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "colliding",
+      "terms": [
+        "CRAN"
+      ],
+      "reference_transcript": "We pin every dependency to a CRAN snapshot for reproducibility.",
+      "file": "c03-cran-Karen.wav",
+      "duration_ms": 3862
+    },
+    {
+      "id": "c04-redis-Samantha",
+      "utterance_id": "c04-redis",
+      "corpus": "colliding",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "colliding",
+      "terms": [
+        "Redis"
+      ],
+      "reference_transcript": "We cache the session tokens in Redis.",
+      "file": "c04-redis-Samantha.wav",
+      "duration_ms": 2139
+    },
+    {
+      "id": "c04-redis-Daniel",
+      "utterance_id": "c04-redis",
+      "corpus": "colliding",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "colliding",
+      "terms": [
+        "Redis"
+      ],
+      "reference_transcript": "We cache the session tokens in Redis.",
+      "file": "c04-redis-Daniel.wav",
+      "duration_ms": 2243
+    },
+    {
+      "id": "c04-redis-Karen",
+      "utterance_id": "c04-redis",
+      "corpus": "colliding",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "colliding",
+      "terms": [
+        "Redis"
+      ],
+      "reference_transcript": "We cache the session tokens in Redis.",
+      "file": "c04-redis-Karen.wav",
+      "duration_ms": 2178
+    },
+    {
+      "id": "c05-redis-Samantha",
+      "utterance_id": "c05-redis",
+      "corpus": "colliding",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "colliding",
+      "terms": [
+        "Redis"
+      ],
+      "reference_transcript": "The Redis instance ran out of memory last night.",
+      "file": "c05-redis-Samantha.wav",
+      "duration_ms": 2555
+    },
+    {
+      "id": "c05-redis-Daniel",
+      "utterance_id": "c05-redis",
+      "corpus": "colliding",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "colliding",
+      "terms": [
+        "Redis"
+      ],
+      "reference_transcript": "The Redis instance ran out of memory last night.",
+      "file": "c05-redis-Daniel.wav",
+      "duration_ms": 2772
+    },
+    {
+      "id": "c05-redis-Karen",
+      "utterance_id": "c05-redis",
+      "corpus": "colliding",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "colliding",
+      "terms": [
+        "Redis"
+      ],
+      "reference_transcript": "The Redis instance ran out of memory last night.",
+      "file": "c05-redis-Karen.wav",
+      "duration_ms": 2640
+    },
+    {
+      "id": "c06-redis-Samantha",
+      "utterance_id": "c06-redis",
+      "corpus": "colliding",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "colliding",
+      "terms": [
+        "Redis"
+      ],
+      "reference_transcript": "Move the rate limiter over to Redis before the launch.",
+      "file": "c06-redis-Samantha.wav",
+      "duration_ms": 2756
+    },
+    {
+      "id": "c06-redis-Daniel",
+      "utterance_id": "c06-redis",
+      "corpus": "colliding",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "colliding",
+      "terms": [
+        "Redis"
+      ],
+      "reference_transcript": "Move the rate limiter over to Redis before the launch.",
+      "file": "c06-redis-Daniel.wav",
+      "duration_ms": 2975
+    },
+    {
+      "id": "c06-redis-Karen",
+      "utterance_id": "c06-redis",
+      "corpus": "colliding",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "colliding",
+      "terms": [
+        "Redis"
+      ],
+      "reference_transcript": "Move the rate limiter over to Redis before the launch.",
+      "file": "c06-redis-Karen.wav",
+      "duration_ms": 2707
+    },
+    {
+      "id": "c07-snyk-Samantha",
+      "utterance_id": "c07-snyk",
+      "corpus": "colliding",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "colliding",
+      "terms": [
+        "Snyk"
+      ],
+      "reference_transcript": "Run the Snyk scan before you merge that branch.",
+      "file": "c07-snyk-Samantha.wav",
+      "duration_ms": 2503
+    },
+    {
+      "id": "c07-snyk-Daniel",
+      "utterance_id": "c07-snyk",
+      "corpus": "colliding",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "colliding",
+      "terms": [
+        "Snyk"
+      ],
+      "reference_transcript": "Run the Snyk scan before you merge that branch.",
+      "file": "c07-snyk-Daniel.wav",
+      "duration_ms": 2940
+    },
+    {
+      "id": "c07-snyk-Karen",
+      "utterance_id": "c07-snyk",
+      "corpus": "colliding",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "colliding",
+      "terms": [
+        "Snyk"
+      ],
+      "reference_transcript": "Run the Snyk scan before you merge that branch.",
+      "file": "c07-snyk-Karen.wav",
+      "duration_ms": 2556
+    },
+    {
+      "id": "c08-snyk-Samantha",
+      "utterance_id": "c08-snyk",
+      "corpus": "colliding",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "colliding",
+      "terms": [
+        "Snyk"
+      ],
+      "reference_transcript": "Snyk flagged a vulnerability in the logging dependency.",
+      "file": "c08-snyk-Samantha.wav",
+      "duration_ms": 2916
+    },
+    {
+      "id": "c08-snyk-Daniel",
+      "utterance_id": "c08-snyk",
+      "corpus": "colliding",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "colliding",
+      "terms": [
+        "Snyk"
+      ],
+      "reference_transcript": "Snyk flagged a vulnerability in the logging dependency.",
+      "file": "c08-snyk-Daniel.wav",
+      "duration_ms": 3158
+    },
+    {
+      "id": "c08-snyk-Karen",
+      "utterance_id": "c08-snyk",
+      "corpus": "colliding",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "colliding",
+      "terms": [
+        "Snyk"
+      ],
+      "reference_transcript": "Snyk flagged a vulnerability in the logging dependency.",
+      "file": "c08-snyk-Karen.wav",
+      "duration_ms": 2987
+    },
+    {
+      "id": "c09-snyk-Samantha",
+      "utterance_id": "c09-snyk",
+      "corpus": "colliding",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "colliding",
+      "terms": [
+        "Snyk"
+      ],
+      "reference_transcript": "Did the Snyk report clear after the upgrade?",
+      "file": "c09-snyk-Samantha.wav",
+      "duration_ms": 2372
+    },
+    {
+      "id": "c09-snyk-Daniel",
+      "utterance_id": "c09-snyk",
+      "corpus": "colliding",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "colliding",
+      "terms": [
+        "Snyk"
+      ],
+      "reference_transcript": "Did the Snyk report clear after the upgrade?",
+      "file": "c09-snyk-Daniel.wav",
+      "duration_ms": 2650
+    },
+    {
+      "id": "c09-snyk-Karen",
+      "utterance_id": "c09-snyk",
+      "corpus": "colliding",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "colliding",
+      "terms": [
+        "Snyk"
+      ],
+      "reference_transcript": "Did the Snyk report clear after the upgrade?",
+      "file": "c09-snyk-Karen.wav",
+      "duration_ms": 2357
+    },
+    {
+      "id": "c10-k8s-Samantha",
+      "utterance_id": "c10-k8s",
+      "corpus": "colliding",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "colliding",
+      "terms": [
+        "k8s"
+      ],
+      "reference_transcript": "Deploy the payments service to the k8s cluster.",
+      "file": "c10-k8s-Samantha.wav",
+      "duration_ms": 2864
+    },
+    {
+      "id": "c10-k8s-Daniel",
+      "utterance_id": "c10-k8s",
+      "corpus": "colliding",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "colliding",
+      "terms": [
+        "k8s"
+      ],
+      "reference_transcript": "Deploy the payments service to the k8s cluster.",
+      "file": "c10-k8s-Daniel.wav",
+      "duration_ms": 2893
+    },
+    {
+      "id": "c10-k8s-Karen",
+      "utterance_id": "c10-k8s",
+      "corpus": "colliding",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "colliding",
+      "terms": [
+        "k8s"
+      ],
+      "reference_transcript": "Deploy the payments service to the k8s cluster.",
+      "file": "c10-k8s-Karen.wav",
+      "duration_ms": 2891
+    },
+    {
+      "id": "c11-k8s-Samantha",
+      "utterance_id": "c11-k8s",
+      "corpus": "colliding",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "colliding",
+      "terms": [
+        "k8s"
+      ],
+      "reference_transcript": "Our k8s nodes are running low on capacity again.",
+      "file": "c11-k8s-Samantha.wav",
+      "duration_ms": 3027
+    },
+    {
+      "id": "c11-k8s-Daniel",
+      "utterance_id": "c11-k8s",
+      "corpus": "colliding",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "colliding",
+      "terms": [
+        "k8s"
+      ],
+      "reference_transcript": "Our k8s nodes are running low on capacity again.",
+      "file": "c11-k8s-Daniel.wav",
+      "duration_ms": 3173
+    },
+    {
+      "id": "c11-k8s-Karen",
+      "utterance_id": "c11-k8s",
+      "corpus": "colliding",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "colliding",
+      "terms": [
+        "k8s"
+      ],
+      "reference_transcript": "Our k8s nodes are running low on capacity again.",
+      "file": "c11-k8s-Karen.wav",
+      "duration_ms": 3036
+    },
+    {
+      "id": "c12-e2e-Samantha",
+      "utterance_id": "c12-e2e",
+      "corpus": "colliding",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "colliding",
+      "terms": [
+        "E2E"
+      ],
+      "reference_transcript": "Make sure the E2E tests pass before you cut the release.",
+      "file": "c12-e2e-Samantha.wav",
+      "duration_ms": 3348
+    },
+    {
+      "id": "c12-e2e-Daniel",
+      "utterance_id": "c12-e2e",
+      "corpus": "colliding",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "colliding",
+      "terms": [
+        "E2E"
+      ],
+      "reference_transcript": "Make sure the E2E tests pass before you cut the release.",
+      "file": "c12-e2e-Daniel.wav",
+      "duration_ms": 3579
+    },
+    {
+      "id": "c12-e2e-Karen",
+      "utterance_id": "c12-e2e",
+      "corpus": "colliding",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "colliding",
+      "terms": [
+        "E2E"
+      ],
+      "reference_transcript": "Make sure the E2E tests pass before you cut the release.",
+      "file": "c12-e2e-Karen.wav",
+      "duration_ms": 3601
+    },
+    {
+      "id": "c13-e2e-Samantha",
+      "utterance_id": "c13-e2e",
+      "corpus": "colliding",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "colliding",
+      "terms": [
+        "E2E"
+      ],
+      "reference_transcript": "The E2E suite caught that regression early.",
+      "file": "c13-e2e-Samantha.wav",
+      "duration_ms": 2425
+    },
+    {
+      "id": "c13-e2e-Daniel",
+      "utterance_id": "c13-e2e",
+      "corpus": "colliding",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "colliding",
+      "terms": [
+        "E2E"
+      ],
+      "reference_transcript": "The E2E suite caught that regression early.",
+      "file": "c13-e2e-Daniel.wav",
+      "duration_ms": 2552
+    },
+    {
+      "id": "c13-e2e-Karen",
+      "utterance_id": "c13-e2e",
+      "corpus": "colliding",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "colliding",
+      "terms": [
+        "E2E"
+      ],
+      "reference_transcript": "The E2E suite caught that regression early.",
+      "file": "c13-e2e-Karen.wav",
+      "duration_ms": 2523
+    },
+    {
+      "id": "c14-worktree-Samantha",
+      "utterance_id": "c14-worktree",
+      "corpus": "colliding",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "colliding",
+      "terms": [
+        "worktree"
+      ],
+      "reference_transcript": "Create a new worktree for that feature branch.",
+      "file": "c14-worktree-Samantha.wav",
+      "duration_ms": 2390
+    },
+    {
+      "id": "c14-worktree-Daniel",
+      "utterance_id": "c14-worktree",
+      "corpus": "colliding",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "colliding",
+      "terms": [
+        "worktree"
+      ],
+      "reference_transcript": "Create a new worktree for that feature branch.",
+      "file": "c14-worktree-Daniel.wav",
+      "duration_ms": 2811
+    },
+    {
+      "id": "c14-worktree-Karen",
+      "utterance_id": "c14-worktree",
+      "corpus": "colliding",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "colliding",
+      "terms": [
+        "worktree"
+      ],
+      "reference_transcript": "Create a new worktree for that feature branch.",
+      "file": "c14-worktree-Karen.wav",
+      "duration_ms": 2437
+    },
+    {
+      "id": "c15-worktree-Samantha",
+      "utterance_id": "c15-worktree",
+      "corpus": "colliding",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "colliding",
+      "terms": [
+        "worktree"
+      ],
+      "reference_transcript": "I built the fix in a separate worktree to keep main clean.",
+      "file": "c15-worktree-Samantha.wav",
+      "duration_ms": 3003
+    },
+    {
+      "id": "c15-worktree-Daniel",
+      "utterance_id": "c15-worktree",
+      "corpus": "colliding",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "colliding",
+      "terms": [
+        "worktree"
+      ],
+      "reference_transcript": "I built the fix in a separate worktree to keep main clean.",
+      "file": "c15-worktree-Daniel.wav",
+      "duration_ms": 3384
+    },
+    {
+      "id": "c15-worktree-Karen",
+      "utterance_id": "c15-worktree",
+      "corpus": "colliding",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "colliding",
+      "terms": [
+        "worktree"
+      ],
+      "reference_transcript": "I built the fix in a separate worktree to keep main clean.",
+      "file": "c15-worktree-Karen.wav",
+      "duration_ms": 3236
+    },
+    {
+      "id": "c16-ultrathink-Samantha",
+      "utterance_id": "c16-ultrathink",
+      "corpus": "colliding",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "colliding",
+      "terms": [
+        "ultrathink"
+      ],
+      "reference_transcript": "Turn on ultrathink for the harder planning prompts.",
+      "file": "c16-ultrathink-Samantha.wav",
+      "duration_ms": 2647
+    },
+    {
+      "id": "c16-ultrathink-Daniel",
+      "utterance_id": "c16-ultrathink",
+      "corpus": "colliding",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "colliding",
+      "terms": [
+        "ultrathink"
+      ],
+      "reference_transcript": "Turn on ultrathink for the harder planning prompts.",
+      "file": "c16-ultrathink-Daniel.wav",
+      "duration_ms": 2877
+    },
+    {
+      "id": "c16-ultrathink-Karen",
+      "utterance_id": "c16-ultrathink",
+      "corpus": "colliding",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "colliding",
+      "terms": [
+        "ultrathink"
+      ],
+      "reference_transcript": "Turn on ultrathink for the harder planning prompts.",
+      "file": "c16-ultrathink-Karen.wav",
+      "duration_ms": 2772
+    }
+  ]
+}
