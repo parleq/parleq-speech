@@ -67,6 +67,10 @@ bench/.venv/
 # Customer-identifying term cluster — never commit (see bench/dictionary-overfire.json for the public gate).
 bench/dictionary-work.json
 
+# Phase 9 contextual-fit: local-only proprietary notes + corpus (customer-identifying terms).
+bench/*.local.*
+bench/corpus/*.local.*
+
 # Real human voice recordings — personal voice data, never commit to the public repo.
 bench/fixtures-human/
 bench/fixtures/manifest-*human*.json
