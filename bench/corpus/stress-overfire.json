@@ -1,0 +1,15 @@
+{
+  "_comment": "Phase 4c over-fire stress corpus: ordinary sentences using a common word that collides with a dictionary-stress term, NO term intended. Any stress-term that appears after biasing is a false positive. Spans the zipf spectrum so we can see at what frequency the single-token gate starts/stops suppressing.",
+  "utterances": [
+    { "id": "s01-nuxt-next", "terms": [], "category": "stress-overfire", "text": "Let's go over the rest of this in the next meeting." },
+    { "id": "s02-vite-beat", "terms": [], "category": "stress-overfire", "text": "The drummer kept a steady beat through the whole song." },
+    { "id": "s03-numba-number", "terms": [], "category": "stress-overfire", "text": "Could you text me your phone number when you get a chance?" },
+    { "id": "s04-dask-task", "terms": [], "category": "stress-overfire", "text": "I finished the last task on the list this morning." },
+    { "id": "s05-dask-dusk", "terms": [], "category": "stress-overfire", "text": "We got to the campsite just before dusk." },
+    { "id": "s06-zod-odd", "terms": [], "category": "stress-overfire", "text": "That was a really odd thing for him to say." },
+    { "id": "s07-zod-god", "terms": [], "category": "stress-overfire", "text": "She thanked god the flight was not cancelled." },
+    { "id": "s08-hugo-yougo", "terms": [], "category": "stress-overfire", "text": "You go ahead and I will catch up in a minute." },
+    { "id": "s09-deno-dino", "terms": [], "category": "stress-overfire", "text": "The kids loved the giant dino at the museum." },
+    { "id": "s10-rune-rune", "terms": [], "category": "stress-overfire", "text": "The old stone was carved with a single ancient rune." }
+  ]
+}

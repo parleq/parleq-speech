@@ -1,0 +1,15 @@
+{
+  "_comment": "Phase 4c colliding stress corpus: sentences that genuinely contain a dictionary-stress term. Measures whether the single-token zipf gate wrongly suppresses a real recovery when the term's mis-ASR is a common word (the CRA->CRAN class) across the frequency spectrum.",
+  "utterances": [
+    { "id": "s11-nuxt", "terms": ["Nuxt"], "category": "stress-colliding", "text": "We scaffolded the marketing site with Nuxt." },
+    { "id": "s12-vite", "terms": ["Vite"], "category": "stress-colliding", "text": "Vite rebuilds the bundle almost instantly." },
+    { "id": "s13-numba", "terms": ["Numba"], "category": "stress-colliding", "text": "We sped up the inner loop with Numba." },
+    { "id": "s14-dask", "terms": ["Dask"], "category": "stress-colliding", "text": "Schedule the nightly job across the Dask cluster." },
+    { "id": "s15-zod", "terms": ["Zod"], "category": "stress-colliding", "text": "Validate the request body with Zod before saving." },
+    { "id": "s16-hugo", "terms": ["Hugo"], "category": "stress-colliding", "text": "The documentation site is built with Hugo." },
+    { "id": "s17-deno", "terms": ["Deno"], "category": "stress-colliding", "text": "We run the edge functions on Deno." },
+    { "id": "s18-polars", "terms": ["Polars"], "category": "stress-colliding", "text": "Switch the aggregation from pandas to Polars." },
+    { "id": "s19-pinia", "terms": ["Pinia"], "category": "stress-colliding", "text": "The cart state lives in a Pinia store." },
+    { "id": "s20-rune", "terms": ["Rune"], "category": "stress-colliding", "text": "Wrap the counter in a Rune so it stays reactive." }
+  ]
+}

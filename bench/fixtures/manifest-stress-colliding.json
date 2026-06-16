@@ -1,0 +1,704 @@
+{
+  "clips": [
+    {
+      "id": "s11-nuxt-Samantha",
+      "utterance_id": "s11-nuxt",
+      "corpus": "stress-colliding",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "stress-colliding",
+      "terms": [
+        "Nuxt"
+      ],
+      "reference_transcript": "We scaffolded the marketing site with Nuxt.",
+      "file": "s11-nuxt-Samantha.wav",
+      "duration_ms": 2475
+    },
+    {
+      "id": "s11-nuxt-Daniel",
+      "utterance_id": "s11-nuxt",
+      "corpus": "stress-colliding",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "stress-colliding",
+      "terms": [
+        "Nuxt"
+      ],
+      "reference_transcript": "We scaffolded the marketing site with Nuxt.",
+      "file": "s11-nuxt-Daniel.wav",
+      "duration_ms": 2487
+    },
+    {
+      "id": "s11-nuxt-Karen",
+      "utterance_id": "s11-nuxt",
+      "corpus": "stress-colliding",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "stress-colliding",
+      "terms": [
+        "Nuxt"
+      ],
+      "reference_transcript": "We scaffolded the marketing site with Nuxt.",
+      "file": "s11-nuxt-Karen.wav",
+      "duration_ms": 2457
+    },
+    {
+      "id": "s11-nuxt-Rishi",
+      "utterance_id": "s11-nuxt",
+      "corpus": "stress-colliding",
+      "voice": "Rishi",
+      "accent": "unknown",
+      "category": "stress-colliding",
+      "terms": [
+        "Nuxt"
+      ],
+      "reference_transcript": "We scaffolded the marketing site with Nuxt.",
+      "file": "s11-nuxt-Rishi.wav",
+      "duration_ms": 2598
+    },
+    {
+      "id": "s11-nuxt-Tara",
+      "utterance_id": "s11-nuxt",
+      "corpus": "stress-colliding",
+      "voice": "Tara",
+      "accent": "unknown",
+      "category": "stress-colliding",
+      "terms": [
+        "Nuxt"
+      ],
+      "reference_transcript": "We scaffolded the marketing site with Nuxt.",
+      "file": "s11-nuxt-Tara.wav",
+      "duration_ms": 2315
+    },
+    {
+      "id": "s12-vite-Samantha",
+      "utterance_id": "s12-vite",
+      "corpus": "stress-colliding",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "stress-colliding",
+      "terms": [
+        "Vite"
+      ],
+      "reference_transcript": "Vite rebuilds the bundle almost instantly.",
+      "file": "s12-vite-Samantha.wav",
+      "duration_ms": 2222
+    },
+    {
+      "id": "s12-vite-Daniel",
+      "utterance_id": "s12-vite",
+      "corpus": "stress-colliding",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "stress-colliding",
+      "terms": [
+        "Vite"
+      ],
+      "reference_transcript": "Vite rebuilds the bundle almost instantly.",
+      "file": "s12-vite-Daniel.wav",
+      "duration_ms": 2429
+    },
+    {
+      "id": "s12-vite-Karen",
+      "utterance_id": "s12-vite",
+      "corpus": "stress-colliding",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "stress-colliding",
+      "terms": [
+        "Vite"
+      ],
+      "reference_transcript": "Vite rebuilds the bundle almost instantly.",
+      "file": "s12-vite-Karen.wav",
+      "duration_ms": 2337
+    },
+    {
+      "id": "s12-vite-Rishi",
+      "utterance_id": "s12-vite",
+      "corpus": "stress-colliding",
+      "voice": "Rishi",
+      "accent": "unknown",
+      "category": "stress-colliding",
+      "terms": [
+        "Vite"
+      ],
+      "reference_transcript": "Vite rebuilds the bundle almost instantly.",
+      "file": "s12-vite-Rishi.wav",
+      "duration_ms": 2691
+    },
+    {
+      "id": "s12-vite-Tara",
+      "utterance_id": "s12-vite",
+      "corpus": "stress-colliding",
+      "voice": "Tara",
+      "accent": "unknown",
+      "category": "stress-colliding",
+      "terms": [
+        "Vite"
+      ],
+      "reference_transcript": "Vite rebuilds the bundle almost instantly.",
+      "file": "s12-vite-Tara.wav",
+      "duration_ms": 2470
+    },
+    {
+      "id": "s13-numba-Samantha",
+      "utterance_id": "s13-numba",
+      "corpus": "stress-colliding",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "stress-colliding",
+      "terms": [
+        "Numba"
+      ],
+      "reference_transcript": "We sped up the inner loop with Numba.",
+      "file": "s13-numba-Samantha.wav",
+      "duration_ms": 1756
+    },
+    {
+      "id": "s13-numba-Daniel",
+      "utterance_id": "s13-numba",
+      "corpus": "stress-colliding",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "stress-colliding",
+      "terms": [
+        "Numba"
+      ],
+      "reference_transcript": "We sped up the inner loop with Numba.",
+      "file": "s13-numba-Daniel.wav",
+      "duration_ms": 1813
+    },
+    {
+      "id": "s13-numba-Karen",
+      "utterance_id": "s13-numba",
+      "corpus": "stress-colliding",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "stress-colliding",
+      "terms": [
+        "Numba"
+      ],
+      "reference_transcript": "We sped up the inner loop with Numba.",
+      "file": "s13-numba-Karen.wav",
+      "duration_ms": 1818
+    },
+    {
+      "id": "s13-numba-Rishi",
+      "utterance_id": "s13-numba",
+      "corpus": "stress-colliding",
+      "voice": "Rishi",
+      "accent": "unknown",
+      "category": "stress-colliding",
+      "terms": [
+        "Numba"
+      ],
+      "reference_transcript": "We sped up the inner loop with Numba.",
+      "file": "s13-numba-Rishi.wav",
+      "duration_ms": 2006
+    },
+    {
+      "id": "s13-numba-Tara",
+      "utterance_id": "s13-numba",
+      "corpus": "stress-colliding",
+      "voice": "Tara",
+      "accent": "unknown",
+      "category": "stress-colliding",
+      "terms": [
+        "Numba"
+      ],
+      "reference_transcript": "We sped up the inner loop with Numba.",
+      "file": "s13-numba-Tara.wav",
+      "duration_ms": 2016
+    },
+    {
+      "id": "s14-dask-Samantha",
+      "utterance_id": "s14-dask",
+      "corpus": "stress-colliding",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "stress-colliding",
+      "terms": [
+        "Dask"
+      ],
+      "reference_transcript": "Schedule the nightly job across the Dask cluster.",
+      "file": "s14-dask-Samantha.wav",
+      "duration_ms": 2719
+    },
+    {
+      "id": "s14-dask-Daniel",
+      "utterance_id": "s14-dask",
+      "corpus": "stress-colliding",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "stress-colliding",
+      "terms": [
+        "Dask"
+      ],
+      "reference_transcript": "Schedule the nightly job across the Dask cluster.",
+      "file": "s14-dask-Daniel.wav",
+      "duration_ms": 2739
+    },
+    {
+      "id": "s14-dask-Karen",
+      "utterance_id": "s14-dask",
+      "corpus": "stress-colliding",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "stress-colliding",
+      "terms": [
+        "Dask"
+      ],
+      "reference_transcript": "Schedule the nightly job across the Dask cluster.",
+      "file": "s14-dask-Karen.wav",
+      "duration_ms": 2689
+    },
+    {
+      "id": "s14-dask-Rishi",
+      "utterance_id": "s14-dask",
+      "corpus": "stress-colliding",
+      "voice": "Rishi",
+      "accent": "unknown",
+      "category": "stress-colliding",
+      "terms": [
+        "Dask"
+      ],
+      "reference_transcript": "Schedule the nightly job across the Dask cluster.",
+      "file": "s14-dask-Rishi.wav",
+      "duration_ms": 2782
+    },
+    {
+      "id": "s14-dask-Tara",
+      "utterance_id": "s14-dask",
+      "corpus": "stress-colliding",
+      "voice": "Tara",
+      "accent": "unknown",
+      "category": "stress-colliding",
+      "terms": [
+        "Dask"
+      ],
+      "reference_transcript": "Schedule the nightly job across the Dask cluster.",
+      "file": "s14-dask-Tara.wav",
+      "duration_ms": 2804
+    },
+    {
+      "id": "s15-zod-Samantha",
+      "utterance_id": "s15-zod",
+      "corpus": "stress-colliding",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "stress-colliding",
+      "terms": [
+        "Zod"
+      ],
+      "reference_transcript": "Validate the request body with Zod before saving.",
+      "file": "s15-zod-Samantha.wav",
+      "duration_ms": 2779
+    },
+    {
+      "id": "s15-zod-Daniel",
+      "utterance_id": "s15-zod",
+      "corpus": "stress-colliding",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "stress-colliding",
+      "terms": [
+        "Zod"
+      ],
+      "reference_transcript": "Validate the request body with Zod before saving.",
+      "file": "s15-zod-Daniel.wav",
+      "duration_ms": 2801
+    },
+    {
+      "id": "s15-zod-Karen",
+      "utterance_id": "s15-zod",
+      "corpus": "stress-colliding",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "stress-colliding",
+      "terms": [
+        "Zod"
+      ],
+      "reference_transcript": "Validate the request body with Zod before saving.",
+      "file": "s15-zod-Karen.wav",
+      "duration_ms": 2685
+    },
+    {
+      "id": "s15-zod-Rishi",
+      "utterance_id": "s15-zod",
+      "corpus": "stress-colliding",
+      "voice": "Rishi",
+      "accent": "unknown",
+      "category": "stress-colliding",
+      "terms": [
+        "Zod"
+      ],
+      "reference_transcript": "Validate the request body with Zod before saving.",
+      "file": "s15-zod-Rishi.wav",
+      "duration_ms": 3016
+    },
+    {
+      "id": "s15-zod-Tara",
+      "utterance_id": "s15-zod",
+      "corpus": "stress-colliding",
+      "voice": "Tara",
+      "accent": "unknown",
+      "category": "stress-colliding",
+      "terms": [
+        "Zod"
+      ],
+      "reference_transcript": "Validate the request body with Zod before saving.",
+      "file": "s15-zod-Tara.wav",
+      "duration_ms": 2920
+    },
+    {
+      "id": "s16-hugo-Samantha",
+      "utterance_id": "s16-hugo",
+      "corpus": "stress-colliding",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "stress-colliding",
+      "terms": [
+        "Hugo"
+      ],
+      "reference_transcript": "The documentation site is built with Hugo.",
+      "file": "s16-hugo-Samantha.wav",
+      "duration_ms": 2508
+    },
+    {
+      "id": "s16-hugo-Daniel",
+      "utterance_id": "s16-hugo",
+      "corpus": "stress-colliding",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "stress-colliding",
+      "terms": [
+        "Hugo"
+      ],
+      "reference_transcript": "The documentation site is built with Hugo.",
+      "file": "s16-hugo-Daniel.wav",
+      "duration_ms": 2494
+    },
+    {
+      "id": "s16-hugo-Karen",
+      "utterance_id": "s16-hugo",
+      "corpus": "stress-colliding",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "stress-colliding",
+      "terms": [
+        "Hugo"
+      ],
+      "reference_transcript": "The documentation site is built with Hugo.",
+      "file": "s16-hugo-Karen.wav",
+      "duration_ms": 2431
+    },
+    {
+      "id": "s16-hugo-Rishi",
+      "utterance_id": "s16-hugo",
+      "corpus": "stress-colliding",
+      "voice": "Rishi",
+      "accent": "unknown",
+      "category": "stress-colliding",
+      "terms": [
+        "Hugo"
+      ],
+      "reference_transcript": "The documentation site is built with Hugo.",
+      "file": "s16-hugo-Rishi.wav",
+      "duration_ms": 2784
+    },
+    {
+      "id": "s16-hugo-Tara",
+      "utterance_id": "s16-hugo",
+      "corpus": "stress-colliding",
+      "voice": "Tara",
+      "accent": "unknown",
+      "category": "stress-colliding",
+      "terms": [
+        "Hugo"
+      ],
+      "reference_transcript": "The documentation site is built with Hugo.",
+      "file": "s16-hugo-Tara.wav",
+      "duration_ms": 2401
+    },
+    {
+      "id": "s17-deno-Samantha",
+      "utterance_id": "s17-deno",
+      "corpus": "stress-colliding",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "stress-colliding",
+      "terms": [
+        "Deno"
+      ],
+      "reference_transcript": "We run the edge functions on Deno.",
+      "file": "s17-deno-Samantha.wav",
+      "duration_ms": 1814
+    },
+    {
+      "id": "s17-deno-Daniel",
+      "utterance_id": "s17-deno",
+      "corpus": "stress-colliding",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "stress-colliding",
+      "terms": [
+        "Deno"
+      ],
+      "reference_transcript": "We run the edge functions on Deno.",
+      "file": "s17-deno-Daniel.wav",
+      "duration_ms": 1953
+    },
+    {
+      "id": "s17-deno-Karen",
+      "utterance_id": "s17-deno",
+      "corpus": "stress-colliding",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "stress-colliding",
+      "terms": [
+        "Deno"
+      ],
+      "reference_transcript": "We run the edge functions on Deno.",
+      "file": "s17-deno-Karen.wav",
+      "duration_ms": 1969
+    },
+    {
+      "id": "s17-deno-Rishi",
+      "utterance_id": "s17-deno",
+      "corpus": "stress-colliding",
+      "voice": "Rishi",
+      "accent": "unknown",
+      "category": "stress-colliding",
+      "terms": [
+        "Deno"
+      ],
+      "reference_transcript": "We run the edge functions on Deno.",
+      "file": "s17-deno-Rishi.wav",
+      "duration_ms": 2087
+    },
+    {
+      "id": "s17-deno-Tara",
+      "utterance_id": "s17-deno",
+      "corpus": "stress-colliding",
+      "voice": "Tara",
+      "accent": "unknown",
+      "category": "stress-colliding",
+      "terms": [
+        "Deno"
+      ],
+      "reference_transcript": "We run the edge functions on Deno.",
+      "file": "s17-deno-Tara.wav",
+      "duration_ms": 1888
+    },
+    {
+      "id": "s18-polars-Samantha",
+      "utterance_id": "s18-polars",
+      "corpus": "stress-colliding",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "stress-colliding",
+      "terms": [
+        "Polars"
+      ],
+      "reference_transcript": "Switch the aggregation from pandas to Polars.",
+      "file": "s18-polars-Samantha.wav",
+      "duration_ms": 2545
+    },
+    {
+      "id": "s18-polars-Daniel",
+      "utterance_id": "s18-polars",
+      "corpus": "stress-colliding",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "stress-colliding",
+      "terms": [
+        "Polars"
+      ],
+      "reference_transcript": "Switch the aggregation from pandas to Polars.",
+      "file": "s18-polars-Daniel.wav",
+      "duration_ms": 2636
+    },
+    {
+      "id": "s18-polars-Karen",
+      "utterance_id": "s18-polars",
+      "corpus": "stress-colliding",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "stress-colliding",
+      "terms": [
+        "Polars"
+      ],
+      "reference_transcript": "Switch the aggregation from pandas to Polars.",
+      "file": "s18-polars-Karen.wav",
+      "duration_ms": 2616
+    },
+    {
+      "id": "s18-polars-Rishi",
+      "utterance_id": "s18-polars",
+      "corpus": "stress-colliding",
+      "voice": "Rishi",
+      "accent": "unknown",
+      "category": "stress-colliding",
+      "terms": [
+        "Polars"
+      ],
+      "reference_transcript": "Switch the aggregation from pandas to Polars.",
+      "file": "s18-polars-Rishi.wav",
+      "duration_ms": 2678
+    },
+    {
+      "id": "s18-polars-Tara",
+      "utterance_id": "s18-polars",
+      "corpus": "stress-colliding",
+      "voice": "Tara",
+      "accent": "unknown",
+      "category": "stress-colliding",
+      "terms": [
+        "Polars"
+      ],
+      "reference_transcript": "Switch the aggregation from pandas to Polars.",
+      "file": "s18-polars-Tara.wav",
+      "duration_ms": 2551
+    },
+    {
+      "id": "s19-pinia-Samantha",
+      "utterance_id": "s19-pinia",
+      "corpus": "stress-colliding",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "stress-colliding",
+      "terms": [
+        "Pinia"
+      ],
+      "reference_transcript": "The cart state lives in a Pinia store.",
+      "file": "s19-pinia-Samantha.wav",
+      "duration_ms": 2021
+    },
+    {
+      "id": "s19-pinia-Daniel",
+      "utterance_id": "s19-pinia",
+      "corpus": "stress-colliding",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "stress-colliding",
+      "terms": [
+        "Pinia"
+      ],
+      "reference_transcript": "The cart state lives in a Pinia store.",
+      "file": "s19-pinia-Daniel.wav",
+      "duration_ms": 2136
+    },
+    {
+      "id": "s19-pinia-Karen",
+      "utterance_id": "s19-pinia",
+      "corpus": "stress-colliding",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "stress-colliding",
+      "terms": [
+        "Pinia"
+      ],
+      "reference_transcript": "The cart state lives in a Pinia store.",
+      "file": "s19-pinia-Karen.wav",
+      "duration_ms": 1943
+    },
+    {
+      "id": "s19-pinia-Rishi",
+      "utterance_id": "s19-pinia",
+      "corpus": "stress-colliding",
+      "voice": "Rishi",
+      "accent": "unknown",
+      "category": "stress-colliding",
+      "terms": [
+        "Pinia"
+      ],
+      "reference_transcript": "The cart state lives in a Pinia store.",
+      "file": "s19-pinia-Rishi.wav",
+      "duration_ms": 2076
+    },
+    {
+      "id": "s19-pinia-Tara",
+      "utterance_id": "s19-pinia",
+      "corpus": "stress-colliding",
+      "voice": "Tara",
+      "accent": "unknown",
+      "category": "stress-colliding",
+      "terms": [
+        "Pinia"
+      ],
+      "reference_transcript": "The cart state lives in a Pinia store.",
+      "file": "s19-pinia-Tara.wav",
+      "duration_ms": 2089
+    },
+    {
+      "id": "s20-rune-Samantha",
+      "utterance_id": "s20-rune",
+      "corpus": "stress-colliding",
+      "voice": "Samantha",
+      "accent": "us",
+      "category": "stress-colliding",
+      "terms": [
+        "Rune"
+      ],
+      "reference_transcript": "Wrap the counter in a Rune so it stays reactive.",
+      "file": "s20-rune-Samantha.wav",
+      "duration_ms": 2724
+    },
+    {
+      "id": "s20-rune-Daniel",
+      "utterance_id": "s20-rune",
+      "corpus": "stress-colliding",
+      "voice": "Daniel",
+      "accent": "gb",
+      "category": "stress-colliding",
+      "terms": [
+        "Rune"
+      ],
+      "reference_transcript": "Wrap the counter in a Rune so it stays reactive.",
+      "file": "s20-rune-Daniel.wav",
+      "duration_ms": 2661
+    },
+    {
+      "id": "s20-rune-Karen",
+      "utterance_id": "s20-rune",
+      "corpus": "stress-colliding",
+      "voice": "Karen",
+      "accent": "au",
+      "category": "stress-colliding",
+      "terms": [
+        "Rune"
+      ],
+      "reference_transcript": "Wrap the counter in a Rune so it stays reactive.",
+      "file": "s20-rune-Karen.wav",
+      "duration_ms": 2579
+    },
+    {
+      "id": "s20-rune-Rishi",
+      "utterance_id": "s20-rune",
+      "corpus": "stress-colliding",
+      "voice": "Rishi",
+      "accent": "unknown",
+      "category": "stress-colliding",
+      "terms": [
+        "Rune"
+      ],
+      "reference_transcript": "Wrap the counter in a Rune so it stays reactive.",
+      "file": "s20-rune-Rishi.wav",
+      "duration_ms": 2888
+    },
+    {
+      "id": "s20-rune-Tara",
+      "utterance_id": "s20-rune",
+      "corpus": "stress-colliding",
+      "voice": "Tara",
+      "accent": "unknown",
+      "category": "stress-colliding",
+      "terms": [
+        "Rune"
+      ],
+      "reference_transcript": "Wrap the counter in a Rune so it stays reactive.",
+      "file": "s20-rune-Tara.wav",
+      "duration_ms": 2651
+    }
+  ]
+}

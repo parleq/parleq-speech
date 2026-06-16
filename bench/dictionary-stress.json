@@ -1,0 +1,15 @@
+{
+  "_comment": "Phase 4c stress dictionary (issue #100): dev-tool terms chosen so their likely ASR mis-renderings collide with common English words spanning the zipf-frequency spectrum — from very common (next 5.6, number 5.0, beat 4.8) down through the threshold danger zone (dusk 2.8, odd/sod, Dino ~3.5) to rare (polars, pinia). Used to probe whether the single-token zipf>=2.5 gate holds across the spectrum: high-freq collisions must be suppressed (over-fire killed), and recoveries whose original is rare must be spared.",
+  "terms": [
+    { "term": "Nuxt", "context": "Vue web framework", "aliases": ["next"] },
+    { "term": "Vite", "context": "front-end build tool", "aliases": ["beat", "feet"] },
+    { "term": "Numba", "context": "Python JIT compiler", "aliases": ["number"] },
+    { "term": "Dask", "context": "parallel-computing library", "aliases": ["task", "desk", "dusk"] },
+    { "term": "Zod", "context": "TypeScript schema validator", "aliases": ["god", "sod", "odd"] },
+    { "term": "Hugo", "context": "static site generator" },
+    { "term": "Deno", "context": "JavaScript runtime", "aliases": ["Dino"] },
+    { "term": "Polars", "context": "dataframe library" },
+    { "term": "Pinia", "context": "Vue state store" },
+    { "term": "Rune", "context": "Svelte reactivity primitive" }
+  ]
+}
