@@ -18,7 +18,7 @@ The transcript is one lossy view (a prior), not ground truth. The model's **acou
 | acoustic confidence | per-token TDT `confidence` | already emitted, was discarded | **[validated]** localizes error: AUC 0.80 real / 0.88–0.96 synth, calibrated (Ph5) |
 | dictionary proximity | grapheme/phonetic nearness to a user term | dictionary | **[validated]** as the *trigger* (Ph6); over-fires alone (Ph1/4c) |
 | personal usage | P(term) vs P(common word) for this user | dictionary + correction journal | **[principled]** noisy-channel; needs deployment data (Ph8) |
-| contextual fit | utterance ↔ term's context blurb similarity | dictionary `context` field + cheap local embedder/keyword overlap | **[proposed]** local alt to LLM context; experiment pending |
+| contextual fit | utterance ↔ term's context blurb similarity | dictionary `context` field + cheap local embedder/keyword overlap | **[moderate, Ph9]** tiny embedder separates term/common at ~0.87 on the confident slice with rich blurbs (keyword overlap fails); real `context` blurbs > terse ones; a useful local *contributor* to class 3, not a standalone solver |
 | context (heavy) | full sentence understanding | cleanup LLM | **[validated]** recovers Snyk 3/3, recall 46→96% real, but over-fires 2/18 (Ph8/4a) |
 
 ## The error taxonomy → matched handlers
@@ -74,7 +74,7 @@ Destination is a conditioning prior on intent: clean-for-code ≠ clean-for-chat
 
 ## Open questions / next experiments (post-trunk)
 
-1. **Contextual-fit probe** — does utterance ↔ dictionary-context-blurb similarity (keyword overlap or a tiny embedder) discriminate term-intended from common-word-intended for class 3? (The local alternative to the LLM; from the maintainer's Case-3 question.)
+1. **Contextual-fit probe** — ~~does utterance ↔ dictionary-context-blurb similarity discriminate class 3?~~ **ANSWERED (Phase 9, `...phase9-contextual-fit.md`): yes, moderately.** A tiny sentence embedder separates term- from common-intended at ~0.86–0.91 overall and ~0.73–0.87 on the confident class-3 slice (richer real blurbs → 0.87; terse blurbs → 0.73). Free keyword overlap fails (0.50 on the slice) — the embedder is required, but it's still featherweight (on-device `NLContextualEmbedding`, no heavy LLM). Verdict: a real but *moderate* local class-3 signal — **combine with the usage-prior** rather than treat as a standalone solver; escalate the residual to the LLM. Actionable side-finding: encourage users to write descriptive dictionary `context` blurbs (they materially help). Open follow-on: **combine usage-prior + contextual-fit and measure the residual the LLM still must handle.**
 2. **Usage-prior validation** — needs real usage ratios (deployment / populated journal).
 3. **Trust-metric harness** — define + measure proofreading-effort on real dictation.
 4. **Phonetic proximity** — replace grapheme Levenshtein in the trigger to widen class-2/3 coverage and cut class-2 false-flags.
