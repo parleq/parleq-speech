@@ -69,4 +69,4 @@ bench/dictionary-work.json
 
 # Real human voice recordings — personal voice data, never commit to the public repo.
 bench/fixtures-human/
-bench/fixtures/manifest-human*.json
+bench/fixtures/manifest-*human*.json
