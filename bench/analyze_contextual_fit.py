@@ -14,6 +14,7 @@ Usage:
     --blurbs bench/blurbs-overfire.json [--conf-threshold 0.97] [--no-embed]
 """
 import argparse
+import difflib
 import importlib.util
 import json
 import re
@@ -126,22 +127,52 @@ def auc_high(pos, neg):
     return (wins + 0.5 * ties) / (len(pos) * len(neg))
 
 
+# ---- phonetic proximity (Phase 11): catches divergent-spelling homophones
+# (Snyk<->"sync") that grapheme misses; near-exact match only, so it's a free
+# OR-clause with ~0 added spurious fire. Default OFF (preserves Ph9/10 behavior).
+def _metaphone(s):
+    import jellyfish
+    return jellyfish.metaphone(re.sub(r"[^a-z]", "", s.lower()))
+
+
+def phonetic_proximity(word, terms):
+    """max Metaphone-code ratio of word to any term/alias; (score, canon)."""
+    mw = _metaphone(word.lower().strip(".,?!\"'"))
+    if not mw:
+        return 0.0, None
+    best, who = 0.0, None
+    for canon, cands in terms:
+        for c in cands:
+            mc = _metaphone(c)
+            if not mc:
+                continue
+            r = 1.0 if mw == mc else difflib.SequenceMatcher(a=mw, b=mc, autojunk=False).ratio()
+            if r > best:
+                best, who = r, canon
+    return best, who
+
+
 # ---- per-clip scoring ----------------------------------------------------
-def target_word(words, terms, near=0.6):
+def target_word(words, terms, near=0.6, phonetic=False, pho_gate=0.90):
     """The hyp word closest to any dictionary term (the ambiguous word).
-    Returns (word_dict, prox, canon_term) or (None, 0, None)."""
+    With phonetic=True, a near-exact Metaphone match (>=pho_gate) also qualifies
+    (Phase 11). Returns (word_dict, prox, canon_term) or (None, 0, None)."""
     best = (None, 0.0, None)
     for w in words:
         prox, who = pp.proximity(w["word"], terms)
+        if phonetic:
+            pprox, pwho = phonetic_proximity(w["word"], terms)
+            if pprox >= pho_gate and pprox > prox:
+                prox, who = pprox, pwho
         if prox > best[1]:
             best = (w, prox, who)
     return best if best[1] >= near else (None, 0.0, None)
 
 
-def score_clip(words, blurb_map, terms, use_embed):
+def score_clip(words, blurb_map, terms, use_embed, phonetic=False):
     """Pick the ambiguous word, build context = all OTHER words, score the
     context against that term's sanitized blurb. Returns a row or None."""
-    tgt, prox, who = target_word(words, terms)
+    tgt, prox, who = target_word(words, terms, phonetic=phonetic)
     if tgt is None or who not in blurb_map:
         return None
     context = " ".join(w["word"] for w in words if w is not tgt)
@@ -177,6 +208,8 @@ def main():
     ap.add_argument("--blurbs", required=True)
     ap.add_argument("--conf-threshold", type=float, default=0.97)
     ap.add_argument("--no-embed", action="store_true")
+    ap.add_argument("--phonetic", action="store_true",
+                    help="add near-exact phonetic match to the dictionary trigger (Phase 11)")
     args = ap.parse_args()
     use_embed = not args.no_embed
 
@@ -196,7 +229,7 @@ def main():
         if not ref:
             continue
         words = ac.group_words(tlist)
-        r = score_clip(words, blurb_map, terms, use_embed)
+        r = score_clip(words, blurb_map, terms, use_embed, phonetic=args.phonetic)
         if r is None:
             continue
         r["cid"] = cid
@@ -218,10 +251,10 @@ def main():
     # argmax / discrimination control: does a term/stress-intended utterance
     # match its OWN term's blurb best among all blurbs in this set?
     print("\n=== argmax control: correct blurb ranked #1 among all blurbs ===")
-    _argmax_control(toks, refs, blurb_map, terms, use_embed)
+    _argmax_control(toks, refs, blurb_map, terms, use_embed, phonetic=args.phonetic)
 
 
-def _argmax_control(toks, refs, blurb_map, terms, use_embed):
+def _argmax_control(toks, refs, blurb_map, terms, use_embed, phonetic=False):
     """For each term/stress clip: the ambiguous word fixes the ground-truth term
     (via grapheme proximity, same as score_clip). Excluding that word, does the
     surrounding context rank the correct term's blurb #1 among all blurbs?
@@ -235,7 +268,7 @@ def _argmax_control(toks, refs, blurb_map, terms, use_embed):
         if not refs.get(cid, {}).get("ref", ""):
             continue
         words = ac.group_words(tlist)
-        tgt, prox, who = target_word(words, terms)
+        tgt, prox, who = target_word(words, terms, phonetic=phonetic)
         if tgt is None or who not in blurb_map:
             continue
         context = " ".join(w["word"] for w in words if w is not tgt)

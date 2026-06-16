@@ -30,6 +30,13 @@ def test_auc_high_perfect_separation():
     assert cf.auc_high([0.8, 0.9], [0.1, 0.2]) == 1.0
     assert cf.auc_high([0.1], [0.9]) == 0.0
 
+def test_phonetic_catches_divergent_spelling():
+    # Snyk<->"sync": grapheme-far, phonetically identical (metaphone "SNK").
+    terms = [("Snyk", ["snyk"])]
+    pscore, who = cf.phonetic_proximity("sync", terms)
+    assert pscore >= 0.90 and who == "Snyk", (pscore, who)
+    assert cf.phonetic_proximity("banana", terms)[0] < 0.90
+
 def test_keyword_overlap_discriminates():
     blurb = cf.sanitize_blurb("developer security vulnerability scanner")
     term_ctx = "run the security scan and audit dependencies before merge"
