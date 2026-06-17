@@ -63,7 +63,7 @@ swift package show-dependencies    # walk the full tree
 When in doubt, leave it alone — Parleq dictation works today on the pinned versions. Drift only happens when someone touches the files. Worth checking after any update:
 
 - **Soto** — AWS service shape changes, eventstream parsing fixes, credential-provider improvements.
-- **FluidAudio** — Parakeet model versions, CTC vocab boosting tweaks, ANE performance. Now a direct dependency of the main app target (not its retired sidecar package).
+- **FluidAudio** — Parakeet model versions, CTC vocab boosting tweaks, ANE performance. Now a direct dependency of the main app target (not its retired sidecar package). **When you bump the FluidAudio pin, also update `BundledASREngine.fluidAudioVersion` in `LocalASR.swift`** — it stamps the engine version into flywheel contribution records, and a stale value silently misattributes the baseline of every record written after the upgrade.
 - **swift-nio**, **swift-crypto**, **swift-certificates** — Apple-maintained, security-relevant. Pulled in transitively by Soto.
 
 ## Repository layout

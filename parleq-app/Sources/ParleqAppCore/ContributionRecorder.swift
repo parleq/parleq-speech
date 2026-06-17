@@ -50,7 +50,13 @@ public struct ContributionRecord: Sendable {
     public let id: UUID
     public let timestamp: Date
     public let disposition: ContributionDisposition
-    public let rawASR: String
+    /// The ASR-stage transcript: FluidAudio/Parakeet output AFTER the
+    /// CTC vocab rescorer (i.e. exactly what the product emits, before
+    /// LLM cleanup). NOT the pre-rescore base text — that is recoverable
+    /// from `diagnostics.replacements` + the retained audio. Named
+    /// `asr_transcript` (not `raw_asr`) so a training script can't mistake
+    /// it for the unbiased baseline.
+    public let asrTranscript: String
     public let cleaned: String?
     public let finalText: String?
     public let cleanupFailed: Bool
@@ -71,7 +77,7 @@ public struct ContributionRecord: Sendable {
         id: UUID,
         timestamp: Date,
         disposition: ContributionDisposition,
-        rawASR: String,
+        asrTranscript: String,
         cleaned: String?,
         finalText: String?,
         cleanupFailed: Bool,
@@ -91,7 +97,7 @@ public struct ContributionRecord: Sendable {
         self.id = id
         self.timestamp = timestamp
         self.disposition = disposition
-        self.rawASR = rawASR
+        self.asrTranscript = asrTranscript
         self.cleaned = cleaned
         self.finalText = finalText
         self.cleanupFailed = cleanupFailed
@@ -140,7 +146,7 @@ public actor ContributionRecorder {
         let ts: Date
         let disposition: String
         let audio: String?
-        let rawAsr: String
+        let asrTranscript: String
         let cleaned: String?
         let `final`: String?
         let cleanupFailed: Bool
@@ -162,6 +168,10 @@ public actor ContributionRecorder {
     /// Persist one dictation. Fire-and-forget via `Task.detached` at the
     /// call site; all I/O is wrapped fail-silent.
     public func capture(_ record: ContributionRecord) async {
+        // Tracked across the do/catch so a manifest-write failure can
+        // remove the already-written WAV instead of orphaning it (an
+        // orphan has no manifest line yet inflates later directorySize).
+        var writtenAudioURL: URL?
         do {
             try FileManager.default.createDirectory(
                 at: audioDir, withIntermediateDirectories: true
@@ -176,6 +186,7 @@ public actor ContributionRecorder {
             if let wav = record.wav, !wav.isEmpty {
                 let audioURL = audioDir.appendingPathComponent("\(record.id.uuidString).wav")
                 try wav.write(to: audioURL, options: .atomic)
+                writtenAudioURL = audioURL
                 audioRel = "audio/\(record.id.uuidString).wav"
                 cumulativeBytes += Int64(wav.count)
             }
@@ -185,7 +196,7 @@ public actor ContributionRecorder {
                 ts: record.timestamp,
                 disposition: record.disposition.rawValue,
                 audio: audioRel,
-                rawAsr: record.rawASR,
+                asrTranscript: record.asrTranscript,
                 cleaned: record.cleaned,
                 final: record.finalText,
                 cleanupFailed: record.cleanupFailed,
@@ -234,7 +245,12 @@ public actor ContributionRecorder {
         } catch {
             // Fail-silent: the dictation/paste path is already done and
             // nothing useful happens in response to a write failure.
-            // Re-seed so a partial increment doesn't drift.
+            // The manifest line did NOT commit (the only throwing ops are
+            // before it), so remove the orphaned WAV rather than leave it
+            // unreferenced. Re-seed so a partial increment doesn't drift.
+            if let orphan = writtenAudioURL {
+                try? FileManager.default.removeItem(at: orphan)
+            }
             cumulativeBytes = -1
             logStderr("[parleq] contribution capture failed (write error)")
         }

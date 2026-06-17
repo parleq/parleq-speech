@@ -60,18 +60,17 @@ Single responsibility: when **armed**, persist one record per dictation lifecycl
 
   "audio": "audio/<uuid>.wav",
 
-  "raw_asr": "...",
+  "asr_transcript": "...",
   "cleaned": "...",
   "final": "...",
   "cleanup_failed": false,
 
   "asr": {
-    "text": "...",
     "confidence": 0.0,
-    "duration": 0.0,
-    "processingTime": 0.0,
-    "tokenTimings": [
-      { "token": "...", "tokenId": 0, "startTime": 0.0, "endTime": 0.0, "confidence": 0.0 }
+    "duration_sec": 0.0,
+    "processing_sec": 0.0,
+    "token_timings": [
+      { "token": "...", "token_id": 0, "start_time": 0.0, "end_time": 0.0, "confidence": 0.0 }
     ],
     "replacements": [
       { "original": "sync", "replacement": "Snyk", "reason": "CTC-vs-CTC", "applied": true }
@@ -104,7 +103,7 @@ Single responsibility: when **armed**, persist one record per dictation lifecycl
 |---|---|
 | `disposition` | `"accepted"` (user accepted → full pair) or `"discarded"` (Esc/cancel → `final: null`, audio + ASR still captured). |
 | `audio` | Relative path to the WAV; `null` only if audio is somehow unavailable. |
-| `raw_asr` | The **post-CTC-rescore** transcript — i.e. exactly what the product emits after vocab biasing. This is the corrector's real input distribution. |
+| `asr_transcript` | The **post-CTC-rescore** transcript — i.e. exactly what the product emits after vocab biasing (and the corrector's real input distribution). Named `asr_transcript`, not `raw_asr`, so it can't be mistaken for the unbiased Parakeet baseline. |
 | `cleaned` | The LLM cleanup output, **before** any manual overlay edit or refine turn. `null` when cleanup failed or `provider=none`. Separating this from `final` lets a consumer attribute each change to its true source: ASR error (raw→cleaned via LLM) vs human correction (cleaned→final via manual edit). |
 | `final` | The text the user actually accepted (cleanup + any manual overlay edits + any refine turns). `null` for `discarded`. |
 | `asr` | ASR diagnostics (`ASRDiagnostics`, `Codable`). `tokenTimings` is the per-token confidence/timing feature set for the trust surface, the confidence×dictionary gate, contextual-fit, and the phonetic trigger. **`replacements`** is the over-fire forensics signal — Parleq's own CTC vocab-rescorer output, one entry per considered replacement with `original` → `replacement` + `reason` + `applied` (whether it was substituted in). This is *richer* than FluidAudio's term-list-only `ctcDetectedTerms`/`ctcAppliedTerms`, which stay nil on our path because Parleq runs its own rescorer (`VocabBox`). Populated only on the bundled path; the external-HTTP ASR path leaves the whole `asr` object null. **(On disk all keys are snake_case via `convertToSnakeCase`, e.g. `token_timings`, `processing_sec`.)** |
@@ -120,10 +119,10 @@ Single responsibility: when **armed**, persist one record per dictation lifecycl
 
 ### Deliberate omission: pre-CTC-rescore base text
 
-FluidAudio's `asr.text` / `raw_asr` is the **post**-rescore transcript. The pre-rescore base text (pure Parakeet output, before vocab substitution) exists only as a local variable inside `LocalASR` and is **not** captured. Reasoning:
+The captured `asr_transcript` is the **post**-rescore transcript. The pre-rescore base text (pure Parakeet output, before vocab substitution) exists only as a local variable inside `LocalASR` and is **not** captured. Reasoning:
 
 - The only use for exact base text is studying the CTC rescorer **in isolation**, and that study inherently requires re-running audio against *multiple* FluidAudio versions — which yields base text for free, for any version. Live capture only ever gives one version's base.
-- The corrector trains on `(raw_asr → final)` where `raw_asr` is the post-rescore product output — base text is not its input.
+- The corrector trains on `(asr_transcript → final)` where `asr_transcript` is the post-rescore product output — base text is not its input.
 - "Is this utterance interesting for over-fire?" is already answered by the `asr.replacements` list (original→replacement+applied).
 - Re-derivation is **exact**: base text (biasing off) depends only on the deterministic Parakeet decode + model version (stamped in `fluidaudio_version`), not on `minSimilarity`/`cbw`.
 
@@ -131,7 +130,7 @@ So base text is reconstructable on demand and never needed live. Omitted to avoi
 
 ## Corrector-pair eligibility
 
-The central data-quality refinement. Two classes of dictation produce a `final` that is **LLM-transformed, not ASR-corrected** — treating their `(raw_asr → final)` as a corrector training pair would poison the model (teaching it to invent content not present in the audio):
+The central data-quality refinement. Two classes of dictation produce a `final` that is **LLM-transformed, not ASR-corrected** — treating their `(asr_transcript → final)` as a corrector training pair would poison the model (teaching it to invent content not present in the audio):
 
 1. **Reference windows attached** — output is driven by external clipboard/image/file context, not by correcting the transcript.
 2. **Cleanup commands during refinement** — a refine turn is a transformation instruction ("make it shorter"), not a correction.

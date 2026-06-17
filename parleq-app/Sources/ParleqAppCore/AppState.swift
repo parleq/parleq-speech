@@ -3016,16 +3016,13 @@ public final class AppState {
                 // accumulator, zero overhead.
                 if !asRefine, loadedConfig.contributionCaptureArmed {
                     var pending = PendingContribution(
-                        // Keep asrModel / fluidaudioVersion in sync with the
-                        // FluidAudio pin in Package.swift (see the
-                        // parleq-fluidaudio pin notes).
                         id: UUID(),
-                        asrModel: "parakeet-tdt-v3",
-                        fluidaudioVersion: "0.14.5",
+                        asrModel: BundledASREngine.model,
+                        fluidaudioVersion: BundledASREngine.fluidAudioVersion,
                         llm: "\(loadedConfig.llmProvider):\(loadedConfig.llmModel)",
                         wav: wavBytes
                     )
-                    pending.rawASR = asrResult.text
+                    pending.asrTranscript = asrResult.text
                     pending.diagnostics = asrResultRaw.diagnostics
                     pending.vocabulary = vocabularyEntries.map { $0.term }
                     pending.appBundle = targetBundleID
@@ -3390,7 +3387,7 @@ public final class AppState {
         let fluidaudioVersion: String
         let llm: String
         var wav: Data?
-        var rawASR: String = ""
+        var asrTranscript: String = ""
         var cleaned: String?
         var diagnostics: ASRDiagnostics?
         var vocabulary: [String] = []
@@ -3410,7 +3407,7 @@ public final class AppState {
                 id: id,
                 timestamp: Date(),
                 disposition: disposition,
-                rawASR: rawASR,
+                asrTranscript: asrTranscript,
                 cleaned: cleaned,
                 finalText: finalText,
                 cleanupFailed: cleanupFailed,
@@ -3440,7 +3437,7 @@ public final class AppState {
     ) {
         guard let pending = pendingContribution else { return }
         pendingContribution = nil
-        guard !pending.rawASR.isEmpty else { return }
+        guard !pending.asrTranscript.isEmpty else { return }
         let record = pending.makeRecord(
             disposition: disposition,
             finalText: finalText,

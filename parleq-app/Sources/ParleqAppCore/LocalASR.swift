@@ -543,6 +543,16 @@ enum VocabTuning {
     public static let cbw: Float = 2.0
 }
 
+/// Identifiers for the bundled ASR engine, stamped into flywheel
+/// contribution records so a later re-run knows the baseline it is
+/// comparing against. KEEP `fluidAudioVersion` IN SYNC with the
+/// FluidAudio pin in `Package.swift` (see the dependency-upgrade policy
+/// in CLAUDE.md and the parleq-fluidaudio pin notes) on every bump.
+public enum BundledASREngine {
+    public static let model = "parakeet-tdt-v3"
+    public static let fluidAudioVersion = "0.14.5"
+}
+
 /// Holds the optional CTC vocabulary-boosting models and rescorer.
 /// Lazy-loaded on first vocab-bearing request (or eagerly preloaded
 /// via `LocalASR.preloadVocab = true`). Caches the rescorer per
