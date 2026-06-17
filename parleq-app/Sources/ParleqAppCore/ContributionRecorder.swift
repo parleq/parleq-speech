@@ -127,8 +127,11 @@ public struct ContributionRecord: Sendable {
     ///     degenerate identity pair teaching copy-verbatim;
     ///   - no LLM transformation (reference context, preset/app-default
     ///     styling, or any refine command — LLM-driven, not ASR-corrected).
-    /// `cleanupFailed` is implied by `cleaned == nil` but kept explicit
-    /// for readability. Recomputable from the recorded fields if revised.
+    /// `cleanupFailed == true` implies `cleaned == nil` (a failure always
+    /// leaves cleaned nil), so `cleaned != nil` already covers the failure
+    /// path; `!cleanupFailed` is kept explicit for readability. The
+    /// converse does NOT hold — `provider = none` has `cleaned == nil`
+    /// with `cleanupFailed == false`. Recomputable from the fields if revised.
     public var correctorPairEligible: Bool {
         finalText != nil
             && cleaned != nil
