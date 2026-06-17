@@ -74,3 +74,6 @@ bench/corpus/*.local.*
 # Real human voice recordings — personal voice data, never commit to the public repo.
 bench/fixtures-human/
 bench/fixtures/manifest-*human*.json
+
+# Phase 20 featherweight-corrector spike: large model/dataset artifacts, never commit.
+bench/spike/
