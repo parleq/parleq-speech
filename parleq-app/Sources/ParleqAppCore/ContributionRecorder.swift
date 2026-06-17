@@ -255,9 +255,9 @@ public actor ContributionRecorder {
 
             if FileManager.default.fileExists(atPath: manifestURL.path) {
                 let handle = try FileHandle(forWritingTo: manifestURL)
+                defer { try? handle.close() }
                 try handle.seekToEnd()
                 try handle.write(contentsOf: data)
-                try handle.close()
             } else {
                 try data.write(to: manifestURL, options: .atomic)
             }

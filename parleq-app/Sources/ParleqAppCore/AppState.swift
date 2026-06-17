@@ -4067,6 +4067,21 @@ public final class AppState {
             self.overlay.model.activeTransformName = nil
             self.applyResult(outcome.text, cleanupFailureMessage: outcome.failureMessage, reauthable: outcome.reauthable)
             if outcome.usedLLMOutput {
+                // Flywheel: a manual preset application during review is an
+                // LLM style transform, not an ASR correction. runPreset has
+                // its own task (bypasses runCleanupPipeline), so mark the
+                // accumulator here — record the preset as a refine turn so
+                // corrector_pair_eligible excludes the styled `final`.
+                if self.pendingContribution != nil {
+                    self.pendingContribution?.refined = true
+                    self.pendingContribution?.refineTurns.append(
+                        ContributionRefineTurn(
+                            instruction: preset.prompt,
+                            before: current,
+                            after: outcome.text
+                        )
+                    )
+                }
                 // A manual transform supersedes the auto-applied default's
                 // provenance — the text is no longer just "Styled with X".
                 // On failure the fallback IS the still-styled prior text,
