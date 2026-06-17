@@ -306,6 +306,36 @@ The Parleq window's **Recent Dictations** section surfaces recent dictations so 
 
 **Verification:** `grep -rn "CorrectionJournal\|LearnedStore\|LearningAnalyzer" parleq-app/Sources/` shows the journal's `record(_:enabled:)` gate checks `enabled` before any append to the in-memory ring; `LearningAnalyzer.runIfDue(...)` is invoked only from a detached `Task` in `AppState.finalizeCapture` (after the cleanup/refine result has been applied — off the dictation latency path) and from a low-frequency idle-flush timer; both call sites gate on `learnFromCorrectionsEnabled`, and `runIfDue` is rate-capped so analysis never runs on the hot path.
 
+### 5.3 Contribution capture mode (opt-in, hidden, undocumented)
+
+> **Reviewer note — this is the ONE feature that, when armed, durably writes dictation audio AND transcript content to disk.** It is a deliberate, documented carve-out to the otherwise-absolute invariants "audio is memory-only" (§5, hard invariant #1) and "no dictation-derived text to disk" (#2/#7). It exists so contributors who *choose* to share their dictation data can build a local research corpus for on-device ASR-correction modeling. It is **off by default, absent from the Settings UI, the Setup Wizard, the README, and the public docs**, and is intentionally **not** part of the documented `config.json` schema — disclosed here, and only here, by design.
+
+**What arms it.** A single hidden, hand-edited key in its own top-level `config.json` block, whose value must **exactly equal** an acknowledgment phrase that names the consequence:
+
+```json
+"contribution": {
+  "capture": "i-understand-this-writes-my-audio-and-transcripts-to-disk"
+}
+```
+
+A bare `true`, any other string, an absent block, an MDM push, or a copied config template **do nothing** (`Config.contributionCaptureArmed` is the exact-string comparison; default `false`). The acknowledgment-string gate makes inadvertent enablement in a managed environment effectively impossible: nothing short of a human deliberately typing the phrase arms it. The block lives outside the `features` block specifically so a Settings save can never write or re-expose it; `Config.mergeForSave` preserves it verbatim and never emits it from the typed model.
+
+**What it captures** (`ContributionRecorder.swift`, armed only). One record per dictation lifecycle into `~/.parleq/flywheel/`:
+
+- `audio/<uuid>.wav` — the raw 16 kHz mono utterance audio (the carve-out to #1).
+- `manifest.jsonl` — one JSON line per dictation: the raw ASR transcript, the LLM-cleaned text, the final accepted text, the full ASR diagnostics (per-token confidence/timing + the vocab-rescorer's original→replacement detail), the dictionary terms in play, provenance flags (reference-windows-attached / transform-applied / refined) and a derived `corrector_pair_eligible`, plus model/version stamps and the destination app bundle id.
+
+Accepted **and** discarded dictations are captured (discarded carry audio + ASR but `final: null`). Storage is **unbounded**; the contributor prunes the directory by hand. `corpus_bytes` on each line tracks cumulative size.
+
+**The app never transmits this data.** `ContributionRecorder` contains **no network code** — capture is purely local to `~/.parleq/flywheel/`. "Contributing" the corpus to the project is a separate, manual act the contributor performs (e.g. copying files); the running app neither uploads nor phones home with any of it. This is verifiable: the file imports only `Foundation` and performs only local filesystem writes.
+
+**Upheld invariants (even when armed):**
+- Capture is **off the dictation hot path** and **fail-silent** — a write error (disk full, permissions) is swallowed and logged count-only; it never blocks or breaks a paste.
+- Logging remains **count-only** — `logStderr("[parleq] contribution captured (disposition=…)")`. No transcript, audio, or replacement content reaches `app.log`/stderr; the existing `[vocab]` count-only contract is unchanged.
+- **Zero overhead when disarmed** (the default): no accumulator is built, no directory is created, nothing is written.
+
+**Verification:** `grep -rn "ContributionRecorder\|contributionCaptureArmed\|contributionCaptureAck" parleq-app/Sources/` shows arming is the exact-string compare in `Config.load`, the recorder is invoked only via `flushContribution` (itself a no-op unless an armed fresh capture produced a record), and the recorder file imports `Foundation` only — no `URLSession`/`Network`/Soto. Confirm a disarmed run never creates `~/.parleq/flywheel/`.
+
 ---
 
 ## 6. Network egress

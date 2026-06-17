@@ -73,8 +73,9 @@ Single responsibility: when **armed**, persist one record per dictation lifecycl
     "tokenTimings": [
       { "token": "...", "tokenId": 0, "startTime": 0.0, "endTime": 0.0, "confidence": 0.0 }
     ],
-    "ctcDetectedTerms": ["Snyk"],
-    "ctcAppliedTerms": ["Snyk"]
+    "replacements": [
+      { "original": "sync", "replacement": "Snyk", "reason": "CTC-vs-CTC", "applied": true }
+    ]
   },
 
   "vocabulary": ["Snyk", "CRAN"],
@@ -106,7 +107,7 @@ Single responsibility: when **armed**, persist one record per dictation lifecycl
 | `raw_asr` | The **post-CTC-rescore** transcript — i.e. exactly what the product emits after vocab biasing. This is the corrector's real input distribution. |
 | `cleaned` | The LLM cleanup output, **before** any manual overlay edit or refine turn. `null` when cleanup failed or `provider=none`. Separating this from `final` lets a consumer attribute each change to its true source: ASR error (raw→cleaned via LLM) vs human correction (cleaned→final via manual edit). |
 | `final` | The text the user actually accepted (cleanup + any manual overlay edits + any refine turns). `null` for `discarded`. |
-| `asr` | The full FluidAudio `ASRResult` (already `Codable`). `tokenTimings` is the per-token confidence/timing feature set for the trust surface, the confidence×dictionary gate, contextual-fit, and the phonetic trigger. `ctcDetectedTerms`/`ctcAppliedTerms` are the over-fire forensics signal (which dictionary terms were *considered* vs. *substituted in*). Populated only on the bundled FluidAudio path; the external-HTTP ASR path leaves `tokenTimings`/`ctc*` null and `text`-only. |
+| `asr` | ASR diagnostics (`ASRDiagnostics`, `Codable`). `tokenTimings` is the per-token confidence/timing feature set for the trust surface, the confidence×dictionary gate, contextual-fit, and the phonetic trigger. **`replacements`** is the over-fire forensics signal — Parleq's own CTC vocab-rescorer output, one entry per considered replacement with `original` → `replacement` + `reason` + `applied` (whether it was substituted in). This is *richer* than FluidAudio's term-list-only `ctcDetectedTerms`/`ctcAppliedTerms`, which stay nil on our path because Parleq runs its own rescorer (`VocabBox`). Populated only on the bundled path; the external-HTTP ASR path leaves the whole `asr` object null. **(On disk all keys are snake_case via `convertToSnakeCase`, e.g. `token_timings`, `processing_sec`.)** |
 | `asr_model` / `fluidaudio_version` | Stamp the baseline so any re-run against a future model knows what it is comparing against. |
 | `app_bundle` | Destination app bundle id — useful for the routing vision and for per-app analysis. |
 | `reference_windows_attached` | `true` if clipboard/image/file reference context was fed to the LLM for this utterance. |
@@ -123,7 +124,7 @@ FluidAudio's `asr.text` / `raw_asr` is the **post**-rescore transcript. The pre-
 
 - The only use for exact base text is studying the CTC rescorer **in isolation**, and that study inherently requires re-running audio against *multiple* FluidAudio versions — which yields base text for free, for any version. Live capture only ever gives one version's base.
 - The corrector trains on `(raw_asr → final)` where `raw_asr` is the post-rescore product output — base text is not its input.
-- "Is this utterance interesting for over-fire?" is already answered by `ctcDetectedTerms`/`ctcAppliedTerms`.
+- "Is this utterance interesting for over-fire?" is already answered by the `asr.replacements` list (original→replacement+applied).
 - Re-derivation is **exact**: base text (biasing off) depends only on the deterministic Parakeet decode + model version (stamped in `fluidaudio_version`), not on `minSimilarity`/`cbw`.
 
 So base text is reconstructable on demand and never needed live. Omitted to avoid plumbing it through `LocalASR → ASRClient → AppState` for no marginal benefit.
