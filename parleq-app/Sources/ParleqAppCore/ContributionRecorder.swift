@@ -114,6 +114,29 @@ public struct ContributionRecord: Sendable {
         self.spelloutTerms = spelloutTerms
         self.wav = wav
     }
+
+    /// Whether `(asrTranscript → finalText)` is a clean corrector training
+    /// pair. DERIVED, conservative — false negatives (a usable pair not
+    /// auto-tagged) are safer than false positives (a degenerate pair
+    /// polluting training). Requires:
+    ///   - an accepted `finalText` (discarded → no final);
+    ///   - a real LLM cleanup output (`cleaned != nil`) — this is the
+    ///     direct sentinel that an LLM correction was produced AND used,
+    ///     covering BOTH the failure path and `provider = none` (skip
+    ///     cleanup, paste raw), where `final == asrTranscript` would be a
+    ///     degenerate identity pair teaching copy-verbatim;
+    ///   - no LLM transformation (reference context, preset/app-default
+    ///     styling, or any refine command — LLM-driven, not ASR-corrected).
+    /// `cleanupFailed` is implied by `cleaned == nil` but kept explicit
+    /// for readability. Recomputable from the recorded fields if revised.
+    public var correctorPairEligible: Bool {
+        finalText != nil
+            && cleaned != nil
+            && !cleanupFailed
+            && !referenceWindowsAttached
+            && !transformApplied
+            && !refined
+    }
 }
 
 public actor ContributionRecorder {
@@ -128,12 +151,16 @@ public actor ContributionRecorder {
     /// eyeball metric stamped into each record's `corpus_bytes`.
     private var cumulativeBytes: Int64 = -1
 
-    init() {
-        let home = NSHomeDirectory() as NSString
-        let base = home.appendingPathComponent(".parleq/flywheel")
-        self.flywheelDir = URL(fileURLWithPath: base)
-        self.audioDir = flywheelDir.appendingPathComponent("audio", isDirectory: true)
-        self.manifestURL = flywheelDir.appendingPathComponent("manifest.jsonl")
+    /// `baseDirectory` defaults to `~/.parleq/flywheel`. Tests inject a
+    /// temp directory for hermetic coverage of the write paths.
+    init(baseDirectory: URL? = nil) {
+        let base = baseDirectory ?? URL(
+            fileURLWithPath: (NSHomeDirectory() as NSString)
+                .appendingPathComponent(".parleq/flywheel")
+        )
+        self.flywheelDir = base
+        self.audioDir = base.appendingPathComponent("audio", isDirectory: true)
+        self.manifestURL = base.appendingPathComponent("manifest.jsonl")
     }
 
     /// On-disk encoding of one dictation. snake_case keys via the
@@ -209,21 +236,11 @@ public actor ContributionRecorder {
                 referenceWindowsAttached: record.referenceWindowsAttached,
                 transformApplied: record.transformApplied,
                 refined: record.refined,
-                // DERIVED, conservative: a clean `(asr_transcript → final)`
-                // corrector training pair. Requires an accepted final
-                // (discarded → no final), a SUCCESSFUL cleanup (on failure
-                // `cleaned` is null and `final` is the raw fallback — a
-                // degenerate identity pair that would teach copy-verbatim),
-                // and no LLM transformation (reference context, preset/
-                // app-default styling, or any refine command — those are
-                // LLM-driven, not ASR-corrected). False-tagged records are
-                // still fully captured; a consumer wanting e.g. hand-edited-
-                // after-failure pairs recomputes from cleanup_failed / final.
-                correctorPairEligible: record.finalText != nil
-                    && !record.cleanupFailed
-                    && !record.referenceWindowsAttached
-                    && !record.transformApplied
-                    && !record.refined,
+                // DERIVED on the record (see ContributionRecord). False-
+                // tagged records are still fully captured; a consumer
+                // wanting e.g. hand-edited-after-failure pairs recomputes
+                // from cleanup_failed / final / asr_transcript.
+                correctorPairEligible: record.correctorPairEligible,
                 refineTurns: record.refineTurns,
                 spelloutTerms: record.spelloutTerms,
                 corpusBytes: cumulativeBytes
