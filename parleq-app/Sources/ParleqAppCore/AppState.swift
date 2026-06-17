@@ -335,6 +335,10 @@ public final class AppState {
     private var styledReferences: [Reference] = []
     private var styledPasteDestLabel: String?
 
+    /// Per-utterance flywheel accumulator. See PendingContribution +
+    /// flushContribution. nil unless an ARMED fresh capture is in flight.
+    private var pendingContribution: PendingContribution?
+
     // 0.14.0 PR 4 (#219): per-dictation timing capture for the Stats
     // section in PR 5. All three reset on every fresh capture; ASR
     // / LLM latencies are populated by the cleanup pipeline as it
@@ -1857,6 +1861,9 @@ public final class AppState {
             target: target,
             wasCleanupSuccessful: !lastCleanupFailed
         )
+        // Flywheel: capture the accepted dictation. final = the text the
+        // user accepted, after any manual edits / refine / preset.
+        flushContribution(disposition: .accepted, finalText: currentText)
         if overlay.model.isPickingWindow { endHoldPickMode() }
         // Cancel any in-flight reference captures before resetting
         // overlay state. Without this, a capture task that's still
@@ -1936,6 +1943,11 @@ public final class AppState {
         case .cleaning, .awaitingAccept:
             break
         }
+        // Flywheel: a discarded dictation still yields re-runnable audio +
+        // ASR data. Flush as discarded (final = nil) before teardown; the
+        // guard inside no-ops if there's no ASR-bearing accumulator (e.g. a
+        // mid-capture Esc before ASR ran).
+        flushContribution(disposition: .discarded, finalText: nil)
         inFlightTask?.cancel()
         inFlightTask = nil
         // Tear down a chained-refine-during-cleanup window if one is
@@ -2853,6 +2865,10 @@ public final class AppState {
     /// retained buffer through the identical pipeline.
     private func runCleanupPipeline(wavData: Data, asRefine: Bool) {
         phase = .cleaning
+        // A new fresh dictation supersedes any uncommitted flywheel
+        // accumulator (e.g. a prior empty-ASR capture that never reached a
+        // terminal). Refine turns keep the existing one to append to.
+        if !asRefine { pendingContribution = nil }
         if quickMode {
             // In quick mode we don't show the overlay — the user
             // is going to get the paste directly. Acoustic cues
@@ -2993,6 +3009,29 @@ public final class AppState {
                 // switch can re-run the same thing with the new model.
                 self?.lastTurnWasRefine = asRefine
                 self?.lastRefinePriorText = asRefine ? priorText : ""
+                // Flywheel: on a fresh, ARMED capture, open a contribution
+                // accumulator for this dictation carrying the exact utterance
+                // audio + ASR diagnostics. Refine turns append later; it is
+                // flushed at the terminal state. Disarmed (the default) → no
+                // accumulator, zero overhead.
+                if !asRefine, loadedConfig.contributionCaptureArmed {
+                    var pending = PendingContribution(
+                        // Keep asrModel / fluidaudioVersion in sync with the
+                        // FluidAudio pin in Package.swift (see the
+                        // parleq-fluidaudio pin notes).
+                        id: UUID(),
+                        asrModel: "parakeet-tdt-v3",
+                        fluidaudioVersion: "0.14.5",
+                        llm: "\(loadedConfig.llmProvider):\(loadedConfig.llmModel)",
+                        wav: wavBytes
+                    )
+                    pending.rawASR = asrResult.text
+                    pending.diagnostics = asrResultRaw.diagnostics
+                    pending.vocabulary = vocabularyEntries.map { $0.term }
+                    pending.appBundle = targetBundleID
+                    pending.spelloutTerms = SpellOutDetector.candidates(in: asrResult.text)
+                    self?.pendingContribution = pending
+                }
                 // Resolve which provider to use for this dictation:
                 // override > context > cleanup, honoring the
                 // pickedModelOverride the user may have set via the
@@ -3050,6 +3089,27 @@ public final class AppState {
                     }
                 )
                 if Task.isCancelled { return }
+
+                // Flywheel: finish populating (fresh) or extend (refine) the
+                // contribution accumulator now that the LLM outcome is known —
+                // BEFORE applyResult, which on the quick-mode and C1 eager-
+                // accept paths reaches a terminal (and flush) synchronously.
+                if !asRefine {
+                    self?.pendingContribution?.referenceWindowsAttached = !effectiveRefs.isEmpty
+                    self?.pendingContribution?.transformApplied =
+                        (defaultPreset != nil && outcome.usedLLMOutput)
+                    self?.pendingContribution?.cleaned =
+                        outcome.usedLLMOutput ? outcome.text : nil
+                } else if outcome.usedLLMOutput, self?.pendingContribution != nil {
+                    self?.pendingContribution?.refined = true
+                    self?.pendingContribution?.refineTurns.append(
+                        ContributionRefineTurn(
+                            instruction: asrResult.text,
+                            before: priorText,
+                            after: outcome.text
+                        )
+                    )
+                }
 
                 // 0.14.0 PR 4 (#219): stash the LLM latency on
                 // the instance so the eventual accept() can
@@ -3268,6 +3328,9 @@ public final class AppState {
                 target: target,
                 wasCleanupSuccessful: cleanupFailureMessage == nil
             )
+            // Flywheel: quick mode pastes here without an accept() — flush
+            // the accumulator as accepted before the async paste starts.
+            flushContribution(disposition: .accepted, finalText: text)
             Task { @MainActor in
                 if let t = target {
                     do {
@@ -3315,6 +3378,77 @@ public final class AppState {
         startAutoAcceptTimer()
     }
 
+    /// Per-utterance flywheel accumulator. Built during the cleanup
+    /// pipeline (created on a fresh, ARMED capture; refine turns append to
+    /// it) and flushed once to ContributionRecorder at the terminal state
+    /// (accept / quick-mode paste / discard), then cleared. nil whenever
+    /// contribution capture isn't armed or no dictation is in flight. All
+    /// access is MainActor-isolated (AppState).
+    private struct PendingContribution {
+        let id: UUID
+        let asrModel: String
+        let fluidaudioVersion: String
+        let llm: String
+        var wav: Data?
+        var rawASR: String = ""
+        var cleaned: String?
+        var diagnostics: ASRDiagnostics?
+        var vocabulary: [String] = []
+        var appBundle: String?
+        var spelloutTerms: [String] = []
+        var referenceWindowsAttached: Bool = false
+        var transformApplied: Bool = false
+        var refined: Bool = false
+        var refineTurns: [ContributionRefineTurn] = []
+
+        func makeRecord(
+            disposition: ContributionDisposition,
+            finalText: String?,
+            cleanupFailed: Bool
+        ) -> ContributionRecord {
+            ContributionRecord(
+                id: id,
+                timestamp: Date(),
+                disposition: disposition,
+                rawASR: rawASR,
+                cleaned: cleaned,
+                finalText: finalText,
+                cleanupFailed: cleanupFailed,
+                diagnostics: diagnostics,
+                vocabulary: vocabulary,
+                asrModel: asrModel,
+                fluidaudioVersion: fluidaudioVersion,
+                llm: llm,
+                appBundle: appBundle,
+                referenceWindowsAttached: referenceWindowsAttached,
+                transformApplied: transformApplied,
+                refined: refined,
+                refineTurns: refineTurns,
+                spelloutTerms: spelloutTerms,
+                wav: wav
+            )
+        }
+    }
+
+    /// Flush the pending contribution record (if any) to the recorder.
+    /// Fail-silent + off the hot path: the disk I/O runs on the
+    /// ContributionRecorder actor via a detached task. Guarded so it only
+    /// writes an ASR-bearing dictation. Clears the accumulator.
+    private func flushContribution(
+        disposition: ContributionDisposition,
+        finalText: String?
+    ) {
+        guard let pending = pendingContribution else { return }
+        pendingContribution = nil
+        guard !pending.rawASR.isEmpty else { return }
+        let record = pending.makeRecord(
+            disposition: disposition,
+            finalText: finalText,
+            cleanupFailed: lastCleanupFailed
+        )
+        Task.detached { await ContributionRecorder.shared.capture(record) }
+    }
+
     private func closeAndReset() async {
         // Clear per-dictation overlay state (references, model override,
         // banners) and cancel in-flight reference captures. The accept()
@@ -3351,6 +3485,7 @@ public final class AppState {
         overlay.model.appliedPresetName = nil
         overlay.model.activeTransformName = nil
         lastCleanupFailed = false
+        pendingContribution = nil
         pasteTarget = nil
         quickMode = false
         phase = .idle
