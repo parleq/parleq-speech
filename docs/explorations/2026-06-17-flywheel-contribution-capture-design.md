@@ -108,7 +108,7 @@ Single responsibility: when **armed**, persist one record per dictation lifecycl
 | `final` | The text the user actually accepted (cleanup + any manual overlay edits + any refine turns). `null` for `discarded`. |
 | `asr` | ASR diagnostics (`ASRDiagnostics`, `Codable`). `tokenTimings` is the per-token confidence/timing feature set for the trust surface, the confidence×dictionary gate, contextual-fit, and the phonetic trigger. **`replacements`** is the over-fire forensics signal — Parleq's own CTC vocab-rescorer output, one entry per considered replacement with `original` → `replacement` + `reason` + `applied` (whether it was substituted in). This is *richer* than FluidAudio's term-list-only `ctcDetectedTerms`/`ctcAppliedTerms`, which stay nil on our path because Parleq runs its own rescorer (`VocabBox`). Populated only on the bundled path; the external-HTTP ASR path leaves the whole `asr` object null. **(On disk all keys are snake_case via `convertToSnakeCase`, e.g. `token_timings`, `processing_sec`.)** |
 | `asr_model` / `fluidaudio_version` | Stamp the baseline so any re-run against a future model knows what it is comparing against. |
-| `app_bundle` | Destination app bundle id — useful for the routing vision and for per-app analysis. |
+| `app_bundle` | Destination app bundle id — useful for per-app analysis (which apps a dictation was destined for). |
 | `reference_windows_attached` | `true` if clipboard/image/file reference context was fed to the LLM for this utterance. |
 | `transform_applied` | `true` if a preset or per-app-default styling transform was folded into the cleanup prompt. |
 | `refined` | `true` if ≥1 refine/command turn occurred (i.e. `refine_turns` is non-empty). |
