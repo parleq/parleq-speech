@@ -3014,7 +3014,12 @@ public final class AppState {
                 // audio + ASR diagnostics. Refine turns append later; it is
                 // flushed at the terminal state. Disarmed (the default) → no
                 // accumulator, zero overhead.
-                if !asRefine, loadedConfig.contributionCaptureArmed {
+                // `!Task.isCancelled`: don't open an accumulator for a
+                // dictation that was cancelled during the ASR await (the
+                // existing guard above already returns in that case, but
+                // keeping the check local to the mutation makes the intent
+                // robust against future edits adding a suspension point).
+                if !asRefine, loadedConfig.contributionCaptureArmed, !Task.isCancelled {
                     var pending = PendingContribution(
                         id: UUID(),
                         asrModel: BundledASREngine.model,

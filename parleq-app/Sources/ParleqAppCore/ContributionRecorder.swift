@@ -245,9 +245,12 @@ public actor ContributionRecorder {
         } catch {
             // Fail-silent: the dictation/paste path is already done and
             // nothing useful happens in response to a write failure.
-            // The manifest line did NOT commit (the only throwing ops are
-            // before it), so remove the orphaned WAV rather than leave it
-            // unreferenced. Re-seed so a partial increment doesn't drift.
+            // If we reach catch with writtenAudioURL set, the WAV was
+            // written but the manifest line did not commit (the encode +
+            // file-append throwing ops run after the WAV write and before
+            // the manifest is durable), so remove the orphaned file rather
+            // than leave it unreferenced. Re-seed so a partial increment
+            // doesn't drift.
             if let orphan = writtenAudioURL {
                 try? FileManager.default.removeItem(at: orphan)
             }
