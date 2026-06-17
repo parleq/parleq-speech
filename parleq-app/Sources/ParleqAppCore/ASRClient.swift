@@ -74,9 +74,52 @@ public enum ASRError: Error, CustomStringConvertible {
     }
 }
 
+/// One CTC vocab-rescorer replacement (Parleq's own rescorer output,
+/// richer than FluidAudio's term-list-only ctcApplied/Detected fields,
+/// which stay nil on our path). Captured ONLY into the armed flywheel
+/// contribution corpus — never logged. The existing count-only `[vocab]`
+/// log line in LocalASR is unchanged; this detail goes solely to disk
+/// under armed contribution mode (carve-out to compliance #2/#17).
+public struct VocabReplacement: Codable, Sendable {
+    public let original: String
+    public let replacement: String?
+    public let reason: String
+    public let applied: Bool
+}
+
+/// Per-token timing + confidence, mirrored from `FluidAudio.TokenTiming`
+/// so the on-disk flywheel shape doesn't bind to the dependency type.
+public struct ASRTokenTiming: Codable, Sendable {
+    public let token: String
+    public let tokenId: Int
+    public let startTime: Double
+    public let endTime: Double
+    public let confidence: Float
+}
+
+/// ASR diagnostics for the flywheel contribution corpus. Populated only
+/// on the bundled in-process LocalASR path; nil on the external HTTP ASR
+/// path (which surfaces text only).
+public struct ASRDiagnostics: Codable, Sendable {
+    public let confidence: Float
+    public let durationSec: Double
+    public let processingSec: Double
+    public let tokenTimings: [ASRTokenTiming]
+    public let replacements: [VocabReplacement]
+}
+
 public struct ASRTranscript {
     public let text: String
     public let latency: TimeInterval
+    /// Rich ASR diagnostics for the flywheel. Populated only on the
+    /// bundled LocalASR path; nil on the external HTTP path.
+    public let diagnostics: ASRDiagnostics?
+
+    public init(text: String, latency: TimeInterval, diagnostics: ASRDiagnostics? = nil) {
+        self.text = text
+        self.latency = latency
+        self.diagnostics = diagnostics
+    }
 }
 
 /// One canonical vocabulary term plus its alias spellings, as sent
@@ -147,11 +190,15 @@ public final class ASRClient: Sendable {
     ) async throws -> ASRTranscript {
         if let local {
             let started = Date()
-            let text = try await local.transcribe(
+            let result = try await local.transcribe(
                 wav: data,
                 vocabulary: vocabulary
             )
-            return ASRTranscript(text: text, latency: -started.timeIntervalSinceNow)
+            return ASRTranscript(
+                text: result.text,
+                latency: -started.timeIntervalSinceNow,
+                diagnostics: result.diagnostics
+            )
         }
         return try await transcribeHTTP(wav: data, vocabulary: vocabulary)
     }

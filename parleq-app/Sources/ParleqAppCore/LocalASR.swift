@@ -257,7 +257,7 @@ public final class LocalASR {
     public func transcribe(
         wav data: Data,
         vocabulary: [VocabularyEntry]
-    ) async throws -> String {
+    ) async throws -> (text: String, diagnostics: ASRDiagnostics) {
         guard let wavStart = Self.findRIFFOffset(in: data) else {
             throw ASRError.malformedAudio
         }
@@ -281,46 +281,79 @@ public final class LocalASR {
 
         let asrResult = try await asr.transcribeFull(samples: samples)
         var finalText = asrResult.text
+        // Rescorer replacements (considered + applied), captured for the
+        // armed flywheel corpus only — see makeDiagnostics. Empty unless a
+        // vocab-bearing rescore ran and returned a result.
+        var vocabReplacements: [VocabReplacement] = []
 
-        guard !vocabulary.isEmpty,
-              let timings = asrResult.tokenTimings,
-              !timings.isEmpty else {
-            return finalText
-        }
-        do {
-            let rescored = try await vocab.rescore(
-                samples: samples,
-                transcript: asrResult.text,
-                tokenTimings: timings,
-                entries: vocabulary
-            )
-            if let rescored, rescored.wasModified {
-                finalText = rescored.text
-                let applied = rescored.replacements.filter { $0.shouldReplace }
-                // Compliance #17: count-only by default — the per-
-                // replacement detail contains user-utterance fragments
-                // (the original word that got replaced) and is gated
-                // behind PARLEQ_VOCAB_TRACE=1 for development. The
-                // retired sidecar exposed the same env var; mirror
-                // the contract so dev workflows continue to work.
-                let traceVocab = ProcessInfo.processInfo.environment["PARLEQ_VOCAB_TRACE"] == "1"
-                if traceVocab {
-                    for r in applied {
-                        let to = r.replacementWord ?? "<nil>"
-                        logStderr("[parleq] LocalASR vocab replaced '\(r.originalWord)' → '\(to)' [\(r.reason)]")
+        if !vocabulary.isEmpty,
+           let timings = asrResult.tokenTimings,
+           !timings.isEmpty {
+            do {
+                let rescored = try await vocab.rescore(
+                    samples: samples,
+                    transcript: asrResult.text,
+                    tokenTimings: timings,
+                    entries: vocabulary
+                )
+                if let rescored {
+                    if rescored.wasModified {
+                        finalText = rescored.text
+                        let applied = rescored.replacements.filter { $0.shouldReplace }
+                        // Compliance #17: count-only by default — the per-
+                        // replacement detail contains user-utterance fragments
+                        // (the original word that got replaced) and is gated
+                        // behind PARLEQ_VOCAB_TRACE=1 for development. The
+                        // retired sidecar exposed the same env var; mirror
+                        // the contract so dev workflows continue to work.
+                        let traceVocab = ProcessInfo.processInfo.environment["PARLEQ_VOCAB_TRACE"] == "1"
+                        if traceVocab {
+                            for r in applied {
+                                let to = r.replacementWord ?? "<nil>"
+                                logStderr("[parleq] LocalASR vocab replaced '\(r.originalWord)' → '\(to)' [\(r.reason)]")
+                            }
+                        } else {
+                            logStderr("[parleq] LocalASR vocab applied \(applied.count) replacement(s)")
+                        }
                     }
-                } else {
-                    logStderr("[parleq] LocalASR vocab applied \(applied.count) replacement(s)")
+                    // Capture ALL rescorer replacements (considered + applied)
+                    // for the flywheel corpus. This is NOT logged — the
+                    // count-only contract above is unchanged; the detail goes
+                    // solely into the armed-mode contribution record on disk.
+                    vocabReplacements = rescored.replacements.map {
+                        VocabReplacement(
+                            original: $0.originalWord,
+                            replacement: $0.replacementWord,
+                            reason: $0.reason,
+                            applied: $0.shouldReplace
+                        )
+                    }
                 }
+            } catch {
+                // Vocabulary boosting is best-effort. A CTC load failure
+                // or rescoring error must NOT lose the user's
+                // transcription — log and fall through with unrescored
+                // text.
+                logStderr("[parleq] LocalASR vocab rescore failed (returning unrescored text): \(error)")
             }
-        } catch {
-            // Vocabulary boosting is best-effort. A CTC load failure
-            // or rescoring error must NOT lose the user's
-            // transcription — log and fall through with unrescored
-            // text.
-            logStderr("[parleq] LocalASR vocab rescore failed (returning unrescored text): \(error)")
         }
-        return finalText
+
+        let diagnostics = ASRDiagnostics(
+            confidence: asrResult.confidence,
+            durationSec: asrResult.duration,
+            processingSec: asrResult.processingTime,
+            tokenTimings: (asrResult.tokenTimings ?? []).map {
+                ASRTokenTiming(
+                    token: $0.token,
+                    tokenId: $0.tokenId,
+                    startTime: $0.startTime,
+                    endTime: $0.endTime,
+                    confidence: $0.confidence
+                )
+            },
+            replacements: vocabReplacements
+        )
+        return (finalText, diagnostics)
     }
 
     /// In-flight model-load task. Nil when no load is running. Used
