@@ -618,6 +618,23 @@ public struct Config: Sendable {
     /// it off fleet-wide — chips hidden, per-app defaults not applied.
     public var transformPresetsEnabled: Bool
 
+    /// Exact acknowledgment phrase that arms the (hidden, undocumented)
+    /// flywheel contribution-capture mode. A bare `true` or any other
+    /// value does NOT arm it — the enabling gesture must be deliberate
+    /// and informed. Documented ONLY in docs/SECURITY_REVIEW.md, never
+    /// in user-facing surfaces. See ContributionRecorder.swift.
+    public static let contributionCaptureAck =
+        "i-understand-this-writes-my-audio-and-transcripts-to-disk"
+
+    /// Armed contribution mode (flywheel capture). Off unless the user
+    /// hand-edits config.json with the exact `contribution.capture`
+    /// acknowledgment phrase above. Never surfaced in Settings/wizard;
+    /// this is the opt-in carve-out to invariants #1/#2/#7 (durable
+    /// audio + transcripts on disk). Default false; the app never
+    /// transmits the captured corpus. Defaulted so it stays out of the
+    /// memberwise init and Settings serialization.
+    public var contributionCaptureArmed: Bool = false
+
     /// Advanced LLM-request tuning from the `llm.tuning` config section
     /// (#55): thinking budget, max output tokens, temperature, the TTFT
     /// watchdog deadlines, and the request timeout. Config-file only —
@@ -1661,6 +1678,16 @@ public struct Config: Sendable {
                 c.transformPresetsEnabled = v
             }
         }
+        // Hidden contribution-capture arming — its own top-level block,
+        // NOT under "features" (the features block is rewritten by
+        // Settings saves, which would drop an unknown key; mergeForSave
+        // preserves this block verbatim instead). Armed only when the
+        // capture value exactly equals the acknowledgment phrase — a
+        // bare `true`, an MDM push, or a copied template do nothing.
+        if let contribution = parsed["contribution"] as? [String: Any],
+           let capture = contribution["capture"] as? String {
+            c.contributionCaptureArmed = (capture == Config.contributionCaptureAck)
+        }
         // Transform presets — top-level "presets" array.
         if let raw = parsed["presets"] as? [Any] {
             c.transformPresets = raw.compactMap { item -> TransformPreset? in
@@ -2368,6 +2395,14 @@ public struct Config: Sendable {
         // (No else branch needed: dict comes fresh from
         // serializeToDictionary, which omits context_model when nil —
         // the key can't be present outside the pinned branch above.)
+
+        // Preserve the hidden contribution-capture block verbatim. It is
+        // intentionally NOT emitted by serializeToDictionary (so Settings
+        // never writes or re-exposes it); copy it through from disk so a
+        // Settings save can't silently drop a contributor's armed flag.
+        if let contribution = existingDict["contribution"] {
+            dict["contribution"] = contribution
+        }
         return dict
     }
 }
