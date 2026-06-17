@@ -209,12 +209,19 @@ public actor ContributionRecorder {
                 referenceWindowsAttached: record.referenceWindowsAttached,
                 transformApplied: record.transformApplied,
                 refined: record.refined,
-                // DERIVED: exclude LLM-transformed outputs (reference
-                // context, preset/app-default styling, or any refine
-                // command) from corrector training pairs. Lower ASR
-                // layers stay valid regardless. Recomputable from the
-                // recorded facts if this rule is later revised.
-                correctorPairEligible: !record.referenceWindowsAttached
+                // DERIVED, conservative: a clean `(asr_transcript → final)`
+                // corrector training pair. Requires an accepted final
+                // (discarded → no final), a SUCCESSFUL cleanup (on failure
+                // `cleaned` is null and `final` is the raw fallback — a
+                // degenerate identity pair that would teach copy-verbatim),
+                // and no LLM transformation (reference context, preset/
+                // app-default styling, or any refine command — those are
+                // LLM-driven, not ASR-corrected). False-tagged records are
+                // still fully captured; a consumer wanting e.g. hand-edited-
+                // after-failure pairs recomputes from cleanup_failed / final.
+                correctorPairEligible: record.finalText != nil
+                    && !record.cleanupFailed
+                    && !record.referenceWindowsAttached
                     && !record.transformApplied
                     && !record.refined,
                 refineTurns: record.refineTurns,

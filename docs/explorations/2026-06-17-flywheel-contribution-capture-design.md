@@ -112,7 +112,7 @@ Single responsibility: when **armed**, persist one record per dictation lifecycl
 | `reference_windows_attached` | `true` if clipboard/image/file reference context was fed to the LLM for this utterance. |
 | `transform_applied` | `true` if a preset or per-app-default styling transform was folded into the cleanup prompt. |
 | `refined` | `true` if ≥1 refine/command turn occurred (i.e. `refine_turns` is non-empty). |
-| `corrector_pair_eligible` | **Derived** convenience flag: `!reference_windows_attached && !transform_applied && !refined`. See "Corrector-pair eligibility" below. |
+| `corrector_pair_eligible` | **Derived**, conservative convenience flag: `final != null && !cleanup_failed && !reference_windows_attached && !transform_applied && !refined`. Excludes discarded records (no `final`) and failed-cleanup records (whose `final` is the raw fallback → a degenerate `asr_transcript == final` identity pair). See "Corrector-pair eligibility" below. |
 | `refine_turns` | All refine turns for this utterance (instruction + before/after), bundled into the single record. |
 | `spellout_terms` | Spell-out candidates detected by `SpellOutDetector` in the raw transcript. |
 | `corpus_bytes` | Cumulative on-disk size of `~/.parleq/flywheel/` at write time, for growth visibility. |
@@ -137,11 +137,13 @@ The central data-quality refinement. Two classes of dictation produce a `final` 
 
 In both cases the **lower layers remain valuable**: audio → ASR → CTC is clean data for ASR eval, re-runs, over-fire forensics, and the corrector's *input* distribution. So we **capture every record fully** and **tag provenance**, letting downstream consumers separate "valid correction pair" from "ASR-layer-only data."
 
-`corrector_pair_eligible` is **derived** from the recorded objective facts (`!reference_windows_attached && !transform_applied && !refined`), so the rule can be revised later by recomputing from the stored fields — no judgment is irreversibly baked in. Consequences:
+`corrector_pair_eligible` is **derived** from the recorded objective facts (`final != null && !cleanup_failed && !reference_windows_attached && !transform_applied && !refined`), so the rule can be revised later by recomputing from the stored fields — no judgment is irreversibly baked in. It is deliberately **conservative**: false negatives (a usable pair not auto-tagged) are safer than false positives (a degenerate pair polluting training). Consequences:
 
-- A **plain dictation with a manual overlay edit** (no reference, no transform, no refine) stays `eligible`; the `cleaned`-vs-`final` delta is the gold human-correction signal.
+- A **plain dictation with a manual overlay edit** (no reference, no transform, no refine, cleanup succeeded) stays `eligible`; the `cleaned`-vs-`final` delta is the gold human-correction signal.
 - A **reference-window** dictation → `eligible: false`, lower layers retained.
 - A **refine/command** dictation → `eligible: false`, lower layers retained.
+- A **discarded** dictation (`final: null`) → `eligible: false`; audio + ASR retained for re-runs/eval.
+- A **failed-cleanup** dictation → `eligible: false` (its `final` is the raw fallback, so `(asr_transcript → final)` would be a degenerate identity pair). A consumer wanting the rarer *hand-edited-after-failure* pairs recomputes them from `cleanup_failed == true && final != asr_transcript`.
 
 ## Arming — hidden, acknowledgment-gated
 
