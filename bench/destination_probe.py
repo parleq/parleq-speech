@@ -60,15 +60,17 @@ TESTS = [
 ]
 
 
-def clean(token, base, dest_desc, raw, model="gemini-2.5-flash"):
+def clean(token, base, dest_desc, raw, project, region, model="gemini-2.5-flash"):
     sp = base + f"\n\nThe cleaned text will be pasted into: {dest_desc} Format it appropriately for that destination."
-    return lp.call_vertex(token, "keavi-beta", "us-central1", model, sp, raw)
+    return lp.call_vertex(token, project, region, model, sp, raw)
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default="/tmp/dest.jsonl")
     ap.add_argument("--model", default="gemini-2.5-flash")
+    ap.add_argument("--project", default="keavi-beta")   # GCP project (Vertex); override as needed
+    ap.add_argument("--region", default="us-central1")
     args = ap.parse_args()
 
     global lp
@@ -83,7 +85,7 @@ def main():
     for i, t in enumerate(TESTS, 1):
         outs = {}
         for dest, desc in DESTINATIONS.items():
-            outs[dest] = clean(token, base, desc, t["text"], args.model)
+            outs[dest] = clean(token, base, desc, t["text"], args.project, args.region, args.model)
         out.write(json.dumps({"text": t["text"], "outputs": outs}) + "\n"); out.flush()
         uniq = len(set(outs.values()))
         diverged += (uniq > 1)
