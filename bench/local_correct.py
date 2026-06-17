@@ -141,10 +141,12 @@ def main():
         return sum(1 for i, t in zip(ids, seq) if i[0] == "c" and (e := expected(i)) and has(t, e))
     def of(seq):
         return sum(1 for i, t in zip(ids, seq) if i[0] == "o" and any(has(t, tm) for tm in term_names))
+    nc = len(c_ids) or 1   # guard div-by-zero on a corpus with no c* clips
+    rr, rl, rc = rec(raw), rec(local), rec(llmc)
     print(f"\nTerm recovery (c* clips, n={len(c_ids)}):")
-    print(f"  raw {rec(raw)}/{len(c_ids)} ({rec(raw)/len(c_ids):.0%})  |  "
-          f"LOCAL {rec(local)}/{len(c_ids)} ({rec(local)/len(c_ids):.0%})  |  "
-          f"LLM {rec(llmc)}/{len(c_ids)} ({rec(llmc)/len(c_ids):.0%})")
+    print(f"  raw {rr}/{len(c_ids)} ({rr/nc:.0%})  |  "
+          f"LOCAL {rl}/{len(c_ids)} ({rl/nc:.0%})  |  "
+          f"LLM {rc}/{len(c_ids)} ({rc/nc:.0%})")
     print(f"\nOver-fire (o* clips, n={len(o_ids)}):")
     print(f"  raw {of(raw)}  |  LOCAL {of(local)}  |  LLM {of(llmc)}")
 

@@ -128,8 +128,8 @@ def main():
                     results.append({"near": near_gate, "floor": floor, "ctx": ctx_thresh,
                                     "ctx_all": ctx_all, "rec": rec, "of": of, "wer": w})
 
-    nc = len(c_ids)
-    print(f"=== rule-stack frontier ({len(ids)} clips; {nc} c* / {len(o_ids)} o*; {len(results)} configs) ===")
+    nc = len(c_ids) or 1   # guard div-by-zero on a corpus with no c* clips
+    print(f"=== rule-stack frontier ({len(ids)} clips; {len(c_ids)} c* / {len(o_ids)} o*; {len(results)} configs) ===")
     print(f"  baselines — raw: rec 39%/of 0/WER 6.3% | LLM: rec 89%/of 0/WER 2.1%\n")
 
     # Pareto front: maximize rec, minimize of (then wer)

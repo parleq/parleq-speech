@@ -86,7 +86,7 @@ def main():
     print(f"  cloud cleanup LLM           {w_llm:.1%}   <- what Parleq already ships")
     print(f"  local deterministic only    {w_loc:.1%}   (compound/acronym join, NO model)")
     print(f"  raw ASR                     {w_raw:.1%}   (baseline)")
-    print(f"\n  errors the shipped LLM already removes: {(w_raw-w_llm)/w_raw:.0%} of raw WER")
+    print(f"\n  errors the shipped LLM already removes: {((w_raw-w_llm)/w_raw if w_raw else 0):.0%} of raw WER")
     print(f"  residual after the LLM (the hard part a small model would have to beat): {w_llm:.1%}")
 
     # term recovery (c* clips) + over-fire (o* clips)
@@ -107,12 +107,13 @@ def main():
     rec_llm = sum(1 for i in c_ids if (e := expected(i)) and e.lower() in llm[i].lower())
     of_llm = sum(1 for i in o_ids if has_term(llm[i]))
     of_raw = sum(1 for i in o_ids if has_term(res[i]["hyp"]))
+    nc = len(c_ids) or 1; no = len(o_ids) or 1   # guard div-by-zero on degenerate subsets
     print(f"\nTerm recovery (term-intended c* clips, n={len(c_ids)}):")
-    print(f"  raw ASR had the term:   {rec_raw}/{len(c_ids)} ({rec_raw/len(c_ids):.0%})")
-    print(f"  after LLM cleanup:      {rec_llm}/{len(c_ids)} ({rec_llm/len(c_ids):.0%})")
+    print(f"  raw ASR had the term:   {rec_raw}/{len(c_ids)} ({rec_raw/nc:.0%})")
+    print(f"  after LLM cleanup:      {rec_llm}/{len(c_ids)} ({rec_llm/nc:.0%})")
     print(f"\nOver-fire (common-intended o* clips where a term wrongly appears, n={len(o_ids)}):")
-    print(f"  raw ASR:   {of_raw}/{len(o_ids)} ({of_raw/len(o_ids):.0%})")
-    print(f"  after LLM: {of_llm}/{len(o_ids)} ({of_llm/len(o_ids):.0%})   <- the faithfulness cost a specialized model could avoid")
+    print(f"  raw ASR:   {of_raw}/{len(o_ids)} ({of_raw/no:.0%})")
+    print(f"  after LLM: {of_llm}/{len(o_ids)} ({of_llm/no:.0%})   <- the faithfulness cost a specialized model could avoid")
 
 
 if __name__ == "__main__":

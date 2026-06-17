@@ -163,7 +163,7 @@ def main():
     handler_fixable = sum(confident_cats[k] for k in
                           ["class-1 compound", "class-3 confident-near-term"])
     print(f"  -> handler-fixable (class-1+3): {handler_fixable}/{cc} "
-          f"({handler_fixable/cc:.0%}) of confident errors")
+          f"({(handler_fixable/cc if cc else 0):.0%}) of confident errors")
 
     # normalized trust (noise dropped)
     n = len(real_words); ne = sum(1 for _, e in real_words if e)

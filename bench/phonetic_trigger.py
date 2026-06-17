@@ -96,7 +96,7 @@ def main():
     ap.add_argument("--dictionary", required=True)
     ap.add_argument("--general", required=True, help="no-term corpus for spurious-fire (utterances json)")
     ap.add_argument("--gra-gate", type=float, default=0.60)
-    ap.add_argument("--pho-gate", type=float, default=0.84)
+    ap.add_argument("--pho-gate", type=float, default=0.90)  # Ph11 validated operating point (0 spurious-fire)
     args = ap.parse_args()
 
     terms = load_terms(args.dictionary)

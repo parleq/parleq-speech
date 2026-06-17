@@ -102,7 +102,7 @@ def main():
     print(f"\n=== SUMMARY ({len(TESTS)} utterances) ===")
     print(f"  DIVERGENCE: {diverged}/{len(TESTS)} utterances produced destination-varying output")
     print(f"  APPROPRIATENESS: {appr_hit}/{appr_tot} expected destination markers present "
-          f"({appr_hit/appr_tot:.0%})")
+          f"({(appr_hit/appr_tot if appr_tot else 0):.0%})")
 
 
 if __name__ == "__main__":
