@@ -4,6 +4,14 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.26.0] - Unreleased
+
+Advanced, opt-in research/contributor tooling. No change to default behavior — every existing user is unaffected unless they deliberately turn it on.
+
+### Added
+
+- **Opt-in dictation contribution capture (off by default).** A local-only mode for contributors who want to help improve Parleq's on-device transcription correction. When explicitly armed via a manual edit to `~/.parleq/config.json`, it records your own dictations — audio plus transcripts and recognition diagnostics — to `~/.parleq/flywheel/`. It is **off by default**, is not exposed in Settings or the setup wizard, requires a deliberate, self-documenting acknowledgment to enable, and **never sends anything off your device** — the data stays local, and contributing it is a separate manual step you take yourself. Fully disclosed in `docs/SECURITY_REVIEW.md` §5.3.
+
 ## [0.25.2] - 2026-06-15
 
 A follow-up hotfix: 0.25.1 reverted the speech engine to the wrong version and didn't fully fix the dictionary regression.

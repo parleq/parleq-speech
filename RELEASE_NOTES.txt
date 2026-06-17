@@ -1,18 +1,20 @@
-Parleq 0.25.2
+Parleq 0.26.0
 
-A follow-up hotfix: 0.25.1 reverted the speech engine to the wrong version
-and didn't fully fix the dictionary regression.
+Advanced, opt-in research/contributor tooling. No change to default behavior —
+every existing user is unaffected unless they deliberately turn it on.
 
-### Fixed
+(Release pending: 0.26.0 is staged on main but not yet shipped — these notes
+will grow as more user-facing features and fixes land before the release.)
 
-- **Custom dictionary over-insertion is now actually fixed.** 0.25.1 reverted
-  the on-device speech engine to FluidAudio 0.14.8, believing the
-  over-aggressive dictionary biasing was introduced in 0.15.x. It wasn't — the
-  regression was introduced in FluidAudio 0.14.8 itself (an upstream rework of
-  the vocabulary-rescoring pipeline, tuned only against long, distinctive
-  terms), so reverting to 0.14.8 still over-fired (ordinary words replaced by
-  your dictionary terms, even with cleanup turned off). Pinned the engine to
-  exactly 0.14.5, the version 0.24.1 shipped, so transcription and dictionary
-  biasing behave as they did then. The 0.25.1 pin also used a version range
-  that silently resolved to the newest 0.14.x; the engine is now pinned to an
-  exact version.
+### Added
+
+- **Opt-in dictation contribution capture (off by default).** A local-only
+  mode for contributors who want to help improve Parleq's on-device
+  transcription correction. When explicitly armed via a manual edit to
+  ~/.parleq/config.json, it records your own dictations — audio plus
+  transcripts and recognition diagnostics — to ~/.parleq/flywheel/. It is off
+  by default, is not exposed in Settings or the setup wizard, requires a
+  deliberate, self-documenting acknowledgment to enable, and never sends
+  anything off your device — the data stays local, and contributing it is a
+  separate manual step you take yourself. Fully disclosed in
+  docs/SECURITY_REVIEW.md section 5.3.
