@@ -113,6 +113,11 @@ public final class ConcordCleanupProvider: LLMProvider, @unchecked Sendable {
         // never runs cleanup on them — a refine turn returns the prior text
         // UNCHANGED (a safe no-op). Refinement requires a cloud/LLM provider.
         if call.isRefine {
+            // Drain the OTHER side-channels too (they were set for this utterance),
+            // so a skipped refine never leaks stale diagnostics/dictionary into a
+            // later cleanup — preserving the fresh-stateless-per-utterance invariant.
+            _ = takeDiagnostics()
+            _ = pendingDictionaryTerms()
             let passthrough = call.priorText
                 ?? Self.unwrapTranscript(messages.last?.legacyContentString ?? "")
             FileHandle.standardError.write(

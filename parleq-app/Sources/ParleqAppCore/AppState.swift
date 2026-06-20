@@ -3083,19 +3083,10 @@ public final class AppState {
                 // `asrResultRaw.diagnostics` is nil on the HTTP ASR path —
                 // Concord falls back to safe all-1.0 confidence (its
                 // dictionary stage then becomes a no-op).
-                if let concord = resolvedLLM as? ConcordCleanupProvider {
-                    concord.setUtteranceContext(diagnostics: asrResultRaw.diagnostics)
-                    concord.setUtteranceDictionary(dictionary)
-                    // Cleanup-only tier: hand it the BARE transcript + whether this
-                    // is a refine turn. Concord can't follow instructions, so refine
-                    // turns return the prior text unchanged (refinement needs a cloud
-                    // provider). A preset cleanup is NOT a refine — Concord still
-                    // cleans the bare transcript, it just ignores the preset style.
-                    concord.setUtteranceCall(
-                        transcript: asrResult.text,
-                        isRefine: asRefine,
-                        priorText: priorText)
-                }
+                // Concord's per-utterance side-channels (diagnostics, dictionary,
+                // bare transcript + isRefine) are set CENTRALLY inside
+                // streamCleanupOrRefine so every call site is covered uniformly;
+                // this site just forwards the ASR diagnostics it captured.
                 let outcome = await streamCleanupOrRefine(
                     llm: resolvedLLM,
                     overlay: overlay,
@@ -3108,6 +3099,7 @@ public final class AppState {
                     references: effectiveRefs,
                     pasteDestinationLabel: pasteDestLabel,
                     transform: asRefine ? nil : defaultPreset?.prompt,
+                    asrDiagnostics: asrResultRaw.diagnostics,
                     shouldRenderToOverlay: { [weak self] in
                         self?.shouldStreamRenderToOverlay() ?? false
                     }
@@ -4541,6 +4533,10 @@ private func streamCleanupOrRefine(
     references: [Reference] = [],
     pasteDestinationLabel: String? = nil,
     transform: String? = nil,
+    // ASR per-token confidence diagnostics (bundled path only; nil on the HTTP ASR
+    // path and on re-clean call sites). Forwarded to the on-device Concord
+    // provider's dictionary stage; ignored by every other provider.
+    asrDiagnostics: ASRDiagnostics? = nil,
     // Gate for the per-chunk overlay writes. Evaluated on the MainActor
     // before each streamed chunk renders. When it returns false the
     // chunk text still accumulates into `assembled` (so the final
@@ -4713,6 +4709,18 @@ private func streamCleanupOrRefine(
                     targetApp: targetBundleID
                 ))
             }
+        }
+
+        // Cleanup-only on-device tier: set Concord's per-utterance side-channels
+        // here so EVERY call site (main capture, preset re-run, model-switch /
+        // reauth re-clean) is covered uniformly. Concord reads the bare transcript
+        // + isRefine; on a refine turn it returns priorText unchanged and never runs
+        // cleanup on the instruction scaffolding. Set once before the attempt loop —
+        // Concord is instant and never retries, so the consume-and-clear is safe.
+        if let concord = llm as? ConcordCleanupProvider {
+            concord.setUtteranceContext(diagnostics: asrDiagnostics)
+            concord.setUtteranceDictionary(customDictionary)
+            concord.setUtteranceCall(transcript: rawTranscript, isRefine: asRefine, priorText: priorText)
         }
 
         for (attemptIndex, deadline) in ttftDeadlines.enumerated() {
