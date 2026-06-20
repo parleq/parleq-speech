@@ -2395,12 +2395,12 @@ struct SettingsView: View {
     /// badge string for a provider that's active in at least one tier.
     /// Returns nil for inactive providers.
     private func activeBadge(for provider: String) -> String? {
-        let isCleanup = model.cleanupProvider == provider
-        let isContext = model.contextProvider == provider
-        if isCleanup && isContext { return "Used for Cleanup + Context" }
-        if isCleanup              { return "Used for Cleanup" }
-        if isContext              { return "Used for Context" }
-        return nil
+        var roles: [String] = []
+        if model.cleanupProvider == provider { roles.append("Cleanup") }
+        if model.contextProvider == provider { roles.append("Context") }
+        if model.refineProvider == provider { roles.append("Refinement") }
+        guard !roles.isEmpty else { return nil }
+        return "Used for " + roles.joined(separator: " + ")
     }
 
     /// The set of provider IDs currently selected for at least one

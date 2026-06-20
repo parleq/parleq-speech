@@ -2384,15 +2384,19 @@ public struct Config: Sendable {
             let provider = rfnProviderPinned && !existingProvider.isEmpty
                 ? existingProvider
                 : (config.refineModel?.provider ?? "")
-            // Model preservation mirrors the cleanup/context tiers (cases a/b/c) so a
-            // partial pin never writes a mismatched provider/model pair:
-            // (a) model pinned → preserve; (b) provider pinned + model unmanaged + on-disk
-            // model FOREIGN to the (preserved) provider → preserve it (pre-MDM fallback);
-            // (c) canonical-within-pinned / allowlist → write the in-memory choice.
-            let rfnOnDiskModelForeign = !existingModel.isEmpty
-                && !ModelCatalog.isCanonical(provider: provider, model: existingModel)
+            // Model preservation — keep the provider/model pair COHERENT so a partial pin
+            // never writes a mismatched pair:
+            // (a) model pinned → always preserve the on-disk model.
+            // (b) the preserved provider DIFFERS from the effective pinned provider → the
+            //     in-memory model belongs to the effective (pinned) provider, NOT the
+            //     preserved one, so preserve the on-disk model atomically (restoring the
+            //     user's real pre-MDM pair when the profile is removed).
+            // (c) preserved provider == effective provider (or allowlist) → the in-memory
+            //     model is valid for that provider → write the in-memory choice.
+            let rfnEffectiveProvider = config.refineModel?.provider ?? ""
+            let rfnProviderDiffers = !provider.isEmpty && provider != rfnEffectiveProvider
             let preserveModel = rfnModelPinned
-                || (rfnProviderPinned && !rfnModelAllowlist && rfnOnDiskModelForeign)
+                || (rfnProviderPinned && !rfnModelAllowlist && rfnProviderDiffers)
             let model = preserveModel && !existingModel.isEmpty
                 ? existingModel
                 : (config.refineModel?.model ?? "")
