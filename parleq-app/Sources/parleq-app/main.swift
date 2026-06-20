@@ -716,6 +716,27 @@ struct ParleqApp {
             return makeProvider(ctxId, "context-model enabled")
         }()
 
+        // Refine-model tier. Build a third provider only when
+        // config.refineModel is set AND differs from the cleanup model
+        // (same pattern as contextLLM). Routes hotkey voice-refine,
+        // quick chips, and styled per-app-preset cleanup to a cloud
+        // provider when the cleanup tier is the on-device Concord model,
+        // which can't perform those operations. nil → AppState's routing
+        // falls the refine tier back to contextLLM, then llm.
+        let refineLLM: (any LLMProvider)? = {
+            guard config.llmProvider != "none" else { return nil }
+            guard let rfnId = config.refineModel, rfnId != cleanupId else {
+                return nil   // nil → AppState falls refine turns back to context/cleanup
+            }
+            // Reuse the already-built context provider when the refine
+            // tier points at the SAME identifier — avoids spinning up a
+            // second client (and second Keychain read) for one provider.
+            if let ctxId = config.contextModel, rfnId == ctxId {
+                return contextLLM
+            }
+            return makeProvider(rfnId, "refine-model enabled")
+        }()
+
         let overlay = OverlayWindow()
         let stateBox = StateBox()
         // AppState lives on @MainActor; we have to instantiate it
@@ -728,6 +749,7 @@ struct ParleqApp {
                 asr: asr,
                 llm: llm,
                 contextLLM: contextLLM,
+                refineLLM: refineLLM,
                 overlay: overlay,
                 autoAcceptSeconds: config.autoAcceptSeconds,
                 trailingSpaceEnabled: config.trailingSpace,

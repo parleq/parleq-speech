@@ -172,6 +172,13 @@ final class SettingsModel: ObservableObject {
     /// or a specific configured model. Mirrors Config.contextModel.
     @Published var contextModel: ModelIdentifier?
 
+    /// Refine model for refine-shaped operations (voice-refine, quick
+    /// chips, styled per-app-preset cleanup). When nil, falls back to
+    /// the context model, then cleanup. Lets the user keep plain cleanup
+    /// on the on-device Concord tier while routing refine/style ops to a
+    /// cloud provider. Mirrors Config.refineModel.
+    @Published var refineModel: ModelIdentifier?
+
     // MARK: - Feature toggle mirrors (Phase 5)
 
     /// Mirror of Config.referenceWindowsEnabled.
@@ -295,6 +302,12 @@ final class SettingsModel: ObservableObject {
     /// Context tier model name. Defaults to the cleanup model when
     /// `config.contextModel` is nil.
     @Published var contextModelName: String
+    /// Refine tier provider. Defaults to the cleanup provider when
+    /// `config.refineModel` is nil.
+    @Published var refineProvider: String
+    /// Refine tier model name. Defaults to the cleanup model when
+    /// `config.refineModel` is nil.
+    @Published var refineModelName: String
 
     // MARK: - On-device (local) cleanup tier
 
@@ -373,6 +386,7 @@ final class SettingsModel: ObservableObject {
     private let initialAzureApiVersion: String
     private let initialAzureAuthMode: String
     private let initialContextModel: ModelIdentifier?
+    private let initialRefineModel: ModelIdentifier?
     private let initialLocalResidency: LocalResidency
     private let initialOidcIssuer: String
     private let initialOidcClientID: String
@@ -431,11 +445,14 @@ final class SettingsModel: ObservableObject {
         self.presetAppDefaults = config.presetAppDefaults
         self.geminiKeyIsSet = KeychainStore.hasGeminiAPIKey
         self.contextModel = config.contextModel
+        self.refineModel = config.refineModel
         // Tier fields — derived from the flat config fields.
         self.cleanupProvider = config.llmProvider
         self.cleanupModelName = config.llmModel
         self.contextProvider = config.contextModel?.provider ?? config.llmProvider
         self.contextModelName = config.contextModel?.model ?? config.llmModel
+        self.refineProvider = config.refineModel?.provider ?? config.llmProvider
+        self.refineModelName = config.refineModel?.model ?? config.llmModel
         self.localResidency = config.localResidency
         self.localAllowUnsupportedRAM = config.localAllowUnsupportedRAM
         // Feature toggles (Phase 5).
@@ -481,6 +498,7 @@ final class SettingsModel: ObservableObject {
         self.initialAzureApiVersion = config.azureApiVersion
         self.initialAzureAuthMode = config.azureAuthMode
         self.initialContextModel = config.contextModel
+        self.initialRefineModel = config.refineModel
         self.initialLocalResidency = config.localResidency
         refreshUsage()
     }
@@ -557,11 +575,14 @@ final class SettingsModel: ObservableObject {
         self.presetAppDefaults = config.presetAppDefaults
         self.geminiKeyIsSet = KeychainStore.hasGeminiAPIKey
         self.contextModel = config.contextModel
+        self.refineModel = config.refineModel
         // Re-derive tier fields from the reloaded config.
         self.cleanupProvider = config.llmProvider
         self.cleanupModelName = config.llmModel
         self.contextProvider = config.contextModel?.provider ?? config.llmProvider
         self.contextModelName = config.contextModel?.model ?? config.llmModel
+        self.refineProvider = config.refineModel?.provider ?? config.llmProvider
+        self.refineModelName = config.refineModel?.model ?? config.llmModel
         self.localResidency = config.localResidency
         self.localAllowUnsupportedRAM = config.localAllowUnsupportedRAM
         // Feature toggles (Phase 5).
@@ -614,6 +635,7 @@ final class SettingsModel: ObservableObject {
             || asrEndpoint != initialAsrEndpoint
             || llmProvider != initialLlmProvider
             || contextModel != initialContextModel
+            || refineModel != initialRefineModel
             || awsRegion != initialAwsRegion
             || awsProfile != initialAwsProfile
             || awsAuthMode != initialAwsAuthMode
@@ -734,6 +756,13 @@ final class SettingsModel: ObservableObject {
         let resolvedContextModel: ModelIdentifier? = (contextId == cleanupId) ? nil : contextId
         c.contextModel = resolvedContextModel
         contextModel = resolvedContextModel
+        // Refine tier: nil when refine == cleanup (= "same as cleanup",
+        // resolver falls back to context then cleanup). Same shape as the
+        // context tier above.
+        let refineId = ModelIdentifier(provider: refineProvider, model: refineModelName.trimmingCharacters(in: .whitespaces))
+        let resolvedRefineModel: ModelIdentifier? = (refineId == cleanupId) ? nil : refineId
+        c.refineModel = resolvedRefineModel
+        refineModel = resolvedRefineModel
         // On-device cleanup tier residency policy.
         c.localResidency = localResidency
         // Feature toggles (Phase 5). Managed keys are already excluded
@@ -1842,6 +1871,61 @@ struct SettingsView: View {
                                 pinnedKey: "contextModel",
                                 allowlistKey: "contextAllowedModels",
                                 allowedModels: contextAllowedModels
+                            )
+                        }
+                    }
+                }
+
+                Divider()
+
+                // REFINE TIER
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 4) {
+                        Text("Refinement")
+                            .font(.system(size: 13, weight: .semibold))
+                        Text("(Advanced)")
+                            .font(.system(size: 11, weight: .regular))
+                            .foregroundStyle(.secondary)
+                    }
+                    Text("Used for voice-refine, quick chips, and styled (per-app preset) cleanup. Set a cloud provider here to keep first-pass cleanup on the on-device tier while these operations run in the cloud.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                    HStack(alignment: .top, spacing: 12) {
+                        tierProviderPicker(
+                            selection: Binding(
+                                get: { model.refineProvider },
+                                set: { newVal in
+                                    guard newVal != model.refineProvider else { return }
+                                    model.refineProvider = newVal
+                                    let available = modelsAvailable(forProvider: newVal)
+                                    if !available.contains(model.refineModelName) {
+                                        model.refineModelName = available.first ?? ""
+                                    }
+                                    model.save()
+                                }
+                            ),
+                            label: "Provider",
+                            pinnedKey: "refineProvider",
+                            // Concord is a cleanup-only corrector — it can't
+                            // perform refine/style ops (it no-ops them), so it
+                            // must not appear as a refine-tier choice.
+                            excludeProviders: ["concord"]
+                        )
+                        // "local" and "none" have no cloud model to pick —
+                        // same guard as the cleanup/context tiers above.
+                        if model.refineProvider != "local" && model.refineProvider != "none" {
+                            tierModelPicker(
+                                forProvider: model.refineProvider,
+                                selection: Binding(
+                                    get: { model.refineModelName },
+                                    set: { newVal in
+                                        guard newVal != model.refineModelName else { return }
+                                        model.refineModelName = newVal
+                                        model.save()
+                                    }
+                                ),
+                                label: "Model",
+                                pinnedKey: "refineModel"
                             )
                         }
                     }

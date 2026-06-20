@@ -49,6 +49,14 @@ public final class AppState {
     /// the higher-capability model services reference-aware calls
     /// without changing the default cleanup provider.
     private let contextLLM: (any LLMProvider)?
+    /// Optional third provider for the refine-model tier. When
+    /// Config.refineModel is configured, llmForInvocation() returns this
+    /// for REFINE-shaped turns (hotkey voice-refine, quick chips, styled
+    /// per-app-preset cleanup) instead of llm — so those operations reach
+    /// a cloud provider even when the cleanup tier is the on-device
+    /// Concord model (which can't perform them). nil → routing falls the
+    /// refine tier back to contextLLM, then llm.
+    private let refineLLM: (any LLMProvider)?
     /// Enterprise OIDC federation handles. All optional and nil for
     /// non-enterprise users. The session is retained for the Company
     /// Account UI (Task 8); the two exchange caches are pre-warmed at
@@ -596,6 +604,7 @@ public final class AppState {
         asr: ASRClient,
         llm: (any LLMProvider)?,
         contextLLM: (any LLMProvider)? = nil,
+        refineLLM: (any LLMProvider)? = nil,
         overlay: OverlayWindow,
         autoAcceptSeconds: TimeInterval = 0,  // 0 = never auto-accept
         trailingSpaceEnabled: Bool = true,
@@ -609,6 +618,7 @@ public final class AppState {
         self.asr = asr
         self.llm = llm
         self.contextLLM = contextLLM
+        self.refineLLM = refineLLM
         self.oidcSession = oidcSession
         self.oidcAWSExchange = oidcAWSExchange
         self.oidcGCPExchange = oidcGCPExchange
@@ -3034,11 +3044,26 @@ public final class AppState {
                     pending.spelloutTerms = SpellOutDetector.candidates(in: asrResult.text)
                     self?.pendingContribution = pending
                 }
+                // Per-app default preset: resolved on fresh cleanup turns
+                // only. Refine turns never fold a transform (the text being
+                // refined is already styled). Hoisted ABOVE the provider
+                // resolution because a per-app default preset is a STYLE
+                // the on-device Concord tier can't apply — so a fresh
+                // cleanup that folds one must route to the refine (cloud)
+                // tier, same as an explicit refine. (Re-used below for the
+                // actual cleanup call's `transform` argument.)
+                let defaultPreset: TransformPreset? = asRefine
+                    ? nil
+                    : loadedConfig.presetForApp(targetBundleID)
                 // Resolve which provider to use for this dictation:
-                // override > context > cleanup, honoring the
+                // override > references > refine > cleanup, honoring the
                 // pickedModelOverride the user may have set via the
-                // in-overlay ModelPicker (Task 9).
-                let resolvedLLM = self?.llmForInvocation()
+                // in-overlay ModelPicker (Task 9). isRefine is true for an
+                // explicit refine OR a styled (per-app preset) cleanup —
+                // both are operations the on-device tier can't perform.
+                let resolvedLLM = self?.llmForInvocation(
+                    isRefine: asRefine || (defaultPreset != nil)
+                )
                 // When imageReferenceEnabled is false, downgrade any
                 // image-mode references to text mode for prompt-building.
                 // The reference chips in the overlay still show the
@@ -3059,13 +3084,9 @@ public final class AppState {
                         self?.log("imageReferenceEnabled=false: image refs degraded to text for prompt-building")
                     }
                 }
-                // Per-app default preset: resolved on fresh cleanup turns
-                // only. Refine turns never fold a transform (the text being
-                // refined is already styled), and a successful refine CLEARS
-                // the styled provenance below — so nil here.
-                let defaultPreset: TransformPreset? = asRefine
-                    ? nil
-                    : loadedConfig.presetForApp(targetBundleID)
+                // (defaultPreset hoisted above the provider resolution so
+                // a styled cleanup routes to the refine tier. A successful
+                // refine CLEARS the styled provenance below.)
                 // Hoisted so the styled-provenance snapshot below records
                 // the SAME label this call was made with.
                 let pasteDestLabel: String? = self?.overlay.model.pasteTarget.map { dest in
@@ -3745,10 +3766,21 @@ public final class AppState {
     /// cleanup model after the user removed the references). nil (the
     /// default) reads the live overlay state, the right answer for
     /// every other caller.
-    private func llmForInvocation(hasReferences: Bool? = nil) -> (any LLMProvider)? {
+    /// `isRefine` — pass true for REFINE-shaped turns (hotkey voice-
+    /// refine, quick chips, styled per-app-preset cleanup). It selects
+    /// the refine tier (`refineLLM`) per Config.modelForInvocation's
+    /// resolution chain (refine → context → cleanup), which lets those
+    /// operations reach a cloud provider when cleanup is the on-device
+    /// Concord tier. References still win over refine (a reference-aware
+    /// turn routes to the context tier even when isRefine is true).
+    private func llmForInvocation(
+        hasReferences: Bool? = nil,
+        isRefine: Bool = false
+    ) -> (any LLMProvider)? {
         let config = Config.load().config
         let resolved = config.modelForInvocation(
             hasReferences: hasReferences ?? !overlay.model.references.isEmpty,
+            isRefine: isRefine,
             override: overlay.model.pickedModelOverride
         )
         let cleanupId = ModelIdentifier(provider: config.llmProvider, model: config.llmModel)
@@ -3758,6 +3790,13 @@ public final class AppState {
             return llm
         }
 
+        // Refine tier — use refineLLM when configured and resolved to it.
+        // Degrade to context then cleanup if refineLLM isn't wired (e.g.
+        // refine model set in config but provider init failed).
+        if let refineModel = config.refineModel, resolved == refineModel {
+            return refineLLM ?? contextLLM ?? llm
+        }
+
         // Context tier — use contextLLM when configured.
         if let contextModel = config.contextModel, resolved == contextModel {
             // Degrade gracefully when contextLLM isn't wired (e.g.
@@ -3765,13 +3804,14 @@ public final class AppState {
             return contextLLM ?? llm
         }
 
-        // Resolved is neither cleanup nor context — the in-overlay
-        // picker produced an identifier no pre-built provider services.
-        // This is a latent path today (picker scope is cleanup+context
-        // only) but we log and fall back rather than silently returning
-        // `llm` whose baked-in model is not the intended override.
-        log("llmForInvocation: resolved model \(resolved.provider)/\(resolved.model) has no matching pre-built provider; falling back to context/cleanup")
-        return contextLLM ?? llm
+        // Resolved is neither cleanup, refine, nor context — the
+        // in-overlay picker produced an identifier no pre-built provider
+        // services. This is a latent path today (picker scope is
+        // cleanup+context+refine) but we log and fall back rather than
+        // silently returning `llm` whose baked-in model is not the
+        // intended override.
+        log("llmForInvocation: resolved model \(resolved.provider)/\(resolved.model) has no matching pre-built provider; falling back to refine/context/cleanup")
+        return refineLLM ?? contextLLM ?? llm
     }
 
     /// Resolve the *currently intended* paste target by looking at the
@@ -3926,7 +3966,9 @@ public final class AppState {
         let dictionary = recleanConfig.customDictionaryEnabled
             ? recleanConfig.customDictionary
             : []
-        let resolvedLLM = llmForInvocation()
+        // isRefine mirrors the re-run shape: a refine re-run is a refine
+        // (routes to the refine tier); a cleanup re-run stays on cleanup.
+        let resolvedLLM = llmForInvocation(isRefine: asRefineRerun)
         // Apply the same image-reference degradation as the primary
         // capture path: when imageReferenceEnabled is false, downgrade
         // any image-mode references to text for prompt-building.
@@ -4039,8 +4081,11 @@ public final class AppState {
         let dictionary = config.customDictionaryEnabled ? config.customDictionary : []
         // hasReferences: false — a preset tap is a plain-text refine of
         // the SHOWN text (no reference parts are sent below), so resolve
-        // the cleanup tier even if references are still attached.
-        let resolvedLLM = llmForInvocation(hasReferences: false)
+        // the refine tier even if references are still attached.
+        // isRefine: true — a quick chip IS a refine, so it routes to the
+        // refine (cloud) tier when configured (and never to Concord,
+        // which would no-op it).
+        let resolvedLLM = llmForInvocation(hasReferences: false, isRefine: true)
         let targetBundleID = pasteTarget?.bundleID
         // Cancel any lingering auto-accept timer so it doesn't fire
         // mid-re-cleanup.
@@ -4207,7 +4252,8 @@ public final class AppState {
         let dictionary = recleanConfig.customDictionaryEnabled
             ? recleanConfig.customDictionary
             : []
-        let resolvedLLM = llmForInvocation()
+        // isRefine mirrors the re-run shape (refine re-run → refine tier).
+        let resolvedLLM = llmForInvocation(isRefine: asRefineRerun)
         let rawRefs = overlay.model.references
         let effectiveRefs: [Reference]
         if recleanConfig.imageReferenceEnabled {
