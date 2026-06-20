@@ -75,7 +75,11 @@ enum LearnedTermQualityBar {
             // Collision against existing dictionary entries (term + aliases),
             // skipping a self-match (a modify of the same learned term).
             for entry in existing {
-                if collides(term, entry.term) && !equalFold(term, entry.term) {
+                // A modify of the SAME learned entry must not collide with itself —
+                // skip the self entry entirely (its own term AND its own aliases),
+                // else updating "Kubernetes" trips on its existing "Kubernettes" alias.
+                if equalFold(term, entry.term) { continue }
+                if collides(term, entry.term) {
                     return .collision
                 }
                 for alias in entry.aliases where collides(term, alias) {

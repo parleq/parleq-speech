@@ -76,6 +76,13 @@ final class LearnedTermQualityBarTests: XCTestCase {
         assertAccepted("mira", existing: existing)  // case-fold self-match
     }
 
+    func test_modify_self_with_near_match_alias_not_a_collision() {
+        // RoboRev 64e899a Low: modifying an entry must skip its OWN aliases too —
+        // updating "Kubernetes" must not trip on its existing near-match alias.
+        let existing = [DictionaryEntry(term: "Kubernetes", aliases: ["Kubernettes"], source: .learned)]
+        assertAccepted("Kubernetes", existing: existing)
+    }
+
     func test_phoneticKey_strips_trailing_digits_and_punct() {
         XCTAssertEqual(LearnedTermQualityBar.phoneticKey("iTerm2"), "iterm".lowercased())
         XCTAssertEqual(LearnedTermQualityBar.phoneticKey("AT&T"), "att")
