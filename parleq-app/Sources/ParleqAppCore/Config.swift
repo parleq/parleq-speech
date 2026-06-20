@@ -336,6 +336,10 @@ public struct Config: Sendable {
     ///   - "bedrock" — AWS Bedrock ConverseStream (or the
     ///     bearer-auth path for scoped Bedrock API keys).
     ///   - "azure"  — Azure OpenAI Chat Completions.
+    ///   - "concord" — "Lightweight (on-device)" 2nd-pass corrector
+    ///     (the private Concord engine: deterministic numbers/compounds
+    ///     + confidence-gated dictionary correction). In-process, ~0 ms,
+    ///     no network boundary, no auth, no model download.
     ///   - "none"   — skip cleanup, paste the raw ASR transcript.
     public var llmProvider: String
     /// AWS region used when `llmProvider == "bedrock"`. Defaults to

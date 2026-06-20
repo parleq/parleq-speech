@@ -3074,6 +3074,19 @@ public final class AppState {
                     }
                     return dest.appName
                 }
+                // Concord ("Lightweight (on-device)") needs per-word ASR
+                // confidence + the user dictionary, which the shared
+                // LLMProvider.generateStreaming signature can't carry.
+                // Hand them to the provider via a per-utterance side-channel
+                // RIGHT BEFORE cleanup; the provider consumes + clears them
+                // inside generateStreaming (fresh-stateless-per-utterance).
+                // `asrResultRaw.diagnostics` is nil on the HTTP ASR path —
+                // Concord falls back to safe all-1.0 confidence (its
+                // dictionary stage then becomes a no-op).
+                if let concord = resolvedLLM as? ConcordCleanupProvider {
+                    concord.setUtteranceContext(diagnostics: asrResultRaw.diagnostics)
+                    concord.setUtteranceDictionary(dictionary)
+                }
                 let outcome = await streamCleanupOrRefine(
                     llm: resolvedLLM,
                     overlay: overlay,

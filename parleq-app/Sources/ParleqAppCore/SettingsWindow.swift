@@ -331,6 +331,7 @@ final class SettingsModel: ObservableObject {
     }
 
     static let providerOptions: [ProviderOption] = [
+        ProviderOption(id: "concord",        displayName: "Lightweight (on-device)"),
         ProviderOption(id: "local",          displayName: "On-device (no cloud)"),
         ProviderOption(id: "gemini",         displayName: "Gemini (Google API)"),
         ProviderOption(id: "vertex",         displayName: "Gemini (Vertex / Google Cloud)"),
@@ -1766,8 +1767,8 @@ struct SettingsView: View {
                             // offers "local"; the context tier never does.
                             gateLocalUnsupported: true
                         )
-                        // "local" and "none" have no cloud model to pick.
-                        if model.cleanupProvider != "local" && model.cleanupProvider != "none" {
+                        // "concord", "local" and "none" have no cloud model to pick.
+                        if model.cleanupProvider != "concord" && model.cleanupProvider != "local" && model.cleanupProvider != "none" {
                             tierModelPicker(
                                 forProvider: model.cleanupProvider,
                                 selection: Binding(
@@ -1819,7 +1820,10 @@ struct SettingsView: View {
                             pinnedKey: "contextProvider",
                             allowlistKey: "contextAllowedProviders",
                             allowedValues: contextAllowedProviders,
-                            modelAllowlist: contextAllowedModels
+                            modelAllowlist: contextAllowedModels,
+                            // Concord is a cleanup-only corrector (ignores
+                            // references/vision) — not a valid context model.
+                            excludeProviders: ["concord"]
                         )
                         // "local" and "none" have no cloud model to pick —
                         // same guard as the cleanup tier above.
@@ -1863,7 +1867,12 @@ struct SettingsView: View {
         allowlistKey: String? = nil,
         allowedValues: [String]? = nil,
         modelAllowlist: [String]? = nil,
-        gateLocalUnsupported: Bool = false
+        gateLocalUnsupported: Bool = false,
+        // Providers to omit from this tier's picker. The context tier
+        // passes ["concord"] — the Lightweight on-device corrector is a
+        // cleanup-only engine (it ignores references / vision), so it must
+        // not appear as a context-model choice.
+        excludeProviders: [String] = []
     ) -> some View {
         let isPinned    = pinnedKey.map    { model.managedKeys.contains($0) } ?? false
         let isAllowlist = allowlistKey.map { model.managedKeys.contains($0) } ?? false
@@ -1928,6 +1937,15 @@ struct SettingsView: View {
                             && !model.localAllowUnsupportedRAM
                             && selection.wrappedValue != "local" {
                             filtered = filtered.filter { $0.id != "local" }
+                        }
+                        // Tier exclusions (e.g. context tier omits "concord").
+                        // Keep a provider that's the CURRENT selection visible
+                        // so the picker reflects an already-set state rather
+                        // than going blank.
+                        if !excludeProviders.isEmpty {
+                            filtered = filtered.filter {
+                                !excludeProviders.contains($0.id) || $0.id == selection.wrappedValue
+                            }
                         }
                         return filtered
                     }()

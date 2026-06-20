@@ -126,6 +126,13 @@ let package = Package(
         // direct dependency of any target that imports those modules.
         // Pinned exact to 0.9.0.
         .package(url: "https://github.com/huggingface/swift-huggingface", exact: "0.9.0"),
+        // Concord — the proprietary on-device second-pass correction
+        // engine (deterministic numbers/compounds + confidence-gated
+        // dictionary correction; "Lightweight (on-device)" cleanup tier).
+        // Parleq depends on it through the public API only (SecondPassCleaner).
+        // TEMPORARY: local path for co-dev — switch to a pinned git URL + tag
+        // (keavi-app/concord) for the official build.
+        .package(path: "/Users/jonyoder/Dev/concord"),
     ],
     targets: [
         .target(
@@ -146,6 +153,7 @@ let package = Package(
                 .product(name: "MLXFast", package: "mlx-swift"),
                 .product(name: "Tokenizers", package: "swift-transformers"),
                 .product(name: "HuggingFace", package: "swift-huggingface"),
+                .product(name: "Concord", package: "Concord"),
             ],
             path: "Sources/ParleqAppCore"
         ),

@@ -465,6 +465,16 @@ struct ParleqApp {
                 let p = OpenAIProvider(model: id.model)
                 logStderr("[parleq] LLM \(label) (openai model=\(id.model))")
                 return p
+            case "concord":
+                // "Lightweight (on-device)" 2nd-pass cleanup — the private
+                // Concord deterministic + confidence-gated corrector. Runs
+                // in-process, ~0 ms, no network, no auth, no model download.
+                // id.model is ignored (Concord has its own fixed phase id).
+                // AppState feeds it per-word confidence + the dictionary via
+                // a per-utterance side-channel just before each cleanup.
+                let p = ConcordCleanupProvider()
+                logStderr("[parleq] LLM \(label) (concord — lightweight on-device 2nd-pass, no network)")
+                return p
             case "none":
                 // Explicit user choice. Don't log this as a problem —
                 // it's the configured behavior. AppState already
