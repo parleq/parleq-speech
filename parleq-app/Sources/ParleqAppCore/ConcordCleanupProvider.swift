@@ -75,20 +75,60 @@ public final class ConcordCleanupProvider: LLMProvider, @unchecked Sendable {
         return d
     }
 
+    // Per-utterance call context: the BARE ASR transcript (framing-independent)
+    // and whether this is a REFINE turn. Concord is cleanup-only — it can't
+    // follow refine instructions — so refine turns return the prior text
+    // unchanged. (Preset turns are still plain cleanups here: isRefine is false
+    // and Concord cleans the bare transcript, simply ignoring the preset style.)
+    private var pendingTranscript: String?
+    private var pendingIsRefine = false
+    private var pendingPriorText: String?
+
+    /// Stash the call context for the NEXT cleanup call (set by AppState just
+    /// before cleanup). `transcript` is the bare ASR text; `isRefine` true only
+    /// for refine turns, which return `priorText` unchanged.
+    public func setUtteranceCall(transcript: String, isRefine: Bool, priorText: String?) {
+        lock.lock(); defer { lock.unlock() }
+        pendingTranscript = transcript
+        pendingIsRefine = isRefine
+        pendingPriorText = priorText
+    }
+    private func takeCall() -> (transcript: String?, isRefine: Bool, priorText: String?) {
+        lock.lock(); defer { lock.unlock() }
+        let t = pendingTranscript, r = pendingIsRefine, p = pendingPriorText
+        pendingTranscript = nil; pendingIsRefine = false; pendingPriorText = nil
+        return (t, r, p)
+    }
+
     public func generateStreaming(
         systemPrompt: String,
         messages: [LLMMessage],
         onEvent: @Sendable (LLMStreamEvent) -> Void
     ) async throws {
         let start = Date()
-        // The pipeline frames the raw transcript as a user message; the
-        // last text part is the transcript. For Concord we want the bare
-        // transcript, so strip the "Transcript to clean up:\n\n" wrapper
-        // the cleanup path adds (refine turns don't route here — Concord
-        // isn't an instruction-follower — but we defensively take the last
-        // text part either way).
-        let rawWrapped = messages.last?.legacyContentString ?? ""
-        let transcript = Self.unwrapTranscript(rawWrapped)
+        let call = takeCall()
+
+        // CLEANUP-ONLY tier. Refine turns carry instruction scaffolding
+        // ("Current text:" / "Edit instruction:") Concord can't follow, so it
+        // never runs cleanup on them — a refine turn returns the prior text
+        // UNCHANGED (a safe no-op). Refinement requires a cloud/LLM provider.
+        if call.isRefine {
+            let passthrough = call.priorText
+                ?? Self.unwrapTranscript(messages.last?.legacyContentString ?? "")
+            FileHandle.standardError.write(
+                "[concord] refine skipped — on-device tier is cleanup-only (text unchanged)\n"
+                    .data(using: .utf8) ?? Data())
+            onEvent(.chunk(passthrough))
+            let e = Date().timeIntervalSince(start)
+            onEvent(.done(LLMStreamSummary(totalLatency: e, ttft: e, inputTokens: 0, outputTokens: 0)))
+            return
+        }
+
+        // Cleanup: use the BARE transcript handed via the side-channel
+        // (framing-independent, so a preset turn's scaffolding can't leak in),
+        // falling back to unwrapping the message only if the context is absent.
+        let transcript = call.transcript
+            ?? Self.unwrapTranscript(messages.last?.legacyContentString ?? "")
 
         let diagnostics = takeDiagnostics()
         let tokens = Self.buildTokens(from: diagnostics)

@@ -130,9 +130,10 @@ let package = Package(
         // engine (deterministic numbers/compounds + confidence-gated
         // dictionary correction; "Lightweight (on-device)" cleanup tier).
         // Parleq depends on it through the public API only (SecondPassCleaner).
-        // TEMPORARY: local path for co-dev — switch to a pinned git URL + tag
-        // (keavi-app/concord) for the official build.
-        .package(path: "/Users/jonyoder/Dev/concord"),
+        // Private repo (keavi-app/concord); pinned tag like the other deps.
+        // For local Concord co-dev, override without committing:
+        //   swift package edit Concord --path /Users/jonyoder/Dev/concord
+        .package(url: "https://github.com/keavi-app/concord.git", exact: "0.1.0"),
     ],
     targets: [
         .target(

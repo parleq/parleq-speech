@@ -3086,6 +3086,15 @@ public final class AppState {
                 if let concord = resolvedLLM as? ConcordCleanupProvider {
                     concord.setUtteranceContext(diagnostics: asrResultRaw.diagnostics)
                     concord.setUtteranceDictionary(dictionary)
+                    // Cleanup-only tier: hand it the BARE transcript + whether this
+                    // is a refine turn. Concord can't follow instructions, so refine
+                    // turns return the prior text unchanged (refinement needs a cloud
+                    // provider). A preset cleanup is NOT a refine — Concord still
+                    // cleans the bare transcript, it just ignores the preset style.
+                    concord.setUtteranceCall(
+                        transcript: asrResult.text,
+                        isRefine: asRefine,
+                        priorText: priorText)
                 }
                 let outcome = await streamCleanupOrRefine(
                     llm: resolvedLLM,
