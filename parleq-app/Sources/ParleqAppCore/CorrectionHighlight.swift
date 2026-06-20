@@ -57,38 +57,51 @@ enum CorrectionHighlight {
     /// Only `applied == true` edits with a non-empty `replacement` participate.
     /// Empty-replacement edits (pure deletions) have no visible span to mark.
     static func spans(in text: String, edits: [EditRecord]) -> [CorrectionSpan] {
+        // Stable order: by wordRange (reading order); ties and nil-ranges keep EMISSION order
+        // (Concord emits left-to-right), so the deterministic number/compound edits — which have
+        // no wordRange — stay correctly sequenced for the cursor below.
         let applied = edits
             .filter { $0.applied && !$0.replacement.isEmpty }
-            .sorted { ($0.wordRange?.lowerBound ?? Int.max) < ($1.wordRange?.lowerBound ?? Int.max) }
+            .enumerated()
+            .sorted { lhs, rhs in
+                let l = lhs.element.wordRange?.lowerBound ?? Int.max
+                let r = rhs.element.wordRange?.lowerBound ?? Int.max
+                return l != r ? l < r : lhs.offset < rhs.offset
+            }
+            .map { $0.element }
 
         // Char offset of each space-delimited token's start (matches Concord's
         // `split(separator: " ")` tokenization, the basis of `wordRange`).
         let tokenStarts = tokenStartOffsets(in: text)
 
         var claimed: [Range<String.Index>] = []
-        var fallbackOffset = 0   // for nil-wordRange edits: advance left-to-right
+        // Cursor for nil-wordRange edits (deterministic number/compound) ONLY — advanced solely
+        // by THESE matches, so their left-to-right emission order maps to left-to-right
+        // occurrences. Kept SEPARATE from the wordRange anchoring so a ranged dictionary/say-as
+        // edit can never push it forward and strand an earlier number on a wrong later occurrence.
+        var nilCursor = text.startIndex
         var found: [(range: Range<String.Index>, edit: EditRecord)] = []
         for edit in applied {
-            // All unclaimed occurrences of this replacement.
+            // All unclaimed occurrences of this replacement, left-to-right.
             let occurrences = ranges(of: edit.replacement, in: text)
                 .filter { occ in !claimed.contains { $0.overlaps(occ) } }
             guard !occurrences.isEmpty else { continue }   // not present / all claimed → drop
 
-            // Anchor at the edit's first token; fall back to a running cursor when wordRange
-            // is absent or out of bounds for the final text.
-            let anchor: Int
+            let best: Range<String.Index>
             if let lo = edit.wordRange?.lowerBound, lo >= 0, lo < tokenStarts.count {
-                anchor = tokenStarts[lo]
+                // Ranged edit (dictionary / say-as): anchor to its token; closest occurrence wins.
+                let anchor = tokenStarts[lo]
+                best = occurrences.min {
+                    abs(text.distance(from: text.startIndex, to: $0.lowerBound) - anchor)
+                        < abs(text.distance(from: text.startIndex, to: $1.lowerBound) - anchor)
+                }!
             } else {
-                anchor = fallbackOffset
+                // nil-wordRange edit: first unclaimed occurrence at/after the dedicated cursor.
+                best = occurrences.first { $0.lowerBound >= nilCursor } ?? occurrences[0]
+                nilCursor = best.upperBound
             }
-            let best = occurrences.min {
-                abs(text.distance(from: text.startIndex, to: $0.lowerBound) - anchor)
-                    < abs(text.distance(from: text.startIndex, to: $1.lowerBound) - anchor)
-            }!
             found.append((best, edit))
             claimed.append(best)
-            fallbackOffset = text.distance(from: text.startIndex, to: best.upperBound)
         }
 
         // Number in final on-screen reading order (left-to-right by position).

@@ -33,6 +33,20 @@ final class CorrectionHighlightTests: XCTestCase {
         XCTAssertEqual(CorrectionHighlight.revert(text: text, span: spans[0]), "API api")
     }
 
+    func testNilRangeNumberEditNotPushedByRangedEdit() {
+        // RoboRev 64ef08d Medium: a nil-wordRange number edit uses its OWN cursor (from the start)
+        // and must not be pushed past its occurrence by a ranged dict/say-as edit's anchor.
+        // "25 and Parleq is 25": number edit -> the FIRST "25"; dict -> "Parleq"; trailing "25" unchanged.
+        let text = "25 and Parleq is 25"
+        let spans = CorrectionHighlight.spans(in: text, edits: [
+            edit("twenty five", "25", range: nil, stage: .deterministicNumber),
+            edit("parlay", "Parleq", range: 2..<3, stage: .dictionary),
+        ])
+        let numberSpan = spans.first { $0.replacement == "25" }!
+        XCTAssertEqual(text.distance(from: text.startIndex, to: numberSpan.range.lowerBound), 0,
+                       "the nil-range number edit must map to the FIRST '25', not the trailing one")
+    }
+
     func testSingleAppliedEditMapsToItsRange() {
         let text = "I love Parleq for dictation"
         let spans = CorrectionHighlight.spans(in: text, edits: [edit("parlay", "Parleq")])
