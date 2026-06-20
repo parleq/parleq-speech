@@ -92,6 +92,7 @@
 //                      { "term": "Acme",
 //                        "context": "mobile finance app I'm building",
 //                        "aliases": ["ackme", "ack me"],
+//                        "spoken_forms": ["acme finance app"],
 //                        "biasing": "llmOnly" }
 //                    ] },
 //   }
@@ -179,11 +180,18 @@ public enum DictionarySource: String, Sendable, Equatable, Codable {
 /// the ASR layer commonly produces (e.g. "Haagen-Dazs" → canonical
 /// "Häagen-Dazs"); both layers match against the alias list and
 /// emit the canonical form. `biasing` controls which layers
-/// receive this entry; defaults to ASR + LLM.
+/// receive this entry; defaults to ASR + LLM. `spokenForms` are
+/// distinctive MULTI-WORD "say-as" phrases the on-device corrector
+/// (Concord) matches as a whole run and rewrites to the canonical
+/// term, consuming the extra disambiguator words (e.g. spoken form
+/// "iterm terminal" → "open item terminal" becomes "open iTerm");
+/// Concord ignores phrases with fewer than two words (those belong
+/// in `aliases`).
 public struct DictionaryEntry: Sendable, Equatable {
     public var term: String
     public var context: String?
     public var aliases: [String]
+    public var spokenForms: [String]
     public var biasing: DictionaryBiasing
     public var source: DictionarySource
 
@@ -191,12 +199,14 @@ public struct DictionaryEntry: Sendable, Equatable {
         term: String,
         context: String? = nil,
         aliases: [String] = [],
+        spokenForms: [String] = [],
         biasing: DictionaryBiasing = .asrAndLLM,
         source: DictionarySource = .user
     ) {
         self.term = term
         self.context = context
         self.aliases = aliases
+        self.spokenForms = spokenForms
         self.biasing = biasing
         self.source = source
     }
@@ -1708,6 +1718,11 @@ public struct Config: Sendable {
                         return raw.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                             .filter { !$0.isEmpty }
                     }()
+                    let spokenForms: [String] = {
+                        guard let raw = obj["spoken_forms"] as? [String] else { return [] }
+                        return raw.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                            .filter { !$0.isEmpty }
+                    }()
                     let biasing: DictionaryBiasing = {
                         guard let raw = obj["biasing"] as? String,
                               let parsed = DictionaryBiasing(rawValue: raw)
@@ -1724,6 +1739,7 @@ public struct Config: Sendable {
                         term: trimmedTerm,
                         context: (ctx?.isEmpty ?? true) ? nil : ctx,
                         aliases: aliases,
+                        spokenForms: spokenForms,
                         biasing: biasing,
                         source: source
                     )
@@ -2004,6 +2020,7 @@ public struct Config: Sendable {
                     var obj: [String: Any] = ["term": entry.term]
                     if let ctx = entry.context, !ctx.isEmpty { obj["context"] = ctx }
                     if !entry.aliases.isEmpty { obj["aliases"] = entry.aliases }
+                    if !entry.spokenForms.isEmpty { obj["spoken_forms"] = entry.spokenForms }
                     if entry.biasing != .asrAndLLM { obj["biasing"] = entry.biasing.rawValue }
                     if entry.source != .user { obj["source"] = entry.source.rawValue }
                     return obj

@@ -133,7 +133,7 @@ let package = Package(
         // Private repo (keavi-app/concord); pinned tag like the other deps.
         // For local Concord co-dev, override without committing:
         //   swift package edit Concord --path /Users/jonyoder/Dev/concord
-        .package(url: "https://github.com/keavi-app/concord.git", exact: "0.1.3"),
+        .package(url: "https://github.com/keavi-app/concord.git", exact: "0.1.4"),
     ],
     targets: [
         .target(

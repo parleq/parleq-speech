@@ -185,7 +185,9 @@ public final class ConcordCleanupProvider: LLMProvider, @unchecked Sendable {
     /// Stash the user dictionary (mapped to Concord terms) for the NEXT
     /// cleanup call. Called by AppState immediately before cleanup.
     public func setUtteranceDictionary(_ entries: [DictionaryEntry]) {
-        let mapped = entries.map { DictionaryTerm(term: $0.term, aliases: $0.aliases) }
+        let mapped = entries.map {
+            DictionaryTerm(term: $0.term, aliases: $0.aliases, spokenForms: $0.spokenForms)
+        }
         lock.lock(); defer { lock.unlock() }
         pendingDictionary = mapped
     }

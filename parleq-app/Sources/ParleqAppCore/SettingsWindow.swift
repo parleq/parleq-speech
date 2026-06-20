@@ -33,13 +33,19 @@ import SwiftUI
 /// transient UUID used by SwiftUI's ForEach for stable identity; we
 /// regenerate it from disk on every load, so it never gets persisted.
 /// Empty `context` maps to `DictionaryEntry.context = nil` on save.
-/// `aliases` is edited as a single comma-separated string for UI
-/// simplicity; we split/trim on save into the on-disk array form.
+/// `aliases` and `spokenForms` are each edited as a single
+/// comma-separated string for UI simplicity; we split/trim on save
+/// into the on-disk array form.
 struct DictionaryEntryRow: Identifiable, Equatable {
     let id: UUID
     var term: String
     var context: String
     var aliases: String
+    /// Distinctive multi-word "say-as" phrases the on-device
+    /// corrector (Concord) rewrites to the canonical term, consuming
+    /// the extra words. Edited comma-separated; <2-word phrases are
+    /// ignored by Concord (those belong in Aliases).
+    var spokenForms: String
     var biasing: DictionaryBiasing
     /// Provenance of this row: `.user` for hand-authored entries,
     /// `.learned` for entries auto-added by the learning analyzer.
@@ -51,6 +57,7 @@ struct DictionaryEntryRow: Identifiable, Equatable {
         term: String = "",
         context: String = "",
         aliases: String = "",
+        spokenForms: String = "",
         biasing: DictionaryBiasing = .asrAndLLM,
         source: DictionarySource = .user
     ) {
@@ -58,6 +65,7 @@ struct DictionaryEntryRow: Identifiable, Equatable {
         self.term = term
         self.context = context
         self.aliases = aliases
+        self.spokenForms = spokenForms
         self.biasing = biasing
         self.source = source
     }
@@ -433,6 +441,7 @@ final class SettingsModel: ObservableObject {
                 term: entry.term,
                 context: entry.context ?? "",
                 aliases: entry.aliases.joined(separator: ", "),
+                spokenForms: entry.spokenForms.joined(separator: ", "),
                 biasing: entry.biasing,
                 source: entry.source
             )
@@ -563,6 +572,7 @@ final class SettingsModel: ObservableObject {
                 term: entry.term,
                 context: entry.context ?? "",
                 aliases: entry.aliases.joined(separator: ", "),
+                spokenForms: entry.spokenForms.joined(separator: ", "),
                 biasing: entry.biasing,
                 source: entry.source
             )
@@ -909,10 +919,15 @@ final class SettingsModel: ObservableObject {
                 .split(separator: ",", omittingEmptySubsequences: true)
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .filter { !$0.isEmpty }
+            let spokenForms = row.spokenForms
+                .split(separator: ",", omittingEmptySubsequences: true)
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
             let built = DictionaryEntry(
                 term: term,
                 context: ctx.isEmpty ? nil : ctx,
                 aliases: aliases,
+                spokenForms: spokenForms,
                 biasing: row.biasing,
                 source: row.source
             )
@@ -3426,8 +3441,8 @@ private struct RestartBanner: View {
 
 /// One row in the Custom Dictionary table. Two visual lines per
 /// entry: the top line carries Term + Aliases + Biasing picker +
-/// trash (the high-frequency edits); the bottom line is Context (the
-/// occasional one). Splitting onto two lines avoids fighting the
+/// trash (the high-frequency edits); the lower lines are Context and
+/// Spoken forms (the occasional ones). Splitting onto two lines avoids fighting the
 /// grouped Form's width constraints with four side-by-side fields,
 /// and lets each TextField use its own placeholder as the label —
 /// which is what `labelsHidden()` was always meant to enable here.
@@ -3498,6 +3513,12 @@ private struct DictionaryRowView: View {
                 .frame(minWidth: 280, maxWidth: .infinity)
                 .labelsHidden()
                 .onChange(of: row.context) { _, _ in promoteIfLearnedThenSave() }
+            TextField("Spoken forms (optional, comma-separated)", text: $row.spokenForms)
+                .textFieldStyle(.roundedBorder)
+                .frame(minWidth: 280, maxWidth: .infinity)
+                .labelsHidden()
+                .help("A distinctive phrase to trigger this term (e.g. \"iterm terminal\"). The extra words are removed when matched. Needs at least 2 words — single words belong in Aliases.")
+                .onChange(of: row.spokenForms) { _, _ in promoteIfLearnedThenSave() }
         }
         .padding(.vertical, 2)
     }
