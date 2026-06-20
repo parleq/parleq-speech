@@ -41,55 +41,57 @@ enum CorrectionHighlight {
     /// Map the APPLIED edits to character ranges in `text`, numbered 1..N in
     /// reading order (left-to-right by position in the shown text).
     ///
-    /// Mapping strategy — robust to the two hard cases:
-    ///   - An edit whose `replacement` appears MULTIPLE times: we walk the
-    ///     edits in `wordRange` order (the order Concord applied them, which is
-    ///     left-to-right in the transcript) and advance a per-replacement search
-    ///     cursor, so two edits with the same replacement text land on distinct,
-    ///     successive occurrences rather than both on the first.
-    ///   - An edit whose `replacement` can't be found at all (e.g. a later edit
-    ///     or a manual edit rewrote that region): it is simply dropped from the
-    ///     highlight set — no crash, no bogus range. The remaining edits still
-    ///     map and stay correctly numbered.
+    /// Mapping strategy — anchored to each edit's `wordRange`, robust to the hard cases:
+    ///   - An edit whose `replacement` ALSO appears earlier UNCHANGED (e.g. "API api" →
+    ///     "API API" with the 2nd token edited): a plain first-match would highlight/undo
+    ///     the wrong (already-correct) occurrence. Instead we anchor to the character offset
+    ///     of the edit's `wordRange` token and pick the occurrence CLOSEST to it — so the
+    ///     edited token wins. (Closest-not-exact tolerates cross-stage token drift: a
+    ///     wordRange recorded on an intermediate-stage text needn't index-align with the
+    ///     final cleaned text, but the nearest occurrence is still the right one.)
+    ///   - The same `replacement` appearing for two DIFFERENT edits: each claims a distinct
+    ///     occurrence (we exclude already-claimed ranges), each anchored to its own token.
+    ///   - A `replacement` not present at all (a later/manual edit rewrote it): dropped — no
+    ///     crash, no bogus range; the rest still map and stay correctly numbered.
     ///
     /// Only `applied == true` edits with a non-empty `replacement` participate.
     /// Empty-replacement edits (pure deletions) have no visible span to mark.
     static func spans(in text: String, edits: [EditRecord]) -> [CorrectionSpan] {
         let applied = edits
             .filter { $0.applied && !$0.replacement.isEmpty }
-            // Token order = transcript reading order; nil wordRanges sort last
-            // but keep a stable relative order via enumerated index.
-            .enumerated()
-            .sorted { lhs, rhs in
-                let l = lhs.element.wordRange?.lowerBound ?? Int.max
-                let r = rhs.element.wordRange?.lowerBound ?? Int.max
-                if l != r { return l < r }
-                return lhs.offset < rhs.offset
-            }
-            .map { $0.element }
+            .sorted { ($0.wordRange?.lowerBound ?? Int.max) < ($1.wordRange?.lowerBound ?? Int.max) }
 
-        // Per-replacement search cursor: where to start the next search for a
-        // given replacement string, so repeated replacements advance.
-        var searchStart = text.startIndex
+        // Char offset of each space-delimited token's start (matches Concord's
+        // `split(separator: " ")` tokenization, the basis of `wordRange`).
+        let tokenStarts = tokenStartOffsets(in: text)
+
+        var claimed: [Range<String.Index>] = []
+        var fallbackOffset = 0   // for nil-wordRange edits: advance left-to-right
         var found: [(range: Range<String.Index>, edit: EditRecord)] = []
         for edit in applied {
-            // Search from the running cursor so edits are matched in order and
-            // a repeated replacement picks the NEXT occurrence.
-            if let r = text.range(of: edit.replacement, range: searchStart..<text.endIndex) {
-                found.append((r, edit))
-                searchStart = r.upperBound
-            } else if let r = text.range(of: edit.replacement) {
-                // Fallback: the in-order cursor overshot (edits weren't strictly
-                // left-to-right, or an earlier replacement consumed the cursor).
-                // Take the first occurrence anywhere rather than dropping it.
-                found.append((r, edit))
+            // All unclaimed occurrences of this replacement.
+            let occurrences = ranges(of: edit.replacement, in: text)
+                .filter { occ in !claimed.contains { $0.overlaps(occ) } }
+            guard !occurrences.isEmpty else { continue }   // not present / all claimed → drop
+
+            // Anchor at the edit's first token; fall back to a running cursor when wordRange
+            // is absent or out of bounds for the final text.
+            let anchor: Int
+            if let lo = edit.wordRange?.lowerBound, lo >= 0, lo < tokenStarts.count {
+                anchor = tokenStarts[lo]
+            } else {
+                anchor = fallbackOffset
             }
-            // else: not present at all — drop (manual edit / rewrite).
+            let best = occurrences.min {
+                abs(text.distance(from: text.startIndex, to: $0.lowerBound) - anchor)
+                    < abs(text.distance(from: text.startIndex, to: $1.lowerBound) - anchor)
+            }!
+            found.append((best, edit))
+            claimed.append(best)
+            fallbackOffset = text.distance(from: text.startIndex, to: best.upperBound)
         }
 
-        // Number in final on-screen reading order (by range position), so the
-        // digits the user sees increase top-to-bottom / left-to-right even if
-        // the fallback above matched out of order.
+        // Number in final on-screen reading order (left-to-right by position).
         let ordered = found.sorted { $0.range.lowerBound < $1.range.lowerBound }
         return ordered.enumerated().map { idx, item in
             CorrectionSpan(
@@ -100,6 +102,36 @@ enum CorrectionHighlight {
                 stage: item.edit.stage
             )
         }
+    }
+
+    /// Char offset (from `text.startIndex`) of the start of each space-delimited token —
+    /// mirrors Concord's `split(separator: " ")` so a `wordRange` index maps to a position.
+    private static func tokenStartOffsets(in text: String) -> [Int] {
+        var starts: [Int] = []
+        var offset = 0
+        var inToken = false
+        for ch in text {
+            if ch == " " {
+                inToken = false
+            } else if !inToken {
+                starts.append(offset)
+                inToken = true
+            }
+            offset += 1
+        }
+        return starts
+    }
+
+    /// Every (non-overlapping, left-to-right) range where `needle` occurs in `text`.
+    private static func ranges(of needle: String, in text: String) -> [Range<String.Index>] {
+        guard !needle.isEmpty else { return [] }
+        var out: [Range<String.Index>] = []
+        var start = text.startIndex
+        while let r = text.range(of: needle, range: start..<text.endIndex) {
+            out.append(r)
+            start = r.upperBound
+        }
+        return out
     }
 
     /// Revert one correction: replace the `replacement` text at `span.range`

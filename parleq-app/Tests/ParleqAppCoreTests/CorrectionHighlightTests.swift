@@ -22,6 +22,17 @@ final class CorrectionHighlightTests: XCTestCase {
 
     // MARK: spans()
 
+    func testAnchorsToWordRangeNotEarlierUnchangedOccurrence() {
+        // RoboRev aaba4e2 Medium: "API api" with the 2nd token edited (api->API) -> "API API",
+        // wordRange 1..<2. Must anchor to the EDITED (second) occurrence, not the unchanged first,
+        // so undo yields "API api" (not "api API").
+        let text = "API API"
+        let spans = CorrectionHighlight.spans(in: text, edits: [edit("api", "API", range: 1..<2)])
+        XCTAssertEqual(spans.count, 1)
+        XCTAssertEqual(text.distance(from: text.startIndex, to: spans[0].range.lowerBound), 4)
+        XCTAssertEqual(CorrectionHighlight.revert(text: text, span: spans[0]), "API api")
+    }
+
     func testSingleAppliedEditMapsToItsRange() {
         let text = "I love Parleq for dictation"
         let spans = CorrectionHighlight.spans(in: text, edits: [edit("parlay", "Parleq")])
