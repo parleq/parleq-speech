@@ -301,11 +301,25 @@ final class LearnedStore: ObservableObject {
     nonisolated static func applyTermProposal(_ proposal: LearningProposal, to dictionary: inout [DictionaryEntry]) {
         guard proposal.kind == .term, let term = proposal.term else { return }
         let prior = dictionary.first { $0.term.caseInsensitiveCompare(term) == .orderedSame }
+        let mergedAliases = unionAliases(prior: prior?.aliases ?? [], proposed: proposal.aliases ?? [])
+        // ASR biasing requires the WHOLE entry to be distinctive. The term reached this auto-apply
+        // path by passing the quality bar, but its ALIASES are unchecked — a collision-prone alias
+        // ("item") under asrAndLLM would over-fire just like a collision-prone term (the canonical
+        // is emitted whenever the common-word alias matches). So only default to asrAndLLM when every
+        // alias is also collision-safe; otherwise fall back to llmOnly (still helps cleanup).
+        // Check aliases against the dictionary MINUS this entry — an alias is by nature a phonetic
+        // variant of its OWN canonical ("parlay"~"Parleq"), so collision against self is expected
+        // and must not downgrade. The real risks are an alias that's a common word ("item") or
+        // collides with a DIFFERENT term — both still caught.
+        let others = dictionary.filter { $0.term.caseInsensitiveCompare(term) != .orderedSame }
+        let aliasesSafe = mergedAliases.allSatisfy {
+            LearnedTermQualityBar.rejectionReason(term: $0, existing: others) == nil
+        }
         let entry = DictionaryEntry(
             term: term,
             context: nil,
-            aliases: unionAliases(prior: prior?.aliases ?? [], proposed: proposal.aliases ?? []),
-            biasing: prior?.biasing ?? .asrAndLLM,
+            aliases: mergedAliases,
+            biasing: prior?.biasing ?? (aliasesSafe ? .asrAndLLM : .llmOnly),
             source: .learned
         )
         if let idx = dictionary.firstIndex(where: { $0.term.caseInsensitiveCompare(term) == .orderedSame }) {

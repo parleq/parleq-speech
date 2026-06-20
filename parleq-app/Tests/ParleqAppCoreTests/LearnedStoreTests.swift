@@ -128,6 +128,26 @@ final class LearnedStoreTests: XCTestCase {
         XCTAssertEqual(dict[0].source, .learned)
     }
 
+    func test_autoApplied_collision_prone_alias_downgrades_to_llmOnly() {
+        // 285a09c: aliases also drive ASR biasing. A distinctive term ("Mira") with a
+        // collision-prone alias ("item", a common word) must fall back to llmOnly — otherwise
+        // "item" would over-fire to "Mira" at the ASR layer.
+        var dict: [DictionaryEntry] = []
+        LearnedStore.applyTermProposal(
+            termProposalWithAliases("Mira", aliases: ["item"], confidence: 0.95), to: &dict)
+        XCTAssertEqual(dict[0].biasing, .llmOnly,
+                       "A collision-prone alias forces the whole entry to cleanup-only biasing")
+    }
+
+    func test_autoApplied_distinctive_alias_keeps_asrAndLLM() {
+        // A distinctive alias (not a common word, doesn't collide with another term) keeps full
+        // biasing — alias-resembles-its-own-term is self-excluded, so it isn't a false downgrade.
+        var dict: [DictionaryEntry] = []
+        LearnedStore.applyTermProposal(
+            termProposalWithAliases("Kubernetes", aliases: ["kubernetis"], confidence: 0.95), to: &dict)
+        XCTAssertEqual(dict[0].biasing, .asrAndLLM)
+    }
+
     func test_autoApply_modify_preserves_prior_biasing() {
         // A modify on an existing learned (llmOnly) entry keeps llmOnly.
         var dict = [DictionaryEntry(term: "Mira", biasing: .llmOnly, source: .learned)]
