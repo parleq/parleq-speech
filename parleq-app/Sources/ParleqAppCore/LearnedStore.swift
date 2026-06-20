@@ -286,14 +286,18 @@ final class LearnedStore: ObservableObject {
     /// canonical term and its (already word-level bounded) aliases. Context
     /// is kept only for entries the user explicitly accepts (see `accept`).
     ///
-    /// Biasing defaults to `.llmOnly` for auto-learned entries: an
-    /// auto-applied term is lower-confidence than a hand-curated one, so it
-    /// must NEVER drive FluidAudio's CTC vocabulary biasing at the ASR
-    /// layer — that over-fires on collision-prone short terms (e.g. a
-    /// learned "iTerm" hijacking the common word "item" in the raw
-    /// transcript). It still helps the LLM cleanup pass. A modify on an
-    /// existing entry preserves that entry's biasing (a prior learned entry
-    /// is already `.llmOnly`; a prior user entry keeps the user's choice).
+    /// Biasing defaults to `.asrAndLLM` for auto-learned entries — they get
+    /// FULL value, including FluidAudio CTC biasing, so a genuinely mangled
+    /// jargon term is fixed at the ASR source (the whole point of learning).
+    /// Safe to do here because the gate for ASR biasing is DISTINCTIVENESS,
+    /// not learned-vs-curated: an entry only reaches this auto-apply path
+    /// after passing `LearnedTermQualityBar` (route → .autoApply), which
+    /// REJECTS the collision-prone short terms that over-fire ("iTerm"~"item",
+    /// "parallel"~"Parleq") and routes them to suggestions instead. So every
+    /// term that lands here is already distinctive enough to bias safely.
+    /// (Residual risk: the collision check's common-word set is bounded, so a
+    /// collision with a rare word could slip through — low blast radius and
+    /// revertible.) A modify preserves the existing entry's biasing.
     nonisolated static func applyTermProposal(_ proposal: LearningProposal, to dictionary: inout [DictionaryEntry]) {
         guard proposal.kind == .term, let term = proposal.term else { return }
         let prior = dictionary.first { $0.term.caseInsensitiveCompare(term) == .orderedSame }
@@ -301,7 +305,7 @@ final class LearnedStore: ObservableObject {
             term: term,
             context: nil,
             aliases: unionAliases(prior: prior?.aliases ?? [], proposed: proposal.aliases ?? []),
-            biasing: prior?.biasing ?? .llmOnly,
+            biasing: prior?.biasing ?? .asrAndLLM,
             source: .learned
         )
         if let idx = dictionary.firstIndex(where: { $0.term.caseInsensitiveCompare(term) == .orderedSame }) {

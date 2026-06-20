@@ -115,13 +115,16 @@ final class LearnedStoreTests: XCTestCase {
                        "A merge must keep the existing alias and add the new one, not replace")
     }
 
-    func test_autoApplied_term_defaults_to_llmOnly_biasing() {
-        // Fix 1: an auto-learned term must NEVER drive ASR-layer biasing.
+    func test_autoApplied_distinctive_term_defaults_to_asrAndLLM_biasing() {
+        // A DISTINCTIVE auto-learned term (one that reached auto-apply by passing the
+        // quality bar's collision check) gets full biasing — ASR-layer included — so a
+        // mangled jargon term is fixed at the source. The collision-prone class never
+        // reaches this path (the quality bar routes it to suggestions).
         var dict: [DictionaryEntry] = []
         LearnedStore.applyTermProposal(termProposal("Mira", confidence: 0.95), to: &dict)
         XCTAssertEqual(dict.count, 1)
-        XCTAssertEqual(dict[0].biasing, .llmOnly,
-                       "Auto-learned terms must default to llmOnly, never asrAndLLM")
+        XCTAssertEqual(dict[0].biasing, .asrAndLLM,
+                       "Distinctive auto-learned terms get full asrAndLLM biasing")
         XCTAssertEqual(dict[0].source, .learned)
     }
 
