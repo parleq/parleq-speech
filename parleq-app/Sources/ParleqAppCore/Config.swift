@@ -2376,6 +2376,7 @@ public struct Config: Sendable {
         // so it must be re-added here.)
         let rfnProviderPinned = config.managedKeys.contains("refineProvider")
         let rfnModelPinned    = config.managedKeys.contains("refineModel")
+        let rfnModelAllowlist = config.managedKeys.contains("refineAllowedModels")
         let existingRefine = (existingLLM["refine"] as? [String: Any]) ?? [:]
         if rfnProviderPinned || rfnModelPinned {
             let existingProvider = (existingRefine["provider"] as? String) ?? ""
@@ -2383,7 +2384,16 @@ public struct Config: Sendable {
             let provider = rfnProviderPinned && !existingProvider.isEmpty
                 ? existingProvider
                 : (config.refineModel?.provider ?? "")
-            let model = rfnModelPinned && !existingModel.isEmpty
+            // Model preservation mirrors the cleanup/context tiers (cases a/b/c) so a
+            // partial pin never writes a mismatched provider/model pair:
+            // (a) model pinned → preserve; (b) provider pinned + model unmanaged + on-disk
+            // model FOREIGN to the (preserved) provider → preserve it (pre-MDM fallback);
+            // (c) canonical-within-pinned / allowlist → write the in-memory choice.
+            let rfnOnDiskModelForeign = !existingModel.isEmpty
+                && !ModelCatalog.isCanonical(provider: provider, model: existingModel)
+            let preserveModel = rfnModelPinned
+                || (rfnProviderPinned && !rfnModelAllowlist && rfnOnDiskModelForeign)
+            let model = preserveModel && !existingModel.isEmpty
                 ? existingModel
                 : (config.refineModel?.model ?? "")
             if !provider.isEmpty && !model.isEmpty {

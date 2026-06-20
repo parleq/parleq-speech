@@ -1726,7 +1726,8 @@ struct SettingsView: View {
         // ── Provider Credentials (hidden when both tiers are local/none — no cloud creds)
         let cleanupNeedsCredentials = (model.cleanupProvider != "local" && model.cleanupProvider != "none")
         let contextNeedsCredentials = (model.contextProvider != "local" && model.contextProvider != "none")
-        if cleanupNeedsCredentials || contextNeedsCredentials {
+        let refineNeedsCredentials = (model.refineProvider != "local" && model.refineProvider != "none")
+        if cleanupNeedsCredentials || contextNeedsCredentials || refineNeedsCredentials {
             HStack(alignment: .center) {
                 VStack { Divider() }
                 Text("Provider Credentials")
@@ -2410,6 +2411,7 @@ struct SettingsView: View {
         let skip: Set<String> = ["none", "local"]
         if !skip.contains(model.cleanupProvider) { set.insert(model.cleanupProvider) }
         if !skip.contains(model.contextProvider) { set.insert(model.contextProvider) }
+        if !skip.contains(model.refineProvider) { set.insert(model.refineProvider) }
         return set
     }
 

@@ -4252,8 +4252,13 @@ public final class AppState {
         let dictionary = recleanConfig.customDictionaryEnabled
             ? recleanConfig.customDictionary
             : []
-        // isRefine mirrors the re-run shape (refine re-run → refine tier).
-        let resolvedLLM = llmForInvocation(isRefine: asRefineRerun)
+        // A styled reclean carries a transform the on-device tier can't apply, so it must
+        // route to the refine tier too — mirror the primary capture path's isRefine
+        // (asRefine || preset). Resolve the preset BEFORE provider selection.
+        let intendedPreset = recleanConfig.transformPresetsEnabled
+            ? intendedDefaultPreset
+            : nil
+        let resolvedLLM = llmForInvocation(isRefine: asRefineRerun || intendedPreset != nil)
         let rawRefs = overlay.model.references
         let effectiveRefs: [Reference]
         if recleanConfig.imageReferenceEnabled {
@@ -4266,9 +4271,6 @@ public final class AppState {
                 return degraded
             }
         }
-        let intendedPreset = recleanConfig.transformPresetsEnabled
-            ? intendedDefaultPreset
-            : nil
         let pasteDestLabel: String? = overlay.model.pasteTarget.map { dest in
             if let title = dest.windowTitle, !title.isEmpty {
                 return "\(dest.appName) — \(title)"
