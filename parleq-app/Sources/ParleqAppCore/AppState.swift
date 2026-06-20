@@ -1782,6 +1782,19 @@ public final class AppState {
     /// what M1 had working.
     public func accept() {
         guard phase == .awaitingAccept || phase == .cleaning else { return }
+        // #85 data-loss fix: clicking Accept while an in-place edit is open
+        // would otherwise paste `currentText`, which still holds the PRE-edit
+        // value — the live edit lives in `overlay.model.editableText` and is
+        // only flushed into `currentText` by commitEdit(). Cmd+Return goes
+        // through commitEdit(accept: true) (the editor's onKeyPress); the
+        // Accept button jumped straight here, silently discarding the edit.
+        // Route a pending edit through the SAME commit path so both converge
+        // on the edited text. commitEdit(accept: true) flushes the field, then
+        // re-enters accept() with editing == false (no recursion).
+        if phase == .awaitingAccept, overlay.model.editing {
+            commitEdit(accept: true)
+            return
+        }
         // Don't accept/paste while the help overlay is up — the user is
         // reading help, not finishing. Covers the case where the auto-
         // accept timer gets (re)armed by the cleaning→awaitingAccept
