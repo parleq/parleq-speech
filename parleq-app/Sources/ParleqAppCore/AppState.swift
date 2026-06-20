@@ -22,6 +22,7 @@
 
 import AppKit
 import Combine
+import Concord
 import Foundation
 
 @MainActor
@@ -665,6 +666,9 @@ public final class AppState {
         overlay.model.onEnterEdit = { [weak self] in self?.enterEditMode() }
         overlay.model.onCommitEdit = { [weak self] accept in self?.commitEdit(accept: accept) }
         overlay.model.onDiscardEdit = { [weak self] in self?.discardEdit() }
+        // On-device corrector per-correction undo (⌥digit). Reverts the edit at
+        // that number and feeds the revert to the CorrectionJournal.
+        overlay.model.onUndoCorrection = { [weak self] n in self?.undoCorrection(number: n) ?? false }
 
         windowPickerWindow.setCallbacks(
             onPick: { [weak self] entry in
@@ -1737,6 +1741,15 @@ public final class AppState {
         if edited != editPreEditText {
             currentText = edited
             overlay.model.text = edited
+            // A manual edit rewrites the text — the corrector-highlight spans'
+            // String.Index ranges no longer map cleanly, so re-derive them
+            // against the edited text (surviving replacements keep their
+            // highlight + ⌥digit undo; rewritten ones drop out). This keeps
+            // undo-after-manual-edit safe: it never reverts a stale range.
+            overlay.model.correctionSpans = CorrectionHighlight.spans(
+                in: edited,
+                edits: overlay.model.correctionSpans.map(editRecordFor)
+            )
             recordInPlaceEdit(before: editPreEditText, after: edited)
         }
         log("in-place edit: \(accept ? "commit+accept" : "save")")
@@ -1766,6 +1779,78 @@ public final class AppState {
         CorrectionJournal.shared.record(CorrectionRecord(
             kind: .refine, instruction: "in-place edit", before: before, after: after
         ), enabled: enabled)
+    }
+
+    // MARK: - On-device corrector highlights + per-correction undo
+
+    /// Map the on-device corrector's applied edits to highlight spans in the
+    /// cleaned text and publish them on the overlay model (Concord tier only —
+    /// other providers emit no EditRecords, so this is a no-op for them and the
+    /// feature is simply absent). Called right after the awaitingAccept review
+    /// is shown, so the spans land on the correct text snapshot.
+    private func applyCorrectionHighlights(from llm: (any LLMProvider)?, cleanedText: String) {
+        guard let concord = llm as? ConcordCleanupProvider else {
+            overlay.model.correctionSpans = []
+            return
+        }
+        let edits = concord.appliedEditsForOverlay()
+        // Map only against the SHOWN review text — must match what's on screen.
+        let spans = CorrectionHighlight.spans(in: cleanedText, edits: edits)
+        overlay.model.correctionSpans = spans
+        if !spans.isEmpty {
+            log("on-device corrector: \(spans.count) highlight span(s)")
+        }
+    }
+
+    /// ⌥digit during review: revert the on-device corrector's edit numbered
+    /// `number` back to the original ASR text, update the visible + paste text,
+    /// re-map the remaining highlights, and feed the revert to the
+    /// CorrectionJournal (opt-in). Returns true iff a span at that number existed.
+    private func undoCorrection(number: Int) -> Bool {
+        guard phase == .awaitingAccept, !overlay.model.editing else { return false }
+        let spans = overlay.model.correctionSpans
+        guard let span = spans.first(where: { $0.number == number }) else { return false }
+        // Revert against the CURRENT text (currentText == model.text in review).
+        let reverted = CorrectionHighlight.revert(text: currentText, span: span)
+        guard reverted != currentText else { return false }
+        currentText = reverted
+        overlay.model.text = reverted
+        // Re-map the REMAINING corrections against the new text so their ranges
+        // + numbers stay valid (this span is gone; later ones renumber). Drop
+        // the reverted edit by matching identity on (original, replacement,
+        // stage) — the reverted span's replacement is no longer present anyway,
+        // so spans() naturally excludes it on the new text.
+        let remaining = spans
+            .filter { $0.number != number }
+            .map { editRecordFor($0) }
+        overlay.model.correctionSpans = CorrectionHighlight.spans(in: reverted, edits: remaining)
+        // Feed the revert to the learning journal as a correction signal (a real
+        // "this correction was wrong" event). Opt-in; no-op when disabled.
+        // In-memory only — CorrectionJournal never writes to disk.
+        let enabled = Config.load().config.learnFromCorrectionsEnabled
+        if enabled {
+            CorrectionJournal.shared.record(CorrectionRecord(
+                kind: .refine,
+                instruction: "undo on-device correction",
+                before: span.replacement,
+                after: span.original
+            ), enabled: enabled)
+        }
+        // Re-arm the auto-accept timer (the undo is an interaction, like an edit).
+        startAutoAcceptTimer()
+        log("on-device corrector: reverted correction #\(number)")
+        return true
+    }
+
+    /// Reconstruct a minimal applied EditRecord from a highlight span, so the
+    /// surviving spans can be re-mapped against the post-revert text.
+    private func editRecordFor(_ span: CorrectionSpan) -> EditRecord {
+        EditRecord(
+            stage: span.stage,
+            original: span.original,
+            replacement: span.replacement,
+            applied: true
+        )
     }
 
     /// User accepted (Enter on overlay) or auto-accept timer fired.
@@ -3180,6 +3265,14 @@ public final class AppState {
                 // cleanup-only record. False on every non-chained turn.
                 let wasChainedCleanup = self?.refineChainedDuringCleanup ?? false
                 self?.applyResult(outcome.text, cleanupFailureMessage: outcome.failureMessage, reauthable: outcome.reauthable)
+                // On-device corrector highlights: after a plain (non-refine,
+                // non-chained) Concord cleanup, surface the spans it changed so
+                // the review can highlight them + offer ⌥digit undo. Set AFTER
+                // applyResult (which calls show(.awaitingAccept) → clears spans).
+                // Cloud providers emit no EditRecords, so this is Concord-only.
+                if !asRefine, !wasChainedCleanup {
+                    self?.applyCorrectionHighlights(from: resolvedLLM, cleanedText: outcome.text)
+                }
                 if !asRefine, !wasChainedCleanup {
                     // "Styled" requires the LLM to have actually used its output —
                     // usedLLMOutput is false on every fallback path (no-LLM-configured,

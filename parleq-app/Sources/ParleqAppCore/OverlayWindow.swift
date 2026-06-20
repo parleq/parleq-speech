@@ -244,6 +244,9 @@ public final class OverlayWindow {
         panel.onAttachCurrent = { [weak self] in self?.onAttachCurrent?() }
         panel.onShowParleq = { [weak self] in self?.onShowParleq?() }
         panel.onRunPresetNumber = { [weak self] n in self?.onRunPresetNumber?(n) ?? false }
+        // ⌥digit → undo the on-device corrector's edit at that number. Routed
+        // through the model callback AppState sets (like onEnterEdit).
+        panel.onUndoCorrectionNumber = { [weak self] n in self?.model.onUndoCorrection?(n) ?? false }
         // #85: E enters edit mode (forwarded to the model callback AppState sets);
         // isEditing lets the panel suspend the single-key review gestures so the
         // focused editor owns the keyboard.
@@ -975,6 +978,12 @@ private final class OverlayPanel: NSPanel {
     /// keyDown can consume the event only on a hit and let an unmapped
     /// digit fall through inert.
     var onRunPresetNumber: ((Int) -> Bool)?
+    /// Option+digit 1–9 during review → undo the on-device corrector's edit at
+    /// that 1-based number (Concord tier only). Option deconflicts from the
+    /// bare-digit preset gesture. Returns true iff a correction was reverted, so
+    /// keyDown consumes the event only on a hit and lets an unmapped ⌥digit fall
+    /// through inert.
+    var onUndoCorrectionNumber: ((Int) -> Bool)?
     /// When non-nil, every setFrame call forces origin.y to this
     /// value so the bottom edge stays on screen and the panel grows
     /// upward. Without this, NSWindow's auto-tracking of
@@ -1120,6 +1129,19 @@ private final class OverlayPanel: NSPanel {
                 onShowParleq?()
             // (Bare "E" → edit mode is handled above via OverlayKeymap, before
             // this switch, so there's no "e" branch here.)
+            } else if event.modifierFlags.contains(.option),
+                      event.modifierFlags
+                        .intersection([.command, .control]).isEmpty,
+                      let g = baseGlyph, g.count == 1,
+                      let digit = Int(g), (1...9).contains(digit) {
+                // ⌥1–⌥9 → undo the on-device corrector's edit at that number.
+                // Option deconflicts from the bare-digit preset gesture below.
+                // `charactersIgnoringModifiers` is the base digit even with
+                // Option held, so this resolves on every layout. Consume only
+                // on a hit; otherwise fall through inert (no Concord highlights).
+                if onUndoCorrectionNumber?(digit) != true {
+                    super.keyDown(with: event)
+                }
             } else if event.modifierFlags
                         .intersection([.command, .control, .option]).isEmpty,
                       let g = baseGlyph, g.count == 1,
@@ -1200,6 +1222,22 @@ public final class OverlayModel: ObservableObject {
     /// left via ⌘S (save), ⌘Return (commit+accept), or Esc (discard).
     @Published var editing: Bool = false
     @Published var editableText: String = ""
+
+    /// Correction highlights for the on-device "Lightweight" (Concord) tier:
+    /// the spans Concord changed vs. the raw ASR, numbered 1..N in reading
+    /// order. Drives the amber-tinted highlight + numbered badge in the
+    /// awaitingAccept text, and the Option+digit per-correction undo. Empty for
+    /// cloud providers (they emit no EditRecords) and after a manual edit (the
+    /// ranges no longer map cleanly). Set by AppState from
+    /// ConcordCleanupProvider.appliedEditsForOverlay(); cleared on every state
+    /// change in update() so a prior turn's highlights never leak.
+    @Published var correctionSpans: [CorrectionSpan] = []
+
+    /// Invoked when the user presses Option+digit on a numbered correction —
+    /// reverts THAT correction (replacement → original) and feeds the revert to
+    /// the CorrectionJournal. AppState sets this (model-level, like onEnterEdit).
+    /// Returns true iff a correction at that number existed and was reverted.
+    var onUndoCorrection: ((Int) -> Bool)?
 
     /// B1: when set, the overlay shows this transient notice (e.g. "Didn't catch
     /// any audio — check your microphone") instead of the state-based content —
@@ -1483,6 +1521,13 @@ public final class OverlayModel: ObservableObject {
         // re-shows and must not flip the label mid-stream) and clears
         // on any other state.
         if state != .cleaning { self.isRefine = false }
+        // Correction highlights are only valid for the review of the SPECIFIC
+        // cleaned text they were mapped against. Clear them on every transition
+        // OFF .awaitingAccept (capturing/cleaning/refining) so a prior turn's
+        // amber spans never leak onto a fresh utterance. AppState (re)sets them
+        // immediately AFTER show(.awaitingAccept) for the Concord tier — that
+        // assignment lands after this clear, so the review keeps its highlights.
+        if state != .awaitingAccept { self.correctionSpans = [] }
     }
 
     public func append(_ chunk: String) {
@@ -1760,6 +1805,60 @@ private struct OverlayContent: View {
             }
         }
     }
+    /// Build the review text with the on-device corrector's changed spans
+    /// highlighted: each `CorrectionSpan.range` gets a soft amber background
+    /// tint + a brand-amber foreground, and a small superscript number badge is
+    /// inserted right after it (so the user can see which Option+digit reverts
+    /// it). Built as a single `AttributedString` so it wraps as one paragraph.
+    ///
+    /// Ranges are applied back-to-front so inserting the badge for an earlier
+    /// span never invalidates the indices of a later one.
+    static func highlightedReviewText(_ text: String, spans: [CorrectionSpan]) -> Text {
+        var attributed = AttributedString(text)
+        let amber = SettingsView.brandAccent
+        // Sort by position descending so badge insertions don't shift the
+        // String.Index ranges of spans we haven't processed yet.
+        let ordered = spans.sorted { $0.range.lowerBound > $1.range.lowerBound }
+        for span in ordered {
+            // Convert the String.Index range to the AttributedString's index
+            // space (the AttributedString was built from the same `text`).
+            guard let lower = AttributedString.Index(span.range.lowerBound, within: attributed),
+                  let upper = AttributedString.Index(span.range.upperBound, within: attributed) else {
+                continue
+            }
+            // Tint the replacement span.
+            attributed[lower..<upper].backgroundColor = amber.opacity(0.18)
+            attributed[lower..<upper].foregroundColor = amber
+
+            // Insert a small superscript number badge right after the span.
+            var badge = AttributedString("\(span.number)")
+            badge.foregroundColor = amber
+            badge.font = .system(size: 9, weight: .bold)
+            badge.baselineOffset = 6
+            attributed.insert(badge, at: upper)
+        }
+        return Text(attributed)
+    }
+
+    /// A compact legend under the review text: "⌥1 undo  ⌥2 undo …" so the user
+    /// knows the Option+digit gesture and what each numbered span maps to.
+    @ViewBuilder
+    func correctionLegend(_ spans: [CorrectionSpan]) -> some View {
+        let amber = SettingsView.brandAccent
+        HStack(spacing: 8) {
+            Image(systemName: "wand.and.stars")
+                .font(.system(size: 10))
+                .foregroundStyle(amber)
+            Text(spans.count == 1
+                 ? "1 on-device correction · ⌥1 to undo"
+                 : "\(spans.count) on-device corrections · ⌥1–⌥\(min(spans.count, 9)) to undo")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityLabel("On-device corrector changed \(spans.count) word\(spans.count == 1 ? "" : "s"); press Option and a number to undo a correction")
+    }
+
     /// Fixed outer width passed in from OverlayWindow. We constrain
     /// the SwiftUI hierarchy to this so NSHostingController's
     /// preferredContentSize reports (fixedWidth, naturalHeight)
@@ -3159,6 +3258,16 @@ private struct OverlayContent: View {
                                     return .ignored
                                 }
                             }
+                    } else if !model.correctionSpans.isEmpty {
+                        // On-device corrector highlight: amber-tint the spans
+                        // Concord changed, with a small superscript number per
+                        // span (Option+digit reverts that one). See
+                        // highlightedReviewText.
+                        Self.highlightedReviewText(model.text, spans: model.correctionSpans)
+                            .font(.system(size: 17))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        correctionLegend(model.correctionSpans)
                     } else {
                         Text(model.text)
                             .font(.system(size: 17))

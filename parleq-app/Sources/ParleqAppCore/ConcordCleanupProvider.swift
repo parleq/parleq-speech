@@ -54,6 +54,13 @@ public final class ConcordCleanupProvider: LLMProvider, @unchecked Sendable {
     private let lock = NSLock()
     private var pendingDiagnostics: ASRDiagnostics?
 
+    // The APPLIED edits from the most recent cleanup call. Read by AppState
+    // right after `streamCleanupOrRefine` returns to drive the overlay's
+    // "highlight what the corrector changed" + per-correction-undo feature.
+    // Lock-guarded; set inside generateStreaming. In-memory only (the same
+    // content already lives in ConcordProvenanceStore) — never logged/persisted.
+    private var lastEdits: [EditRecord] = []
+
     public init(engine: ConcordEngine = ConcordEngine()) {
         self.engine = engine
     }
@@ -73,6 +80,21 @@ public final class ConcordCleanupProvider: LLMProvider, @unchecked Sendable {
         let d = pendingDiagnostics
         pendingDiagnostics = nil
         return d
+    }
+
+    private func setLastEdits(_ edits: [EditRecord]) {
+        lock.lock(); defer { lock.unlock() }
+        lastEdits = edits
+    }
+
+    /// The APPLIED edits from the most recent cleanup call, for the overlay
+    /// highlight + per-correction-undo feature. Read by AppState after a
+    /// cleanup completes; empty after a refine (or before any cleanup).
+    /// Returns a copy under the lock — does NOT clear, so a re-read (e.g. a
+    /// second consumer) is safe; the next cleanup overwrites it.
+    public func appliedEditsForOverlay() -> [EditRecord] {
+        lock.lock(); defer { lock.unlock() }
+        return lastEdits.filter { $0.applied }
     }
 
     // Per-utterance call context: the BARE ASR transcript (framing-independent)
@@ -118,6 +140,9 @@ public final class ConcordCleanupProvider: LLMProvider, @unchecked Sendable {
             // later cleanup — preserving the fresh-stateless-per-utterance invariant.
             _ = takeDiagnostics()
             _ = pendingDictionaryTerms()
+            // A refine produces no edits — clear any prior cleanup's edits so the
+            // overlay highlight from an earlier turn can't leak onto this one.
+            setLastEdits([])
             let passthrough = call.priorText
                 ?? Self.unwrapTranscript(messages.last?.legacyContentString ?? "")
             FileHandle.standardError.write(
@@ -147,6 +172,10 @@ public final class ConcordCleanupProvider: LLMProvider, @unchecked Sendable {
         // Provenance: retain the full per-stage edit records IN MEMORY for
         // the maintainer's A/B analysis. Counts-only to stderr below.
         ConcordProvenanceStore.record(result.edits)
+
+        // Stash this utterance's edits for the overlay highlight + undo feature
+        // (AppState reads them right after this call returns). In-memory only.
+        setLastEdits(result.edits)
 
         // Count-only stderr log (compliance: no transcript/edit content).
         let byStage = result.appliedByStage
