@@ -319,7 +319,11 @@ final class LearnedStore: ObservableObject {
             term: term,
             context: nil,
             aliases: mergedAliases,
-            biasing: prior?.biasing ?? (aliasesSafe ? .asrAndLLM : .llmOnly),
+            spokenForms: prior?.spokenForms ?? [],   // preserve say-as phrases across a learned merge
+            // Alias safety OVERRIDES prior biasing: even a MODIFY of an existing .asrAndLLM entry
+            // must drop to .llmOnly when it gains a collision-prone alias, else the unsafe alias
+            // keeps driving ASR over-firing. asrAndLLM only when EVERY alias is safe.
+            biasing: aliasesSafe ? (prior?.biasing ?? .asrAndLLM) : .llmOnly,
             source: .learned
         )
         if let idx = dictionary.firstIndex(where: { $0.term.caseInsensitiveCompare(term) == .orderedSame }) {
@@ -601,6 +605,7 @@ final class LearnedStore: ObservableObject {
                 term: term,
                 context: proposal.context ?? prior?.context,
                 aliases: Self.unionAliases(prior: prior?.aliases ?? [], proposed: proposal.aliases ?? []),
+                spokenForms: prior?.spokenForms ?? [],   // never drop existing say-as phrases on accept/merge
                 biasing: prior?.biasing ?? .asrAndLLM,
                 source: .user
             )

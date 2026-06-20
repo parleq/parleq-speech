@@ -148,6 +148,24 @@ final class LearnedStoreTests: XCTestCase {
         XCTAssertEqual(dict[0].biasing, .asrAndLLM)
     }
 
+    func test_autoApply_modify_with_unsafe_alias_overrides_prior_asrAndLLM() {
+        // 4f11a1c: alias safety must OVERRIDE prior biasing — a modify adding a collision-prone
+        // alias ("item") to an existing .asrAndLLM entry must drop the WHOLE entry to .llmOnly.
+        var dict = [DictionaryEntry(term: "Mira", aliases: ["meera"], biasing: .asrAndLLM, source: .learned)]
+        LearnedStore.applyTermProposal(
+            termProposalWithAliases("Mira", aliases: ["item"], confidence: 0.95), to: &dict)
+        XCTAssertEqual(dict[0].biasing, .llmOnly)
+    }
+
+    func test_autoApply_merge_preserves_spokenForms() {
+        // bcf90e6: a learned merge must NOT drop existing say-as spoken forms.
+        var dict = [DictionaryEntry(term: "iTerm", spokenForms: ["iterm terminal"],
+                                    biasing: .llmOnly, source: .learned)]
+        LearnedStore.applyTermProposal(
+            termProposalWithAliases("iTerm", aliases: ["eyeterm"], confidence: 0.95), to: &dict)
+        XCTAssertEqual(dict[0].spokenForms, ["iterm terminal"])
+    }
+
     func test_autoApply_modify_preserves_prior_biasing() {
         // A modify on an existing learned (llmOnly) entry keeps llmOnly.
         var dict = [DictionaryEntry(term: "Mira", biasing: .llmOnly, source: .learned)]
