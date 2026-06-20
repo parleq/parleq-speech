@@ -245,6 +245,19 @@ final class LearnedStore: ObservableObject {
             userStrings.contains { $0.caseInsensitiveCompare(p) == .orderedSame }
         }
         if collidesWithUserEntry { return .suggest }
+        // Quality bar: reject low-quality / collision-prone TERM proposals
+        // from AUTO-APPLY (they fall through to a pending suggestion the
+        // user can still accept by hand). Catches bare common words
+        // ("scholarly"/"item"), all-common multi-word phrases ("line item",
+        // "dictation released"), and phonetic collisions with a common word
+        // or an existing dictionary term ("iTerm"~"item", "parallel"~
+        // "Parleq"). Conservative: when uncertain, suggest, don't auto-add.
+        // Only term proposals reach here (preset/style/retire returned
+        // above); guard the term anyway.
+        if proposal.kind == .term, let term = proposal.term,
+           LearnedTermQualityBar.rejectionReason(term: term, existing: dictionary) != nil {
+            return .suggest
+        }
         return .autoApply
     }
 
@@ -272,6 +285,15 @@ final class LearnedStore: ObservableObject {
     /// `context` — the user never reviewed it, so we persist only the
     /// canonical term and its (already word-level bounded) aliases. Context
     /// is kept only for entries the user explicitly accepts (see `accept`).
+    ///
+    /// Biasing defaults to `.llmOnly` for auto-learned entries: an
+    /// auto-applied term is lower-confidence than a hand-curated one, so it
+    /// must NEVER drive FluidAudio's CTC vocabulary biasing at the ASR
+    /// layer — that over-fires on collision-prone short terms (e.g. a
+    /// learned "iTerm" hijacking the common word "item" in the raw
+    /// transcript). It still helps the LLM cleanup pass. A modify on an
+    /// existing entry preserves that entry's biasing (a prior learned entry
+    /// is already `.llmOnly`; a prior user entry keeps the user's choice).
     nonisolated static func applyTermProposal(_ proposal: LearningProposal, to dictionary: inout [DictionaryEntry]) {
         guard proposal.kind == .term, let term = proposal.term else { return }
         let prior = dictionary.first { $0.term.caseInsensitiveCompare(term) == .orderedSame }
@@ -279,7 +301,7 @@ final class LearnedStore: ObservableObject {
             term: term,
             context: nil,
             aliases: unionAliases(prior: prior?.aliases ?? [], proposed: proposal.aliases ?? []),
-            biasing: prior?.biasing ?? .asrAndLLM,
+            biasing: prior?.biasing ?? .llmOnly,
             source: .learned
         )
         if let idx = dictionary.firstIndex(where: { $0.term.caseInsensitiveCompare(term) == .orderedSame }) {
@@ -442,7 +464,18 @@ final class LearnedStore: ObservableObject {
         var dictionary = config.customDictionary
         var pendingApplied: [(proposal: LearningProposal, prior: DictionaryEntry?, applied: DictionaryEntry?)] = []
         var newSuggestions: [PendingSuggestion] = []
+        // Count-only tally of TERM proposals the quality bar kept out of
+        // auto-apply (no term text — honors the count-only learning-log
+        // invariant). They still surface as suggestions; this just records
+        // how many auto-adds the bar prevented this run.
+        var qualityRejectedCount = 0
         for proposal in proposals {
+            if proposal.kind == .term, let term = proposal.term,
+               proposal.op != .retire,
+               proposal.confidence >= LearningAnalyzer.autoApplyConfidenceThreshold,
+               LearnedTermQualityBar.rejectionReason(term: term, existing: dictionary) != nil {
+                qualityRejectedCount += 1
+            }
             switch Self.route(proposal, against: dictionary) {
             case .autoApply:
                 let term = proposal.term ?? ""
@@ -497,6 +530,13 @@ final class LearnedStore: ObservableObject {
         // Suggestions are in-memory only (no disk write), so they're added
         // regardless of whether any auto-apply save succeeded.
         for s in newSuggestions { insertSuggestionIfNew(s) }
+        if qualityRejectedCount > 0 {
+            // Count-only (no term text) — preserves the learning-log
+            // invariant that no transcript-derived content reaches stderr.
+            FileHandle.standardError.write(
+                "[parleq] LearnedStore: \(qualityRejectedCount) term proposal(s) rejected from auto-apply by quality bar\n"
+                    .data(using: .utf8) ?? Data())
+        }
         return pendingApplied.count
     }
 

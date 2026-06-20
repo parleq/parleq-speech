@@ -115,6 +115,51 @@ final class LearnedStoreTests: XCTestCase {
                        "A merge must keep the existing alias and add the new one, not replace")
     }
 
+    func test_autoApplied_term_defaults_to_llmOnly_biasing() {
+        // Fix 1: an auto-learned term must NEVER drive ASR-layer biasing.
+        var dict: [DictionaryEntry] = []
+        LearnedStore.applyTermProposal(termProposal("Mira", confidence: 0.95), to: &dict)
+        XCTAssertEqual(dict.count, 1)
+        XCTAssertEqual(dict[0].biasing, .llmOnly,
+                       "Auto-learned terms must default to llmOnly, never asrAndLLM")
+        XCTAssertEqual(dict[0].source, .learned)
+    }
+
+    func test_autoApply_modify_preserves_prior_biasing() {
+        // A modify on an existing learned (llmOnly) entry keeps llmOnly.
+        var dict = [DictionaryEntry(term: "Mira", biasing: .llmOnly, source: .learned)]
+        let p = LearningProposal(kind: .term, op: .modify, confidence: 0.9, rationale: "r",
+                                 term: "Mira", context: nil, aliases: ["meera"], rule: nil)
+        LearnedStore.applyTermProposal(p, to: &dict)
+        XCTAssertEqual(dict[0].biasing, .llmOnly)
+    }
+
+    // Fix 2: the quality bar routes junk/collision-prone proposals to
+    // .suggest instead of .autoApply.
+    func test_common_word_term_routes_to_suggest() {
+        let decision = LearnedStore.route(termProposal("scholarly", confidence: 0.99), against: [])
+        XCTAssertEqual(decision, .suggest,
+                       "A bare common word must not auto-apply (quality bar)")
+    }
+
+    func test_all_common_phrase_routes_to_suggest() {
+        let decision = LearnedStore.route(termProposal("line item", confidence: 0.99), against: [])
+        XCTAssertEqual(decision, .suggest,
+                       "An all-common-word phrase must not auto-apply")
+    }
+
+    func test_iterm_collision_routes_to_suggest() {
+        let decision = LearnedStore.route(termProposal("iTerm", confidence: 0.99), against: [])
+        XCTAssertEqual(decision, .suggest,
+                       "A term phonetically colliding with a common word must not auto-apply")
+    }
+
+    func test_distinctive_term_still_auto_applies() {
+        let decision = LearnedStore.route(termProposal("Kubernetes", confidence: 0.9), against: [])
+        XCTAssertEqual(decision, .autoApply,
+                       "A distinctive, non-colliding term must still auto-apply")
+    }
+
     func test_autoApply_drops_freeform_context() {
         var dict: [DictionaryEntry] = []
         let p = LearningProposal(kind: .term, op: .add, confidence: 0.95, rationale: "r",
