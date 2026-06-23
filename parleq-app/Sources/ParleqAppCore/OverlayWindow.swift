@@ -71,6 +71,22 @@ public final class OverlayWindow {
     /// callback from a prior session can't touch the next session's
     /// panel (180ms back-to-back race; review finding).
     private var resizeGeneration: UInt = 0
+    /// Loop-breaker bookkeeping (see resizePanelToHeight +
+    /// oscillationSettleHeight): the last few heights actually pushed to
+    /// the panel via this method. A bistable SwiftUI layout can make the
+    /// measured body height flip-flop between two values forever (live:
+    /// 184 ↔ 201 after an in-place-edit teardown, 92k resize log lines +
+    /// ~900 MB RSS until force-killed); the exact-equality no-op never
+    /// catches a two-value cycle, so we detect the A→B→A reversal here and
+    /// settle at the larger height. Reset on every show()/hide().
+    private var recentAppliedTargets: [CGFloat] = []
+    /// True only for the duration of the show() pre-size pass, during which
+    /// the panel is intentionally NOT yet on screen. Lets resizePanelToHeight
+    /// distinguish that legitimate hidden resize from the stray trailing
+    /// preference callbacks that arrive AFTER hide() ordered the panel out
+    /// (those must be dropped — resizing a dismissed panel forces a relayout
+    /// that re-fires the measurement, sustaining the oscillation off-screen).
+    private var isPresizing = false
     /// Vertical offset between the bottom of the visible screen and
     /// the bottom of the panel — kept consistent with the anchor
     /// enforced in OverlayPanel.setFrame.
@@ -395,6 +411,64 @@ public final class OverlayWindow {
         )
     }
 
+    /// Loop-breaker for a panel-resize feedback oscillation.
+    ///
+    /// The overlay sizes its NSPanel to the SwiftUI-measured body height,
+    /// but a bistable layout (observed live after an in-place-edit
+    /// `TextEditor` collapses back to a plain `Text`) can make that
+    /// measurement flip-flop between two values forever: set the panel to
+    /// A and it measures B; set it to B and it measures A. Each `setFrame`
+    /// forces a relayout that re-fires the preference, so the cycle is
+    /// self-sustaining and pegs the CPU. The exact-equality no-op in
+    /// `resizePanelToHeight` (`abs(current - target) < 0.5`) only catches a
+    /// *fixed point*, never a two-value cycle.
+    ///
+    /// Given the recently-applied heights and an incoming measurement,
+    /// returns the height to settle at — the LARGER of the two flapping
+    /// values, so the panel never clips its content — when the panel is in
+    /// a SUSTAINED two-value cycle and `target` would continue it. Returns
+    /// nil otherwise (apply `target` as-is). Settling at the larger value
+    /// is what converges the loop (within a cycle or two of detection): the
+    /// settle always redirects to the ceiling, so once the panel sits there
+    /// the next reversal resolves to that same ceiling == current, the
+    /// exact-equality no-op fires, and no `setFrame` (hence no relayout,
+    /// hence no new measurement) follows — and because that no-op iteration
+    /// records nothing, the ceiling can't stack up in the history and
+    /// de-sync the detector.
+    ///
+    /// This is a SECONDARY, on-screen backstop. The primary fix for the
+    /// reported crash — an off-screen loop after the panel was dismissed —
+    /// is the `panel.isVisible || isPresizing` guard in resizePanelToHeight;
+    /// a dismissed panel never reaches this heuristic at all.
+    ///
+    /// We require a *sustained* cycle — the last four applied heights must
+    /// already alternate A,B,A,B and `target` must continue it (→A) — not a
+    /// single A→B→A reversal. A lone grow-then-shrink-to-the-same-height is
+    /// legitimate (e.g. typing a wrapping line in the in-place editor and
+    /// deleting it), and must not leave the panel stuck one line too tall.
+    /// The runaway flaps thousands of times, so it trips this within a few
+    /// sub-second cycles regardless.
+    ///
+    /// `nonisolated` + pure so it's unit-testable off the main actor.
+    nonisolated static func oscillationSettleHeight(
+        incoming target: CGFloat,
+        recentApplied: [CGFloat]
+    ) -> CGFloat? {
+        guard recentApplied.count >= 4 else { return nil }
+        let d = recentApplied[recentApplied.count - 1]   // newest applied
+        let c = recentApplied[recentApplied.count - 2]
+        let b = recentApplied[recentApplied.count - 3]
+        let a = recentApplied[recentApplied.count - 4]
+        // Sustained A,B,A,B flap (a==c, b==d, a≠b) that `target` continues
+        // back to A (== c). Sub-0.5pt jitter is the caller's exact-equality
+        // no-op job, so compare with that tolerance throughout.
+        let eq: (CGFloat, CGFloat) -> Bool = { abs($0 - $1) < 0.5 }
+        if eq(a, c), eq(b, d), !eq(a, b), eq(target, c) {
+            return max(c, d)
+        }
+        return nil
+    }
+
     /// Resize the panel to match the SwiftUI body's measured height.
     /// Driven by OverlayBodyHeightKey via OverlayContent's outer
     /// .background(GeometryReader) — this is the replacement for the
@@ -422,6 +496,16 @@ public final class OverlayWindow {
             return
         }
         lastFiniteMeasuredHeight = measuredHeight
+        // Never resize a panel that isn't on screen. After accept()/cancel()
+        // call hide() (panel.orderOut), the SwiftUI view tree stays alive and
+        // can deliver a few trailing OverlayBodyHeightKey callbacks. Following
+        // them would setFrame the dismissed panel, which forces a relayout that
+        // re-fires the measurement — and if that measurement is bistable, the
+        // overlay grinds in an off-screen resize loop the user can't even see
+        // or dismiss (the live 92k-line / ~900 MB hang). The show() pre-size
+        // pass legitimately sizes the panel while it's still hidden, so allow
+        // that one carve-out via isPresizing.
+        guard panel.isVisible || isPresizing else { return }
         // Cap against the PANEL's screen (NSScreen.main follows keyboard
         // focus and can be a different display) — same derivation as the
         // external-resize backstop and applyAnchor, so all three clamps
@@ -432,10 +516,21 @@ public final class OverlayWindow {
         // frame, which these clamps bound.
         let visible = ((panel.screen ?? NSScreen.main)?.visibleFrame.height) ?? 800
         let maxPanelHeight = OverlayWindow.computeMaxPanelHeight(visibleHeight: visible)
-        let target = max(
+        var target = max(
             OverlayWindow.minHeight,
             min(maxPanelHeight, measuredHeight)
         )
+        // Loop-breaker: if this measurement would reverse the just-applied
+        // resize back to the value before it (A→B→A), settle at the larger
+        // of the pair so the panel never clips its content. See
+        // oscillationSettleHeight — this is what kills the live 184↔201 flap
+        // even while the overlay is on screen (the isVisible guard above
+        // only covers the dismissed-panel case).
+        if let settle = OverlayWindow.oscillationSettleHeight(
+            incoming: target, recentApplied: recentAppliedTargets
+        ) {
+            target = min(maxPanelHeight, settle)
+        }
         var frame = panel.frame
         if abs(frame.size.height - target) < 0.5 {
             // Target equals the current frame — panel == card, so a pin
@@ -495,6 +590,13 @@ public final class OverlayWindow {
             (animate ? " (animated)" : "")
         )
         frame.size.height = target
+        // Record what we're about to push so oscillationSettleHeight can spot
+        // an A→B→A reversal next time. Bounded to the last few; reset on
+        // show()/hide() so a new session starts clean.
+        recentAppliedTargets.append(target)
+        if recentAppliedTargets.count > 4 {
+            recentAppliedTargets.removeFirst(recentAppliedTargets.count - 4)
+        }
         if animate {
             animatedResizeUntil = Date().addingTimeInterval(0.18)
             panel.setFrame(frame, display: true, animate: true)
@@ -617,7 +719,17 @@ public final class OverlayWindow {
             // it so positionAtScreenBottom (called next) can re-arm
             // the anchor with the freshly computed origin.
             panel.anchoredBottomY = nil
+            // Fresh session: drop any prior session's applied-height history so
+            // the oscillation breaker doesn't compare against stale values.
+            recentAppliedTargets.removeAll()
+            // This pre-size legitimately runs while the panel is still hidden;
+            // isPresizing waives the isVisible guard in resizePanelToHeight for
+            // its duration only. The pre-show path is synchronous (animate
+            // requires panel.isVisible, which is false here), so no async work
+            // escapes the flag.
+            isPresizing = true
             resizePanelToHeight(fitting.height)
+            isPresizing = false
 
             positionAtScreenBottom()
 
@@ -793,6 +905,9 @@ public final class OverlayWindow {
         // finding).
         animatedResizeUntil = .distantPast
         pendingResizeMeasurement = nil
+        // Don't let this session's applied-height history bleed into the next
+        // — the oscillation breaker must start each session with a clean slate.
+        recentAppliedTargets.removeAll()
         resizeGeneration &+= 1
         // Contract hygiene: the field is documented as "the most recent
         // finite body measurement" — don't let a prior session's value
