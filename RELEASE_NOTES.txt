@@ -1,20 +1,27 @@
 Parleq 0.26.0
 
-Advanced, opt-in research/contributor tooling. No change to default behavior —
-every existing user is unaffected unless they deliberately turn it on.
+A stability fix for a rare overlay hang, plus advanced opt-in
+research/contributor tooling that's off by default and invisible unless you
+deliberately turn it on.
 
-(Release pending: 0.26.0 is staged on main but not yet shipped — these notes
-will grow as more user-facing features and fixes land before the release.)
+### Fixed
+
+- Fixed a rare hang where the overlay could get stuck and lock up the app.
+  After accepting a dictation you'd edited in place, the overlay could enter
+  an internal resize loop — the on-screen window vanished, the app pegged a
+  CPU core and ballooned its memory, and neither the overlay nor the menu bar
+  would respond, forcing a Force Quit. The overlay now refuses to resize once
+  it's been dismissed and detects-and-stops the resize loop if it ever starts,
+  so the hang can't happen.
 
 ### Added
 
-- **Opt-in dictation contribution capture (off by default).** A local-only
-  mode for contributors who want to help improve Parleq's on-device
-  transcription correction. When explicitly armed via a manual edit to
-  ~/.parleq/config.json, it records your own dictations — audio plus
-  transcripts and recognition diagnostics — to ~/.parleq/flywheel/. It is off
-  by default, is not exposed in Settings or the setup wizard, requires a
-  deliberate, self-documenting acknowledgment to enable, and never sends
-  anything off your device — the data stays local, and contributing it is a
-  separate manual step you take yourself. Fully disclosed in
-  docs/SECURITY_REVIEW.md section 5.3.
+- Opt-in dictation contribution capture (off by default). A local-only mode
+  for contributors who want to help improve Parleq's on-device transcription
+  correction. When explicitly armed via a manual edit to ~/.parleq/config.json,
+  it records your own dictations — audio plus transcripts and recognition
+  diagnostics — to ~/.parleq/flywheel/. It is off by default, is not exposed in
+  Settings or the setup wizard, requires a deliberate, self-documenting
+  acknowledgment to enable, and never sends anything off your device — the data
+  stays local, and contributing it is a separate manual step you take yourself.
+  Fully disclosed in docs/SECURITY_REVIEW.md section 5.3.

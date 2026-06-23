@@ -6,7 +6,11 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 ## [0.26.0] - Unreleased
 
-Advanced, opt-in research/contributor tooling. No change to default behavior — every existing user is unaffected unless they deliberately turn it on.
+A stability fix for a rare overlay hang, plus advanced opt-in research/contributor tooling that's off by default and invisible unless you deliberately turn it on.
+
+### Fixed
+
+- **Fixed a rare hang where the overlay could get stuck and lock up the app.** After accepting a dictation you'd edited in place, the overlay could enter an internal resize loop — the on-screen window vanished, the app pegged a CPU core and ballooned its memory, and neither the overlay nor the menu bar would respond, forcing a Force Quit. The overlay now refuses to resize once it's been dismissed and detects-and-stops the resize loop if it ever starts, so the hang can't happen.
 
 ### Added
 
