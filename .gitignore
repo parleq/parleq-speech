@@ -63,6 +63,11 @@ docs/superpowers/
 # asr-bench local Python venv (deps installed on demand)
 bench/.venv/
 
+# asr-bench default output path — scratch from a no-`--out` run. Deliberate,
+# meaningfully-named results (bench/results/<experiment>-<version>.json) are
+# still committed; only the generic default name is ignored.
+bench/results/results.json
+
 # Local-only: real work-machine dictionary used for personal over-fire repro.
 # Customer-identifying term cluster — never commit (see bench/dictionary-overfire.json for the public gate).
 bench/dictionary-work.json
