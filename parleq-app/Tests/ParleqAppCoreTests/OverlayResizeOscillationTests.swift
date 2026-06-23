@@ -40,7 +40,12 @@ final class OverlayResizeOscillationTests: XCTestCase {
         // sustained cycle — so the breaker must not engage and strand the
         // panel one line too tall.
         XCTAssertNil(OverlayWindow.oscillationSettleHeight(incoming: 201, recentApplied: [201, 184]))
-        XCTAssertNil(OverlayWindow.oscillationSettleHeight(incoming: 201, recentApplied: [195, 201, 184]))
+        XCTAssertNil(OverlayWindow.oscillationSettleHeight(incoming: 195, recentApplied: [195, 201, 184]))
+        // A FULL 4-element history that still isn't a sustained cycle: the
+        // tail is a single A→B→A reversal (184,201,184) preceded by an
+        // unrelated height, so a (195) != c (201) and detection stays silent.
+        // This exercises the alternation check itself, not just the count guard.
+        XCTAssertNil(OverlayWindow.oscillationSettleHeight(incoming: 201, recentApplied: [195, 184, 201, 184]))
     }
 
     func testSustainedCycleDetectedAndSettlesAtLarger() {

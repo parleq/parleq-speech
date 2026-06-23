@@ -428,10 +428,18 @@ public final class OverlayWindow {
     /// values, so the panel never clips its content — when the panel is in
     /// a SUSTAINED two-value cycle and `target` would continue it. Returns
     /// nil otherwise (apply `target` as-is). Settling at the larger value
-    /// is what converges the loop: once the panel sits at the ceiling,
-    /// every further reversal resolves to that same ceiling == current, so
-    /// the exact-equality no-op fires and no `setFrame` (hence no relayout,
-    /// hence no new measurement) follows.
+    /// is what converges the loop (within a cycle or two of detection): the
+    /// settle always redirects to the ceiling, so once the panel sits there
+    /// the next reversal resolves to that same ceiling == current, the
+    /// exact-equality no-op fires, and no `setFrame` (hence no relayout,
+    /// hence no new measurement) follows — and because that no-op iteration
+    /// records nothing, the ceiling can't stack up in the history and
+    /// de-sync the detector.
+    ///
+    /// This is a SECONDARY, on-screen backstop. The primary fix for the
+    /// reported crash — an off-screen loop after the panel was dismissed —
+    /// is the `panel.isVisible || isPresizing` guard in resizePanelToHeight;
+    /// a dismissed panel never reaches this heuristic at all.
     ///
     /// We require a *sustained* cycle — the last four applied heights must
     /// already alternate A,B,A,B and `target` must continue it (→A) — not a
