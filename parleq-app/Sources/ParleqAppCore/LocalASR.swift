@@ -536,10 +536,17 @@ private func logStderr(_ message: String) {
 /// stronger acoustic evidence to override the original transcript.
 ///
 /// If you find legit corrections being missed, lower minSimilarity
-/// toward 0.55. If you find new false positives, lower cbw toward
-/// 1.5 or raise minSimilarity toward 0.70.
+/// toward 0.65. If you find new false positives, lower cbw toward
+/// 1.5 or raise minSimilarity toward 0.80.
+///
+/// 0.75 chosen from an ROC sweep over a 566-clip corpus of real FluidAudio
+/// output: vs the old 0.65 it cuts vocab over-fires ~3x (the class where a
+/// short, common English word wrongly snaps to a dictionary term) for only a
+/// small recovery cost — min-similarity is the dominant knob (cbw/margin
+/// barely move the ratio). Re-validated on the current rescorer (over-fires
+/// 36->12 at the same recovery). Measured single-speaker.
 enum VocabTuning {
-    public static let minSimilarity: Float = 0.65
+    public static let minSimilarity: Float = 0.75
     public static let cbw: Float = 2.0
 }
 

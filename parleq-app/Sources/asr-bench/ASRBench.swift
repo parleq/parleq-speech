@@ -86,10 +86,10 @@ struct Args {
     var pacing = "realtime"
     var out = "bench/results/results.json"
     // Vocab-rescorer tuning (biasing arm). Defaults mirror ParleqAppCore's
-    // VocabTuning (minSimilarity 0.65, cbw 2.0); margin defaults to the
+    // VocabTuning (minSimilarity 0.75, cbw 2.0); margin defaults to the
     // FluidAudio library default for the linked version when not set.
     // Overridable so the over-fire/recall ROC can be swept without rebuilding.
-    var minSimilarity: Float = 0.65
+    var minSimilarity: Float = 0.75
     var cbw: Float = 2.0
     var margin: Double = -1   // <0 ⇒ use library default (don't pass)
     // Research instrument: when set, write one JSONL row per applied

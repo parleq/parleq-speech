@@ -764,7 +764,11 @@ public struct Config: Sendable {
             DictionaryEntry(
                 term: "Parleq",
                 context: "the name of this dictation app",
-                aliases: ["Parlek", "Parlay", "Parlez", "Parlec"],
+                // "Parlock" added from observed real FluidAudio mishearings of
+                // the app name. (A real-word mishear like "Parlour" is left out
+                // of the defaults so it can't over-fire on natural speech;
+                // users can still add such aliases to their own dictionary.)
+                aliases: ["Parlek", "Parlay", "Parlez", "Parlec", "Parlock"],
                 biasing: .asrAndLLM,
                 source: .user)
         ],
