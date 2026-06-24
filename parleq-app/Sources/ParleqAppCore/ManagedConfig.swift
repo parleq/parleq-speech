@@ -57,6 +57,11 @@ public enum ManagedConfig {
         "contextAllowedProviders",
         "contextModel",
         "contextAllowedModels",
+        // Refine tier — provider/model pins (pin-only, mirrors the
+        // context-tier pins). Routes voice-refine, quick chips, and
+        // styled cleanup to a specific cloud provider+model.
+        "refineProvider",
+        "refineModel",
         // Phase 3 — operational policy
         "sparkleUpdateFeedURL",
         "loggingMode",

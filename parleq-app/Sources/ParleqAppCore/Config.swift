@@ -49,7 +49,15 @@
 //                      // Allow local provider on < 12 GB RAM machines
 //                      // despite thrash risk. Default false.
 //                      "allow_unsupported_ram": false
-//                    } },
+//                    },
+//                    // Refinement tier (omit when unset). Routes
+//                    // voice-refine, quick chips, and styled (per-app
+//                    // preset) cleanup to a cloud provider — used when
+//                    // cleanup is the on-device Concord tier, which
+//                    // can't perform refine/style ops. Falls back to
+//                    // context_model, then cleanup, when absent:
+//                    "refine": { "provider": "gemini",
+//                                "model": "gemini-2.5-flash" } },
 //     "aws":       { "region": "us-east-2",
 //                    "profile": "work",
 //                    // Enterprise OIDC federation (omit-when-default):
@@ -84,6 +92,7 @@
 //                      { "term": "Acme",
 //                        "context": "mobile finance app I'm building",
 //                        "aliases": ["ackme", "ack me"],
+//                        "spoken_forms": ["acme finance app"],
 //                        "biasing": "llmOnly" }
 //                    ] },
 //   }
@@ -171,11 +180,18 @@ public enum DictionarySource: String, Sendable, Equatable, Codable {
 /// the ASR layer commonly produces (e.g. "Haagen-Dazs" → canonical
 /// "Häagen-Dazs"); both layers match against the alias list and
 /// emit the canonical form. `biasing` controls which layers
-/// receive this entry; defaults to ASR + LLM.
+/// receive this entry; defaults to ASR + LLM. `spokenForms` are
+/// distinctive MULTI-WORD "say-as" phrases the on-device corrector
+/// (Concord) matches as a whole run and rewrites to the canonical
+/// term, consuming the extra disambiguator words (e.g. spoken form
+/// "iterm terminal" → "open item terminal" becomes "open iTerm");
+/// Concord ignores phrases with fewer than two words (those belong
+/// in `aliases`).
 public struct DictionaryEntry: Sendable, Equatable {
     public var term: String
     public var context: String?
     public var aliases: [String]
+    public var spokenForms: [String]
     public var biasing: DictionaryBiasing
     public var source: DictionarySource
 
@@ -183,12 +199,14 @@ public struct DictionaryEntry: Sendable, Equatable {
         term: String,
         context: String? = nil,
         aliases: [String] = [],
+        spokenForms: [String] = [],
         biasing: DictionaryBiasing = .asrAndLLM,
         source: DictionarySource = .user
     ) {
         self.term = term
         self.context = context
         self.aliases = aliases
+        self.spokenForms = spokenForms
         self.biasing = biasing
         self.source = source
     }
@@ -336,6 +354,10 @@ public struct Config: Sendable {
     ///   - "bedrock" — AWS Bedrock ConverseStream (or the
     ///     bearer-auth path for scoped Bedrock API keys).
     ///   - "azure"  — Azure OpenAI Chat Completions.
+    ///   - "concord" — "Lightweight (on-device)" 2nd-pass corrector
+    ///     (the private Concord engine: deterministic numbers/compounds
+    ///     + confidence-gated dictionary correction). In-process, ~0 ms,
+    ///     no network boundary, no auth, no model download.
     ///   - "none"   — skip cleanup, paste the raw ASR transcript.
     public var llmProvider: String
     /// AWS region used when `llmProvider == "bedrock"`. Defaults to
@@ -532,6 +554,19 @@ public struct Config: Sendable {
     /// wizard's "Same as cleanup" default and the legacy behavior for
     /// pre-Phase-2 configs.
     public var contextModel: ModelIdentifier?
+
+    /// Model to use for REFINE-shaped operations: hotkey voice-refine,
+    /// quick-refinement chips, and first-pass cleanup that folds a
+    /// per-app default preset (a "style"). These are operations the
+    /// on-device Concord cleanup tier cannot perform (it no-ops refine
+    /// turns and can't apply a style), so this tier lets the user route
+    /// them to a cloud provider while keeping plain first-pass cleanup
+    /// on Concord. nil means "fall back to the context model, then the
+    /// cleanup model" (see Config.modelForInvocation) — the default and
+    /// the legacy behavior for configs that don't set it. Serialized as
+    /// the top-level `llm.refine` object (`{provider, model}`), mirroring
+    /// the `context_model` shape.
+    public var refineModel: ModelIdentifier?
 
     // MARK: - Feature toggles (Phase 5 / Tier 1)
     //
@@ -736,6 +771,7 @@ public struct Config: Sendable {
         transformPresets: [],
         presetAppDefaults: [:],
         contextModel: nil,
+        refineModel: nil,
         referenceWindowsEnabled: true,
         clipboardReferenceEnabled: true,
         imageReferenceEnabled: true,
@@ -1402,6 +1438,44 @@ public struct Config: Sendable {
             c.contextModel = (contextId == cleanupId) ? nil : contextId
         }
 
+        // REFINE TIER — provider/model pins (mirror of the contextProvider/
+        // contextModel pins above, pin-only). Lets an admin force the
+        // refine tier (voice-refine, quick chips, styled cleanup) onto a
+        // specific cloud provider+model. Falls back to the context-tier
+        // value, then cleanup, exactly like the runtime resolution chain,
+        // so pinning just the provider snaps the model to that provider's
+        // curated default.
+        let currentRefineProvider = c.refineModel?.provider ?? (c.contextModel?.provider ?? c.llmProvider)
+        let currentRefineModel    = c.refineModel?.model    ?? (c.contextModel?.model    ?? c.llmModel)
+        var refineProvider = currentRefineProvider
+        var refineModelName = currentRefineModel
+
+        if let pinnedProvider = ManagedConfig.managedString(forKey: "refineProvider") {
+            // If only the provider is pinned and the stored model belongs
+            // to a different provider, snap the model to the pinned
+            // provider's default (mirror of the cleanup/context checks).
+            if pinnedProvider != refineProvider,
+               !ModelCatalog.isCanonical(provider: pinnedProvider, model: refineModelName) {
+                refineModelName = ModelCatalog.defaultModel(forProvider: pinnedProvider)
+            }
+            refineProvider = pinnedProvider
+            managedKeys.insert("refineProvider")
+        }
+        if let pinnedModel = ManagedConfig.managedString(forKey: "refineModel") {
+            refineModelName = pinnedModel
+            managedKeys.insert("refineModel")
+        }
+
+        let refineTierManaged = managedKeys.contains("refineProvider")
+            || managedKeys.contains("refineModel")
+        if refineTierManaged {
+            let cleanupId = ModelIdentifier(provider: c.llmProvider, model: c.llmModel)
+            let refineId  = ModelIdentifier(provider: refineProvider, model: refineModelName)
+            // nil when the pin resolves back to the cleanup tier (= "same
+            // as cleanup"); otherwise the explicit refine identifier.
+            c.refineModel = (refineId == cleanupId) ? nil : refineId
+        }
+
         c.managedKeys = managedKeys
 
         // Defense-in-depth: when customModelEntryEnabled is off, a
@@ -1433,6 +1507,15 @@ public struct Config: Sendable {
                 let replacement = ModelCatalog.defaultModel(forProvider: ctx.provider)
                 c.contextModel = ModelIdentifier(provider: ctx.provider, model: replacement)
                 configLogStderr("[parleq] customModelEntryEnabled=false: rejected non-canonical context model '\(original)' (provider=\(ctx.provider)); reset to '\(replacement)'")
+            }
+            let refineModelManaged = managedKeys.contains("refineModel")
+            if let rfn = c.refineModel,
+               !refineModelManaged,
+               !ModelCatalog.isCanonical(provider: rfn.provider, model: rfn.model) {
+                let original = rfn.model
+                let replacement = ModelCatalog.defaultModel(forProvider: rfn.provider)
+                c.refineModel = ModelIdentifier(provider: rfn.provider, model: replacement)
+                configLogStderr("[parleq] customModelEntryEnabled=false: rejected non-canonical refine model '\(original)' (provider=\(rfn.provider)); reset to '\(replacement)'")
             }
         }
     }
@@ -1498,6 +1581,21 @@ public struct Config: Sendable {
                 }
                 if let v = local["allow_unsupported_ram"] as? Bool {
                     c.localAllowUnsupportedRAM = v
+                }
+            }
+            // Refinement tier — llm.refine sub-object ({provider, model}).
+            // Mirrors the context_model shape but lives under "llm" so the
+            // three model tiers (cleanup, refine, context) read coherently.
+            // Routes hotkey voice-refine, quick chips, and styled (per-app
+            // preset) cleanup to a cloud provider when cleanup is the
+            // on-device Concord tier (which can't perform those ops).
+            if let refine = llm["refine"] as? [String: Any],
+               let provider = refine["provider"] as? String,
+               let model = refine["model"] as? String {
+                let tp = provider.trimmingCharacters(in: .whitespacesAndNewlines)
+                let tm = model.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !tp.isEmpty && !tm.isEmpty {
+                    c.refineModel = ModelIdentifier(provider: tp, model: tm)
                 }
             }
         }
@@ -1620,6 +1718,11 @@ public struct Config: Sendable {
                         return raw.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                             .filter { !$0.isEmpty }
                     }()
+                    let spokenForms: [String] = {
+                        guard let raw = obj["spoken_forms"] as? [String] else { return [] }
+                        return raw.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                            .filter { !$0.isEmpty }
+                    }()
                     let biasing: DictionaryBiasing = {
                         guard let raw = obj["biasing"] as? String,
                               let parsed = DictionaryBiasing(rawValue: raw)
@@ -1636,6 +1739,7 @@ public struct Config: Sendable {
                         term: trimmedTerm,
                         context: (ctx?.isEmpty ?? true) ? nil : ctx,
                         aliases: aliases,
+                        spokenForms: spokenForms,
                         biasing: biasing,
                         source: source
                     )
@@ -1780,6 +1884,11 @@ public struct Config: Sendable {
         if let localDict = Self.serializeLocalSection(config) {
             llm["local"] = localDict
         }
+        // Refinement tier — emit only when set (omit-when-default). nil
+        // means "fall back to context, then cleanup" and writes no key.
+        if let model = config.refineModel {
+            llm["refine"] = ["provider": model.provider, "model": model.model]
+        }
         return llm
     }
 
@@ -1911,6 +2020,7 @@ public struct Config: Sendable {
                     var obj: [String: Any] = ["term": entry.term]
                     if let ctx = entry.context, !ctx.isEmpty { obj["context"] = ctx }
                     if !entry.aliases.isEmpty { obj["aliases"] = entry.aliases }
+                    if !entry.spokenForms.isEmpty { obj["spoken_forms"] = entry.spokenForms }
                     if entry.biasing != .asrAndLLM { obj["biasing"] = entry.biasing.rawValue }
                     if entry.source != .user { obj["source"] = entry.source.rawValue }
                     return obj
@@ -2274,6 +2384,46 @@ public struct Config: Sendable {
         if let localToWrite = Self.serializeLocalSection(config) {
             llmToWrite["local"] = localToWrite
         }
+        // Refinement tier — llm.refine (omit-when-unset). Mirrors the
+        // context_model preservation below: when the refine tier is
+        // PINNED via MDM, preserve the existing on-disk value so removing
+        // the profile restores the user's pre-MDM choice; otherwise write
+        // the in-memory value. (serializeToDictionary already put a
+        // refine key in, but the llm-section rebuild above overwrites it,
+        // so it must be re-added here.)
+        let rfnProviderPinned = config.managedKeys.contains("refineProvider")
+        let rfnModelPinned    = config.managedKeys.contains("refineModel")
+        let rfnModelAllowlist = config.managedKeys.contains("refineAllowedModels")
+        let existingRefine = (existingLLM["refine"] as? [String: Any]) ?? [:]
+        if rfnProviderPinned || rfnModelPinned {
+            let existingProvider = (existingRefine["provider"] as? String) ?? ""
+            let existingModel    = (existingRefine["model"] as? String) ?? ""
+            let provider = rfnProviderPinned && !existingProvider.isEmpty
+                ? existingProvider
+                : (config.refineModel?.provider ?? "")
+            // Model preservation — keep the provider/model pair COHERENT so a partial pin
+            // never writes a mismatched pair:
+            // (a) model pinned → always preserve the on-disk model.
+            // (b) the preserved provider DIFFERS from the effective pinned provider → the
+            //     in-memory model belongs to the effective (pinned) provider, NOT the
+            //     preserved one, so preserve the on-disk model atomically (restoring the
+            //     user's real pre-MDM pair when the profile is removed).
+            // (c) preserved provider == effective provider (or allowlist) → the in-memory
+            //     model is valid for that provider → write the in-memory choice.
+            let rfnEffectiveProvider = config.refineModel?.provider ?? ""
+            let rfnProviderDiffers = !provider.isEmpty && provider != rfnEffectiveProvider
+            let preserveModel = rfnModelPinned
+                || (rfnProviderPinned && !rfnModelAllowlist && rfnProviderDiffers)
+            let model = preserveModel && !existingModel.isEmpty
+                ? existingModel
+                : (config.refineModel?.model ?? "")
+            if !provider.isEmpty && !model.isEmpty {
+                llmToWrite["refine"] = ["provider": provider, "model": model]
+            }
+            // else: pin resolved to "same as cleanup" → omit (no key).
+        } else if let model = config.refineModel {
+            llmToWrite["refine"] = ["provider": model.provider, "model": model.model]
+        }
         dict["llm"] = llmToWrite
         var awsToWrite: [String: Any] = [
             "region": awsRegionToWrite,
@@ -2420,26 +2570,63 @@ private func configLogStderr(_ message: String) {
 
 extension Config {
     /// Resolve which model should service a dictation given the
-    /// current state. Override (set by the in-overlay ModelPicker)
-    /// beats Context, which beats Cleanup. nil overrides fall
-    /// through.
+    /// current state. Priority (highest first):
+    ///   1. `override`  — the in-overlay ModelPicker's explicit pick.
+    ///   2. references  — when references are attached, the Context tier
+    ///      (`contextModel`) wins; references are the most capability-
+    ///      sensitive turns and trump refine.
+    ///   3. refine      — REFINE-shaped turns (`isRefine`: hotkey
+    ///      voice-refine, quick chips, styled per-app-preset cleanup)
+    ///      route to the Refine tier (`refineModel`), falling back to
+    ///      the Context tier, then Cleanup. This lets the feature work
+    ///      when the user has configured EITHER a refine OR a context
+    ///      cloud tier — important when cleanup is the on-device Concord
+    ///      tier (which can't perform refine/style ops).
+    ///   4. cleanup     — plain first-pass cleanup.
+    /// nil tier values fall through to the next rung, so a user who sets
+    /// nothing beyond cleanup gets unchanged single-provider behavior.
     public func modelForInvocation(
         hasReferences: Bool,
+        isRefine: Bool = false,
         override: ModelIdentifier? = nil
     ) -> ModelIdentifier {
         if let override { return override }
+        let cleanupId = ModelIdentifier(provider: llmProvider, model: llmModel)
         // Cleanup disabled ("none") is a GLOBAL off switch. The Context
-        // tier is a sub-feature of cleanup, so when the user has opted
-        // out of cleanup entirely, reference-aware turns must NOT route
-        // to a (possibly still-configured) context_model — otherwise
-        // "skip cleanup, paste raw" would silently keep sending the
-        // transcript + reference content to the context provider.
+        // and Refine tiers are sub-features of cleanup, so when the user
+        // has opted out of cleanup entirely, neither reference-aware nor
+        // refine turns must route to a (possibly still-configured) other
+        // tier — otherwise "skip cleanup, paste raw" would silently keep
+        // sending the transcript (and reference content) to that provider.
         // Returning the cleanup identifier makes the call path resolve
         // to the nil cleanup provider and paste the raw ASR transcript.
         if llmProvider == "none" {
-            return ModelIdentifier(provider: llmProvider, model: llmModel)
+            return cleanupId
         }
+        // References win over refine: a reference-aware turn routes to the
+        // context tier even if it's also refine-shaped.
         if hasReferences, let context = contextModel { return context }
-        return ModelIdentifier(provider: llmProvider, model: llmModel)
+        // Refine-shaped turns: refine → context → cleanup fallback chain.
+        // The cleanup rung is a genuine fallback only when the cleanup
+        // provider can actually refine. When cleanup is the on-device Concord
+        // ("Lightweight") tier — which can't follow refine instructions — and
+        // no refine/context tier is configured, there is no refine-capable
+        // target; we still return cleanupId (the type demands an identifier),
+        // but the call path (AppState.streamCleanupOrRefine) detects the
+        // non-refining provider and surfaces guidance instead of no-op'ing.
+        if isRefine {
+            return refineModel ?? contextModel ?? cleanupId
+        }
+        return cleanupId
+    }
+
+    /// Whether a provider can perform a refine / style-transform turn — an
+    /// instruction-following LLM task. The on-device Concord "Lightweight"
+    /// tier is a deterministic corrector that can't, and "none" means cleanup
+    /// is off, so neither qualifies. Used by the Settings refine card and the
+    /// runtime refine guard so a refine never silently resolves to a provider
+    /// that would no-op it.
+    public static func providerCanRefine(_ provider: String) -> Bool {
+        provider != "concord" && provider != "none"
     }
 }

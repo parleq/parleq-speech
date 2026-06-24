@@ -62,6 +62,57 @@ final class ConfigContextModelTests: XCTestCase {
         XCTAssertEqual(result, override)
     }
 
+    // MARK: - Refine tier resolution
+
+    func test_refine_uses_refine_model_when_set() {
+        let cleanup = ModelIdentifier(provider: "concord", model: "")
+        let refine  = ModelIdentifier(provider: "gemini", model: "gemini-2.5-flash")
+        var c = config(cleanup: cleanup, context: nil)
+        c.refineModel = refine
+
+        let result = c.modelForInvocation(hasReferences: false, isRefine: true)
+        XCTAssertEqual(result, refine)
+    }
+
+    func test_refine_falls_back_to_context_then_cleanup() {
+        let cleanup = ModelIdentifier(provider: "gemini", model: "gemini-2.5-flash")
+        let context = ModelIdentifier(provider: "vertex", model: "gemini-2.5-pro")
+        var c = config(cleanup: cleanup, context: context)
+        c.refineModel = nil
+
+        // No refine model → falls back to the context tier.
+        XCTAssertEqual(c.modelForInvocation(hasReferences: false, isRefine: true), context)
+
+        // No refine OR context model → falls back to cleanup.
+        c.contextModel = nil
+        XCTAssertEqual(c.modelForInvocation(hasReferences: false, isRefine: true), cleanup)
+    }
+
+    func test_refine_with_concord_cleanup_and_no_refine_tier_resolves_to_cleanup_id() {
+        // Concord can't refine. With no refine/context tier configured the
+        // identifier still resolves to the (non-refining) cleanup id — the
+        // runtime guard (streamCleanupOrRefine) is what surfaces guidance
+        // rather than no-op'ing. This documents that contract.
+        let cleanup = ModelIdentifier(provider: "concord", model: "")
+        var c = config(cleanup: cleanup, context: nil)
+        c.refineModel = nil
+
+        XCTAssertEqual(c.modelForInvocation(hasReferences: false, isRefine: true), cleanup)
+    }
+
+    // MARK: - providerCanRefine capability
+
+    func test_providerCanRefine_false_for_non_instruction_providers() {
+        XCTAssertFalse(Config.providerCanRefine("concord"))
+        XCTAssertFalse(Config.providerCanRefine("none"))
+    }
+
+    func test_providerCanRefine_true_for_llm_providers() {
+        for p in ["gemini", "vertex", "bedrock", "bedrock-bearer", "azure", "openai", "local"] {
+            XCTAssertTrue(Config.providerCanRefine(p), "\(p) should be refine-capable")
+        }
+    }
+
     // MARK: - Load/save round-trip
 
     // Config.save() and Config.load() are hardcoded to ~/.parleq/config.json

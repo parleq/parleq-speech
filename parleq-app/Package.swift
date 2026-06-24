@@ -1,4 +1,4 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 6.1
 import PackageDescription
 
 // Parleq.app — macOS dictation tool with preview-and-refine overlay.
@@ -18,6 +18,18 @@ let package = Package(
         // parleq-app product). Depends on FluidAudio alone, not
         // ParleqAppCore, so a build doesn't pull in MLX/Soto.
         .executable(name: "asr-bench", targets: ["asr-bench"]),
+    ],
+    // Concord is a PRIVATE, proprietary dependency (keavi-app/concord). It is
+    // gated behind this trait — OFF BY DEFAULT — so the PUBLIC open-source repo
+    // builds from source without access to that repo: SwiftPM prunes a
+    // trait-gated dependency from resolution when the trait is disabled (the
+    // "Lightweight (on-device)" cleanup tier is simply absent in that build).
+    // Release builds enable it with `swift build --traits Concord` (wired into
+    // scripts/make-app.sh). Enabling the trait also defines the `Concord`
+    // compilation condition used by `#if Concord` throughout the sources.
+    traits: [
+        .trait(name: "Concord",
+               description: "Bundle the proprietary on-device Concord 'Lightweight' cleanup tier."),
     ],
     dependencies: [
         // Soto — community Swift AWS SDK. Used for Bedrock Runtime
@@ -126,6 +138,14 @@ let package = Package(
         // direct dependency of any target that imports those modules.
         // Pinned exact to 0.9.0.
         .package(url: "https://github.com/huggingface/swift-huggingface", exact: "0.9.0"),
+        // Concord — the proprietary on-device second-pass correction
+        // engine (deterministic numbers/compounds + confidence-gated
+        // dictionary correction; "Lightweight (on-device)" cleanup tier).
+        // Parleq depends on it through the public API only (SecondPassCleaner).
+        // Private repo (keavi-app/concord); pinned tag like the other deps.
+        // For local Concord co-dev, override without committing:
+        //   swift package edit Concord --path /Users/jonyoder/Dev/concord
+        .package(url: "https://github.com/keavi-app/concord.git", exact: "0.1.4"),
     ],
     targets: [
         .target(
@@ -146,6 +166,11 @@ let package = Package(
                 .product(name: "MLXFast", package: "mlx-swift"),
                 .product(name: "Tokenizers", package: "swift-transformers"),
                 .product(name: "HuggingFace", package: "swift-huggingface"),
+                // Gated on the `Concord` trait: present only in release builds
+                // (`--traits Concord`); pruned from resolution otherwise so the
+                // public repo builds without access to the private concord repo.
+                .product(name: "Concord", package: "Concord",
+                         condition: .when(traits: ["Concord"])),
             ],
             path: "Sources/ParleqAppCore"
         ),

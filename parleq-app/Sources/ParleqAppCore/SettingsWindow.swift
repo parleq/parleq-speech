@@ -33,13 +33,19 @@ import SwiftUI
 /// transient UUID used by SwiftUI's ForEach for stable identity; we
 /// regenerate it from disk on every load, so it never gets persisted.
 /// Empty `context` maps to `DictionaryEntry.context = nil` on save.
-/// `aliases` is edited as a single comma-separated string for UI
-/// simplicity; we split/trim on save into the on-disk array form.
+/// `aliases` and `spokenForms` are each edited as a single
+/// comma-separated string for UI simplicity; we split/trim on save
+/// into the on-disk array form.
 struct DictionaryEntryRow: Identifiable, Equatable {
     let id: UUID
     var term: String
     var context: String
     var aliases: String
+    /// Distinctive multi-word "say-as" phrases the on-device
+    /// corrector (Concord) rewrites to the canonical term, consuming
+    /// the extra words. Edited comma-separated; <2-word phrases are
+    /// ignored by Concord (those belong in Aliases).
+    var spokenForms: String
     var biasing: DictionaryBiasing
     /// Provenance of this row: `.user` for hand-authored entries,
     /// `.learned` for entries auto-added by the learning analyzer.
@@ -51,6 +57,7 @@ struct DictionaryEntryRow: Identifiable, Equatable {
         term: String = "",
         context: String = "",
         aliases: String = "",
+        spokenForms: String = "",
         biasing: DictionaryBiasing = .asrAndLLM,
         source: DictionarySource = .user
     ) {
@@ -58,6 +65,7 @@ struct DictionaryEntryRow: Identifiable, Equatable {
         self.term = term
         self.context = context
         self.aliases = aliases
+        self.spokenForms = spokenForms
         self.biasing = biasing
         self.source = source
     }
@@ -171,6 +179,13 @@ final class SettingsModel: ObservableObject {
     /// inherits from the cleanup model. Users can pick "Same as cleanup"
     /// or a specific configured model. Mirrors Config.contextModel.
     @Published var contextModel: ModelIdentifier?
+
+    /// Refine model for refine-shaped operations (voice-refine, quick
+    /// chips, styled per-app-preset cleanup). When nil, falls back to
+    /// the context model, then cleanup. Lets the user keep plain cleanup
+    /// on the on-device Concord tier while routing refine/style ops to a
+    /// cloud provider. Mirrors Config.refineModel.
+    @Published var refineModel: ModelIdentifier?
 
     // MARK: - Feature toggle mirrors (Phase 5)
 
@@ -295,6 +310,12 @@ final class SettingsModel: ObservableObject {
     /// Context tier model name. Defaults to the cleanup model when
     /// `config.contextModel` is nil.
     @Published var contextModelName: String
+    /// Refine tier provider. Defaults to the cleanup provider when
+    /// `config.refineModel` is nil.
+    @Published var refineProvider: String
+    /// Refine tier model name. Defaults to the cleanup model when
+    /// `config.refineModel` is nil.
+    @Published var refineModelName: String
 
     // MARK: - On-device (local) cleanup tier
 
@@ -330,16 +351,29 @@ final class SettingsModel: ObservableObject {
         let displayName: String  // shown in the tier provider picker
     }
 
-    static let providerOptions: [ProviderOption] = [
-        ProviderOption(id: "local",          displayName: "On-device (no cloud)"),
-        ProviderOption(id: "gemini",         displayName: "Gemini (Google API)"),
-        ProviderOption(id: "vertex",         displayName: "Gemini (Vertex / Google Cloud)"),
-        ProviderOption(id: "bedrock",        displayName: "Bedrock (AWS IAM)"),
-        ProviderOption(id: "bedrock-bearer", displayName: "Bedrock (bearer token)"),
-        ProviderOption(id: "azure",          displayName: "Azure OpenAI"),
-        ProviderOption(id: "openai",         displayName: "OpenAI (direct API)"),
-        ProviderOption(id: "none",           displayName: "None — paste raw transcript"),
-    ]
+    // Cloud providers lead (the default cleanup tier is a cloud provider);
+    // the on-device options are grouped below so they read as deliberate
+    // opt-ins rather than the recommended default, and "None" is last.
+    // Built via a closure (not a bare literal) so the Concord entry can be
+    // conditionally included — `#if` is not allowed inside an array literal.
+    static let providerOptions: [ProviderOption] = {
+        var opts: [ProviderOption] = [
+            ProviderOption(id: "gemini",         displayName: "Gemini (Google API)"),
+            ProviderOption(id: "vertex",         displayName: "Gemini (Vertex / Google Cloud)"),
+            ProviderOption(id: "bedrock",        displayName: "Bedrock (AWS IAM)"),
+            ProviderOption(id: "bedrock-bearer", displayName: "Bedrock (bearer token)"),
+            ProviderOption(id: "azure",          displayName: "Azure OpenAI"),
+            ProviderOption(id: "openai",         displayName: "OpenAI (direct API)"),
+            ProviderOption(id: "local",          displayName: "On-device (no cloud)"),
+        ]
+        // Lightweight (Concord) is only offered in builds that bundle the
+        // proprietary tier (--traits Concord); the public build omits it.
+        #if Concord
+        opts.append(ProviderOption(id: "concord", displayName: "Lightweight (on-device)"))
+        #endif
+        opts.append(ProviderOption(id: "none", displayName: "None — paste raw transcript"))
+        return opts
+    }()
 
     /// Mirror of `KeychainStore.hasGeminiAPIKey` for SwiftUI.
     /// Updated when the user sets or removes the key via the Set
@@ -372,6 +406,7 @@ final class SettingsModel: ObservableObject {
     private let initialAzureApiVersion: String
     private let initialAzureAuthMode: String
     private let initialContextModel: ModelIdentifier?
+    private let initialRefineModel: ModelIdentifier?
     private let initialLocalResidency: LocalResidency
     private let initialOidcIssuer: String
     private let initialOidcClientID: String
@@ -418,6 +453,7 @@ final class SettingsModel: ObservableObject {
                 term: entry.term,
                 context: entry.context ?? "",
                 aliases: entry.aliases.joined(separator: ", "),
+                spokenForms: entry.spokenForms.joined(separator: ", "),
                 biasing: entry.biasing,
                 source: entry.source
             )
@@ -430,11 +466,14 @@ final class SettingsModel: ObservableObject {
         self.presetAppDefaults = config.presetAppDefaults
         self.geminiKeyIsSet = KeychainStore.hasGeminiAPIKey
         self.contextModel = config.contextModel
+        self.refineModel = config.refineModel
         // Tier fields — derived from the flat config fields.
         self.cleanupProvider = config.llmProvider
         self.cleanupModelName = config.llmModel
         self.contextProvider = config.contextModel?.provider ?? config.llmProvider
         self.contextModelName = config.contextModel?.model ?? config.llmModel
+        self.refineProvider = config.refineModel?.provider ?? config.llmProvider
+        self.refineModelName = config.refineModel?.model ?? config.llmModel
         self.localResidency = config.localResidency
         self.localAllowUnsupportedRAM = config.localAllowUnsupportedRAM
         // Feature toggles (Phase 5).
@@ -480,6 +519,7 @@ final class SettingsModel: ObservableObject {
         self.initialAzureApiVersion = config.azureApiVersion
         self.initialAzureAuthMode = config.azureAuthMode
         self.initialContextModel = config.contextModel
+        self.initialRefineModel = config.refineModel
         self.initialLocalResidency = config.localResidency
         refreshUsage()
     }
@@ -544,6 +584,7 @@ final class SettingsModel: ObservableObject {
                 term: entry.term,
                 context: entry.context ?? "",
                 aliases: entry.aliases.joined(separator: ", "),
+                spokenForms: entry.spokenForms.joined(separator: ", "),
                 biasing: entry.biasing,
                 source: entry.source
             )
@@ -556,11 +597,14 @@ final class SettingsModel: ObservableObject {
         self.presetAppDefaults = config.presetAppDefaults
         self.geminiKeyIsSet = KeychainStore.hasGeminiAPIKey
         self.contextModel = config.contextModel
+        self.refineModel = config.refineModel
         // Re-derive tier fields from the reloaded config.
         self.cleanupProvider = config.llmProvider
         self.cleanupModelName = config.llmModel
         self.contextProvider = config.contextModel?.provider ?? config.llmProvider
         self.contextModelName = config.contextModel?.model ?? config.llmModel
+        self.refineProvider = config.refineModel?.provider ?? config.llmProvider
+        self.refineModelName = config.refineModel?.model ?? config.llmModel
         self.localResidency = config.localResidency
         self.localAllowUnsupportedRAM = config.localAllowUnsupportedRAM
         // Feature toggles (Phase 5).
@@ -613,6 +657,7 @@ final class SettingsModel: ObservableObject {
             || asrEndpoint != initialAsrEndpoint
             || llmProvider != initialLlmProvider
             || contextModel != initialContextModel
+            || refineModel != initialRefineModel
             || awsRegion != initialAwsRegion
             || awsProfile != initialAwsProfile
             || awsAuthMode != initialAwsAuthMode
@@ -733,6 +778,13 @@ final class SettingsModel: ObservableObject {
         let resolvedContextModel: ModelIdentifier? = (contextId == cleanupId) ? nil : contextId
         c.contextModel = resolvedContextModel
         contextModel = resolvedContextModel
+        // Refine tier: nil when refine == cleanup (= "same as cleanup",
+        // resolver falls back to context then cleanup). Same shape as the
+        // context tier above.
+        let refineId = ModelIdentifier(provider: refineProvider, model: refineModelName.trimmingCharacters(in: .whitespaces))
+        let resolvedRefineModel: ModelIdentifier? = (refineId == cleanupId) ? nil : refineId
+        c.refineModel = resolvedRefineModel
+        refineModel = resolvedRefineModel
         // On-device cleanup tier residency policy.
         c.localResidency = localResidency
         // Feature toggles (Phase 5). Managed keys are already excluded
@@ -879,10 +931,15 @@ final class SettingsModel: ObservableObject {
                 .split(separator: ",", omittingEmptySubsequences: true)
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .filter { !$0.isEmpty }
+            let spokenForms = row.spokenForms
+                .split(separator: ",", omittingEmptySubsequences: true)
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
             let built = DictionaryEntry(
                 term: term,
                 context: ctx.isEmpty ? nil : ctx,
                 aliases: aliases,
+                spokenForms: spokenForms,
                 biasing: row.biasing,
                 source: row.source
             )
@@ -1696,7 +1753,8 @@ struct SettingsView: View {
         // ── Provider Credentials (hidden when both tiers are local/none — no cloud creds)
         let cleanupNeedsCredentials = (model.cleanupProvider != "local" && model.cleanupProvider != "none")
         let contextNeedsCredentials = (model.contextProvider != "local" && model.contextProvider != "none")
-        if cleanupNeedsCredentials || contextNeedsCredentials {
+        let refineNeedsCredentials = (model.refineProvider != "local" && model.refineProvider != "none")
+        if cleanupNeedsCredentials || contextNeedsCredentials || refineNeedsCredentials {
             HStack(alignment: .center) {
                 VStack { Divider() }
                 Text("Provider Credentials")
@@ -1728,7 +1786,7 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Cleanup")
                         .font(.system(size: 13, weight: .semibold))
-                    Text("Used for normal dictation cleanup.")
+                    Text("The provider for everyday dictation cleanup. Also handles refinement and reference context unless you choose separate providers below.")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                     // .top alignment so the Provider and Model labels +
@@ -1766,8 +1824,8 @@ struct SettingsView: View {
                             // offers "local"; the context tier never does.
                             gateLocalUnsupported: true
                         )
-                        // "local" and "none" have no cloud model to pick.
-                        if model.cleanupProvider != "local" && model.cleanupProvider != "none" {
+                        // "concord", "local" and "none" have no cloud model to pick.
+                        if model.cleanupProvider != "concord" && model.cleanupProvider != "local" && model.cleanupProvider != "none" {
                             tierModelPicker(
                                 forProvider: model.cleanupProvider,
                                 selection: Binding(
@@ -1789,16 +1847,70 @@ struct SettingsView: View {
 
                 Divider()
 
+                // REFINE TIER
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Refinement")
+                        .font(.system(size: 13, weight: .semibold))
+                    // When cleanup is the on-device Concord ("Lightweight")
+                    // tier, refinement CANNOT inherit it — Concord is a
+                    // deterministic corrector that can't follow instructions
+                    // or apply a style. Surface that directly and prompt for a
+                    // refine-capable provider instead of implying "same as
+                    // cleanup". (The runtime also guards this: a refine that
+                    // resolves to Concord shows a hint rather than no-op'ing.)
+                    Text(model.cleanupProvider == "concord"
+                        ? "Lightweight cleanup is on-device only and can't refine text. Choose a provider here to enable voice-refine, the quick chips, and per-app styling — pick \"On-device (no cloud)\" to keep it fully local, or a cloud provider."
+                        : "Used for voice-refine, the quick-refinement chips, and per-app styled cleanup. Set a separate provider here to keep first-pass cleanup on the on-device tier while these run in the cloud.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                    HStack(alignment: .top, spacing: 12) {
+                        tierProviderPicker(
+                            selection: Binding(
+                                get: { model.refineProvider },
+                                set: { newVal in
+                                    guard newVal != model.refineProvider else { return }
+                                    model.refineProvider = newVal
+                                    let available = modelsAvailable(forProvider: newVal)
+                                    if !available.contains(model.refineModelName) {
+                                        model.refineModelName = available.first ?? ""
+                                    }
+                                    model.save()
+                                }
+                            ),
+                            label: "Provider",
+                            pinnedKey: "refineProvider",
+                            // Concord is a cleanup-only corrector — it can't
+                            // perform refine/style ops (it no-ops them), so it
+                            // must not appear as a refine-tier choice.
+                            excludeProviders: ["concord"]
+                        )
+                        // "local" and "none" have no cloud model to pick —
+                        // same guard as the cleanup tier above.
+                        if model.refineProvider != "local" && model.refineProvider != "none" {
+                            tierModelPicker(
+                                forProvider: model.refineProvider,
+                                selection: Binding(
+                                    get: { model.refineModelName },
+                                    set: { newVal in
+                                        guard newVal != model.refineModelName else { return }
+                                        model.refineModelName = newVal
+                                        model.save()
+                                    }
+                                ),
+                                label: "Model",
+                                pinnedKey: "refineModel"
+                            )
+                        }
+                    }
+                }
+
+                Divider()
+
                 // CONTEXT TIER
                 VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 4) {
-                        Text("Context")
-                            .font(.system(size: 13, weight: .semibold))
-                        Text("(Advanced)")
-                            .font(.system(size: 11, weight: .regular))
-                            .foregroundStyle(.secondary)
-                    }
-                    Text("Used when references are attached. Vision-capable models marked 👁.")
+                    Text("Context")
+                        .font(.system(size: 13, weight: .semibold))
+                    Text("Used when you attach a reference — a window, file, or clipboard snippet — so cleanup can draw on it. Pick a vision-capable model (marked 👁) to include images.")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                     HStack(alignment: .top, spacing: 12) {
@@ -1819,7 +1931,10 @@ struct SettingsView: View {
                             pinnedKey: "contextProvider",
                             allowlistKey: "contextAllowedProviders",
                             allowedValues: contextAllowedProviders,
-                            modelAllowlist: contextAllowedModels
+                            modelAllowlist: contextAllowedModels,
+                            // Concord is a cleanup-only corrector (ignores
+                            // references/vision) — not a valid context model.
+                            excludeProviders: ["concord"]
                         )
                         // "local" and "none" have no cloud model to pick —
                         // same guard as the cleanup tier above.
@@ -1863,7 +1978,12 @@ struct SettingsView: View {
         allowlistKey: String? = nil,
         allowedValues: [String]? = nil,
         modelAllowlist: [String]? = nil,
-        gateLocalUnsupported: Bool = false
+        gateLocalUnsupported: Bool = false,
+        // Providers to omit from this tier's picker. The context tier
+        // passes ["concord"] — the Lightweight on-device corrector is a
+        // cleanup-only engine (it ignores references / vision), so it must
+        // not appear as a context-model choice.
+        excludeProviders: [String] = []
     ) -> some View {
         let isPinned    = pinnedKey.map    { model.managedKeys.contains($0) } ?? false
         let isAllowlist = allowlistKey.map { model.managedKeys.contains($0) } ?? false
@@ -1928,6 +2048,15 @@ struct SettingsView: View {
                             && !model.localAllowUnsupportedRAM
                             && selection.wrappedValue != "local" {
                             filtered = filtered.filter { $0.id != "local" }
+                        }
+                        // Tier exclusions (e.g. context tier omits "concord").
+                        // Keep a provider that's the CURRENT selection visible
+                        // so the picker reflects an already-set state rather
+                        // than going blank.
+                        if !excludeProviders.isEmpty {
+                            filtered = filtered.filter {
+                                !excludeProviders.contains($0.id) || $0.id == selection.wrappedValue
+                            }
                         }
                         return filtered
                     }()
@@ -2292,12 +2421,12 @@ struct SettingsView: View {
     /// badge string for a provider that's active in at least one tier.
     /// Returns nil for inactive providers.
     private func activeBadge(for provider: String) -> String? {
-        let isCleanup = model.cleanupProvider == provider
-        let isContext = model.contextProvider == provider
-        if isCleanup && isContext { return "Used for Cleanup + Context" }
-        if isCleanup              { return "Used for Cleanup" }
-        if isContext              { return "Used for Context" }
-        return nil
+        var roles: [String] = []
+        if model.cleanupProvider == provider { roles.append("Cleanup") }
+        if model.contextProvider == provider { roles.append("Context") }
+        if model.refineProvider == provider { roles.append("Refinement") }
+        guard !roles.isEmpty else { return nil }
+        return "Used for " + roles.joined(separator: " + ")
     }
 
     /// The set of provider IDs currently selected for at least one
@@ -2308,6 +2437,7 @@ struct SettingsView: View {
         let skip: Set<String> = ["none", "local"]
         if !skip.contains(model.cleanupProvider) { set.insert(model.cleanupProvider) }
         if !skip.contains(model.contextProvider) { set.insert(model.contextProvider) }
+        if !skip.contains(model.refineProvider) { set.insert(model.refineProvider) }
         return set
     }
 
@@ -3322,8 +3452,8 @@ private struct RestartBanner: View {
 
 /// One row in the Custom Dictionary table. Two visual lines per
 /// entry: the top line carries Term + Aliases + Biasing picker +
-/// trash (the high-frequency edits); the bottom line is Context (the
-/// occasional one). Splitting onto two lines avoids fighting the
+/// trash (the high-frequency edits); the lower lines are Context and
+/// Spoken forms (the occasional ones). Splitting onto two lines avoids fighting the
 /// grouped Form's width constraints with four side-by-side fields,
 /// and lets each TextField use its own placeholder as the label —
 /// which is what `labelsHidden()` was always meant to enable here.
@@ -3394,6 +3524,12 @@ private struct DictionaryRowView: View {
                 .frame(minWidth: 280, maxWidth: .infinity)
                 .labelsHidden()
                 .onChange(of: row.context) { _, _ in promoteIfLearnedThenSave() }
+            TextField("Spoken forms (optional, comma-separated)", text: $row.spokenForms)
+                .textFieldStyle(.roundedBorder)
+                .frame(minWidth: 280, maxWidth: .infinity)
+                .labelsHidden()
+                .help("A distinctive phrase to trigger this term (e.g. \"iterm terminal\"). The extra words are removed when matched. Needs at least 2 words — single words belong in Aliases.")
+                .onChange(of: row.spokenForms) { _, _ in promoteIfLearnedThenSave() }
         }
         .padding(.vertical, 2)
     }

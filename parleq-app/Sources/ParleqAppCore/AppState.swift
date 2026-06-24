@@ -22,6 +22,9 @@
 
 import AppKit
 import Combine
+#if Concord
+import Concord
+#endif
 import Foundation
 
 @MainActor
@@ -49,6 +52,14 @@ public final class AppState {
     /// the higher-capability model services reference-aware calls
     /// without changing the default cleanup provider.
     private let contextLLM: (any LLMProvider)?
+    /// Optional third provider for the refine-model tier. When
+    /// Config.refineModel is configured, llmForInvocation() returns this
+    /// for REFINE-shaped turns (hotkey voice-refine, quick chips, styled
+    /// per-app-preset cleanup) instead of llm — so those operations reach
+    /// a cloud provider even when the cleanup tier is the on-device
+    /// Concord model (which can't perform them). nil → routing falls the
+    /// refine tier back to contextLLM, then llm.
+    private let refineLLM: (any LLMProvider)?
     /// Enterprise OIDC federation handles. All optional and nil for
     /// non-enterprise users. The session is retained for the Company
     /// Account UI (Task 8); the two exchange caches are pre-warmed at
@@ -596,6 +607,7 @@ public final class AppState {
         asr: ASRClient,
         llm: (any LLMProvider)?,
         contextLLM: (any LLMProvider)? = nil,
+        refineLLM: (any LLMProvider)? = nil,
         overlay: OverlayWindow,
         autoAcceptSeconds: TimeInterval = 0,  // 0 = never auto-accept
         trailingSpaceEnabled: Bool = true,
@@ -609,6 +621,7 @@ public final class AppState {
         self.asr = asr
         self.llm = llm
         self.contextLLM = contextLLM
+        self.refineLLM = refineLLM
         self.oidcSession = oidcSession
         self.oidcAWSExchange = oidcAWSExchange
         self.oidcGCPExchange = oidcGCPExchange
@@ -655,6 +668,12 @@ public final class AppState {
         overlay.model.onEnterEdit = { [weak self] in self?.enterEditMode() }
         overlay.model.onCommitEdit = { [weak self] accept in self?.commitEdit(accept: accept) }
         overlay.model.onDiscardEdit = { [weak self] in self?.discardEdit() }
+        // On-device corrector per-correction undo (⌥digit). Reverts the edit at
+        // that number and feeds the revert to the CorrectionJournal.
+        // (Concord-only feature; absent in the public no-Concord build.)
+        #if Concord
+        overlay.model.onUndoCorrection = { [weak self] n in self?.undoCorrection(number: n) ?? false }
+        #endif
 
         windowPickerWindow.setCallbacks(
             onPick: { [weak self] entry in
@@ -1727,6 +1746,17 @@ public final class AppState {
         if edited != editPreEditText {
             currentText = edited
             overlay.model.text = edited
+            // A manual edit rewrites the text — the corrector-highlight spans'
+            // String.Index ranges no longer map cleanly, so re-derive them
+            // against the edited text (surviving replacements keep their
+            // highlight + ⌥digit undo; rewritten ones drop out). This keeps
+            // undo-after-manual-edit safe: it never reverts a stale range.
+            #if Concord
+            overlay.model.correctionSpans = CorrectionHighlight.spans(
+                in: edited,
+                edits: overlay.model.correctionSpans.map(editRecordFor)
+            )
+            #endif
             recordInPlaceEdit(before: editPreEditText, after: edited)
         }
         log("in-place edit: \(accept ? "commit+accept" : "save")")
@@ -1758,6 +1788,86 @@ public final class AppState {
         ), enabled: enabled)
     }
 
+    // MARK: - On-device corrector highlights + per-correction undo
+    // (Concord-only; the whole feature is compiled out in the public build.)
+    #if Concord
+
+    /// Map the on-device corrector's applied edits to highlight spans in the
+    /// cleaned text and publish them on the overlay model (Concord tier only —
+    /// other providers emit no EditRecords, so this is a no-op for them and the
+    /// feature is simply absent). Called right after the awaitingAccept review
+    /// is shown, so the spans land on the correct text snapshot.
+    private func applyCorrectionHighlights(from llm: (any LLMProvider)?, cleanedText: String) {
+        guard let concord = llm as? ConcordCleanupProvider else {
+            overlay.model.correctionSpans = []
+            return
+        }
+        let edits = concord.appliedEditsForOverlay()
+        // Map only against the SHOWN review text — must match what's on screen.
+        let spans = CorrectionHighlight.spans(in: cleanedText, edits: edits)
+        overlay.model.correctionSpans = spans
+        if !spans.isEmpty {
+            log("on-device corrector: \(spans.count) highlight span(s)")
+        }
+    }
+
+    /// ⌥digit during review: revert the on-device corrector's edit numbered
+    /// `number` back to the original ASR text, update the visible + paste text,
+    /// re-map the remaining highlights, and feed the revert to the
+    /// CorrectionJournal (opt-in). Returns true iff a span at that number existed.
+    private func undoCorrection(number: Int) -> Bool {
+        guard phase == .awaitingAccept, !overlay.model.editing else { return false }
+        let spans = overlay.model.correctionSpans
+        guard let span = spans.first(where: { $0.number == number }) else { return false }
+        // Revert against the CURRENT text (currentText == model.text in review).
+        let reverted = CorrectionHighlight.revert(text: currentText, span: span)
+        guard reverted != currentText else { return false }
+        currentText = reverted
+        overlay.model.text = reverted
+        // Re-map the REMAINING corrections against the new text so their ranges
+        // + numbers stay valid (this span is gone; later ones renumber). Drop
+        // the reverted edit by matching identity on (original, replacement,
+        // stage) — the reverted span's replacement is no longer present anyway,
+        // so spans() naturally excludes it on the new text.
+        let remaining = spans
+            .filter { $0.number != number }
+            .map { editRecordFor($0) }
+        overlay.model.correctionSpans = CorrectionHighlight.spans(in: reverted, edits: remaining)
+        // Feed the revert to the learning journal as a correction signal (a real
+        // "this correction was wrong" event). Opt-in; no-op when disabled.
+        // In-memory only — CorrectionJournal never writes to disk.
+        let enabled = Config.load().config.learnFromCorrectionsEnabled
+        if enabled {
+            CorrectionJournal.shared.record(CorrectionRecord(
+                kind: .refine,
+                instruction: "undo on-device correction",
+                before: span.replacement,
+                after: span.original
+            ), enabled: enabled)
+        }
+        // Re-arm the auto-accept timer (the undo is an interaction, like an edit).
+        startAutoAcceptTimer()
+        log("on-device corrector: reverted correction #\(number)")
+        return true
+    }
+
+    /// Reconstruct a minimal applied EditRecord from a highlight span, so the
+    /// surviving spans can be re-mapped against the post-revert text.
+    private func editRecordFor(_ span: CorrectionSpan) -> EditRecord {
+        EditRecord(
+            stage: span.stage,
+            original: span.original,
+            replacement: span.replacement,
+            applied: true,
+            // Preserve the token anchor so a re-map (after undo / manual edit)
+            // still picks the right occurrence when the replacement string
+            // appears more than once. Without this the edit would fall back to
+            // first-occurrence matching and could revert the wrong span.
+            wordRange: span.wordRange
+        )
+    }
+    #endif
+
     /// User accepted (Enter on overlay) or auto-accept timer fired.
     ///
     /// Critical ordering: hide the overlay BEFORE the paste call.
@@ -1772,6 +1882,19 @@ public final class AppState {
     /// what M1 had working.
     public func accept() {
         guard phase == .awaitingAccept || phase == .cleaning else { return }
+        // #85 data-loss fix: clicking Accept while an in-place edit is open
+        // would otherwise paste `currentText`, which still holds the PRE-edit
+        // value — the live edit lives in `overlay.model.editableText` and is
+        // only flushed into `currentText` by commitEdit(). Cmd+Return goes
+        // through commitEdit(accept: true) (the editor's onKeyPress); the
+        // Accept button jumped straight here, silently discarding the edit.
+        // Route a pending edit through the SAME commit path so both converge
+        // on the edited text. commitEdit(accept: true) flushes the field, then
+        // re-enters accept() with editing == false (no recursion).
+        if phase == .awaitingAccept, overlay.model.editing {
+            commitEdit(accept: true)
+            return
+        }
         // Don't accept/paste while the help overlay is up — the user is
         // reading help, not finishing. Covers the case where the auto-
         // accept timer gets (re)armed by the cleaning→awaitingAccept
@@ -3034,11 +3157,26 @@ public final class AppState {
                     pending.spelloutTerms = SpellOutDetector.candidates(in: asrResult.text)
                     self?.pendingContribution = pending
                 }
+                // Per-app default preset: resolved on fresh cleanup turns
+                // only. Refine turns never fold a transform (the text being
+                // refined is already styled). Hoisted ABOVE the provider
+                // resolution because a per-app default preset is a STYLE
+                // the on-device Concord tier can't apply — so a fresh
+                // cleanup that folds one must route to the refine (cloud)
+                // tier, same as an explicit refine. (Re-used below for the
+                // actual cleanup call's `transform` argument.)
+                let defaultPreset: TransformPreset? = asRefine
+                    ? nil
+                    : loadedConfig.presetForApp(targetBundleID)
                 // Resolve which provider to use for this dictation:
-                // override > context > cleanup, honoring the
+                // override > references > refine > cleanup, honoring the
                 // pickedModelOverride the user may have set via the
-                // in-overlay ModelPicker (Task 9).
-                let resolvedLLM = self?.llmForInvocation()
+                // in-overlay ModelPicker (Task 9). isRefine is true for an
+                // explicit refine OR a styled (per-app preset) cleanup —
+                // both are operations the on-device tier can't perform.
+                let resolvedLLM = self?.llmForInvocation(
+                    isRefine: asRefine || (defaultPreset != nil)
+                )
                 // When imageReferenceEnabled is false, downgrade any
                 // image-mode references to text mode for prompt-building.
                 // The reference chips in the overlay still show the
@@ -3059,13 +3197,9 @@ public final class AppState {
                         self?.log("imageReferenceEnabled=false: image refs degraded to text for prompt-building")
                     }
                 }
-                // Per-app default preset: resolved on fresh cleanup turns
-                // only. Refine turns never fold a transform (the text being
-                // refined is already styled), and a successful refine CLEARS
-                // the styled provenance below — so nil here.
-                let defaultPreset: TransformPreset? = asRefine
-                    ? nil
-                    : loadedConfig.presetForApp(targetBundleID)
+                // (defaultPreset hoisted above the provider resolution so
+                // a styled cleanup routes to the refine tier. A successful
+                // refine CLEARS the styled provenance below.)
                 // Hoisted so the styled-provenance snapshot below records
                 // the SAME label this call was made with.
                 let pasteDestLabel: String? = self?.overlay.model.pasteTarget.map { dest in
@@ -3074,6 +3208,19 @@ public final class AppState {
                     }
                     return dest.appName
                 }
+                // Concord ("Lightweight (on-device)") needs per-word ASR
+                // confidence + the user dictionary, which the shared
+                // LLMProvider.generateStreaming signature can't carry.
+                // Hand them to the provider via a per-utterance side-channel
+                // RIGHT BEFORE cleanup; the provider consumes + clears them
+                // inside generateStreaming (fresh-stateless-per-utterance).
+                // `asrResultRaw.diagnostics` is nil on the HTTP ASR path —
+                // Concord falls back to safe all-1.0 confidence (its
+                // dictionary stage then becomes a no-op).
+                // Concord's per-utterance side-channels (diagnostics, dictionary,
+                // bare transcript + isRefine) are set CENTRALLY inside
+                // streamCleanupOrRefine so every call site is covered uniformly;
+                // this site just forwards the ASR diagnostics it captured.
                 let outcome = await streamCleanupOrRefine(
                     llm: resolvedLLM,
                     overlay: overlay,
@@ -3086,6 +3233,7 @@ public final class AppState {
                     references: effectiveRefs,
                     pasteDestinationLabel: pasteDestLabel,
                     transform: asRefine ? nil : defaultPreset?.prompt,
+                    asrDiagnostics: asrResultRaw.diagnostics,
                     shouldRenderToOverlay: { [weak self] in
                         self?.shouldStreamRenderToOverlay() ?? false
                     }
@@ -3132,6 +3280,16 @@ public final class AppState {
                 // cleanup-only record. False on every non-chained turn.
                 let wasChainedCleanup = self?.refineChainedDuringCleanup ?? false
                 self?.applyResult(outcome.text, cleanupFailureMessage: outcome.failureMessage, reauthable: outcome.reauthable)
+                // On-device corrector highlights: after a plain (non-refine,
+                // non-chained) Concord cleanup, surface the spans it changed so
+                // the review can highlight them + offer ⌥digit undo. Set AFTER
+                // applyResult (which calls show(.awaitingAccept) → clears spans).
+                // Cloud providers emit no EditRecords, so this is Concord-only.
+                #if Concord
+                if !asRefine, !wasChainedCleanup {
+                    self?.applyCorrectionHighlights(from: resolvedLLM, cleanedText: outcome.text)
+                }
+                #endif
                 if !asRefine, !wasChainedCleanup {
                     // "Styled" requires the LLM to have actually used its output —
                     // usedLLMOutput is false on every fallback path (no-LLM-configured,
@@ -3731,10 +3889,21 @@ public final class AppState {
     /// cleanup model after the user removed the references). nil (the
     /// default) reads the live overlay state, the right answer for
     /// every other caller.
-    private func llmForInvocation(hasReferences: Bool? = nil) -> (any LLMProvider)? {
+    /// `isRefine` — pass true for REFINE-shaped turns (hotkey voice-
+    /// refine, quick chips, styled per-app-preset cleanup). It selects
+    /// the refine tier (`refineLLM`) per Config.modelForInvocation's
+    /// resolution chain (refine → context → cleanup), which lets those
+    /// operations reach a cloud provider when cleanup is the on-device
+    /// Concord tier. References still win over refine (a reference-aware
+    /// turn routes to the context tier even when isRefine is true).
+    private func llmForInvocation(
+        hasReferences: Bool? = nil,
+        isRefine: Bool = false
+    ) -> (any LLMProvider)? {
         let config = Config.load().config
         let resolved = config.modelForInvocation(
             hasReferences: hasReferences ?? !overlay.model.references.isEmpty,
+            isRefine: isRefine,
             override: overlay.model.pickedModelOverride
         )
         let cleanupId = ModelIdentifier(provider: config.llmProvider, model: config.llmModel)
@@ -3744,6 +3913,13 @@ public final class AppState {
             return llm
         }
 
+        // Refine tier — use refineLLM when configured and resolved to it.
+        // Degrade to context then cleanup if refineLLM isn't wired (e.g.
+        // refine model set in config but provider init failed).
+        if let refineModel = config.refineModel, resolved == refineModel {
+            return refineLLM ?? contextLLM ?? llm
+        }
+
         // Context tier — use contextLLM when configured.
         if let contextModel = config.contextModel, resolved == contextModel {
             // Degrade gracefully when contextLLM isn't wired (e.g.
@@ -3751,13 +3927,14 @@ public final class AppState {
             return contextLLM ?? llm
         }
 
-        // Resolved is neither cleanup nor context — the in-overlay
-        // picker produced an identifier no pre-built provider services.
-        // This is a latent path today (picker scope is cleanup+context
-        // only) but we log and fall back rather than silently returning
-        // `llm` whose baked-in model is not the intended override.
-        log("llmForInvocation: resolved model \(resolved.provider)/\(resolved.model) has no matching pre-built provider; falling back to context/cleanup")
-        return contextLLM ?? llm
+        // Resolved is neither cleanup, refine, nor context — the
+        // in-overlay picker produced an identifier no pre-built provider
+        // services. This is a latent path today (picker scope is
+        // cleanup+context+refine) but we log and fall back rather than
+        // silently returning `llm` whose baked-in model is not the
+        // intended override.
+        log("llmForInvocation: resolved model \(resolved.provider)/\(resolved.model) has no matching pre-built provider; falling back to refine/context/cleanup")
+        return refineLLM ?? contextLLM ?? llm
     }
 
     /// Resolve the *currently intended* paste target by looking at the
@@ -3912,7 +4089,9 @@ public final class AppState {
         let dictionary = recleanConfig.customDictionaryEnabled
             ? recleanConfig.customDictionary
             : []
-        let resolvedLLM = llmForInvocation()
+        // isRefine mirrors the re-run shape: a refine re-run is a refine
+        // (routes to the refine tier); a cleanup re-run stays on cleanup.
+        let resolvedLLM = llmForInvocation(isRefine: asRefineRerun)
         // Apply the same image-reference degradation as the primary
         // capture path: when imageReferenceEnabled is false, downgrade
         // any image-mode references to text for prompt-building.
@@ -4025,8 +4204,11 @@ public final class AppState {
         let dictionary = config.customDictionaryEnabled ? config.customDictionary : []
         // hasReferences: false — a preset tap is a plain-text refine of
         // the SHOWN text (no reference parts are sent below), so resolve
-        // the cleanup tier even if references are still attached.
-        let resolvedLLM = llmForInvocation(hasReferences: false)
+        // the refine tier even if references are still attached.
+        // isRefine: true — a quick chip IS a refine, so it routes to the
+        // refine (cloud) tier when configured (and never to Concord,
+        // which would no-op it).
+        let resolvedLLM = llmForInvocation(hasReferences: false, isRefine: true)
         let targetBundleID = pasteTarget?.bundleID
         // Cancel any lingering auto-accept timer so it doesn't fire
         // mid-re-cleanup.
@@ -4193,7 +4375,13 @@ public final class AppState {
         let dictionary = recleanConfig.customDictionaryEnabled
             ? recleanConfig.customDictionary
             : []
-        let resolvedLLM = llmForInvocation()
+        // A styled reclean carries a transform the on-device tier can't apply, so it must
+        // route to the refine tier too — mirror the primary capture path's isRefine
+        // (asRefine || preset). Resolve the preset BEFORE provider selection.
+        let intendedPreset = recleanConfig.transformPresetsEnabled
+            ? intendedDefaultPreset
+            : nil
+        let resolvedLLM = llmForInvocation(isRefine: asRefineRerun || intendedPreset != nil)
         let rawRefs = overlay.model.references
         let effectiveRefs: [Reference]
         if recleanConfig.imageReferenceEnabled {
@@ -4206,9 +4394,6 @@ public final class AppState {
                 return degraded
             }
         }
-        let intendedPreset = recleanConfig.transformPresetsEnabled
-            ? intendedDefaultPreset
-            : nil
         let pasteDestLabel: String? = overlay.model.pasteTarget.map { dest in
             if let title = dest.windowTitle, !title.isEmpty {
                 return "\(dest.appName) — \(title)"
@@ -4519,6 +4704,10 @@ private func streamCleanupOrRefine(
     references: [Reference] = [],
     pasteDestinationLabel: String? = nil,
     transform: String? = nil,
+    // ASR per-token confidence diagnostics (bundled path only; nil on the HTTP ASR
+    // path and on re-clean call sites). Forwarded to the on-device Concord
+    // provider's dictionary stage; ignored by every other provider.
+    asrDiagnostics: ASRDiagnostics? = nil,
     // Gate for the per-chunk overlay writes. Evaluated on the MainActor
     // before each streamed chunk renders. When it returns false the
     // chunk text still accumulates into `assembled` (so the final
@@ -4546,6 +4735,24 @@ private func streamCleanupOrRefine(
             overlay.show(state: .cleaning, text: fallback)
         }
         return CleanupOutcome(text: fallback, failureMessage: nil)
+    }
+
+    // Refinement is an instruction-following task, so the on-device Concord
+    // ("Lightweight") tier can't do it. When a refine turn (voice-refine or a
+    // quick chip) resolves to Concord because no refine-capable provider is
+    // configured, don't silently no-op: keep the current text (fallback =
+    // priorText on a refine) and surface a one-turn hint pointing at the
+    // Refinement provider setting. Per-app styled cleanups arrive here as
+    // asRefine=false fresh cleanups, so Concord still runs its normal
+    // correction on those — only the style can't apply (the Settings refine
+    // card explains that).
+    if asRefine, !Config.providerCanRefine(llm.providerName) {
+        if useOverlay, shouldRenderToOverlay() {
+            overlay.show(state: .cleaning, text: fallback)
+        }
+        return CleanupOutcome(
+            text: fallback,
+            failureMessage: "Lightweight cleanup can’t refine — set a Refinement provider in Settings → Cleanup.")
     }
 
     let systemPrompt: String
@@ -4692,6 +4899,20 @@ private func streamCleanupOrRefine(
                 ))
             }
         }
+
+        // Cleanup-only on-device tier: set Concord's per-utterance side-channels
+        // here so EVERY call site (main capture, preset re-run, model-switch /
+        // reauth re-clean) is covered uniformly. Concord reads the bare transcript
+        // + isRefine; on a refine turn it returns priorText unchanged and never runs
+        // cleanup on the instruction scaffolding. Set once before the attempt loop —
+        // Concord is instant and never retries, so the consume-and-clear is safe.
+        #if Concord
+        if let concord = llm as? ConcordCleanupProvider {
+            concord.setUtteranceContext(diagnostics: asrDiagnostics)
+            concord.setUtteranceDictionary(customDictionary)
+            concord.setUtteranceCall(transcript: rawTranscript, isRefine: asRefine, priorText: priorText)
+        }
+        #endif
 
         for (attemptIndex, deadline) in ttftDeadlines.enumerated() {
             do {

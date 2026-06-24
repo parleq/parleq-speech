@@ -222,23 +222,28 @@ struct ParleqApp {
         // session. OIDCSession.init reads the Keychain (refresh token +
         // identity), so skipping it is what keeps eval runs credential-
         // free on ad-hoc-signed debug builds.
-        let contextProvider = evalMode ? nil : config.contextModel?.provider.lowercased()
-        let bedrockOIDCActive = !evalMode && config.awsAuthMode == "oidc"
-            && (config.llmProvider == "bedrock" || contextProvider == "bedrock")
-        // Vertex OIDC modes: "oidcFederation" (Workforce Identity Federation,
-        // wires a GCP exchanger) and "googleOAuth" (native Google sign-in, NO
-        // exchanger — the session's access token is the Vertex bearer). Both
-        // construct the shared OIDCSession; only oidcFederation builds gcpExchange.
-        let vertexFederationActive = !evalMode && config.vertexAuthMode == "oidcFederation"
-            && (config.llmProvider == "vertex" || contextProvider == "vertex")
-        let vertexGoogleOAuthActive = !evalMode && config.vertexAuthMode == "googleOAuth"
-            && (config.llmProvider == "vertex" || contextProvider == "vertex")
-        let vertexOIDCActive = vertexFederationActive || vertexGoogleOAuthActive
-        let oidcModeActive = bedrockOIDCActive || vertexOIDCActive
+        // Enterprise-OIDC launch wiring, derived purely from config (see
+        // OIDCLaunchPlan). Decoupled from which tier is active: the shared
+        // session — and therefore the Settings → Company Account sign-in
+        // button — is built whenever corporate sign-in is configured (an OIDC
+        // auth mode is selected + issuer/client ID set), INCLUDING when only
+        // the refine or context tier uses the federated provider. The earlier
+        // gate keyed on the cleanup/context provider and ignored the refine
+        // tier, which let the user reach "section visible but no sign-in
+        // button". A signed-out federated cleanup still fails closed to raw.
+        let plan = OIDCLaunchPlan(config: config, evalMode: evalMode)
+        // Prewarm the Vertex googleOAuth bearer only when a tier actually uses
+        // Vertex (cleanup/context/refine). The session is built regardless (so
+        // the user can sign in), but there's no point fetching a token no tier
+        // will consume. Unlike the old gate, this includes the refine tier.
+        let vertexIsActiveTier = !evalMode && (
+            config.llmProvider.lowercased() == "vertex"
+            || config.contextModel?.provider.lowercased() == "vertex"
+            || config.refineModel?.provider.lowercased() == "vertex")
         var oidcSession: OIDCSession? = nil
         var awsExchange: CachedExchange<AWSWebIdentityExchanger>? = nil
         var gcpExchange: CachedExchange<GCPWorkforceExchanger>? = nil
-        if oidcModeActive, !config.oidcIssuer.isEmpty, !config.oidcClientID.isEmpty {
+        if plan.buildSession {
             let session = OIDCSession(
                 config: OIDCClientConfig(
                     issuer: config.oidcIssuer,
@@ -257,7 +262,7 @@ struct ParleqApp {
                     redirectURI: config.oidcRedirectURI,
                     ephemeral: config.oidcEphemeralBrowser)
             )
-            if bedrockOIDCActive, !config.awsRoleArn.isEmpty {
+            if plan.wireAWSExchange {
                 awsExchange = CachedExchange(
                     exchanger: AWSWebIdentityExchanger(
                         roleArn: config.awsRoleArn,
@@ -272,7 +277,7 @@ struct ParleqApp {
                 )
                 logStderr("[parleq] oidc: AWS web-identity exchange wired (region=\(config.awsRegion))")
             }
-            if vertexFederationActive, !config.vertexWorkforceProvider.isEmpty {
+            if plan.wireGCPExchange {
                 gcpExchange = CachedExchange(
                     exchanger: GCPWorkforceExchanger(
                         workforceProvider: config.vertexWorkforceProvider,
@@ -283,13 +288,13 @@ struct ParleqApp {
                 )
                 logStderr("[parleq] oidc: GCP workforce exchange wired (project=\(config.vertexProject))")
             }
-            if vertexGoogleOAuthActive {
+            if plan.vertexGoogleOAuth {
                 // No exchanger: the session's access token is the Vertex
                 // bearer directly. VertexProvider reads session.accessToken().
                 logStderr("[parleq] oidc: Vertex googleOAuth wired (no exchanger; project=\(config.vertexProject))")
             }
             oidcSession = session
-        } else if oidcModeActive {
+        } else if plan.oidcModeSelected {
             logStderr("[parleq] oidc: an OIDC auth mode is selected but oidc.issuer/client_id are not configured — Company Account is inactive; cleanup will fail closed until configured")
         }
 
@@ -465,6 +470,25 @@ struct ParleqApp {
                 let p = OpenAIProvider(model: id.model)
                 logStderr("[parleq] LLM \(label) (openai model=\(id.model))")
                 return p
+            case "concord":
+                // "Lightweight (on-device)" 2nd-pass cleanup — the private
+                // Concord deterministic + confidence-gated corrector. Runs
+                // in-process, ~0 ms, no network, no auth, no model download.
+                // id.model is ignored (Concord has its own fixed phase id).
+                // AppState feeds it per-word confidence + the dictionary via
+                // a per-utterance side-channel just before each cleanup.
+                #if Concord
+                let p = ConcordCleanupProvider()
+                logStderr("[parleq] LLM \(label) (concord — lightweight on-device 2nd-pass, no network)")
+                return p
+                #else
+                // This build was compiled without the proprietary Concord tier
+                // (public open-source build). A config that still selects it
+                // falls back to raw paste rather than crashing; the option is
+                // also hidden from Settings in this build.
+                logStderr("[parleq] LLM \(label): 'concord' (Lightweight) is unavailable in this build — pasting raw ASR")
+                return nil
+                #endif
             case "none":
                 // Explicit user choice. Don't log this as a problem —
                 // it's the configured behavior. AppState already
@@ -706,6 +730,27 @@ struct ParleqApp {
             return makeProvider(ctxId, "context-model enabled")
         }()
 
+        // Refine-model tier. Build a third provider only when
+        // config.refineModel is set AND differs from the cleanup model
+        // (same pattern as contextLLM). Routes hotkey voice-refine,
+        // quick chips, and styled per-app-preset cleanup to a cloud
+        // provider when the cleanup tier is the on-device Concord model,
+        // which can't perform those operations. nil → AppState's routing
+        // falls the refine tier back to contextLLM, then llm.
+        let refineLLM: (any LLMProvider)? = {
+            guard config.llmProvider != "none" else { return nil }
+            guard let rfnId = config.refineModel, rfnId != cleanupId else {
+                return nil   // nil → AppState falls refine turns back to context/cleanup
+            }
+            // Reuse the already-built context provider when the refine
+            // tier points at the SAME identifier — avoids spinning up a
+            // second client (and second Keychain read) for one provider.
+            if let ctxId = config.contextModel, rfnId == ctxId {
+                return contextLLM
+            }
+            return makeProvider(rfnId, "refine-model enabled")
+        }()
+
         let overlay = OverlayWindow()
         let stateBox = StateBox()
         // AppState lives on @MainActor; we have to instantiate it
@@ -718,6 +763,7 @@ struct ParleqApp {
                 asr: asr,
                 llm: llm,
                 contextLLM: contextLLM,
+                refineLLM: refineLLM,
                 overlay: overlay,
                 autoAcceptSeconds: config.autoAcceptSeconds,
                 trailingSpaceEnabled: config.trailingSpace,
@@ -725,7 +771,7 @@ struct ParleqApp {
                 oidcSession: oidcSession,
                 oidcAWSExchange: awsExchange,
                 oidcGCPExchange: gcpExchange,
-                oidcPrewarmSessionAccessToken: vertexGoogleOAuthActive
+                oidcPrewarmSessionAccessToken: plan.vertexGoogleOAuth && vertexIsActiveTier
             )
             // Record the provider this process actually launched with, so the
             // on-device restart affordance can detect "config says local + model

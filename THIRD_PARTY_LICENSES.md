@@ -39,6 +39,25 @@ cleanup option (see §"On-device LLM cleanup" below).
 
 ---
 
+## First-party proprietary components
+
+Release builds of Parleq.app bundle one component that is **not** open source:
+
+- **Concord** — Keavi LLC's proprietary on-device second-pass correction
+  engine (the "Lightweight (on-device)" cleanup tier). Copyright © 2026
+  Keavi LLC. Concord is a private package
+  (https://github.com/keavi-app/concord), distributed only inside
+  Parleq.app — it is not available separately or as source. It is gated
+  behind the `Concord` SwiftPM trait, so the **public open-source build of
+  Parleq does not include it** (the tier is simply absent); see
+  `parleq-app/Package.swift`.
+
+Because Concord is first-party (same maintainer as Parleq) and proprietary,
+it is not a third-party open-source dependency and is excluded from the OSS
+counts above.
+
+---
+
 ## SwiftPM dependencies
 
 ### Local ASR (in-process)

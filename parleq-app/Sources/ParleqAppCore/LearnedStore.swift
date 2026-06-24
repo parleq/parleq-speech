@@ -245,6 +245,19 @@ final class LearnedStore: ObservableObject {
             userStrings.contains { $0.caseInsensitiveCompare(p) == .orderedSame }
         }
         if collidesWithUserEntry { return .suggest }
+        // Quality bar: reject low-quality / collision-prone TERM proposals
+        // from AUTO-APPLY (they fall through to a pending suggestion the
+        // user can still accept by hand). Catches bare common words
+        // ("scholarly"/"item"), all-common multi-word phrases ("line item",
+        // "dictation released"), and phonetic collisions with a common word
+        // or an existing dictionary term ("iTerm"~"item", "parallel"~
+        // "Parleq"). Conservative: when uncertain, suggest, don't auto-add.
+        // Only term proposals reach here (preset/style/retire returned
+        // above); guard the term anyway.
+        if proposal.kind == .term, let term = proposal.term,
+           LearnedTermQualityBar.rejectionReason(term: term, existing: dictionary) != nil {
+            return .suggest
+        }
         return .autoApply
     }
 
@@ -272,14 +285,45 @@ final class LearnedStore: ObservableObject {
     /// `context` — the user never reviewed it, so we persist only the
     /// canonical term and its (already word-level bounded) aliases. Context
     /// is kept only for entries the user explicitly accepts (see `accept`).
+    ///
+    /// Biasing defaults to `.asrAndLLM` for auto-learned entries — they get
+    /// FULL value, including FluidAudio CTC biasing, so a genuinely mangled
+    /// jargon term is fixed at the ASR source (the whole point of learning).
+    /// Safe to do here because the gate for ASR biasing is DISTINCTIVENESS,
+    /// not learned-vs-curated: an entry only reaches this auto-apply path
+    /// after passing `LearnedTermQualityBar` (route → .autoApply), which
+    /// REJECTS the collision-prone short terms that over-fire ("iTerm"~"item",
+    /// "parallel"~"Parleq") and routes them to suggestions instead. So every
+    /// term that lands here is already distinctive enough to bias safely.
+    /// (Residual risk: the collision check's common-word set is bounded, so a
+    /// collision with a rare word could slip through — low blast radius and
+    /// revertible.) A modify preserves the existing entry's biasing.
     nonisolated static func applyTermProposal(_ proposal: LearningProposal, to dictionary: inout [DictionaryEntry]) {
         guard proposal.kind == .term, let term = proposal.term else { return }
         let prior = dictionary.first { $0.term.caseInsensitiveCompare(term) == .orderedSame }
+        let mergedAliases = unionAliases(prior: prior?.aliases ?? [], proposed: proposal.aliases ?? [])
+        // ASR biasing requires the WHOLE entry to be distinctive. The term reached this auto-apply
+        // path by passing the quality bar, but its ALIASES are unchecked — a collision-prone alias
+        // ("item") under asrAndLLM would over-fire just like a collision-prone term (the canonical
+        // is emitted whenever the common-word alias matches). So only default to asrAndLLM when every
+        // alias is also collision-safe; otherwise fall back to llmOnly (still helps cleanup).
+        // Check aliases against the dictionary MINUS this entry — an alias is by nature a phonetic
+        // variant of its OWN canonical ("parlay"~"Parleq"), so collision against self is expected
+        // and must not downgrade. The real risks are an alias that's a common word ("item") or
+        // collides with a DIFFERENT term — both still caught.
+        let others = dictionary.filter { $0.term.caseInsensitiveCompare(term) != .orderedSame }
+        let aliasesSafe = mergedAliases.allSatisfy {
+            LearnedTermQualityBar.rejectionReason(term: $0, existing: others) == nil
+        }
         let entry = DictionaryEntry(
             term: term,
             context: nil,
-            aliases: unionAliases(prior: prior?.aliases ?? [], proposed: proposal.aliases ?? []),
-            biasing: prior?.biasing ?? .asrAndLLM,
+            aliases: mergedAliases,
+            spokenForms: prior?.spokenForms ?? [],   // preserve say-as phrases across a learned merge
+            // Alias safety OVERRIDES prior biasing: even a MODIFY of an existing .asrAndLLM entry
+            // must drop to .llmOnly when it gains a collision-prone alias, else the unsafe alias
+            // keeps driving ASR over-firing. asrAndLLM only when EVERY alias is safe.
+            biasing: aliasesSafe ? (prior?.biasing ?? .asrAndLLM) : .llmOnly,
             source: .learned
         )
         if let idx = dictionary.firstIndex(where: { $0.term.caseInsensitiveCompare(term) == .orderedSame }) {
@@ -442,7 +486,18 @@ final class LearnedStore: ObservableObject {
         var dictionary = config.customDictionary
         var pendingApplied: [(proposal: LearningProposal, prior: DictionaryEntry?, applied: DictionaryEntry?)] = []
         var newSuggestions: [PendingSuggestion] = []
+        // Count-only tally of TERM proposals the quality bar kept out of
+        // auto-apply (no term text — honors the count-only learning-log
+        // invariant). They still surface as suggestions; this just records
+        // how many auto-adds the bar prevented this run.
+        var qualityRejectedCount = 0
         for proposal in proposals {
+            if proposal.kind == .term, let term = proposal.term,
+               proposal.op != .retire,
+               proposal.confidence >= LearningAnalyzer.autoApplyConfidenceThreshold,
+               LearnedTermQualityBar.rejectionReason(term: term, existing: dictionary) != nil {
+                qualityRejectedCount += 1
+            }
             switch Self.route(proposal, against: dictionary) {
             case .autoApply:
                 let term = proposal.term ?? ""
@@ -497,6 +552,13 @@ final class LearnedStore: ObservableObject {
         // Suggestions are in-memory only (no disk write), so they're added
         // regardless of whether any auto-apply save succeeded.
         for s in newSuggestions { insertSuggestionIfNew(s) }
+        if qualityRejectedCount > 0 {
+            // Count-only (no term text) — preserves the learning-log
+            // invariant that no transcript-derived content reaches stderr.
+            FileHandle.standardError.write(
+                "[parleq] LearnedStore: \(qualityRejectedCount) term proposal(s) rejected from auto-apply by quality bar\n"
+                    .data(using: .utf8) ?? Data())
+        }
         return pendingApplied.count
     }
 
@@ -543,6 +605,7 @@ final class LearnedStore: ObservableObject {
                 term: term,
                 context: proposal.context ?? prior?.context,
                 aliases: Self.unionAliases(prior: prior?.aliases ?? [], proposed: proposal.aliases ?? []),
+                spokenForms: prior?.spokenForms ?? [],   // never drop existing say-as phrases on accept/merge
                 biasing: prior?.biasing ?? .asrAndLLM,
                 source: .user
             )
