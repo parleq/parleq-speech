@@ -2,6 +2,94 @@ import XCTest
 @testable import ParleqAppCore
 
 final class OIDCConfigTests: XCTestCase {
+
+    // MARK: - OIDCLaunchPlan (launch-time session/exchanger gating)
+
+    /// A configured OIDC issuer + client ID + selected auth mode is provided.
+    private func federatedConfig(
+        vertexAuthMode: String = "oidcFederation",
+        awsAuthMode: String = "sso",
+        llmProvider: String = "concord",
+        contextModel: ModelIdentifier? = nil,
+        refineModel: ModelIdentifier? = nil,
+        workforceProvider: String = "locations/global/workforcePools/a/providers/b",
+        roleArn: String = ""
+    ) -> Config {
+        var c = Config.defaults
+        c.oidcIssuer = "https://acme.okta.com"
+        c.oidcClientID = "0oa1"
+        c.vertexAuthMode = vertexAuthMode
+        c.awsAuthMode = awsAuthMode
+        c.llmProvider = llmProvider
+        c.contextModel = contextModel
+        c.refineModel = refineModel
+        c.vertexWorkforceProvider = workforceProvider
+        c.awsRoleArn = roleArn
+        return c
+    }
+
+    /// THE bug: cleanup is the on-device Concord tier and Vertex+corporate-OIDC
+    /// is used only by the refine tier. The session (and the sign-in button)
+    /// must still be built — the plan is decoupled from which tier is active.
+    func test_launch_plan_builds_session_for_refine_only_vertex_oidc() {
+        let c = federatedConfig(
+            llmProvider: "concord",
+            refineModel: ModelIdentifier(provider: "vertex", model: "gemini-2.5-flash"))
+        let plan = OIDCLaunchPlan(config: c, evalMode: false)
+        XCTAssertTrue(plan.buildSession, "refine-tier-only Vertex+OIDC must still build the session")
+        XCTAssertTrue(plan.wireGCPExchange)
+        XCTAssertFalse(plan.wireAWSExchange)
+    }
+
+    func test_launch_plan_non_enterprise_builds_nothing() {
+        var c = Config.defaults // no issuer, default auth modes
+        c.llmProvider = "gemini"
+        let plan = OIDCLaunchPlan(config: c, evalMode: false)
+        XCTAssertFalse(plan.oidcModeSelected)
+        XCTAssertFalse(plan.buildSession)
+        XCTAssertFalse(plan.wireGCPExchange)
+        XCTAssertFalse(plan.wireAWSExchange)
+    }
+
+    func test_launch_plan_oidc_selected_but_creds_missing_does_not_build() {
+        var c = federatedConfig()
+        c.oidcClientID = "" // issuer set, client ID missing
+        let plan = OIDCLaunchPlan(config: c, evalMode: false)
+        XCTAssertTrue(plan.oidcModeSelected, "drives the accurate 'enter issuer/client ID' inactive notice")
+        XCTAssertFalse(plan.buildSession)
+    }
+
+    func test_launch_plan_eval_mode_builds_nothing_even_when_configured() {
+        let c = federatedConfig()
+        let plan = OIDCLaunchPlan(config: c, evalMode: true)
+        XCTAssertFalse(plan.oidcModeSelected)
+        XCTAssertFalse(plan.buildSession)
+    }
+
+    func test_launch_plan_aws_exchange_wires_on_role_arn() {
+        let c = federatedConfig(awsAuthMode: "oidc", roleArn: "arn:aws:iam::1:role/Parleq")
+        let plan = OIDCLaunchPlan(config: c, evalMode: false)
+        XCTAssertTrue(plan.buildSession)
+        XCTAssertTrue(plan.wireAWSExchange)
+    }
+
+    func test_launch_plan_google_oauth_has_no_gcp_exchange() {
+        let c = federatedConfig(vertexAuthMode: "googleOAuth")
+        let plan = OIDCLaunchPlan(config: c, evalMode: false)
+        XCTAssertTrue(plan.buildSession)
+        XCTAssertTrue(plan.vertexGoogleOAuth)
+        XCTAssertFalse(plan.wireGCPExchange, "googleOAuth uses the session token directly, no exchanger")
+    }
+
+    func test_launch_plan_gcp_exchange_needs_workforce_provider() {
+        let c = federatedConfig(workforceProvider: "") // federation selected but no pool
+        let plan = OIDCLaunchPlan(config: c, evalMode: false)
+        XCTAssertTrue(plan.buildSession, "session still builds so the user can sign in")
+        XCTAssertFalse(plan.wireGCPExchange)
+    }
+
+    // MARK: - Round-trip
+
     func test_oidc_section_round_trips() throws {
         var c = Config.defaults
         c.oidcIssuer = "https://acme.okta.com"; c.oidcClientID = "0oa1"

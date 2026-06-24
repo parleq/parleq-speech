@@ -222,23 +222,20 @@ struct ParleqApp {
         // session. OIDCSession.init reads the Keychain (refresh token +
         // identity), so skipping it is what keeps eval runs credential-
         // free on ad-hoc-signed debug builds.
-        let contextProvider = evalMode ? nil : config.contextModel?.provider.lowercased()
-        let bedrockOIDCActive = !evalMode && config.awsAuthMode == "oidc"
-            && (config.llmProvider == "bedrock" || contextProvider == "bedrock")
-        // Vertex OIDC modes: "oidcFederation" (Workforce Identity Federation,
-        // wires a GCP exchanger) and "googleOAuth" (native Google sign-in, NO
-        // exchanger — the session's access token is the Vertex bearer). Both
-        // construct the shared OIDCSession; only oidcFederation builds gcpExchange.
-        let vertexFederationActive = !evalMode && config.vertexAuthMode == "oidcFederation"
-            && (config.llmProvider == "vertex" || contextProvider == "vertex")
-        let vertexGoogleOAuthActive = !evalMode && config.vertexAuthMode == "googleOAuth"
-            && (config.llmProvider == "vertex" || contextProvider == "vertex")
-        let vertexOIDCActive = vertexFederationActive || vertexGoogleOAuthActive
-        let oidcModeActive = bedrockOIDCActive || vertexOIDCActive
+        // Enterprise-OIDC launch wiring, derived purely from config (see
+        // OIDCLaunchPlan). Decoupled from which tier is active: the shared
+        // session — and therefore the Settings → Company Account sign-in
+        // button — is built whenever corporate sign-in is configured (an OIDC
+        // auth mode is selected + issuer/client ID set), INCLUDING when only
+        // the refine or context tier uses the federated provider. The earlier
+        // gate keyed on the cleanup/context provider and ignored the refine
+        // tier, which let the user reach "section visible but no sign-in
+        // button". A signed-out federated cleanup still fails closed to raw.
+        let plan = OIDCLaunchPlan(config: config, evalMode: evalMode)
         var oidcSession: OIDCSession? = nil
         var awsExchange: CachedExchange<AWSWebIdentityExchanger>? = nil
         var gcpExchange: CachedExchange<GCPWorkforceExchanger>? = nil
-        if oidcModeActive, !config.oidcIssuer.isEmpty, !config.oidcClientID.isEmpty {
+        if plan.buildSession {
             let session = OIDCSession(
                 config: OIDCClientConfig(
                     issuer: config.oidcIssuer,
@@ -257,7 +254,7 @@ struct ParleqApp {
                     redirectURI: config.oidcRedirectURI,
                     ephemeral: config.oidcEphemeralBrowser)
             )
-            if bedrockOIDCActive, !config.awsRoleArn.isEmpty {
+            if plan.wireAWSExchange {
                 awsExchange = CachedExchange(
                     exchanger: AWSWebIdentityExchanger(
                         roleArn: config.awsRoleArn,
@@ -272,7 +269,7 @@ struct ParleqApp {
                 )
                 logStderr("[parleq] oidc: AWS web-identity exchange wired (region=\(config.awsRegion))")
             }
-            if vertexFederationActive, !config.vertexWorkforceProvider.isEmpty {
+            if plan.wireGCPExchange {
                 gcpExchange = CachedExchange(
                     exchanger: GCPWorkforceExchanger(
                         workforceProvider: config.vertexWorkforceProvider,
@@ -283,13 +280,13 @@ struct ParleqApp {
                 )
                 logStderr("[parleq] oidc: GCP workforce exchange wired (project=\(config.vertexProject))")
             }
-            if vertexGoogleOAuthActive {
+            if plan.vertexGoogleOAuth {
                 // No exchanger: the session's access token is the Vertex
                 // bearer directly. VertexProvider reads session.accessToken().
                 logStderr("[parleq] oidc: Vertex googleOAuth wired (no exchanger; project=\(config.vertexProject))")
             }
             oidcSession = session
-        } else if oidcModeActive {
+        } else if plan.oidcModeSelected {
             logStderr("[parleq] oidc: an OIDC auth mode is selected but oidc.issuer/client_id are not configured — Company Account is inactive; cleanup will fail closed until configured")
         }
 
@@ -757,7 +754,7 @@ struct ParleqApp {
                 oidcSession: oidcSession,
                 oidcAWSExchange: awsExchange,
                 oidcGCPExchange: gcpExchange,
-                oidcPrewarmSessionAccessToken: vertexGoogleOAuthActive
+                oidcPrewarmSessionAccessToken: plan.vertexGoogleOAuth
             )
             // Record the provider this process actually launched with, so the
             // on-device restart affordance can detect "config says local + model
