@@ -37,10 +37,23 @@ if [[ "${1:-}" == "--debug" ]]; then
     CONFIG="debug"
 fi
 
-echo "==> swift build -c $CONFIG"
-swift build -c "$CONFIG"
+# Concord ("Lightweight" on-device cleanup tier) is a PRIVATE dependency gated
+# behind a SwiftPM trait. Release/maintainer builds bundle it (default). Public
+# contributors WITHOUT access to keavi-app/concord can opt out — the trait is
+# pruned from resolution so the app still builds (Lightweight tier just absent):
+#   PARLEQ_CONCORD=0 ./scripts/make-app.sh        # or just `swift build`
+# Plain string (not an array) so it stays safe under `set -u` on macOS's
+# default bash 3.2, and word-splits into two args when set. No values contain
+# spaces, so unquoted expansion below is correct.
+TRAIT_ARGS=""
+if [[ "${PARLEQ_CONCORD:-1}" != "0" ]]; then
+    TRAIT_ARGS="--traits Concord"
+fi
 
-BIN_PATH="$(swift build -c "$CONFIG" --show-bin-path)"
+echo "==> swift build -c $CONFIG $TRAIT_ARGS"
+swift build -c "$CONFIG" $TRAIT_ARGS
+
+BIN_PATH="$(swift build -c "$CONFIG" $TRAIT_ARGS --show-bin-path)"
 # Phase 2 (Reference Windows): the SwiftPM executable was renamed
 # from "ParleqApp" to "parleq-app" when the package was split into
 # ParleqAppCore (library) + parleq-app (thin executable). We still
@@ -164,7 +177,7 @@ fi
 # the framework produces a guaranteed-crash-on-launch bundle.
 # Failing here is much friendlier than getting a launch-time
 # `dlopen Sparkle` crash from a user.
-SPARKLE_BUILD_DIR=$(swift build -c "$CONFIG" --show-bin-path)
+SPARKLE_BUILD_DIR=$(swift build -c "$CONFIG" $TRAIT_ARGS --show-bin-path)
 SPARKLE_SRC="$SPARKLE_BUILD_DIR/Sparkle.framework"
 if [[ ! -d "$SPARKLE_SRC" ]]; then
     echo "ERROR: Sparkle.framework not found at $SPARKLE_SRC." >&2

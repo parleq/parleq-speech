@@ -22,7 +22,9 @@
 
 import AppKit
 import Combine
+#if Concord
 import Concord
+#endif
 import Foundation
 
 @MainActor
@@ -668,7 +670,10 @@ public final class AppState {
         overlay.model.onDiscardEdit = { [weak self] in self?.discardEdit() }
         // On-device corrector per-correction undo (⌥digit). Reverts the edit at
         // that number and feeds the revert to the CorrectionJournal.
+        // (Concord-only feature; absent in the public no-Concord build.)
+        #if Concord
         overlay.model.onUndoCorrection = { [weak self] n in self?.undoCorrection(number: n) ?? false }
+        #endif
 
         windowPickerWindow.setCallbacks(
             onPick: { [weak self] entry in
@@ -1746,10 +1751,12 @@ public final class AppState {
             // against the edited text (surviving replacements keep their
             // highlight + ⌥digit undo; rewritten ones drop out). This keeps
             // undo-after-manual-edit safe: it never reverts a stale range.
+            #if Concord
             overlay.model.correctionSpans = CorrectionHighlight.spans(
                 in: edited,
                 edits: overlay.model.correctionSpans.map(editRecordFor)
             )
+            #endif
             recordInPlaceEdit(before: editPreEditText, after: edited)
         }
         log("in-place edit: \(accept ? "commit+accept" : "save")")
@@ -1782,6 +1789,8 @@ public final class AppState {
     }
 
     // MARK: - On-device corrector highlights + per-correction undo
+    // (Concord-only; the whole feature is compiled out in the public build.)
+    #if Concord
 
     /// Map the on-device corrector's applied edits to highlight spans in the
     /// cleaned text and publish them on the overlay model (Concord tier only —
@@ -1857,6 +1866,7 @@ public final class AppState {
             wordRange: span.wordRange
         )
     }
+    #endif
 
     /// User accepted (Enter on overlay) or auto-accept timer fired.
     ///
@@ -3275,9 +3285,11 @@ public final class AppState {
                 // the review can highlight them + offer ⌥digit undo. Set AFTER
                 // applyResult (which calls show(.awaitingAccept) → clears spans).
                 // Cloud providers emit no EditRecords, so this is Concord-only.
+                #if Concord
                 if !asRefine, !wasChainedCleanup {
                     self?.applyCorrectionHighlights(from: resolvedLLM, cleanedText: outcome.text)
                 }
+                #endif
                 if !asRefine, !wasChainedCleanup {
                     // "Styled" requires the LLM to have actually used its output —
                     // usedLLMOutput is false on every fallback path (no-LLM-configured,
@@ -4894,11 +4906,13 @@ private func streamCleanupOrRefine(
         // + isRefine; on a refine turn it returns priorText unchanged and never runs
         // cleanup on the instruction scaffolding. Set once before the attempt loop —
         // Concord is instant and never retries, so the consume-and-clear is safe.
+        #if Concord
         if let concord = llm as? ConcordCleanupProvider {
             concord.setUtteranceContext(diagnostics: asrDiagnostics)
             concord.setUtteranceDictionary(customDictionary)
             concord.setUtteranceCall(transcript: rawTranscript, isRefine: asRefine, priorText: priorText)
         }
+        #endif
 
         for (attemptIndex, deadline) in ttftDeadlines.enumerated() {
             do {

@@ -18,6 +18,7 @@
 // No transcript/edit content is logged or persisted here — these are pure
 // transforms over in-memory strings handed in by the caller.
 
+#if Concord
 import Concord
 import Foundation
 
@@ -163,3 +164,4 @@ enum CorrectionHighlight {
         return out
     }
 }
+#endif

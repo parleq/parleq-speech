@@ -354,17 +354,26 @@ final class SettingsModel: ObservableObject {
     // Cloud providers lead (the default cleanup tier is a cloud provider);
     // the on-device options are grouped below so they read as deliberate
     // opt-ins rather than the recommended default, and "None" is last.
-    static let providerOptions: [ProviderOption] = [
-        ProviderOption(id: "gemini",         displayName: "Gemini (Google API)"),
-        ProviderOption(id: "vertex",         displayName: "Gemini (Vertex / Google Cloud)"),
-        ProviderOption(id: "bedrock",        displayName: "Bedrock (AWS IAM)"),
-        ProviderOption(id: "bedrock-bearer", displayName: "Bedrock (bearer token)"),
-        ProviderOption(id: "azure",          displayName: "Azure OpenAI"),
-        ProviderOption(id: "openai",         displayName: "OpenAI (direct API)"),
-        ProviderOption(id: "local",          displayName: "On-device (no cloud)"),
-        ProviderOption(id: "concord",        displayName: "Lightweight (on-device)"),
-        ProviderOption(id: "none",           displayName: "None — paste raw transcript"),
-    ]
+    // Built via a closure (not a bare literal) so the Concord entry can be
+    // conditionally included — `#if` is not allowed inside an array literal.
+    static let providerOptions: [ProviderOption] = {
+        var opts: [ProviderOption] = [
+            ProviderOption(id: "gemini",         displayName: "Gemini (Google API)"),
+            ProviderOption(id: "vertex",         displayName: "Gemini (Vertex / Google Cloud)"),
+            ProviderOption(id: "bedrock",        displayName: "Bedrock (AWS IAM)"),
+            ProviderOption(id: "bedrock-bearer", displayName: "Bedrock (bearer token)"),
+            ProviderOption(id: "azure",          displayName: "Azure OpenAI"),
+            ProviderOption(id: "openai",         displayName: "OpenAI (direct API)"),
+            ProviderOption(id: "local",          displayName: "On-device (no cloud)"),
+        ]
+        // Lightweight (Concord) is only offered in builds that bundle the
+        // proprietary tier (--traits Concord); the public build omits it.
+        #if Concord
+        opts.append(ProviderOption(id: "concord", displayName: "Lightweight (on-device)"))
+        #endif
+        opts.append(ProviderOption(id: "none", displayName: "None — paste raw transcript"))
+        return opts
+    }()
 
     /// Mirror of `KeychainStore.hasGeminiAPIKey` for SwiftUI.
     /// Updated when the user sets or removes the key via the Set

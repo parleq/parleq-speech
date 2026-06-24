@@ -16,6 +16,7 @@
 // grow (e.g. a Settings panel surfacing stage contribution); growing it
 // must preserve the never-to-disk invariant.
 
+#if Concord
 import Combine
 import Concord
 import Foundation
@@ -87,3 +88,4 @@ final class ConcordProvenanceStore: ObservableObject {
         entries.removeAll()
     }
 }
+#endif

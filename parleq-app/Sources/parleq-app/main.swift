@@ -477,9 +477,18 @@ struct ParleqApp {
                 // id.model is ignored (Concord has its own fixed phase id).
                 // AppState feeds it per-word confidence + the dictionary via
                 // a per-utterance side-channel just before each cleanup.
+                #if Concord
                 let p = ConcordCleanupProvider()
                 logStderr("[parleq] LLM \(label) (concord — lightweight on-device 2nd-pass, no network)")
                 return p
+                #else
+                // This build was compiled without the proprietary Concord tier
+                // (public open-source build). A config that still selects it
+                // falls back to raw paste rather than crashing; the option is
+                // also hidden from Settings in this build.
+                logStderr("[parleq] LLM \(label): 'concord' (Lightweight) is unavailable in this build — pasting raw ASR")
+                return nil
+                #endif
             case "none":
                 // Explicit user choice. Don't log this as a problem —
                 // it's the configured behavior. AppState already

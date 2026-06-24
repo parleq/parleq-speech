@@ -1,3 +1,4 @@
+#if Concord
 import XCTest
 import Concord
 @testable import ParleqAppCore
@@ -177,3 +178,4 @@ final class CorrectionHighlightTests: XCTestCase {
         XCTAssertEqual(slice(reverted, spans[0]), "API")
     }
 }
+#endif

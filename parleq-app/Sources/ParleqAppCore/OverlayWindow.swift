@@ -1231,7 +1231,9 @@ public final class OverlayModel: ObservableObject {
     /// ranges no longer map cleanly). Set by AppState from
     /// ConcordCleanupProvider.appliedEditsForOverlay(); cleared on every state
     /// change in update() so a prior turn's highlights never leak.
+    #if Concord
     @Published var correctionSpans: [CorrectionSpan] = []
+    #endif
 
     /// Invoked when the user presses Option+digit on a numbered correction —
     /// reverts THAT correction (replacement → original) and feeds the revert to
@@ -1527,7 +1529,9 @@ public final class OverlayModel: ObservableObject {
         // amber spans never leak onto a fresh utterance. AppState (re)sets them
         // immediately AFTER show(.awaitingAccept) for the Concord tier — that
         // assignment lands after this clear, so the review keeps its highlights.
+        #if Concord
         if state != .awaitingAccept { self.correctionSpans = [] }
+        #endif
     }
 
     public func append(_ chunk: String) {
@@ -1805,6 +1809,7 @@ private struct OverlayContent: View {
             }
         }
     }
+    #if Concord
     /// Build the review text with the on-device corrector's changed spans
     /// highlighted: each `CorrectionSpan.range` gets a soft amber background
     /// tint + a brand-amber foreground, and a small superscript number badge is
@@ -1858,6 +1863,7 @@ private struct OverlayContent: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityLabel("On-device corrector changed \(spans.count) word\(spans.count == 1 ? "" : "s"); press Option and a number to undo a correction")
     }
+    #endif
 
     /// Fixed outer width passed in from OverlayWindow. We constrain
     /// the SwiftUI hierarchy to this so NSHostingController's
@@ -3258,21 +3264,30 @@ private struct OverlayContent: View {
                                     return .ignored
                                 }
                             }
-                    } else if !model.correctionSpans.isEmpty {
-                        // On-device corrector highlight: amber-tint the spans
-                        // Concord changed, with a small superscript number per
-                        // span (Option+digit reverts that one). See
-                        // highlightedReviewText.
-                        Self.highlightedReviewText(model.text, spans: model.correctionSpans)
-                            .font(.system(size: 17))
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        correctionLegend(model.correctionSpans)
                     } else {
+                        #if Concord
+                        if !model.correctionSpans.isEmpty {
+                            // On-device corrector highlight: amber-tint the spans
+                            // Concord changed, with a small superscript number per
+                            // span (Option+digit reverts that one). See
+                            // highlightedReviewText.
+                            Self.highlightedReviewText(model.text, spans: model.correctionSpans)
+                                .font(.system(size: 17))
+                                .fixedSize(horizontal: false, vertical: true)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            correctionLegend(model.correctionSpans)
+                        } else {
+                            Text(model.text)
+                                .font(.system(size: 17))
+                                .fixedSize(horizontal: false, vertical: true)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        #else
                         Text(model.text)
                             .font(.system(size: 17))
                             .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
+                        #endif
                     }
                     // Cleanup-failure decoration. AppState passes a
                     // non-nil message when LLM cleanup threw — the user

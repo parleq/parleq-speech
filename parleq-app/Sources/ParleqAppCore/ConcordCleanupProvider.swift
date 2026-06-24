@@ -31,6 +31,7 @@
 // retained IN-MEMORY ONLY via `ConcordProvenanceStore` (process memory,
 // wiped on quit) — mirroring CorrectionJournal's never-to-disk discipline.
 
+#if Concord
 import Concord
 import Foundation
 
@@ -262,3 +263,4 @@ public final class ConcordCleanupProvider: LLMProvider, @unchecked Sendable {
     // no recovery hint, never reauthable (protocol defaults cover the rest).
     public func cleanupFailureHint(for error: LLMError) -> String? { nil }
 }
+#endif
