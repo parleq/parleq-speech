@@ -237,7 +237,7 @@ struct ParleqApp {
         // the user can sign in), but there's no point fetching a token no tier
         // will consume. Unlike the old gate, this includes the refine tier.
         let vertexIsActiveTier = !evalMode && (
-            config.llmProvider == "vertex"
+            config.llmProvider.lowercased() == "vertex"
             || config.contextModel?.provider.lowercased() == "vertex"
             || config.refineModel?.provider.lowercased() == "vertex")
         var oidcSession: OIDCSession? = nil
