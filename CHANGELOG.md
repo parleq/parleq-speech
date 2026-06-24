@@ -4,7 +4,31 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
-## [0.26.0] - Unreleased
+## [0.27.0] - Unreleased
+
+A fast on-device cleanup option, see-and-undo corrections in the overlay, a clearer Cleanup settings layout, and a fix for a corporate sign-in dead-end.
+
+### Added
+
+- **"Lightweight (on-device)" cleanup — instant, private, no cloud.** A new cleanup option that fixes the common things — spoken numbers ("twenty twenty-five" → "2025"), run-together words, and your dictionary terms — entirely on your Mac, in-process, with no network call and effectively zero latency. It's deterministic (rule-based, not an LLM), so it never rewrites or invents text. Choose it under Settings → Cleanup → Provider; cloud cleanup remains the default.
+- **See what the on-device corrector changed — and undo any of it.** When Lightweight cleanup makes a correction, the overlay highlights each change with a small number; press ⌥ (Option) + that number to revert just that one back to exactly what you said.
+- **Dictionary "spoken forms".** Map a distinctive spoken phrase to a specific term — say "open item terminal" and have it become "open iTerm" — so a reliably-misheard run is corrected as a whole. Add them per term in Settings → Dictionary.
+- **Separate Refinement and Context providers.** Voice-refine, the quick-refinement chips, and per-app styling can now run on a different provider than your first-pass cleanup (Settings → Cleanup → Refinement), and reference-window dictations on a Context provider. Both default to following your cleanup provider, so nothing changes unless you set them.
+
+### Changed
+
+- **Clearer Cleanup settings.** The Cleanup pane now reads in order (Cleanup → Refinement → Context), drops the vague "(Advanced)" labels for plain descriptions, and lists cloud providers first so the on-device options read as deliberate opt-ins. Picking Lightweight cleanup explains that refinement needs its own provider (Lightweight can't rewrite text) and helps you set one.
+- **Safer learned dictionary terms.** Auto-learned terms must now clear a distinctiveness check before they're allowed to bias speech recognition, fixing a case where everyday words could get over-corrected — making "Learn from corrections" safe to leave on.
+
+### Fixed
+
+- **Corporate sign-in no longer dead-ends.** If corporate (OIDC) sign-in was used only by a refine or context provider — or you switched your cleanup provider around — the Company Account page could appear with no Sign-In button and a misleading "set it up first" notice, with no way forward. The sign-in session is now created whenever corporate sign-in is configured, whichever tier uses it.
+- **Accepting a dictation mid-edit keeps your edit.** Clicking Accept while editing the text in place now commits your edit (like pressing Return) instead of pasting the version from before the edit.
+- **Per-correction undo always targets the right word.** Fixed a case where undoing one correction after another edit could revert the wrong occurrence when the same word appeared more than once.
+
+[0.27.0]: https://github.com/parleq/parleq-speech/releases/tag/v0.27.0
+
+## [0.26.0] - 2026-06-23
 
 A stability fix for a rare overlay hang, plus advanced opt-in research/contributor tooling that's off by default and invisible unless you deliberately turn it on.
 
@@ -15,6 +39,8 @@ A stability fix for a rare overlay hang, plus advanced opt-in research/contribut
 ### Added
 
 - **Opt-in dictation contribution capture (off by default).** A local-only mode for contributors who want to help improve Parleq's on-device transcription correction. When explicitly armed via a manual edit to `~/.parleq/config.json`, it records your own dictations — audio plus transcripts and recognition diagnostics — to `~/.parleq/flywheel/`. It is **off by default**, is not exposed in Settings or the setup wizard, requires a deliberate, self-documenting acknowledgment to enable, and **never sends anything off your device** — the data stays local, and contributing it is a separate manual step you take yourself. Fully disclosed in `docs/SECURITY_REVIEW.md` §5.3.
+
+[0.26.0]: https://github.com/parleq/parleq-speech/releases/tag/v0.26.0
 
 ## [0.25.2] - 2026-06-15
 
