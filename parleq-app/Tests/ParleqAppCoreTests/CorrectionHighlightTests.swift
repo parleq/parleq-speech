@@ -47,6 +47,27 @@ final class CorrectionHighlightTests: XCTestCase {
                        "the nil-range number edit must map to the FIRST '25', not the trailing one")
     }
 
+    func testWordRangeSurvivesRemapAfterUndoOrEdit() {
+        // Audit finding: a re-map (after an undo or manual edit) reconstructs
+        // EditRecords from the surviving CorrectionSpans. If the span dropped
+        // wordRange, a ranged edit would fall back to first-occurrence matching
+        // and re-anchor to the WRONG duplicate. Simulate that reconstruction
+        // (mirrors AppState.editRecordFor) and confirm the anchor is preserved.
+        let text = "API API"
+        let spans1 = CorrectionHighlight.spans(in: text, edits: [edit("api", "API", range: 1..<2)])
+        XCTAssertEqual(spans1[0].wordRange, 1..<2, "span must carry the edit's wordRange")
+
+        // Reconstruct exactly like AppState.editRecordFor (preserving wordRange).
+        let reconstructed = spans1.map {
+            EditRecord(stage: $0.stage, original: $0.original,
+                       replacement: $0.replacement, applied: true, wordRange: $0.wordRange)
+        }
+        let spans2 = CorrectionHighlight.spans(in: text, edits: reconstructed)
+        XCTAssertEqual(text.distance(from: text.startIndex, to: spans2[0].range.lowerBound), 4,
+                       "after re-map the edit must STILL anchor to the second (edited) occurrence")
+        XCTAssertEqual(CorrectionHighlight.revert(text: text, span: spans2[0]), "API api")
+    }
+
     func testSingleAppliedEditMapsToItsRange() {
         let text = "I love Parleq for dictation"
         let spans = CorrectionHighlight.spans(in: text, edits: [edit("parlay", "Parleq")])

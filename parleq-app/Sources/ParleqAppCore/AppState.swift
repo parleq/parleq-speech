@@ -1849,7 +1849,12 @@ public final class AppState {
             stage: span.stage,
             original: span.original,
             replacement: span.replacement,
-            applied: true
+            applied: true,
+            // Preserve the token anchor so a re-map (after undo / manual edit)
+            // still picks the right occurrence when the replacement string
+            // appears more than once. Without this the edit would fall back to
+            // first-occurrence matching and could revert the wrong span.
+            wordRange: span.wordRange
         )
     }
 

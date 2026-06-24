@@ -35,6 +35,11 @@ struct CorrectionSpan: Equatable {
     let replacement: String
     /// Which Concord stage produced this edit (dictionary / number / say-as …).
     let stage: EditStage
+    /// The edit's original token range (nil for deterministic number/compound
+    /// edits). Carried so a re-map after an undo / manual edit can re-anchor:
+    /// without it a ranged dictionary/say-as edit falls back to first-occurrence
+    /// matching and could re-attach to the wrong duplicate occurrence.
+    let wordRange: Range<Int>?
 }
 
 enum CorrectionHighlight {
@@ -112,7 +117,8 @@ enum CorrectionHighlight {
                 range: item.range,
                 original: item.edit.original,
                 replacement: item.edit.replacement,
-                stage: item.edit.stage
+                stage: item.edit.stage,
+                wordRange: item.edit.wordRange
             )
         }
     }
