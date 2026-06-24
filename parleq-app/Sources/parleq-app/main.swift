@@ -232,6 +232,14 @@ struct ParleqApp {
         // tier, which let the user reach "section visible but no sign-in
         // button". A signed-out federated cleanup still fails closed to raw.
         let plan = OIDCLaunchPlan(config: config, evalMode: evalMode)
+        // Prewarm the Vertex googleOAuth bearer only when a tier actually uses
+        // Vertex (cleanup/context/refine). The session is built regardless (so
+        // the user can sign in), but there's no point fetching a token no tier
+        // will consume. Unlike the old gate, this includes the refine tier.
+        let vertexIsActiveTier = !evalMode && (
+            config.llmProvider == "vertex"
+            || config.contextModel?.provider.lowercased() == "vertex"
+            || config.refineModel?.provider.lowercased() == "vertex")
         var oidcSession: OIDCSession? = nil
         var awsExchange: CachedExchange<AWSWebIdentityExchanger>? = nil
         var gcpExchange: CachedExchange<GCPWorkforceExchanger>? = nil
@@ -754,7 +762,7 @@ struct ParleqApp {
                 oidcSession: oidcSession,
                 oidcAWSExchange: awsExchange,
                 oidcGCPExchange: gcpExchange,
-                oidcPrewarmSessionAccessToken: plan.vertexGoogleOAuth
+                oidcPrewarmSessionAccessToken: plan.vertexGoogleOAuth && vertexIsActiveTier
             )
             // Record the provider this process actually launched with, so the
             // on-device restart affordance can detect "config says local + model

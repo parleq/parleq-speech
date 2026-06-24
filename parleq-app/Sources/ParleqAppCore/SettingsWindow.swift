@@ -1876,7 +1876,7 @@ struct SettingsView: View {
                             excludeProviders: ["concord"]
                         )
                         // "local" and "none" have no cloud model to pick —
-                        // same guard as the cleanup/context tiers above.
+                        // same guard as the cleanup tier above.
                         if model.refineProvider != "local" && model.refineProvider != "none" {
                             tierModelPicker(
                                 forProvider: model.refineProvider,
