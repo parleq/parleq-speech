@@ -4720,6 +4720,24 @@ private func streamCleanupOrRefine(
         return CleanupOutcome(text: fallback, failureMessage: nil)
     }
 
+    // Refinement is an instruction-following task, so the on-device Concord
+    // ("Lightweight") tier can't do it. When a refine turn (voice-refine or a
+    // quick chip) resolves to Concord because no refine-capable provider is
+    // configured, don't silently no-op: keep the current text (fallback =
+    // priorText on a refine) and surface a one-turn hint pointing at the
+    // Refinement provider setting. Per-app styled cleanups arrive here as
+    // asRefine=false fresh cleanups, so Concord still runs its normal
+    // correction on those — only the style can't apply (the Settings refine
+    // card explains that).
+    if asRefine, !Config.providerCanRefine(llm.providerName) {
+        if useOverlay, shouldRenderToOverlay() {
+            overlay.show(state: .cleaning, text: fallback)
+        }
+        return CleanupOutcome(
+            text: fallback,
+            failureMessage: "Lightweight cleanup can’t refine — set a Refinement provider in Settings → Cleanup.")
+    }
+
     let systemPrompt: String
     let messages: [LLMMessage]
     if !references.isEmpty {

@@ -2607,9 +2607,26 @@ extension Config {
         // context tier even if it's also refine-shaped.
         if hasReferences, let context = contextModel { return context }
         // Refine-shaped turns: refine → context → cleanup fallback chain.
+        // The cleanup rung is a genuine fallback only when the cleanup
+        // provider can actually refine. When cleanup is the on-device Concord
+        // ("Lightweight") tier — which can't follow refine instructions — and
+        // no refine/context tier is configured, there is no refine-capable
+        // target; we still return cleanupId (the type demands an identifier),
+        // but the call path (AppState.streamCleanupOrRefine) detects the
+        // non-refining provider and surfaces guidance instead of no-op'ing.
         if isRefine {
             return refineModel ?? contextModel ?? cleanupId
         }
         return cleanupId
+    }
+
+    /// Whether a provider can perform a refine / style-transform turn — an
+    /// instruction-following LLM task. The on-device Concord "Lightweight"
+    /// tier is a deterministic corrector that can't, and "none" means cleanup
+    /// is off, so neither qualifies. Used by the Settings refine card and the
+    /// runtime refine guard so a refine never silently resolves to a provider
+    /// that would no-op it.
+    public static func providerCanRefine(_ provider: String) -> Bool {
+        provider != "concord" && provider != "none"
     }
 }

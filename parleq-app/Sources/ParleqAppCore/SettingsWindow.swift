@@ -351,15 +351,18 @@ final class SettingsModel: ObservableObject {
         let displayName: String  // shown in the tier provider picker
     }
 
+    // Cloud providers lead (the default cleanup tier is a cloud provider);
+    // the on-device options are grouped below so they read as deliberate
+    // opt-ins rather than the recommended default, and "None" is last.
     static let providerOptions: [ProviderOption] = [
-        ProviderOption(id: "concord",        displayName: "Lightweight (on-device)"),
-        ProviderOption(id: "local",          displayName: "On-device (no cloud)"),
         ProviderOption(id: "gemini",         displayName: "Gemini (Google API)"),
         ProviderOption(id: "vertex",         displayName: "Gemini (Vertex / Google Cloud)"),
         ProviderOption(id: "bedrock",        displayName: "Bedrock (AWS IAM)"),
         ProviderOption(id: "bedrock-bearer", displayName: "Bedrock (bearer token)"),
         ProviderOption(id: "azure",          displayName: "Azure OpenAI"),
         ProviderOption(id: "openai",         displayName: "OpenAI (direct API)"),
+        ProviderOption(id: "local",          displayName: "On-device (no cloud)"),
+        ProviderOption(id: "concord",        displayName: "Lightweight (on-device)"),
         ProviderOption(id: "none",           displayName: "None — paste raw transcript"),
     ]
 
@@ -1774,7 +1777,7 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Cleanup")
                         .font(.system(size: 13, weight: .semibold))
-                    Text("Used for normal dictation cleanup.")
+                    Text("The provider for everyday dictation cleanup. Also handles refinement and reference context unless you choose separate providers below.")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                     // .top alignment so the Provider and Model labels +
@@ -1835,16 +1838,70 @@ struct SettingsView: View {
 
                 Divider()
 
+                // REFINE TIER
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Refinement")
+                        .font(.system(size: 13, weight: .semibold))
+                    // When cleanup is the on-device Concord ("Lightweight")
+                    // tier, refinement CANNOT inherit it — Concord is a
+                    // deterministic corrector that can't follow instructions
+                    // or apply a style. Surface that directly and prompt for a
+                    // refine-capable provider instead of implying "same as
+                    // cleanup". (The runtime also guards this: a refine that
+                    // resolves to Concord shows a hint rather than no-op'ing.)
+                    Text(model.cleanupProvider == "concord"
+                        ? "Lightweight cleanup is on-device only and can't refine text. Choose a provider here to enable voice-refine, the quick chips, and per-app styling — pick \"On-device (no cloud)\" to keep it fully local, or a cloud provider."
+                        : "Used for voice-refine, the quick-refinement chips, and per-app styled cleanup. Set a separate provider here to keep first-pass cleanup on the on-device tier while these run in the cloud.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                    HStack(alignment: .top, spacing: 12) {
+                        tierProviderPicker(
+                            selection: Binding(
+                                get: { model.refineProvider },
+                                set: { newVal in
+                                    guard newVal != model.refineProvider else { return }
+                                    model.refineProvider = newVal
+                                    let available = modelsAvailable(forProvider: newVal)
+                                    if !available.contains(model.refineModelName) {
+                                        model.refineModelName = available.first ?? ""
+                                    }
+                                    model.save()
+                                }
+                            ),
+                            label: "Provider",
+                            pinnedKey: "refineProvider",
+                            // Concord is a cleanup-only corrector — it can't
+                            // perform refine/style ops (it no-ops them), so it
+                            // must not appear as a refine-tier choice.
+                            excludeProviders: ["concord"]
+                        )
+                        // "local" and "none" have no cloud model to pick —
+                        // same guard as the cleanup/context tiers above.
+                        if model.refineProvider != "local" && model.refineProvider != "none" {
+                            tierModelPicker(
+                                forProvider: model.refineProvider,
+                                selection: Binding(
+                                    get: { model.refineModelName },
+                                    set: { newVal in
+                                        guard newVal != model.refineModelName else { return }
+                                        model.refineModelName = newVal
+                                        model.save()
+                                    }
+                                ),
+                                label: "Model",
+                                pinnedKey: "refineModel"
+                            )
+                        }
+                    }
+                }
+
+                Divider()
+
                 // CONTEXT TIER
                 VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 4) {
-                        Text("Context")
-                            .font(.system(size: 13, weight: .semibold))
-                        Text("(Advanced)")
-                            .font(.system(size: 11, weight: .regular))
-                            .foregroundStyle(.secondary)
-                    }
-                    Text("Used when references are attached. Vision-capable models marked 👁.")
+                    Text("Context")
+                        .font(.system(size: 13, weight: .semibold))
+                    Text("Used when you attach a reference — a window, file, or clipboard snippet — so cleanup can draw on it. Pick a vision-capable model (marked 👁) to include images.")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                     HStack(alignment: .top, spacing: 12) {
@@ -1887,61 +1944,6 @@ struct SettingsView: View {
                                 pinnedKey: "contextModel",
                                 allowlistKey: "contextAllowedModels",
                                 allowedModels: contextAllowedModels
-                            )
-                        }
-                    }
-                }
-
-                Divider()
-
-                // REFINE TIER
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 4) {
-                        Text("Refinement")
-                            .font(.system(size: 13, weight: .semibold))
-                        Text("(Advanced)")
-                            .font(.system(size: 11, weight: .regular))
-                            .foregroundStyle(.secondary)
-                    }
-                    Text("Used for voice-refine, quick chips, and styled (per-app preset) cleanup. Set a cloud provider here to keep first-pass cleanup on the on-device tier while these operations run in the cloud.")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                    HStack(alignment: .top, spacing: 12) {
-                        tierProviderPicker(
-                            selection: Binding(
-                                get: { model.refineProvider },
-                                set: { newVal in
-                                    guard newVal != model.refineProvider else { return }
-                                    model.refineProvider = newVal
-                                    let available = modelsAvailable(forProvider: newVal)
-                                    if !available.contains(model.refineModelName) {
-                                        model.refineModelName = available.first ?? ""
-                                    }
-                                    model.save()
-                                }
-                            ),
-                            label: "Provider",
-                            pinnedKey: "refineProvider",
-                            // Concord is a cleanup-only corrector — it can't
-                            // perform refine/style ops (it no-ops them), so it
-                            // must not appear as a refine-tier choice.
-                            excludeProviders: ["concord"]
-                        )
-                        // "local" and "none" have no cloud model to pick —
-                        // same guard as the cleanup/context tiers above.
-                        if model.refineProvider != "local" && model.refineProvider != "none" {
-                            tierModelPicker(
-                                forProvider: model.refineProvider,
-                                selection: Binding(
-                                    get: { model.refineModelName },
-                                    set: { newVal in
-                                        guard newVal != model.refineModelName else { return }
-                                        model.refineModelName = newVal
-                                        model.save()
-                                    }
-                                ),
-                                label: "Model",
-                                pinnedKey: "refineModel"
                             )
                         }
                     }
