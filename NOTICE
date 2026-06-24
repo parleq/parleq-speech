@@ -10,6 +10,17 @@ license texts ship in the source archives at
 versions and source URLs in THIRD_PARTY_LICENSES.md.
 
 ============================================================
+Keavi LLC — Concord (proprietary, first-party)
+============================================================
+
+Release builds of this product include Concord, a proprietary on-device
+correction engine developed by Keavi LLC
+(https://github.com/keavi-app/concord). Concord is provided under a
+proprietary license, distributed only inside Parleq.app, and is not
+available separately or as source. The public open-source build of Parleq
+does not include it (it is gated behind the `Concord` SwiftPM trait).
+
+============================================================
 Apple Swift open source projects
 ============================================================
 

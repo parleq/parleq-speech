@@ -362,6 +362,7 @@ All network calls are HTTPS via URLSession or Soto, both using the system trust 
 | `github.com/parleq/parleq-speech/releases/download/...` | Downloads the .dmg referenced by the appcast, when the user accepts an update prompt | Per update install (user-initiated) | Don't accept the prompt; the request never fires. |
 
 **Outbound data classifications:**
+- **When `provider=concord` (Lightweight, on-device):** transcript text **never leaves the device** for cleanup, and there is **nothing to download** — Concord is a bundled, in-process, deterministic text transform (no model weights, no network of any kind). It makes zero outbound connections. See §7 ("Lightweight (on-device) cleanup — Concord") and the §9.10 accepted-risk note.
 - **When `provider=local`:** transcript text does **not** leave the device for cleanup. The only outbound activity of the local tier is the one-time user-initiated model download (above), which carries no user content.
 - **When a cloud provider is configured:** Transcript text → the configured **Cleanup** provider for ordinary dictations. A reference-aware dictation's transcript + reference content goes to the **Context** provider/model instead when one is configured (otherwise it also uses the Cleanup provider) — so over time data can reach both configured providers (§3.2).
 - Attached reference content (OCR'd window/file/clipboard text, or a PNG when a vision model is selected) → the **Context** provider when one is configured, else the Cleanup provider — **only** when the user used Reference Windows for that dictation (§9.6).
@@ -378,7 +379,8 @@ All network calls are HTTPS via URLSession or Soto, both using the system trust 
 | Dependency | Use | Pin | Source |
 |---|---|---|---|
 | Soto (`SotoBedrockRuntime`) | AWS SigV4, ConverseStream, SSO credential resolution | `"7.14.0"..<"7.15.0"` | `soto-project/soto` |
-| FluidAudio | In-process ASR (Parakeet TDT v3) + CTC custom-vocab boosting | `"0.14.3"..<"0.15.0"` | `FluidInference/FluidAudio` |
+| FluidAudio | In-process ASR (Parakeet TDT v3) + CTC custom-vocab boosting | `"0.14.5"..<"0.14.6"` | `FluidInference/FluidAudio` |
+| Concord | In-process deterministic 2nd-pass cleanup ("Lightweight (on-device)" tier) | exact `0.1.4` | `keavi-app/concord` (private; trait-gated — see below) |
 | Sparkle | Auto-update framework (Ed25519-signed appcast → download → relaunch). Open-source, the de-facto standard for third-party Mac auto-updates, widely deployed across the ecosystem. | `"2.9.0"..<"2.10.0"` | `sparkle-project/Sparkle` |
 | mlx-swift | In-process MLX compute framework for the on-device cleanup tier | exact `0.31.4` | `ml-explore/mlx-swift` |
 | mlx-swift-lm | LLM inference layer (MLXLLM, MLXLMCommon) for the on-device cleanup tier | commit `b95dc78` | `ml-explore/mlx-swift-lm` |
@@ -389,6 +391,14 @@ All network calls are HTTPS via URLSession or Soto, both using the system trust 
 **mlx.metallib (prebuilt Metal shader library).** MLX's Metal compute kernels cannot be compiled from source via SwiftPM (`swift build` does not run Xcode build phases). `parleq-app/scripts/fetch-metallib.sh` fetches the prebuilt `mlx.metallib` from the matching mlx-swift GitHub release asset at build time, verifies it against a hardcoded SHA-256, and places it in `Parleq.app/Contents/MacOS/` before codesign. The SHA-256 constant and the mlx-swift version must be updated together when the mlx-swift pin is bumped (the script enforces this with a cross-check against `Package.resolved`). This is a build-time supply-chain step: the metallib is signed inside the notarized bundle, and a version mismatch fails the build rather than silently using mismatched kernels.
 
 **On-device cleanup model license.** The runtime checkpoint (`mlx-community/gemma-4-E4B-it-qat-4bit`) is a derivative of `google/gemma-4-e4b-it` and is licensed **Apache 2.0** per its Hugging Face model card and https://ai.google.dev/gemma/docs/gemma_4_license. This is a deliberate change from the custom Gemma Terms of Use that governed Gemma 1–3; Gemma 4 is ungated — anonymous download is permitted, and no model-access approval is required.
+
+**Lightweight (on-device) cleanup — Concord (proprietary, first-party).** Concord is Keavi LLC's closed-source on-device second-pass corrector (the same vendor that publishes Parleq — not a third-party supply-chain dependency). It is the one non-open-source component, so it is called out here explicitly. What bounds its risk:
+- **No I/O surface.** Concord is a pure, in-process, *deterministic* text→text transform over the transcript already in memory. It opens no socket, makes **no network call**, writes **nothing to disk**, and holds **no secret or credential**. It is structurally incapable of exfiltrating or persisting dictation data, and that is **verifiable** (§11, check 10: select Lightweight, dictate, observe zero outbound connections). Unlike a cloud provider it *removes* a network boundary rather than adding one; unlike the local Gemma tier it has nothing to download (it is bundled).
+- **Deterministic, not ML.** Rule-based normalization (numbers/ITN, compound de-spacing) and Double-Metaphone dictionary matching with a per-word confidence veto — no model weights, no inference, no training corpus, no nondeterminism. Behavior is bounded and predictable.
+- **Optional, off by default, absent from the open build.** Cloud cleanup is the default; Concord is an opt-in "Lightweight" tier. It is gated behind the `Concord` SwiftPM trait, so the **public open-source build does not include it at all** (the dependency is pruned from resolution — `parleq-app/Package.swift`, `THIRD_PARTY_LICENSES.md`). Fleets can pin `cleanupProvider` away from it via MDM (§9.7), or simply never select it.
+- **Same pinning hygiene** as every other dependency: exact version (`0.1.4`), reviewed bumps.
+
+See §9.10 for the accepted-risk framing and §6 for the egress classification.
 
 **Vendored `VendoredGemma4Text.swift`.** A lightly modified copy of the Gemma 4 text-model graph from `ml-explore/mlx-swift-lm` is vendored in-tree under an MIT license (see `THIRD_PARTY_LICENSES.md` Embedded components). The vendored copy carries a KV-shared gating fix that has not yet landed upstream; it is a temporary measure pending resolution of `ml-explore/mlx-swift-lm#338`, at which point the vendored file will be removed and the upstream dependency used directly.
 
@@ -540,6 +550,22 @@ The enterprise OIDC flow (§3.4) completes through a custom URL-scheme redirect 
 
 The **loopback-redirect** sign-in (§3.4.1) does not register a URL scheme at all, so it is not exposed to scheme-collision interception; its callback is delivered over a 127.0.0.1-only loopback connection to a same-user listener. It carries the **same PKCE + state** protection, and a co-resident local process racing for the ephemeral port still cannot redeem a captured code without the in-memory verifier.
 
+### 9.10 Closed-source on-device component (Concord)
+
+The "Lightweight (on-device)" cleanup tier is powered by **Concord**, Keavi LLC's proprietary (closed-source) on-device corrector. It is the only non-open-source component in Parleq, so we call it out explicitly rather than let a reviewer discover it. The full technical detail is in §7 ("Lightweight (on-device) cleanup — Concord"); the security-relevant summary:
+
+**Why the closed-source nature is contained:**
+- **Zero egress, zero persistence, zero secrets.** Concord is an in-process, deterministic text→text transform over the in-memory transcript. It opens no socket, makes no network call, writes nothing to disk, and holds no credential — so it cannot transmit or store dictation data regardless of what its source contains. This is empirically verifiable (§11, check 10).
+- **First-party, not an external supply-chain party.** Concord is published by Keavi LLC, the same vendor as Parleq itself; trusting it is trusting the app vendor you are already evaluating — no new third party is introduced.
+- **Deterministic, not ML** — rule-based + Double-Metaphone with a confidence veto; bounded, predictable behavior (no model, no inference).
+
+**Mitigations / how to avoid it entirely:**
+- It is **opt-in and off by default** (cloud cleanup is the default).
+- The **public open-source build excludes it** (trait-gated — §7); building from source without it is the default.
+- Fleets can pin `cleanupProvider` to an open tier (`gemini`/`vertex`/`bedrock`/`azure`/`local`/`none`) via MDM (§9.7), guaranteeing Concord is never engaged.
+
+Residual risk: organizations whose policy forbids *any* closed-source code in the dictation path should select an open cleanup tier (or `none`); doing so removes Concord from the data path entirely.
+
 ---
 
 ## 10. Where to look in source
@@ -616,6 +642,14 @@ head -3 ~/.parleq/usage.jsonl 2>/dev/null | jq
 #    Expected: no matches (LocalLLMProvider runs in-process; the only
 #    HF network call is the model download in LocalModelStore).
 grep -rn "URLSession\|URLRequest\|http" parleq-app/Sources/ParleqAppCore/LocalLLMProvider.swift
+
+# 10. Confirm the Lightweight (Concord) tier makes no network calls.
+#     Static: the Parleq-side wrapper has no HTTP path (no matches expected).
+grep -rn "URLSession\|URLRequest\|http" parleq-app/Sources/ParleqAppCore/ConcordCleanupProvider.swift
+#     Runtime: with cleanupProvider=concord, dictate, and confirm no new
+#     outbound connection is opened by Parleq (expected: none — Concord is a
+#     bundled, in-process, deterministic transform; §7, §9.10).
+lsof -nP -iTCP -a -p "$(pgrep -x ParleqApp)" | grep -v LISTEN
 ```
 
 For the operational side (AWS account configuration, Identity Center, Bedrock model access), see [`docs/SETUP.md`](SETUP.md). For the public-facing architecture walkthrough, see [parleq.app/how-it-works](https://parleq.app/how-it-works/).
