@@ -141,27 +141,33 @@ else
     echo "WARNING: LaunchAgent plist not found at $LAUNCH_AGENT_SOURCE; Open at Login will not work" >&2
 fi
 
-# Auto-bump CFBundleVersion (the build number) from the git commit
-# count. CFBundleShortVersionString (the marketing version) stays
-# whatever's in the source Info.plist — bump that intentionally via
-# `make set-version VERSION=x.y.z`.
+# Set CFBundleVersion (the build number). CFBundleShortVersionString (the
+# marketing version) stays whatever's in the source Info.plist — bump that
+# intentionally via `make set-version VERSION=x.y.z`.
 #
-# Apple's notarytool effectively requires CFBundleVersion to
-# increment between submissions of the same marketing version, and
-# macOS uses (CFBundleShortVersionString, CFBundleVersion) to decide
-# whether a downloaded copy is "newer" than what's installed. The
-# git rev-list count gives a monotonic-per-commit number that's
-# stable across machines and builds.
-#
-# Falls back to the value already in Info.plist if we're not in a
-# git checkout (e.g. someone untarred a source archive).
-if BUILD_NUMBER=$(git -C "$APP_DIR" rev-list --count HEAD 2>/dev/null) && [[ -n "$BUILD_NUMBER" ]]; then
-    /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" \
-        "$APP_BUNDLE/Contents/Info.plist"
-    SHORT_VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" \
-        "$APP_BUNDLE/Contents/Info.plist")
-    echo "    version: $SHORT_VERSION (build $BUILD_NUMBER)"
+# Policy:
+#   * RELEASE builds only (PARLEQ_RELEASE_BUILD=1, exported by `make release`/
+#     `dmg`/`notarize`) get a monotonic build number from the git commit count.
+#     Apple's notarytool requires it to increment between submissions of the
+#     same marketing version, and macOS/Sparkle use (CFBundleShortVersionString,
+#     CFBundleVersion) to decide whether a copy is "newer".
+#   * EVERY other build (make build / build-debug / install, a direct --debug
+#     run, a source-archive build) stamps 0. A local/dev build's commit count
+#     can EXCEED a release's (built from a later or branchier commit), which
+#     would make the installed app out-number the newest release and leave
+#     Sparkle stuck on "you're up to date" forever. Build 0 can never win that
+#     comparison, so dev builds never shadow real releases.
+BUILD_NUMBER=0
+if [[ "${PARLEQ_RELEASE_BUILD:-0}" == "1" && "$CONFIG" == "release" ]]; then
+    if N=$(git -C "$APP_DIR" rev-list --count HEAD 2>/dev/null) && [[ -n "$N" ]]; then
+        BUILD_NUMBER="$N"
+    fi
 fi
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" \
+    "$APP_BUNDLE/Contents/Info.plist"
+SHORT_VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" \
+    "$APP_BUNDLE/Contents/Info.plist")
+echo "    version: $SHORT_VERSION (build $BUILD_NUMBER)$([[ "$BUILD_NUMBER" == 0 ]] && echo ' [dev]')"
 
 # FluidAudio runs in-process now (see LocalASR.swift). Previously
 # this stage built a separate `fluidaudio-sidecar` binary, copied it
