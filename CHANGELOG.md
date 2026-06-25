@@ -4,6 +4,17 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.28.0] - Unreleased
+
+More precise dictionary biasing — everyday words are far less likely to be wrongly replaced by a similar-sounding dictionary term.
+
+### Changed
+
+- **Dictionary biasing over-corrects less.** On-device speech recognition is now more conservative about swapping a spoken word for an acoustically similar dictionary term, so common words ("cloud", "item", and the like) are much less likely to be turned into one of your dictionary entries. Tuned against a corpus of real recordings — it cuts these over-corrections by roughly 3× with little effect on genuine recoveries.
+- **"Parleq" recognized from one more mishearing.** The built-in "Parleq" dictionary term picks up an additional common way speech recognition mishears the app's name.
+
+[0.28.0]: https://github.com/parleq/parleq-speech/releases/tag/v0.28.0
+
 ## [0.27.0] - Unreleased
 
 A fast on-device cleanup option, see-and-undo corrections in the overlay, a clearer Cleanup settings layout, and a fix for a corporate sign-in dead-end.

@@ -1,60 +1,17 @@
-Parleq 0.27.0
+Parleq 0.28.0
 
-A fast on-device cleanup option, see-and-undo corrections in the overlay, a
-clearer Cleanup settings layout, and a fix for a corporate sign-in dead-end.
-
-### Added
-
-- "Lightweight (on-device)" cleanup — instant, private, no cloud. A new
-  cleanup option that fixes the common things — spoken numbers ("twenty
-  twenty-five" → "2025"), run-together words, and your dictionary terms —
-  entirely on your Mac, in-process, with no network call and effectively zero
-  latency. It's deterministic (rule-based, not an LLM), so it never rewrites or
-  invents text. Choose it under Settings → Cleanup → Provider; cloud cleanup
-  remains the default.
-
-- See what the on-device corrector changed — and undo any of it. When
-  Lightweight cleanup makes a correction, the overlay highlights each change
-  with a small number; press ⌥ (Option) + that number to revert just that one
-  back to exactly what you said.
-
-- Dictionary "spoken forms". Map a distinctive spoken phrase to a specific
-  term — say "open item terminal" and have it become "open iTerm" — so a
-  reliably-misheard run is corrected as a whole. Add them per term in
-  Settings → Dictionary.
-
-- Separate Refinement and Context providers. Voice-refine, the quick-refinement
-  chips, and per-app styling can now run on a different provider than your
-  first-pass cleanup (Settings → Cleanup → Refinement), and reference-window
-  dictations on a Context provider. Both default to following your cleanup
-  provider, so nothing changes unless you set them.
+More precise dictionary biasing — everyday words are far less likely to be
+wrongly replaced by a similar-sounding dictionary term.
 
 ### Changed
 
-- Clearer Cleanup settings. The Cleanup pane now reads in order (Cleanup →
-  Refinement → Context), drops the vague "(Advanced)" labels for plain
-  descriptions, and lists cloud providers first so the on-device options read
-  as deliberate opt-ins. Picking Lightweight cleanup explains that refinement
-  needs its own provider (Lightweight can't rewrite text) and helps you set one.
+- Dictionary biasing over-corrects less. On-device speech recognition is now
+  more conservative about swapping a spoken word for an acoustically similar
+  dictionary term, so common words ("cloud", "item", and the like) are much
+  less likely to be turned into one of your dictionary entries. Tuned against a
+  corpus of real recordings — it cuts these over-corrections by roughly 3× with
+  little effect on genuine recoveries.
 
-- Safer learned dictionary terms. Auto-learned terms must now clear a
-  distinctiveness check before they're allowed to bias speech recognition,
-  fixing a case where everyday words could get over-corrected — making "Learn
-  from corrections" safe to leave on.
-
-### Fixed
-
-- Corporate sign-in no longer dead-ends. If corporate (OIDC) sign-in was used
-  only by a refine or context provider — or you switched your cleanup provider
-  around — the Company Account page could appear with no Sign-In button and a
-  misleading "set it up first" notice, with no way forward. The sign-in session
-  is now created whenever corporate sign-in is configured, whichever tier uses
-  it.
-
-- Accepting a dictation mid-edit keeps your edit. Clicking Accept while editing
-  the text in place now commits your edit (like pressing Return) instead of
-  pasting the version from before the edit.
-
-- Per-correction undo always targets the right word. Fixed a case where undoing
-  one correction after another edit could revert the wrong occurrence when the
-  same word appeared more than once.
+- "Parleq" recognized from one more mishearing. The built-in "Parleq"
+  dictionary term picks up an additional common way speech recognition mishears
+  the app's name.
