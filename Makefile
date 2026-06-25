@@ -47,6 +47,14 @@ NOTARY_PROFILE    := parleq-notarize
 #   make release SPARKLE_SIGN_UPDATE=/opt/sparkle/bin/sign_update
 SPARKLE_SIGN_UPDATE := $(HOME)/Tools/sparkle/bin/sign_update
 
+# Only release-path goals (the ones that notarize/publish) get a real,
+# monotonic CFBundleVersion from make-app.sh. Local builds (build / build-debug
+# / install / dmg-preview) stamp build 0 so a dev build can never out-number a
+# published release and make Sparkle think the installed app is already newest.
+ifneq (,$(filter release dmg notarize,$(MAKECMDGOALS)))
+export PARLEQ_RELEASE_BUILD := 1
+endif
+
 .DEFAULT_GOAL := help
 .PHONY: help build build-debug install run clean notarize dmg dmg-preview release release-precheck set-version show-version
 
