@@ -475,19 +475,22 @@ release: release-precheck dmg
 	echo "  Appcast:  https://parleq.app/appcast.xml (live after deploy-pages runs)"; \
 	echo "  Workflow: https://github.com/parleq/parleq-speech/actions/workflows/deploy-pages.yml"
 
-# Show the current marketing version + projected build number.
-# Build number comes from `git rev-list --count HEAD` exactly the
-# way scripts/make-app.sh stamps it during `make build`, so this
-# matches what the next built artifact will carry.
+# Show the current marketing version + projected RELEASE build number.
+# `git rev-list --count HEAD` is what scripts/make-app.sh stamps only on
+# release-path builds (release/dmg/notarize, which export
+# PARLEQ_RELEASE_BUILD=1); every other build (make build / build-debug /
+# install, a direct --debug run) stamps 0 so a dev build can never
+# out-number a release and shadow Sparkle updates.
 show-version:
 	@VERSION=$$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" \
 		"$(APP_DIR)/Resources/Info.plist"); \
 	BUILD=$$(git rev-list --count HEAD 2>/dev/null || echo "?"); \
 	echo "Marketing version: $$VERSION"; \
-	echo "Build number:      $$BUILD (auto-stamped at build time)"
+	echo "Build number:      $$BUILD (release builds only; dev builds stamp 0)"
 
 # Set the marketing version (CFBundleShortVersionString) in the
-# source Info.plist. Build number stays auto-stamped from git.
+# source Info.plist. Build number is auto-stamped from git on
+# release-path builds only; dev builds stamp 0 (see make-app.sh).
 #
 # Usage:
 #   make set-version VERSION=0.5.0
