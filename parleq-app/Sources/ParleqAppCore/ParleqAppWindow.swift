@@ -369,6 +369,15 @@ public final class ParleqAppWindowController: NSObject {
         settingsModel.localModelStore = store
     }
 
+    #if Concord
+    /// Wire the voice-enrollment services so the Settings → Dictionary section
+    /// can launch the enrollment wizard. Called from `main.swift` after ASR
+    /// loads. Same pattern as setLocalModelStore.
+    public func setVoiceprintServices(_ services: VoiceprintServices) {
+        settingsModel.voiceprintServices = services
+    }
+    #endif
+
     /// Wire the Enterprise OIDC federation handles into the canonical
     /// SettingsModel so the Company Account section can drive sign-in /
     /// sign-out / connection-test against the AppState-owned session +

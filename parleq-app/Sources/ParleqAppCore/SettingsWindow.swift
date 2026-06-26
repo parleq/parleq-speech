@@ -73,6 +73,12 @@ struct DictionaryEntryRow: Identifiable, Equatable {
 
 @MainActor
 final class SettingsModel: ObservableObject {
+    #if Concord
+    /// Injected from main.swift (via ParleqAppWindowController.setVoiceprintServices)
+    /// so the Dictionary section can launch the voice-enrollment wizard. nil until
+    /// ASR has loaded; the 🎙 affordance stays disabled until then.
+    @Published var voiceprintServices: VoiceprintServices?
+    #endif
     @Published var hotkeyBinding: String
     /// #84: action tokens (GestureAction.rawValue) for the two configurable
     /// double-tap entry gestures. Persisted into config's hotkey.gestures map.
@@ -820,7 +826,7 @@ final class SettingsModel: ObservableObject {
             // Refresh the load-time dictionary snapshot to the EDITOR-ROW
             // portion of the state we just wrote. save() runs once per
             // keystroke while a dictionary term is being edited
-            // (DictionaryRowView's .onChange → onChange → save). Without the
+            // (DictionaryTermEditView's .onChange → commit → save). Without the
             // refresh the snapshot stays frozen at the value the window
             // loaded with, so the term THIS save just wrote to disk is — on
             // the next keystroke's save — neither the current editor term
@@ -1173,10 +1179,45 @@ final class SettingsModel: ObservableObject {
         dictionaryEntries.removeAll { $0.id == id }
         save()
     }
+
+    #if Concord
+    /// Merge voice-enrollment's harvested aliases into the dictionary: into the
+    /// matching term's row (deduped, comma-separated), or a fresh row when the
+    /// term is new ("Add by voice"). Persists.
+    func addEnrolledAliases(_ aliases: [String], toTerm term: String) {
+        let trimmed = term.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        if let idx = dictionaryEntries.firstIndex(where: { $0.term.lowercased() == trimmed.lowercased() }) {
+            var existing = dictionaryEntries[idx].aliases
+                .split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+            let seen = Set(existing.map { $0.lowercased() })
+            for a in aliases where !seen.contains(a.lowercased()) { existing.append(a) }
+            dictionaryEntries[idx].aliases = existing.joined(separator: ", ")
+            if dictionaryEntries[idx].source == .learned { dictionaryEntries[idx].source = .user }
+        } else {
+            dictionaryEntries.append(DictionaryEntryRow(
+                term: trimmed, aliases: aliases.joined(separator: ", "), biasing: .asrAndLLM))
+        }
+        save()
+    }
+    #endif
 }
 
 struct SettingsView: View {
     @ObservedObject var model: SettingsModel
+    /// The dictionary term currently open in the edit sheet (existing row or a
+    /// freshly-appended blank one). The edit sheet leads with voice enrollment;
+    /// the manual alias/biasing/spoken-form fields live under "Advanced".
+    @State private var editingDictionaryTarget: DictionaryEditTarget?
+    #if Concord
+    @State private var showDeleteVoiceprintsConfirm = false
+    /// Dismiss flag for the Dictionary-section intro banner (@AppStorage so the
+    /// section re-renders when dismissed; shares the key with VoiceEnrollBanner).
+    @AppStorage(VoiceEnrollBanner.sectionBannerDismissedKey) private var voiceEnrollSectionBannerDismissed = false
+    /// Contextual over-fire suggestion ("'X' got confused with 'Y'"). Set from
+    /// AppState when the user undoes a dictionary correction; in-memory only.
+    @ObservedObject private var enrollNudge = VoiceEnrollNudge.shared
+    #endif
 
     /// Which settings pane to render. Driven by the app-shell primary
     /// sidebar's selection (0.15.0 unified navigation) — SettingsView
@@ -2899,30 +2940,45 @@ struct SettingsView: View {
                     }
                     .padding(.bottom, 4)
                 }
-                SettingsCaption("Names and terms the speech model commonly mishears. List alternate spellings the recognizer usually emits (comma-separated) so they all map to the same word. An optional context blurb helps the AI judge whether the topic actually matches the term. Set Biasing to LLM only when a term causes false positives at the speech-recognition layer.")
+                #if Concord
+                dictionaryIntroBanner
+                overFireNudgeCard
+                #endif
+                SettingsCaption("Terms and names the speech model commonly mishears. Tap a term to edit it — or to teach Parleq to recognize it in your own voice.")
 
-                if model.dictionaryEntries.isEmpty {
-                    Text("No entries yet. Click Add Term to define your first.")
+                if visibleDictionaryEntries.isEmpty {
+                    Text("No terms yet. Add one to teach Parleq a name, acronym, or product it keeps mishearing.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .padding(.vertical, 4)
                 } else {
-                    ForEach($model.dictionaryEntries) { $row in
-                        DictionaryRowView(
-                            row: $row,
-                            onChange: { model.save() },
-                            onRemove: { model.removeDictionaryEntry(id: row.id) }
-                        )
+                    VStack(spacing: 0) {
+                        ForEach(visibleDictionaryEntries) { row in
+                            dictionaryBrowserRow(row)
+                            if row.id != visibleDictionaryEntries.last?.id {
+                                Divider()
+                            }
+                        }
                     }
                 }
 
                 HStack {
                     Button {
-                        model.addDictionaryEntry()
+                        addDictionaryEntryAndEdit()
                     } label: {
                         Label("Add Term", systemImage: "plus")
                     }
                     Spacer()
+                    #if Concord
+                    // "Delete all voiceprints" appears once any are enrolled.
+                    if let svc = model.voiceprintServices, !svc.coordinator.enrolledTermIDs.isEmpty {
+                        Button(role: .destructive) {
+                            showDeleteVoiceprintsConfirm = true
+                        } label: {
+                            Label("Delete all voiceprints", systemImage: "trash")
+                        }
+                    }
+                    #endif
                 }
                 .padding(.top, 2)
 
@@ -2930,7 +2986,191 @@ struct SettingsView: View {
             }
         }
         .disabled(!isDictEnabled)
+        .sheet(item: $editingDictionaryTarget) { target in
+            DictionaryTermEditView(
+                model: model,
+                entryID: target.id,
+                isNew: target.isNew,
+                onClose: { closeDictionaryEdit(target) }
+            )
+        }
+        #if Concord
+        .confirmationDialog("Delete all voiceprints?", isPresented: $showDeleteVoiceprintsConfirm) {
+            Button("Delete all voiceprints", role: .destructive) {
+                model.voiceprintServices?.coordinator.removeAll()
+                VoiceEnrollNudge.shared.clear()
+            }
+        } message: {
+            Text("Removes every enrolled voiceprint from this session. Dictionary terms and aliases are kept.")
+        }
+        #endif
     }
+
+    /// Dictionary rows worth browsing — non-empty terms only. A brand-new
+    /// blank row (added by "Add Term" then opened in the edit sheet) is
+    /// excluded from the list until it has a term; if the user backs out
+    /// without typing one, `closeDictionaryEdit` prunes it.
+    private var visibleDictionaryEntries: [DictionaryEntryRow] {
+        model.dictionaryEntries.filter {
+            !$0.term.trimmingCharacters(in: .whitespaces).isEmpty
+        }
+    }
+
+    /// Append a blank row and immediately open the edit sheet on it.
+    private func addDictionaryEntryAndEdit() {
+        model.addDictionaryEntry()
+        if let id = model.dictionaryEntries.last?.id {
+            editingDictionaryTarget = DictionaryEditTarget(id: id, isNew: true)
+        }
+    }
+
+    /// Close the edit sheet, pruning a row left with an empty term (backed
+    /// out of "Add Term") and persisting otherwise.
+    private func closeDictionaryEdit(_ target: DictionaryEditTarget) {
+        if let idx = model.dictionaryEntries.firstIndex(where: { $0.id == target.id }),
+           model.dictionaryEntries[idx].term.trimmingCharacters(in: .whitespaces).isEmpty {
+            model.removeDictionaryEntry(id: target.id)
+        } else {
+            model.save()
+        }
+        editingDictionaryTarget = nil
+    }
+
+    /// One browse row: filled amber mic when enrolled, term + context
+    /// subtitle, chevron. Tapping opens the edit sheet (enrollment-first).
+    @ViewBuilder
+    private func dictionaryBrowserRow(_ row: DictionaryEntryRow) -> some View {
+        Button {
+            editingDictionaryTarget = DictionaryEditTarget(id: row.id, isNew: false)
+        } label: {
+            HStack(spacing: 10) {
+                #if Concord
+                let enrolled = model.voiceprintServices?.coordinator.hasVoiceprint(row.term) ?? false
+                Image(systemName: enrolled ? "mic.circle.fill" : "mic.circle")
+                    .font(.system(size: 18))
+                    .foregroundColor(enrolled ? SettingsView.brandAccent : Color.secondary.opacity(0.45))
+                    .help(enrolled ? "Recognized in your voice" : "Not yet enrolled by voice")
+                #endif
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(row.term.isEmpty ? "Untitled" : row.term)
+                            .font(.body.weight(.medium))
+                            .foregroundStyle(.primary)
+                        if row.source == .learned {
+                            Text("Learned")
+                                .font(.system(size: 10))
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1.5)
+                                .background(Color.secondary.opacity(0.12))
+                                .clipShape(Capsule())
+                        }
+                    }
+                    if !row.context.trimmingCharacters(in: .whitespaces).isEmpty {
+                        Text(row.context)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.vertical, 8)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    #if Concord
+    /// One-line, dismissible section intro pushing the marquee feature.
+    @ViewBuilder
+    private var dictionaryIntroBanner: some View {
+        if !voiceEnrollSectionBannerDismissed, model.voiceprintServices != nil {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "mic.circle.fill")
+                    .foregroundStyle(SettingsView.brandAccent)
+                    .font(.system(size: 15))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("New: teach Parleq your terms in your own voice.")
+                        .font(.callout.weight(.semibold))
+                    Text("Open a term and tap Enroll by voice — read a few short sentences so Parleq tells it from similar-sounding words.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                Button(action: { voiceEnrollSectionBannerDismissed = true }) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .padding(6)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Dismiss")
+            }
+            .padding(12)
+            .background(SettingsView.brandAccent.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+    }
+
+    /// Contextual over-fire nudge: shown when the user undid a dictionary
+    /// correction for a not-yet-enrolled term. CTA opens that term's edit
+    /// sheet (which leads with the enrollment hero).
+    @ViewBuilder
+    private var overFireNudgeCard: some View {
+        if let s = enrollNudge.pending,
+           model.voiceprintServices != nil,
+           let matchID = model.dictionaryEntries.first(where: {
+               $0.term.lowercased() == s.term.lowercased()
+           })?.id {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "exclamationmark.bubble.fill")
+                    .foregroundStyle(SettingsView.brandAccent)
+                    .font(.system(size: 15))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("“\(s.term)” got confused with “\(s.confusedWith)”.")
+                        .font(.callout.weight(.semibold))
+                    Text("Enroll “\(s.term)” in your voice so Parleq can tell them apart.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button {
+                        editingDictionaryTarget = DictionaryEditTarget(id: matchID, isNew: false)
+                        enrollNudge.clear()
+                    } label: {
+                        Text("Enroll “\(s.term)” by voice")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(SettingsView.brandAccent)
+                    .controlSize(.small)
+                    .padding(.top, 2)
+                }
+                Spacer(minLength: 8)
+                Button(action: { enrollNudge.clear() }) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .padding(6)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Dismiss")
+            }
+            .padding(12)
+            .background(SettingsView.brandAccent.opacity(0.10))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(SettingsView.brandAccent.opacity(0.30), lineWidth: 0.5)
+            )
+        }
+    }
+    #endif
 
     @ViewBuilder
     private var usageSection: some View {
@@ -3450,50 +3690,187 @@ private struct RestartBanner: View {
     }
 }
 
-/// One row in the Custom Dictionary table. Two visual lines per
-/// entry: the top line carries Term + Aliases + Biasing picker +
-/// trash (the high-frequency edits); the lower lines are Context and
-/// Spoken forms (the occasional ones). Splitting onto two lines avoids fighting the
-/// grouped Form's width constraints with four side-by-side fields,
-/// and lets each TextField use its own placeholder as the label —
-/// which is what `labelsHidden()` was always meant to enable here.
-///
-/// Aliases (issue #14) carry alternate spellings the ASR commonly
-/// produces; the rescorer matches against any of them but always
-/// emits the canonical `term`. Biasing (issue #15) lets the user opt
-/// a term out of CTC keyword spotting when it triggers false
-/// positives at the STT layer — the LLM cleanup hint still uses the
-/// term either way.
-private struct DictionaryRowView: View {
-    @Binding var row: DictionaryEntryRow
-    let onChange: () -> Void
-    let onRemove: () -> Void
+/// Identifies which dictionary row the edit sheet is editing. `isNew`
+/// distinguishes a freshly-appended blank row (which "Skip" can prune)
+/// from an existing one being edited.
+struct DictionaryEditTarget: Identifiable {
+    /// The DictionaryEntryRow.id being edited.
+    let id: UUID
+    /// True when this row was just created by "Add Term".
+    let isNew: Bool
+}
 
-    /// Promote a learned entry to user-authored then save.
-    /// A user edit promotes a learned entry to user-authored so the
-    /// analyzer never silently overwrites it (LearnedStore.route never
-    /// auto-applies onto a .user entry).
-    private func promoteIfLearnedThenSave() {
-        if row.source == .learned {
-            row.source = .user
-        }
-        onChange()
+/// The dictionary term editor, presented as a sheet from the Dictionary
+/// settings section. Leads with VOICE ENROLLMENT as the hero (Concord
+/// builds) — the marquee feature — with the manual aliases / biasing /
+/// spoken-form fields tucked under a collapsed "Advanced" disclosure.
+///
+/// Edits write through to the model row live (each field change promotes a
+/// learned entry to user-authored and persists), matching the prior inline
+/// editor's save-on-keystroke behavior — so "Done" and "Skip/Cancel" both
+/// simply close the sheet (an empty new row is pruned on close by the
+/// section's `closeDictionaryEdit`).
+///
+/// Aliases (issue #14) carry alternate spellings the ASR commonly produces;
+/// the rescorer matches against any of them but always emits the canonical
+/// `term`. Biasing (issue #15) lets the user opt a term out of CTC keyword
+/// spotting when it triggers false positives at the STT layer. Voice
+/// enrollment auto-derives aliases, so the manual Advanced fields are the
+/// fallback.
+struct DictionaryTermEditView: View {
+    @ObservedObject var model: SettingsModel
+    let entryID: UUID
+    let isNew: Bool
+    let onClose: () -> Void
+
+    @State private var showAdvanced = false
+    /// Drives the "Delete term" confirmation dialog.
+    @State private var showDeleteConfirm = false
+    #if Concord
+    /// The active voice-enrollment wizard (presented as a sheet on top of
+    /// this edit sheet), or nil.
+    @State private var enrollingModel: VoiceprintEnrollmentModel?
+    #endif
+
+    private var rowIndex: Int? {
+        model.dictionaryEntries.firstIndex { $0.id == entryID }
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .center, spacing: 8) {
-                TextField("Term", text: $row.term)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 140)
-                    .labelsHidden()
-                    .onChange(of: row.term) { _, _ in promoteIfLearnedThenSave() }
-                TextField("Aliases (optional, comma-separated)", text: $row.aliases)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(minWidth: 220, maxWidth: .infinity)
-                    .labelsHidden()
-                    .onChange(of: row.aliases) { _, _ in promoteIfLearnedThenSave() }
-                Picker("", selection: $row.biasing) {
+        Group {
+            if let idx = rowIndex {
+                editor(row: $model.dictionaryEntries[idx])
+            } else {
+                // The row vanished out from under us (e.g. removed elsewhere);
+                // dismiss cleanly.
+                Color.clear.onAppear { onClose() }
+            }
+        }
+        .frame(width: 460)
+        #if Concord
+        .sheet(item: $enrollingModel) { m in
+            VoiceprintEnrollmentView(
+                model: m,
+                // Cancel / back-out: just close the wizard, stay in the editor.
+                onClose: { enrollingModel = nil },
+                // Success: close the EDITOR too (which cascades the wizard sheet
+                // shut) so the user lands back on the dictionary list with the
+                // now-filled 🎙 badge — one tap, no extra "Done".
+                onFinished: { enrollingModel = nil; onClose() }
+            )
+        }
+        #endif
+    }
+
+    @ViewBuilder
+    private func editor(row: Binding<DictionaryEntryRow>) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(isNew ? "New dictionary term" : "Edit dictionary term")
+                .font(.headline)
+
+            // Term + "what it is" (context).
+            VStack(alignment: .leading, spacing: 8) {
+                labeledField(
+                    "Term",
+                    placeholder: "e.g. Keavi",
+                    text: row.term,
+                    onChange: { commit(row) }
+                )
+                labeledField(
+                    "What it is",
+                    placeholder: "Optional, e.g. \"my finance app\"",
+                    text: row.context,
+                    onChange: { commit(row) }
+                )
+            }
+
+            #if Concord
+            enrollmentHero(row: row)
+            #endif
+
+            // Advanced: the manual fallbacks (aliases / biasing / spoken forms).
+            DisclosureGroup(isExpanded: $showAdvanced) {
+                advancedFields(row: row)
+                    .padding(.top, 10)
+            } label: {
+                Text("Advanced")
+                    .font(.subheadline.weight(.medium))
+            }
+
+            // Footer.
+            HStack {
+                Button(isNew ? "Skip" : "Cancel") { onClose() }
+                    .keyboardShortcut(.cancelAction)
+                // Existing terms can be deleted from here (the browse list is
+                // kept clean — no per-row delete). Subordinate to the primary
+                // action; confirms before removing.
+                if !isNew {
+                    Button("Delete term", role: .destructive) { showDeleteConfirm = true }
+                }
+                Spacer()
+                Button("Done") { onClose() }
+                    .keyboardShortcut(.defaultAction)
+                    .buttonStyle(.borderedProminent)
+                    .tint(SettingsView.brandAccent)
+            }
+        }
+        .padding(20)
+        .confirmationDialog(
+            "Delete this term?",
+            isPresented: $showDeleteConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Delete term", role: .destructive) { deleteTerm() }
+        } message: {
+            Text("Removes “\(currentTerm)” from your dictionary\(hasEnrolledVoiceprint ? ", along with its voiceprint" : "").")
+        }
+    }
+
+    /// The term text of the row being edited (empty if it vanished).
+    private var currentTerm: String {
+        model.dictionaryEntries.first { $0.id == entryID }?.term
+            .trimmingCharacters(in: .whitespaces) ?? ""
+    }
+
+    /// True when this term currently has an enrolled voiceprint (Concord only).
+    private var hasEnrolledVoiceprint: Bool {
+        #if Concord
+        let t = currentTerm
+        return !t.isEmpty && (model.voiceprintServices?.coordinator.hasVoiceprint(t) ?? false)
+        #else
+        return false
+        #endif
+    }
+
+    /// Remove this dictionary entry — and, on Concord builds, its voiceprint —
+    /// then close the sheet back to the list.
+    private func deleteTerm() {
+        #if Concord
+        let t = currentTerm
+        if !t.isEmpty {
+            model.voiceprintServices?.coordinator.removeVoiceprint(termID: t)
+            VoiceEnrollNudge.shared.clearIfMatches(term: t)
+        }
+        #endif
+        model.removeDictionaryEntry(id: entryID)
+        onClose()
+    }
+
+    @ViewBuilder
+    private func advancedFields(row: Binding<DictionaryEntryRow>) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            labeledField(
+                "Aliases",
+                placeholder: "Alternate spellings, comma-separated",
+                text: row.aliases,
+                onChange: { commit(row) },
+                help: "Spellings the recognizer commonly emits for this term — they all map back to it. Voice enrollment fills these in for you; this is the manual fallback."
+            )
+            HStack(alignment: .firstTextBaseline) {
+                Text("Biasing")
+                    .font(.subheadline)
+                    .frame(width: 110, alignment: .leading)
+                Picker("", selection: row.biasing) {
                     Text("ASR + LLM").tag(DictionaryBiasing.asrAndLLM)
                     Text("LLM only").tag(DictionaryBiasing.llmOnly)
                 }
@@ -3501,38 +3878,161 @@ private struct DictionaryRowView: View {
                 .labelsHidden()
                 .fixedSize()
                 .help("ASR + LLM: bias the speech recognizer toward this spelling and let the LLM cleanup pass nudge it too. LLM only: skip the speech-recognizer bias (use this if a term causes false positives at the STT layer); the LLM cleanup pass still applies it from the smart-vocab hint.")
-                .onChange(of: row.biasing) { _, _ in promoteIfLearnedThenSave() }
-                if row.source == .learned {
-                    Text("Learned")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color.secondary.opacity(0.12))
-                        .clipShape(Capsule())
-                        .help("This entry was added automatically by the learning analyzer. Editing it will mark it as user-authored so it won't be overwritten by future learning.")
-                }
-                Button(action: onRemove) {
-                    Image(systemName: "trash")
-                        .foregroundColor(.secondary)
-                }
-                .buttonStyle(.borderless)
-                .help("Remove this term")
+                .onChange(of: row.wrappedValue.biasing) { _, _ in commit(row) }
+                Spacer()
             }
-            TextField("Context (optional, e.g. \"finance app\")", text: $row.context)
-                .textFieldStyle(.roundedBorder)
-                .frame(minWidth: 280, maxWidth: .infinity)
-                .labelsHidden()
-                .onChange(of: row.context) { _, _ in promoteIfLearnedThenSave() }
-            TextField("Spoken forms (optional, comma-separated)", text: $row.spokenForms)
-                .textFieldStyle(.roundedBorder)
-                .frame(minWidth: 280, maxWidth: .infinity)
-                .labelsHidden()
-                .help("A distinctive phrase to trigger this term (e.g. \"iterm terminal\"). The extra words are removed when matched. Needs at least 2 words — single words belong in Aliases.")
-                .onChange(of: row.spokenForms) { _, _ in promoteIfLearnedThenSave() }
+            labeledField(
+                "Spoken forms",
+                placeholder: "Distinctive phrases, comma-separated",
+                text: row.spokenForms,
+                onChange: { commit(row) },
+                help: "A distinctive phrase to trigger this term (e.g. \"iterm terminal\"). The extra words are removed when matched. Needs at least 2 words — single words belong in Aliases."
+            )
+            if row.wrappedValue.source == .learned {
+                Text("Added automatically by the learning analyzer. Editing it marks it user-authored so future learning won't overwrite it.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
-        .padding(.vertical, 2)
     }
+
+    /// A label + rounded TextField row used throughout the editor.
+    @ViewBuilder
+    private func labeledField(
+        _ label: String,
+        placeholder: String,
+        text: Binding<String>,
+        onChange: @escaping () -> Void,
+        help: String? = nil
+    ) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(label)
+                .font(.subheadline)
+                .frame(width: 110, alignment: .leading)
+            TextField(placeholder, text: text)
+                .textFieldStyle(.roundedBorder)
+                .frame(maxWidth: .infinity)
+                .help(help ?? "")
+                .onChange(of: text.wrappedValue) { _, _ in onChange() }
+        }
+    }
+
+    /// Promote a learned entry to user-authored on edit (so the analyzer never
+    /// silently overwrites it) then persist.
+    private func commit(_ row: Binding<DictionaryEntryRow>) {
+        if row.wrappedValue.source == .learned {
+            row.wrappedValue.source = .user
+        }
+        model.save()
+    }
+
+    #if Concord
+    /// HERO: the marquee voice-enrollment offer. Prominent, amber-accented.
+    /// When not yet enrolled, a big primary "Enroll by voice" button; when
+    /// enrolled, flips to a confirmation with learned-alternate count +
+    /// Re-enroll / Remove voiceprint. Enrollment is OFFERED, never auto-started.
+    @ViewBuilder
+    private func enrollmentHero(row: Binding<DictionaryEntryRow>) -> some View {
+        let term = row.wrappedValue.term.trimmingCharacters(in: .whitespaces)
+        let services = model.voiceprintServices
+        let enrolled = services?.coordinator.hasVoiceprint(term) ?? false
+        VStack(alignment: .leading, spacing: 10) {
+            if enrolled {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.seal.fill")
+                        .foregroundStyle(SettingsView.brandAccent)
+                        .font(.title3)
+                    Text("Enrolled in your voice")
+                        .font(.callout.weight(.semibold))
+                }
+                let count = aliasCount(row.wrappedValue.aliases)
+                if count > 0 {
+                    Text("Parleq learned \(count) sound-alike\(count == 1 ? "" : "s") to tell “\(term)” apart.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                HStack(spacing: 10) {
+                    Button("Re-enroll") { startEnroll(term: term) }
+                        .controlSize(.small)
+                    Button("Remove voiceprint", role: .destructive) {
+                        services?.coordinator.removeVoiceprint(termID: term)
+                        VoiceEnrollNudge.shared.clearIfMatches(term: term)
+                    }
+                    .controlSize(.small)
+                }
+            } else {
+                HStack(spacing: 8) {
+                    Image(systemName: "mic.circle.fill")
+                        .foregroundStyle(SettingsView.brandAccent)
+                        .font(.title2)
+                    Text("Recognize “\(term.isEmpty ? "this term" : term)” in your voice")
+                        .font(.callout.weight(.semibold))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Text("Read a few short sentences so Parleq tells it from similar-sounding words — in your own voice.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button {
+                    startEnroll(term: term)
+                } label: {
+                    Label("Enroll by voice", systemImage: "mic.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(SettingsView.brandAccent)
+                .controlSize(.large)
+                .disabled(services == nil || term.isEmpty)
+                if services == nil {
+                    Text("Available once the speech model finishes loading.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else if term.isEmpty {
+                    Text("Enter a term above to enroll it by voice.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(SettingsView.brandAccent.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(SettingsView.brandAccent.opacity(0.35), lineWidth: 1)
+        )
+    }
+
+    private func aliasCount(_ aliases: String) -> Int {
+        aliases.split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+            .count
+    }
+
+    /// Build + present the enrollment wizard for `term`. No-op until services
+    /// are wired (ASR still loading) or the term is blank.
+    private func startEnroll(term: String) {
+        guard let services = model.voiceprintServices else { return }
+        let trimmed = term.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        let consented = Config.load().config.voiceEnrollmentConsented
+        enrollingModel = VoiceprintEnrollmentModel(
+            term: trimmed, services: services, consented: consented,
+            onConsentGranted: {
+                var cfg = Config.load().config
+                cfg.voiceEnrollmentConsented = true
+                try? Config.save(cfg)
+            },
+            onEnrolled: { [weak model] enrolledTerm, aliases in
+                model?.addEnrolledAliases(aliases, toTerm: enrolledTerm)
+                VoiceEnrollNudge.shared.clearIfMatches(term: enrolledTerm)
+            })
+    }
+    #endif
 }
 
 /// One row in the Usage section: "Today: 12 calls · 4.2k in / 0.8k
