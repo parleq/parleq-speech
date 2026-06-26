@@ -4,6 +4,17 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.29.0] - Unreleased
+
+Voice enrollment — teach a dictionary term in your own voice so on-device speech recognition can tell two similar-sounding words apart (the fruit "kiwi" vs. the app "Keavi"), entirely on your Mac.
+
+### Added
+
+- **Voice enrollment for dictionary terms.** Some words sound almost identical to a dictionary entry, so speech recognition sometimes swaps the everyday word for your term. You can now enroll a term in your own voice: a short wizard in Settings → Dictionary walks you through reading a few carrier sentences, harvests pronunciation aliases automatically, and optionally records a contrasting word so Parleq can hear the difference. From then on, a per-term acoustic "voiceprint" vetoes and reverts an over-firing correction when what you actually said doesn't match the enrolled term — so the fruit "kiwi" stays "kiwi" and only the real app name becomes "Keavi".
+- **Privacy-forward and on-device.** Enrollment derives a compact acoustic embedding, never a recording — your audio is not stored. The voiceprint is encrypted at rest (AES-GCM with a device-only key kept in the Keychain) and never leaves your Mac. Enrollment is opt-in per term and fully deletable from Settings → Dictionary at any time. The disambiguation runs only with the on-device "Lightweight" cleanup tier; it adds no network calls and no cloud dependency.
+
+[0.29.0]: https://github.com/parleq/parleq-speech/releases/tag/v0.29.0
+
 ## [0.28.0] - Unreleased
 
 More precise dictionary biasing — everyday words are far less likely to be wrongly replaced by a similar-sounding dictionary term.

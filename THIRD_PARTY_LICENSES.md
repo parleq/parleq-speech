@@ -64,7 +64,7 @@ counts above.
 
 | Package | Version | License | Source | Used for |
 |---|---|---|---|---|
-| FluidAudio | 0.14.8 | Apache-2.0 | https://github.com/FluidInference/FluidAudio | Parakeet TDT v3 ASR + CTC keyword spotting on the Apple Neural Engine. Called directly from `LocalASR.swift` since v0.9.0; previously wrapped in a bundled HTTP sidecar that has now been retired. Pinned to 0.14.x — 0.15.x's TDT-decode rework made custom-dictionary biasing over-fire (reverted in 0.25.1; see the pin comment in `parleq-app/Package.swift`). |
+| FluidAudio (fork) | 0.15.4-encoder.1 | Apache-2.0 | https://github.com/jonyoder/FluidAudio (fork of https://github.com/FluidInference/FluidAudio) | Parakeet TDT v3 ASR + CTC keyword spotting on the Apple Neural Engine. Called directly from `LocalASR.swift` since v0.9.0; previously wrapped in a bundled HTTP sidecar that has now been retired. Pinned to the tagged fork `0.15.4-encoder.1` — upstream FluidAudio 0.15.4 plus an opt-in, additive patch that exposes the Parakeet encoder feature sequence (`ASRResult.encoderFeatures`), needed by the on-device voice-enrollment (voiceprint) disambiguation gate. Over-fire behavior is held to the pre-regression 0.14.5 baseline by setting `spotterRescueEnabled=false` in `LocalASR.swift`. Drop the fork once a tagged upstream release exposes encoder features. See the pin comment in `parleq-app/Package.swift`. |
 
 ### LLM cleanup (AWS Bedrock path)
 

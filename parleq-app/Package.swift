@@ -53,11 +53,14 @@ let package = Package(
         // the main app in v0.9.0 to drop the local listening socket,
         // simplify supervision, and shed the Hummingbird dependency.
         //
-        // PINNED TO EXACTLY 0.14.5 — the last release before an
-        // over-aggressive CTC vocab-rescorer regression. DO NOT widen this
-        // range without first running the bench biasing arm against a REAL
-        // multi-term dictionary (bench/dictionary-realworld.json).
+        // PINNED to the fork tag 0.15.4-encoder.1 (see "TAGGED FORK PIN" at the
+        // bottom of this block) — the 0.15.4 line PLUS an opt-in encoder-feature
+        // patch for voice enrollment. The over-fire history below is WHY we set
+        // `spotterRescueEnabled=false` in LocalASR to hold 0.14.5-equivalent
+        // over-fire behavior on the 0.15.4 line. DO NOT bump FluidAudio without
+        // running the REGRESSION GATE below AND re-evaluating that flag.
         //
+        // HISTORY — why 0.14.5 was the prior exact pin and why the flag exists:
         // Root cause: upstream commit 410044d1 ("Fix/word boost
         // improvements", PR #634), FIRST RELEASED IN 0.14.8. It reworked
         // the CTC vocab-rescoring pipeline — blank-aware DP rewrite (changes
@@ -78,8 +81,9 @@ let package = Package(
         // version bisect (0.24.1=0.14.5 vs 0.24.2=0.15.3) AND by the bench
         // over-fire arm: identical generic dictionary + 54-clip overfire
         // corpus produced 12 over-fires on 0.14.5 vs 52 on 0.14.8 (~4x,
-        // spreading from 2 terms to 6). We pin 0.14.5 — the version 0.24.1
-        // shipped and the empirically-verified-good config.
+        // spreading from 2 terms to 6). We previously pinned 0.14.5 — the version
+        // 0.24.1 shipped and the empirically-verified-good config — now superseded
+        // by the fork tag below with spotterRescueEnabled=false holding the baseline.
         //
         // NB 0.14.5 is the pre-regression baseline, not zero over-fire:
         // short collision-prone terms (CRAN~"ran", Redis~"ready") still
@@ -101,7 +105,18 @@ let package = Package(
         //     --dictionary bench/dictionary-overfire.json --out bench/results/overfire-<ver>.json
         //   python3 bench/score_overfire.py bench/results/overfire-<ver>.json \
         //     bench/dictionary-overfire.json   # expect total_overfires ~12, alarm near ~52
-        .package(url: "https://github.com/FluidInference/FluidAudio.git", "0.14.5"..<"0.14.6"),
+        // TAGGED FORK PIN (voice-enrollment, 0.29.0): pinned exactly to the
+        // fork tag 0.15.4-encoder.1 (jonyoder/FluidAudio), a fork of
+        // FluidInference/FluidAudio's 0.15.4 line that adds an opt-in
+        // encoder-feature-exposure patch (ASRResult.encoderFeatures) needed by
+        // the voiceprint acoustic-disambiguation gate. Because this rides the
+        // 0.15.4 line rather than 0.14.5, we set spotterRescueEnabled=false in
+        // LocalASR to keep 0.14.5-equivalent over-fire behavior (the spotter
+        // rescue from PR #634 is the over-fire trigger; disabling it restores
+        // the pre-regression baseline). Drop this fork and return to a pinned
+        // upstream FluidAudio once a tagged upstream release exposes encoder
+        // features. See parleq-fluidaudio-0.14.5-pin / the voice-enrollment plan.
+        .package(url: "https://github.com/jonyoder/FluidAudio.git", exact: "0.15.4-encoder.1"),
         // Sparkle — auto-update framework. Checks an EdDSA-signed
         // appcast.xml on parleq.app for newer releases and runs the
         // user-prompted download/install/relaunch flow. Used by
@@ -145,7 +160,7 @@ let package = Package(
         // Private repo (keavi-app/concord); pinned tag like the other deps.
         // For local Concord co-dev, override without committing:
         //   swift package edit Concord --path /Users/jonyoder/Dev/concord
-        .package(url: "https://github.com/keavi-app/concord.git", exact: "0.1.4"),
+        .package(url: "https://github.com/keavi-app/concord.git", exact: "0.2.0"),
     ],
     targets: [
         .target(

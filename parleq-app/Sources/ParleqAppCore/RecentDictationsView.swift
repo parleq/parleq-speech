@@ -53,6 +53,16 @@ struct RecentDictationsView: View {
     /// nudge (also read by the overlay line). Key matches LearnBanner.
     @AppStorage("parleq.learnBanner.dismissed") private var learnBannerDismissed = false
 
+    #if Concord
+    /// One-time "what's new: voice enrollment" nudge dismissed flag (Concord
+    /// builds only — voiceprints don't exist in the public build).
+    @AppStorage(VoiceEnrollBanner.appBannerDismissedKey) private var voiceEnrollBannerDismissed = false
+
+    private var showVoiceEnrollBanner: Bool {
+        VoiceEnrollBanner.shouldShowInApp(dismissed: voiceEnrollBannerDismissed)
+    }
+    #endif
+
     /// Config-derived gating for the learn banner, cached so `body` doesn't
     /// call Config.load() (a disk read) on every render — the view re-renders
     /// whenever TranscriptHistory publishes. Refreshed on appear and when the
@@ -89,6 +99,11 @@ struct RecentDictationsView: View {
         // fixed header, so it needs the explicit height.)
         GeometryReader { geo in
             VStack(spacing: 0) {
+                #if Concord
+                if showVoiceEnrollBanner {
+                    voiceEnrollBanner
+                }
+                #endif
                 if showLearnBanner {
                     learnBanner
                 }
@@ -135,6 +150,54 @@ struct RecentDictationsView: View {
     }
 
     // MARK: - Sub-views
+
+    #if Concord
+    /// One-time "what's new" nudge introducing voice enrollment — the marquee
+    /// dictionary feature. The link jumps straight to the Dictionary section.
+    private var voiceEnrollBanner: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "mic.circle.fill")
+                .foregroundStyle(SettingsView.brandAccent)
+                .font(.system(size: 14))
+            VStack(alignment: .leading, spacing: 4) {
+                Text("New: teach Parleq your terms in your own voice.")
+                    .font(.callout.weight(.semibold))
+                Text("Enroll a dictionary term by voice and Parleq learns to tell it from similar-sounding words — read a few short sentences and you're set.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button(action: {
+                    ParleqAppWindowController.shared.show(settingsPane: .dictionary)
+                }) {
+                    Text("Open Dictionary →")
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(SettingsView.brandAccent)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 2)
+            }
+            Spacer(minLength: 8)
+            Button(action: { voiceEnrollBannerDismissed = true }) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .padding(6)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss")
+        }
+        .padding(12)
+        .background(SettingsView.brandAccent.opacity(0.08))
+        .overlay(
+            Rectangle()
+                .fill(SettingsView.brandAccent.opacity(0.30))
+                .frame(height: 0.5),
+            alignment: .bottom
+        )
+    }
+    #endif
 
     /// One-time nudge introducing "Learn from corrections" (shown only
     /// while the feature is off and not dismissed — see LearnBanner). The

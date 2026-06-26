@@ -1424,6 +1424,54 @@ struct ParleqApp {
                         // user pressed the hotkey during the load
                         // window.
                         stateBox.value?.notifySystemReady()
+                        // Voice-enrollment acoustic disambiguation. The coordinator
+                        // is ALWAYS constructed (productized): assigning it to
+                        // AppState wires the self-gating acoustic gate into Concord
+                        // (a no-op until a term is enrolled via the wizard). Under
+                        // PARLEQ_VOICEPRINT_DEMO=1 it additionally runs the one-time
+                        // programmatic flywheel enrollment (debug path).
+                        // ONE-SHOT: build the voiceprint coordinator only on the first
+                        // ready. A later ASR reset (Settings → reset / degraded reload)
+                        // re-fires onReadyChanged; rebuilding would orphan an open
+                        // enrollment wizard's coordinator.
+                        #if Concord
+                        if stateBox.value?.voiceprint == nil {
+                        let coordinator = VoiceprintCoordinator()
+                        // Encrypted-at-rest persistence (biometric data; AES-GCM +
+                        // device-only Keychain key). Set BEFORE assigning to AppState
+                        // so loadPersisted's gate install lands on the wired callback.
+                        coordinator.persistence = EncryptedVoiceprintStore()
+                        stateBox.value?.voiceprint = coordinator
+                        coordinator.loadPersisted()
+                        // Bundle the wizard's dependencies and hand them to Settings.
+                        let vpServices = VoiceprintServices(
+                            coordinator: coordinator,
+                            makeRecorder: {
+                                let r = AudioRecorder()
+                                let cfg = Config.load().config
+                                r.continueOtherAudio = cfg.continueOtherAudio
+                                r.explicitInputDeviceUID = cfg.audioInputDeviceUID
+                                return r
+                            },
+                            transcribe: { [weak local] wav in
+                                try await local?.transcribeRawForVoiceprint(wav: wav)
+                            },
+                            llmText: { prompt in
+                                await stateBox.value?.generateCarrierText(prompt: prompt)
+                            })
+                        ParleqAppWindowController.shared.setVoiceprintServices(vpServices)
+                        if VoiceprintDemo.isEnabled {
+                            // Debug flywheel enrollment. The coordinator's
+                            // onStoreChanged callback (wired in AppState's didSet)
+                            // re-installs the gate factory after it enrolls Keavi.
+                            Task { @MainActor [weak local] in
+                                await coordinator.runStartupEnrollment { wav in
+                                    try await local?.transcribeRawForVoiceprint(wav: wav)
+                                }
+                            }
+                        }
+                        }   // one-shot guard
+                        #endif
                     }
                 }
                 local.onLoadFailedChanged = { failed in

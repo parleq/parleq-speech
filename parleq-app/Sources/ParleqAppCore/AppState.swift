@@ -46,6 +46,60 @@ public final class AppState {
     private let recorder: AudioRecorder
     private let asr: ASRClient
     private let llm: (any LLMProvider)?
+
+    #if Concord
+    /// The always-on voiceprint coordinator (owns the in-memory voiceprint store
+    /// + acoustic gate). Set by main.swift after ASR load. Assigning it installs
+    /// the self-gating acoustic gate into Concord and subscribes to store changes
+    /// so a wizard enrollment re-installs the gate factory (which snapshots the
+    /// store by value).
+    public var voiceprint: VoiceprintCoordinator? {
+        didSet {
+            voiceprint?.onStoreChanged = { [weak self] in self?.installVoiceprintEnforcement() }
+            installVoiceprintEnforcement()
+        }
+    }
+
+    /// Install the coordinator's acoustic-gate factory onto the cleanup-tier Concord
+    /// provider so its dictionary stage can VETO an over-firing substitution. The gate
+    /// self-gates (no-op until a term is enrolled), so this is safe to call eagerly and
+    /// re-call on every store change. Idempotent; a no-op unless the cleanup provider is Concord.
+    func installVoiceprintEnforcement() {
+        guard let coordinator = voiceprint,
+              let concord = llm as? ConcordCleanupProvider else { return }
+        concord.setEnrollmentGateFactory(coordinator.enforcementGateFactory())
+    }
+    #endif
+
+    /// One-shot text generation for the enrollment wizard's carrier sentences.
+    /// Prefers any configured GENERATIVE provider — cleanup (`llm`) first, then
+    /// refine (`refineLLM`), then context (`contextLLM`) — using the first whose
+    /// providerName is generative (NOT the deterministic on-device "concord" tier
+    /// and not empty/none). This lets a user whose cleanup tier is the on-device
+    /// Concord model still get LLM-written carriers when they have a cloud key or
+    /// a local generative model wired into another tier. Returns nil when none
+    /// qualifies — so the caller falls back to built-in templates. The prompt
+    /// carries only the term word (benign). Best-effort: any error yields nil.
+    public func generateCarrierText(prompt: String) async -> String? {
+        let isGenerative: (any LLMProvider) -> Bool = { p in
+            !p.providerName.isEmpty && p.providerName != "concord"
+        }
+        let candidates: [any LLMProvider] = [llm, refineLLM, contextLLM].compactMap { $0 }
+        guard let provider = candidates.first(where: isGenerative) else { return nil }
+        final class Box: @unchecked Sendable { var s = "" }
+        let box = Box()
+        do {
+            try await provider.generateStreaming(
+                systemPrompt: "",
+                messages: [LLMMessage(role: "user", content: prompt)]
+            ) { event in
+                if case .chunk(let t) = event { box.s += t }
+            }
+        } catch {
+            return nil
+        }
+        return box.s.isEmpty ? nil : box.s
+    }
     /// Optional second provider for the context-model tier. When
     /// Config.contextModel is configured and the user has references
     /// attached, llmForInvocation() returns this instead of llm so
@@ -1845,6 +1899,21 @@ public final class AppState {
                 after: span.original
             ), enabled: enabled)
         }
+        // Undoing a DICTIONARY-family correction is the clearest possible
+        // "this term over-fired on a real word" signal: the user just told us
+        // the canonical term (span.replacement) was wrong here and the word
+        // ASR actually heard (span.original) was right. If that term has no
+        // voiceprint yet, surface a one-shot nudge offering voice enrollment to
+        // disambiguate it. In-memory only (VoiceEnrollNudge never persists).
+        switch span.stage {
+        case .dictionary, .acousticDictionary, .sayAsPhrase:
+            let term = span.replacement
+            if voiceprint != nil, !(voiceprint?.hasVoiceprint(term) ?? false) {
+                VoiceEnrollNudge.shared.suggest(term: term, confusedWith: span.original)
+            }
+        default:
+            break
+        }
         // Re-arm the auto-accept timer (the undo is an interaction, like an edit).
         startAutoAcceptTimer()
         log("on-device corrector: reverted correction #\(number)")
@@ -3120,6 +3189,15 @@ public final class AppState {
                     }
                     return
                 }
+
+                // Voice-enrollment SHADOW evaluation — DEBUG only (the demo flywheel
+                // path, PARLEQ_VOICEPRINT_DEMO=1). Logs the hardcoded-Keavi gate
+                // decision; the productized gate runs inside Concord, not here.
+                #if Concord
+                if VoiceprintDemo.isEnabled {
+                    self?.voiceprint?.evaluateShadow(diagnostics: asrResultRaw.diagnostics)
+                }
+                #endif
 
                 let useOverlay = !(self?.quickMode ?? false)
                 let targetBundleID = self?.pasteTarget?.bundleID

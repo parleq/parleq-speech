@@ -83,6 +83,26 @@ public final class ConcordCleanupProvider: LLMProvider, @unchecked Sendable {
         return d
     }
 
+    // Acoustic-gate factory (voice-enrollment disambiguation). Set ONCE when the enrollment demo is
+    // armed; given an utterance's diagnostics it returns the gate the engine consults to VETO an
+    // over-firing dictionary substitution. nil (the default) → no enforcement, byte-identical
+    // baseline. The factory captures only Sendable value types (the enrolled voiceprint snapshot),
+    // so it runs safely here off the MainActor. Set-once (not per-utterance) so there is nothing to
+    // drain on a skipped turn.
+    private var _gateFactory: (@Sendable (ASRDiagnostics?) -> AcousticGate?)?
+
+    /// Install (or clear) the acoustic-gate factory. Called by AppState once the voiceprint demo is
+    /// armed; nil disables enforcement.
+    public func setEnrollmentGateFactory(_ factory: (@Sendable (ASRDiagnostics?) -> AcousticGate?)?) {
+        lock.lock(); defer { lock.unlock() }
+        _gateFactory = factory
+    }
+
+    private func gateFactory() -> (@Sendable (ASRDiagnostics?) -> AcousticGate?)? {
+        lock.lock(); defer { lock.unlock() }
+        return _gateFactory
+    }
+
     private func setLastEdits(_ edits: [EditRecord]) {
         lock.lock(); defer { lock.unlock() }
         lastEdits = edits
@@ -167,8 +187,13 @@ public final class ConcordCleanupProvider: LLMProvider, @unchecked Sendable {
         // ride the shared LLMProvider signature, and the system prompt only
         // carries a free-text hint, not structured terms).
         let dict = pendingDictionaryTerms()
+        // Build this utterance's acoustic gate from its diagnostics (enrollment enforce mode). nil
+        // → byte-identical baseline behavior.
+        let acousticGate = gateFactory().flatMap { $0(diagnostics) }
 
-        let result = engine.clean(transcript: transcript, tokens: tokens, dictionary: dict)
+        let result = acousticGate.map {
+            engine.clean(transcript: transcript, tokens: tokens, dictionary: dict, acousticGate: $0)
+        } ?? engine.clean(transcript: transcript, tokens: tokens, dictionary: dict)
 
         // Provenance: retain the full per-stage edit records IN MEMORY for
         // the maintainer's A/B analysis. Counts-only to stderr below.

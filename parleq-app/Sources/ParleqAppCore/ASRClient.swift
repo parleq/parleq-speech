@@ -21,6 +21,7 @@
 // so AppState doesn't need to know which path is active.
 
 import Foundation
+import FluidAudio
 
 public enum ASRError: Error, CustomStringConvertible {
     case badStatus(Int, String)
@@ -106,6 +107,57 @@ public struct ASRDiagnostics: Codable, Sendable {
     public let processingSec: Double
     public let tokenTimings: [ASRTokenTiming]
     public let replacements: [VocabReplacement]
+
+    /// Opt-in Parakeet encoder acoustic features for this utterance, used by
+    /// the voice-enrollment acoustic-disambiguation demo (`PARLEQ_VOICEPRINT_DEMO=1`).
+    /// Populated only when `LocalASR` enabled `captureEncoderFeatures` (env-gated,
+    /// off by default → always nil for normal users, zero overhead). Held directly
+    /// (ParleqAppCore links FluidAudio) but DELIBERATELY EXCLUDED from Codable: it
+    /// is a large, transient, in-memory-only acoustic tensor and must never be
+    /// serialized into the flywheel contribution record on disk (compliance #1/#2).
+    public let encoderFeatures: EncoderFeatureSequence?
+
+    public init(
+        confidence: Float,
+        durationSec: Double,
+        processingSec: Double,
+        tokenTimings: [ASRTokenTiming],
+        replacements: [VocabReplacement],
+        encoderFeatures: EncoderFeatureSequence? = nil
+    ) {
+        self.confidence = confidence
+        self.durationSec = durationSec
+        self.processingSec = processingSec
+        self.tokenTimings = tokenTimings
+        self.replacements = replacements
+        self.encoderFeatures = encoderFeatures
+    }
+
+    // encoderFeatures is intentionally omitted from coding (not Codable, and
+    // never persisted). Decoding produces nil; encoding writes only the
+    // metadata fields the flywheel record needs.
+    private enum CodingKeys: String, CodingKey {
+        case confidence, durationSec, processingSec, tokenTimings, replacements
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        confidence = try c.decode(Float.self, forKey: .confidence)
+        durationSec = try c.decode(Double.self, forKey: .durationSec)
+        processingSec = try c.decode(Double.self, forKey: .processingSec)
+        tokenTimings = try c.decode([ASRTokenTiming].self, forKey: .tokenTimings)
+        replacements = try c.decode([VocabReplacement].self, forKey: .replacements)
+        encoderFeatures = nil
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(confidence, forKey: .confidence)
+        try c.encode(durationSec, forKey: .durationSec)
+        try c.encode(processingSec, forKey: .processingSec)
+        try c.encode(tokenTimings, forKey: .tokenTimings)
+        try c.encode(replacements, forKey: .replacements)
+    }
 }
 
 public struct ASRTranscript {

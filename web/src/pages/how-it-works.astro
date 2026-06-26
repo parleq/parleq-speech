@@ -32,6 +32,7 @@ const stages = [
     detail: [
       ['Custom dictionary biasing', 'Terms you\'ve added in Settings are passed to FluidAudio\'s CTC keyword-spotting + rescoring pass, which runs after the TDT transcription. Aliases for variant spellings ("parlay", "parlez") all match the canonical "Parleq" — the rescorer always emits the canonical form.'],
       ['Per-term opt-out', 'A term whose phonetics overlap a common word (and so triggers false positives at the speech-recognition layer) can be marked LLM-only. The transcribe stage skips it; the LLM hint still applies.'],
+      ['Tell sound-alikes apart by voice', 'Some names sound almost exactly like an everyday word — a product called "Keavi" against the fruit "kiwi", or "Claude" against "clawed." You can optionally teach a term <em>in your own voice</em>: read a few short sentences aloud once, and Parleq learns the sound of you saying it. On later dictations it disambiguates by sound — recovering the right name, and, just as importantly, leaving the common word alone when that\'s what you actually said. Entirely on-device, no LLM, no cloud. Opt-in per term; the full story is in the <a href="#voice-enrollment" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Voice enrollment</a> section below.'],
       ['Local-only, no listening sockets', 'No cloud transcription. No per-call cost. No cold-start delay once the model has loaded. Audio bytes never leave your Mac — they aren\'t even handed across a process boundary. Parleq has no listening sockets bound on the default ASR path; reviewers can verify with `lsof -i -nP -a -p $(pgrep -n ParleqApp)`.'],
     ],
   },
@@ -534,6 +535,102 @@ const gestures = [
     </div>
   </section>
 
+  <!-- Voice enrollment. The acoustic-disambiguation feature: teach a
+       term in your own voice so Parleq can tell it apart from a common
+       sound-alike. Sits between the overlay features and the privacy
+       band because its story is half "what it fixes" and half "how the
+       voiceprint is handled" — the latter leads naturally into the
+       privacy posture below. Tinted band; copy-left / before-after
+       illustration-right on lg, stacked on mobile. The privacy points
+       are detail rows in the left dl, because the privacy framing is
+       the point as much as the accuracy win. -->
+  <section id="voice-enrollment" data-reveal class="scroll-mt-20 border-t border-[color:var(--color-border-subtle)] bg-[color:var(--color-section-tint)]">
+    <div class="mx-auto grid max-w-5xl items-start gap-10 px-6 py-20 lg:grid-cols-2 lg:gap-14">
+      <div>
+      <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">
+        Voice enrollment
+      </p>
+      <h2 class="mt-4 font-display text-3xl font-medium tracking-tight sm:text-4xl">
+        Teach it a word in your own voice.
+      </h2>
+      <p class="mt-6 text-lg leading-relaxed text-[color:var(--color-text-muted)]">
+        Some of the words you most want right are the ones that sound like something else. A product name like <strong class="text-[color:var(--color-text)]">Keavi</strong> collides with the fruit <em>kiwi</em>; <strong class="text-[color:var(--color-text)]">Claude</strong> collides with <em>clawed</em>. Spelling alone can't separate them — they sound the same. So Parleq lets you enroll a term by voice: read a few short sentences aloud, and it learns the sound of <em>you</em> saying that word. On later dictations it disambiguates by sound — recovering the name you meant, and leaving the everyday word untouched when that's the one you actually said.
+      </p>
+      <p class="mt-4 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
+        It works alongside on-device cleanup, not instead of it — a sharper ear at the recognition stage, so the right word is already there before cleanup ever runs. And like everything in the recognition path, it stays on your Mac.
+      </p>
+
+      <dl class="mt-8 space-y-6 border-l border-[color:var(--color-border)] pl-5">
+        <div>
+          <dt class="text-sm font-semibold text-[color:var(--color-text)]">A short read-aloud, once</dt>
+          <dd class="mt-1 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
+            The enrollment wizard shows a handful of carrier sentences that place the term in varied, natural contexts — beginning, middle, and end of a sentence — so it captures how the word actually sounds in speech rather than said in isolation. Speak each one; that's it. You can edit or regenerate any sentence first.
+          </dd>
+        </div>
+        <div>
+          <dt class="text-sm font-semibold text-[color:var(--color-text)]">A voiceprint, not a recording</dt>
+          <dd class="mt-1 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
+            What's kept is a mathematical <strong class="text-[color:var(--color-text)]">voiceprint</strong> — a compact embedding derived from the audio — never the audio itself. The recording is processed in memory and discarded; no enrollment audio is ever written to disk.
+          </dd>
+        </div>
+        <div>
+          <dt class="text-sm font-semibold text-[color:var(--color-text)]">On-device, no LLM, no cloud</dt>
+          <dd class="mt-1 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
+            Both enrollment and the live, by-sound comparison run entirely on your Mac. No network call, no cloud service, and no LLM is involved in the disambiguation — it's an acoustic match against your enrolled voiceprint.
+          </dd>
+        </div>
+        <div>
+          <dt class="text-sm font-semibold text-[color:var(--color-text)]">Encrypted at rest, device-only</dt>
+          <dd class="mt-1 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
+            Voiceprints are biometric data, and Parleq treats them as such. They're stored as an <strong class="text-[color:var(--color-text)]">AES-GCM-encrypted</strong> blob under a key held in your Mac's Keychain that is <strong class="text-[color:var(--color-text)]">device-only and never synced</strong> — it isn't routed through iCloud Keychain, so the voiceprint can't leave the machine it was made on.
+          </dd>
+        </div>
+        <div>
+          <dt class="text-sm font-semibold text-[color:var(--color-text)]">Opt-in, per term, deletable anytime</dt>
+          <dd class="mt-1 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
+            Enrollment is never automatic. You opt in once, and only for the specific terms you choose. Delete a single term's voiceprint, or wipe them all, whenever you like — and the encrypted file goes with it.
+          </dd>
+        </div>
+      </dl>
+      </div>
+
+      <!-- Illustration column: a compact before/after of the
+           disambiguation — what a corrector hears vs. what your voice
+           lets Parleq recover. Reuses the refine-loop card vocabulary
+           (surface cards, accent-tinted "result" card). Sticky on lg so
+           it tracks the tall copy. -->
+      <div class="lg:sticky lg:top-16">
+        <div class="rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6 sm:p-7">
+          <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-text-subtle)]">
+            Without your voice
+          </p>
+          <p class="mt-2 text-[15px] leading-relaxed text-[color:var(--color-text)]">
+            "I shipped the <span class="rounded bg-[color:var(--color-border-subtle)] px-1 text-[color:var(--color-text-muted)] line-through decoration-[color:var(--color-text-subtle)]">kiwi</span> build last night."
+          </p>
+          <p class="mt-1.5 text-[13px] leading-relaxed text-[color:var(--color-text-subtle)]">
+            A name that sounds like a common word is a coin-flip — and a corrector that "fixes" every <em>kiwi</em> into your product name will mangle the times you really did mean the fruit.
+          </p>
+
+          <div class="my-5 flex items-center gap-3 text-[11px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">
+            <span class="h-px flex-1 bg-[color:var(--color-border)]"></span>
+            Enrolled by voice
+            <span class="h-px flex-1 bg-[color:var(--color-border)]"></span>
+          </div>
+
+          <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">
+            With your voice
+          </p>
+          <p class="mt-2 text-[15px] leading-relaxed text-[color:var(--color-text)]">
+            "I shipped the <mark class="rounded bg-[color:var(--color-accent)]/20 px-1 text-[color:var(--color-text)]">Keavi</mark> build last night."
+          </p>
+          <p class="mt-2 rounded-lg border border-[color:var(--color-accent-soft)] bg-[color:var(--color-accent-soft)]/20 px-3 py-2 text-[13px] leading-relaxed text-[color:var(--color-text-muted)]">
+            Parleq compares the sound to your enrolled voiceprint, recovers <strong class="text-[color:var(--color-text)]">Keavi</strong> — and still leaves a genuine <em>kiwi</em> alone when that's what you said.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- Privacy posture: an explicit kept/not-kept table. This is the
        part testers and security-reviewers usually want to skim, so
        it's its own section with a clear visual rhythm rather than
@@ -561,6 +658,7 @@ const gestures = [
             <li><code class="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[13px] text-white">~/.parleq/app.log</code> — diagnostic log. ASR/LLM metrics are length-only ("post-utterance 87 ms, 142 chars / 28 words"); never the transcript itself.</li>
             <li><code class="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[13px] text-white">~/.parleq/metrics.jsonl</code> — one text-free record per dictation (duration, ASR/LLM latency, token counts, ref-attached + cleanup-failed flags) so the Stats dashboard spans sessions. <strong class="font-semibold text-white">No transcript text</strong>; bounded to the last 30 days. Disabled entirely when history retention is set to 0.</li>
             <li>Provider secrets in the macOS <strong class="font-semibold text-white">Keychain</strong> — Gemini API key, OpenAI API key, Bedrock API key, AWS static credentials, Vertex service-account JSON, Azure resource API key. Whichever you've configured.</li>
+            <li><code class="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[13px] text-white">~/.parleq/voiceprints.enc</code> — only if you opt into <strong class="font-semibold text-white">voice enrollment</strong>. An <strong class="font-semibold text-white">AES-GCM-encrypted</strong> blob of per-term voiceprint embeddings (<strong class="font-semibold text-white">not audio</strong>), under a Keychain key that is device-only and never synced to iCloud. Deletable per term or all at once.</li>
           </ul>
         </div>
         <div class="rounded-2xl border border-[color:var(--color-accent)]/30 bg-white/[0.04] p-6">
@@ -568,6 +666,7 @@ const gestures = [
           <ul class="mt-3 space-y-3 text-[15px] leading-relaxed text-[#cbd5e1]">
             <li><strong class="font-semibold text-white">Audio bytes.</strong> WAV / PCM stays in process memory only. The Parakeet model is called directly as a Swift function call — there's no IPC, no listening sockets, no <code class="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[13px] text-white">/tmp/parleq-*.wav</code>.</li>
             <li><strong class="font-semibold text-white">Transcripts.</strong> Raw ASR output stays in memory.</li>
+            <li><strong class="font-semibold text-white">Voice-enrollment audio.</strong> The sentences you read aloud during enrollment are processed in memory and discarded — only the derived voiceprint embedding is kept (encrypted; see the Persisted column). No enrollment recording is ever written to disk.</li>
             <li><strong class="font-semibold text-white">Cleaned text.</strong> Held in the overlay during cleanup, then in an in-memory ring backing the Parleq window's Recent Dictations section, then gone on app quit. Never serialized. (Only the text-free per-dictation metrics in <code class="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[13px] text-white">metrics.jsonl</code> persist — never the words.)</li>
             <li><strong class="font-semibold text-white">Reference captures.</strong> PNG screenshots and OCR'd text from Reference Windows stay in process memory for the duration of a single dictation session. Released on accept or cancel — never written to disk and never cached between sessions.</li>
             <li><strong class="font-semibold text-white">Cloud session tokens (AWS / GCP / Azure).</strong> CLI-session auth modes delegate token refresh to the official AWS / gcloud / az CLI caches at <code class="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[13px] text-white">~/.aws/sso/cache/</code>, <code class="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[13px] text-white">~/.config/gcloud/</code>, and <code class="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[13px] text-white">~/.azure/</code>. Parleq stores no long-lived session tokens directly.</li>

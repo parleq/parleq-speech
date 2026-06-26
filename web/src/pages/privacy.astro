@@ -36,6 +36,10 @@ import SiteHeader from '../components/SiteHeader.astro';
       </p>
 
       <p>
+        <strong class="font-semibold text-[color:var(--color-text)]">Voice enrollment stays on your device.</strong> The optional voice-enrollment feature — which teaches Parleq to tell a term apart from a similar-sounding word by the sound of your voice — runs entirely on-device. The audio you read aloud is processed in memory and discarded; what's kept is a mathematical voiceprint (an embedding), <strong class="font-semibold text-[color:var(--color-text)]">never a recording</strong>. Voiceprints are biometric data: they're stored encrypted (AES-GCM) under a key in your Mac's Keychain that is device-only and never synced to iCloud, are enrolled only for the terms you opt in to, and can be deleted per term or all at once. Nothing about enrollment or the live disambiguation is sent to Parleq, Keavi, or any cloud.
+      </p>
+
+      <p>
         <strong class="font-semibold text-[color:var(--color-text)]">No telemetry in the app.</strong> Parleq contains no analytics, crash-reporting, advertising, or tracking SDKs and does not phone home. Its only outbound connections are ones you initiate: update checks, your chosen cloud cleanup provider, and one-time model downloads from Hugging Face (the on-device speech model, and the on-device cleanup model if you enable it).
       </p>
 
