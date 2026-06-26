@@ -153,10 +153,15 @@ and MIT license texts ship in the source archives at
 FluidAudio
 ============================================================
 
-This product uses FluidAudio (FluidInference, Apache-2.0) for local
-speech recognition on Apple Neural Engine.
+This product uses FluidAudio (Apache-2.0) for local speech recognition
+on Apple Neural Engine. It is pinned to a fork (jonyoder/FluidAudio, tag
+0.15.4-encoder.1) of the upstream FluidInference/FluidAudio 0.15.4 line,
+carrying an opt-in, additive patch that exposes the Parakeet encoder
+feature sequence used by the on-device voice-enrollment (voiceprint)
+disambiguation gate. The fork remains Apache-2.0.
 
-  * FluidAudio  https://github.com/FluidInference/FluidAudio
+  * FluidAudio (fork)  https://github.com/jonyoder/FluidAudio
+  * FluidAudio (upstream)  https://github.com/FluidInference/FluidAudio
 
 FluidAudio downloads CoreML model weights at runtime from
 Hugging Face (FluidInference's published Parakeet TDT v3 and CTC

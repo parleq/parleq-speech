@@ -101,7 +101,18 @@ let package = Package(
         //     --dictionary bench/dictionary-overfire.json --out bench/results/overfire-<ver>.json
         //   python3 bench/score_overfire.py bench/results/overfire-<ver>.json \
         //     bench/dictionary-overfire.json   # expect total_overfires ~12, alarm near ~52
-        .package(url: "https://github.com/FluidInference/FluidAudio.git", "0.14.5"..<"0.14.6"),
+        // TAGGED FORK PIN (voice-enrollment, 0.29.0): pinned exactly to the
+        // fork tag 0.15.4-encoder.1 (jonyoder/FluidAudio), a fork of
+        // FluidInference/FluidAudio's 0.15.4 line that adds an opt-in
+        // encoder-feature-exposure patch (ASRResult.encoderFeatures) needed by
+        // the voiceprint acoustic-disambiguation gate. Because this rides the
+        // 0.15.4 line rather than 0.14.5, we set spotterRescueEnabled=false in
+        // LocalASR to keep 0.14.5-equivalent over-fire behavior (the spotter
+        // rescue from PR #634 is the over-fire trigger; disabling it restores
+        // the pre-regression baseline). Drop this fork and return to a pinned
+        // upstream FluidAudio once a tagged upstream release exposes encoder
+        // features. See parleq-fluidaudio-0.14.5-pin / the voice-enrollment plan.
+        .package(url: "https://github.com/jonyoder/FluidAudio.git", exact: "0.15.4-encoder.1"),
         // Sparkle — auto-update framework. Checks an EdDSA-signed
         // appcast.xml on parleq.app for newer releases and runs the
         // user-prompted download/install/relaunch flow. Used by
@@ -145,7 +156,7 @@ let package = Package(
         // Private repo (keavi-app/concord); pinned tag like the other deps.
         // For local Concord co-dev, override without committing:
         //   swift package edit Concord --path /Users/jonyoder/Dev/concord
-        .package(url: "https://github.com/keavi-app/concord.git", exact: "0.1.4"),
+        .package(url: "https://github.com/keavi-app/concord.git", exact: "0.2.0"),
     ],
     targets: [
         .target(

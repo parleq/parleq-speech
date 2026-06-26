@@ -1,17 +1,24 @@
-Parleq 0.28.0
+Parleq 0.29.0
 
-More precise dictionary biasing — everyday words are far less likely to be
-wrongly replaced by a similar-sounding dictionary term.
+Voice enrollment — teach a dictionary term in your own voice so on-device
+speech recognition can tell two similar-sounding words apart, entirely on
+your Mac.
 
-### Changed
+### Added
 
-- Dictionary biasing over-corrects less. On-device speech recognition is now
-  more conservative about swapping a spoken word for an acoustically similar
-  dictionary term, so common words ("cloud", "item", and the like) are much
-  less likely to be turned into one of your dictionary entries. Tuned against a
-  corpus of real recordings — it cuts these over-corrections by roughly 3× with
-  little effect on genuine recoveries.
+- Voice enrollment for dictionary terms. Some words sound almost identical to
+  a dictionary entry, so speech recognition sometimes swaps the everyday word
+  for your term. You can now enroll a term in your own voice: a short wizard in
+  Settings → Dictionary has you read a few short sentences, harvests
+  pronunciation aliases automatically, and optionally records a contrasting
+  word so Parleq can hear the difference. After that, a per-term acoustic
+  "voiceprint" vetoes and reverts an over-firing correction when what you
+  actually said doesn't match the enrolled term — so the fruit "kiwi" stays
+  "kiwi" and only the real app name becomes "Keavi".
 
-- "Parleq" recognized from one more mishearing. The built-in "Parleq"
-  dictionary term picks up an additional common way speech recognition mishears
-  the app's name.
+- Privacy-forward and on-device. Enrollment derives a compact acoustic
+  embedding, never a recording — your audio is not stored. The voiceprint is
+  encrypted at rest (device-only key in the Keychain) and never leaves your
+  Mac. It's opt-in per term and deletable at any time from Settings →
+  Dictionary. The disambiguation runs with the on-device "Lightweight" cleanup
+  tier and adds no network calls.

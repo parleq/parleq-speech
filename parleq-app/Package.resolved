@@ -1,5 +1,5 @@
 {
-  "originHash" : "9daa9d0cf7fd61f499183ff7b996f81bb6588369a08d63ac1228fbcd478648c7",
+  "originHash" : "5f0a61944c8bab024853edbe6c886b0baf0ac167655cde4f1c78a407341bdeb6",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/keavi-app/concord.git",
       "state" : {
-        "revision" : "344030938d9363a6807229e23c1dd3b5f56868f5",
-        "version" : "0.1.4"
+        "revision" : "4a109f8edcc6512330aed54823b3d125ef2e6e13",
+        "version" : "0.2.0"
       }
     },
     {
@@ -31,10 +31,10 @@
     {
       "identity" : "fluidaudio",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/FluidInference/FluidAudio.git",
+      "location" : "https://github.com/jonyoder/FluidAudio.git",
       "state" : {
-        "revision" : "ce59fb14b8b8978b196f6a34282e20ea6762d164",
-        "version" : "0.14.5"
+        "revision" : "8c762704e462e2d70d2bc8f5b567c6342bd3e486",
+        "version" : "0.15.4-encoder.1"
       }
     },
     {
