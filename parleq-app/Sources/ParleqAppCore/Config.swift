@@ -639,6 +639,12 @@ public struct Config: Sendable {
     /// configured cleanup LLM during periodic off-path analysis. Re-read
     /// per utterance at the capture site.
     public var learnFromCorrectionsEnabled: Bool
+    /// One-time consent for voice enrollment (the acoustic-disambiguation
+    /// wizard). Off by default: enabling consents to recording short clips of
+    /// the user speaking a term, processed on-device and discarded — only a
+    /// derived voiceprint (biometric data; persisted encrypted-at-rest on this
+    /// device, deletable anytime) is kept. Set once when the user enables the feature.
+    public var voiceEnrollmentConsented: Bool
     /// Count cap on the correction journal. nil = unlimited (default).
     /// 0 = disable journal entirely (compliance lever; nothing written,
     /// existing file removed) — same semantics as the transcript-history
@@ -785,6 +791,7 @@ public struct Config: Sendable {
         transcriptHistoryMaxEntries: nil,
         transcriptHistoryRetentionHours: nil,
         learnFromCorrectionsEnabled: false,
+        voiceEnrollmentConsented: false,
         learnedCorrectionsMaxEntries: nil,
         learnedCorrectionsRetentionHours: nil,
         transformPresetsEnabled: true,
@@ -1776,6 +1783,9 @@ public struct Config: Sendable {
             if let v = features["learn_from_corrections_enabled"] as? Bool {
                 c.learnFromCorrectionsEnabled = v
             }
+            if let v = features["voice_enrollment_consented"] as? Bool {
+                c.voiceEnrollmentConsented = v
+            }
             if let v = features["learned_corrections_max_entries"] as? Int, v >= 0 {
                 c.learnedCorrectionsMaxEntries = v
             }
@@ -1957,6 +1967,7 @@ public struct Config: Sendable {
             "custom_dictionary_enabled": config.customDictionaryEnabled,
             "custom_model_entry_enabled": config.customModelEntryEnabled,
             "learn_from_corrections_enabled": config.learnFromCorrectionsEnabled,
+            "voice_enrollment_consented": config.voiceEnrollmentConsented,
             "transform_presets_enabled": config.transformPresetsEnabled,
         ]
         if let v = config.transcriptHistoryMaxEntries { featuresDict["transcript_history_max_entries"] = v }
@@ -2241,6 +2252,8 @@ public struct Config: Sendable {
         } else if let existing = existingFeatures["learn_from_corrections_enabled"] {
             featuresDict["learn_from_corrections_enabled"] = existing
         }
+        // Voice-enrollment consent is never MDM-managed; always written through.
+        featuresDict["voice_enrollment_consented"] = config.voiceEnrollmentConsented
         if !config.managedKeys.contains("learnedCorrectionsMaxEntries") {
             if let v = config.learnedCorrectionsMaxEntries {
                 featuresDict["learned_corrections_max_entries"] = v

@@ -351,9 +351,33 @@ public final class LocalASR {
                     confidence: $0.confidence
                 )
             },
-            replacements: vocabReplacements
+            replacements: vocabReplacements,
+            // nil unless the voiceprint demo armed encoder-feature capture
+            // (PARLEQ_VOICEPRINT_DEMO=1). Excluded from Codable, so it never
+            // reaches the on-disk flywheel record.
+            encoderFeatures: asrResult.encoderFeatures
         )
         return (finalText, diagnostics)
+    }
+
+    /// Voice-enrollment demo only (PARLEQ_VOICEPRINT_DEMO=1): transcribe a raw
+    /// 16 kHz mono 16-bit WAV buffer and return FluidAudio's full `ASRResult`,
+    /// including `encoderFeatures` (capture is armed at model-load time when the
+    /// demo env var is set). Bypasses the CTC vocab rescorer — enrollment needs
+    /// only the token timings + encoder features, not the cleaned transcript.
+    /// Returns nil for a malformed WAV. Not used on the normal dictation path.
+    public func transcribeRawForVoiceprint(wav data: Data) async throws -> ASRResult? {
+        guard let wavStart = Self.findRIFFOffset(in: data),
+              wavStart + 12 <= data.count else {
+            return nil
+        }
+        let chunkSize = data
+            .subdata(in: (wavStart + 4)..<(wavStart + 8))
+            .withUnsafeBytes { UInt32(littleEndian: $0.load(as: UInt32.self)) }
+        let wavEnd = min(wavStart + 8 + Int(chunkSize), data.count)
+        let wavBytes = data.subdata(in: wavStart..<wavEnd)
+        guard let samples = Self.wavToFloatSamples(wavBytes) else { return nil }
+        return try await asr.transcribeFull(samples: samples)
     }
 
     /// In-flight model-load task. Nil when no load is running. Used
@@ -468,6 +492,20 @@ actor AsrBox {
         )
         let m = AsrManager(config: .default)
         try await m.loadModels(models)
+        // Voice-enrollment acoustic disambiguation. Ask FluidAudio to copy the
+        // Parakeet encoder's acoustic features out of each transcribe call so a
+        // pooled per-word embedding can be derived — needed by the enrollment
+        // wizard and the live acoustic gate. The retained sequence is transient
+        // (~0.8 MB, freed at end of utterance) and excluded from any on-disk
+        // record. Armed always in the Concord build (the only one with the
+        // enrollment feature); in the public build it stays behind the demo flag.
+        #if Concord
+        await m.setCaptureEncoderFeatures(true)
+        #else
+        if VoiceprintDemo.isEnabled {
+            await m.setCaptureEncoderFeatures(true)
+        }
+        #endif
         self.manager = m
     }
 
@@ -662,7 +700,11 @@ actor VocabBox {
             rescorer = try await VocabularyRescorer.create(
                 spotter: spotter,
                 vocabulary: vocabulary,
-                config: .default,
+                // FluidAudio 0.15.x reintroduced the #634 spotter-anchored acoustic rescue
+                // (default on), which over-fires on short keywords (#702). Disable it to
+                // reproduce the pre-#634 / 0.14.5 over-fire behavior we validated and pinned
+                // (parleq-fluidaudio-0.14.5-pin). minSimilarity (0.75) remains the recall knob.
+                config: VocabularyRescorer.Config(spotterRescueEnabled: false),
                 ctcModelDirectory: ctcModelDirectory
             )
             cachedTermsKey = key
