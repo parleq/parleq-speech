@@ -1180,23 +1180,63 @@ final class SettingsModel: ObservableObject {
         save()
     }
 
+    /// Split voice-enrollment's harvested mishears into single-word **aliases** and
+    /// multi-word **spokenForms**. Concord's per-word dictionary matcher only applies
+    /// SINGLE-word aliases; a multi-word alias (e.g. "E2E to E" harvested for "E2E") is
+    /// silently ignored, so multi-word mishears must be routed to spokenForms to take
+    /// effect. Dedups case-insensitively against `existing*` and within the batch,
+    /// preserving first-seen order.
+    nonisolated static func partitionEnrolledMishears(
+        _ mishears: [String],
+        existingAliases: [String] = [],
+        existingSpoken: [String] = []
+    ) -> (aliases: [String], spokenForms: [String]) {
+        var seenA = Set(existingAliases.map { $0.lowercased() })
+        var seenS = Set(existingSpoken.map { $0.lowercased() })
+        var aliases: [String] = []
+        var spoken: [String] = []
+        for raw in mishears {
+            let t = raw.trimmingCharacters(in: .whitespaces)
+            guard !t.isEmpty else { continue }
+            let key = t.lowercased()
+            if t.split(separator: " ").count >= 2 {
+                guard !seenS.contains(key) else { continue }
+                seenS.insert(key); spoken.append(t)
+            } else {
+                guard !seenA.contains(key) else { continue }
+                seenA.insert(key); aliases.append(t)
+            }
+        }
+        return (aliases, spoken)
+    }
+
     #if Concord
     /// Merge voice-enrollment's harvested aliases into the dictionary: into the
     /// matching term's row (deduped, comma-separated), or a fresh row when the
     /// term is new ("Add by voice"). Persists.
-    func addEnrolledAliases(_ aliases: [String], toTerm term: String) {
+    func addEnrolledAliases(_ mishears: [String], toTerm term: String) {
         let trimmed = term.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return }
+        func split(_ s: String) -> [String] {
+            s.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        }
         if let idx = dictionaryEntries.firstIndex(where: { $0.term.lowercased() == trimmed.lowercased() }) {
-            var existing = dictionaryEntries[idx].aliases
-                .split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-            let seen = Set(existing.map { $0.lowercased() })
-            for a in aliases where !seen.contains(a.lowercased()) { existing.append(a) }
-            dictionaryEntries[idx].aliases = existing.joined(separator: ", ")
+            let existingAliases = split(dictionaryEntries[idx].aliases)
+            let existingSpoken = split(dictionaryEntries[idx].spokenForms)
+            // Route harvested mishears: single-word → aliases, multi-word → spokenForms
+            // (a multi-word alias is ignored by Concord's per-word matcher — the E2E bug).
+            let (newAliases, newSpoken) = Self.partitionEnrolledMishears(
+                mishears, existingAliases: existingAliases, existingSpoken: existingSpoken)
+            dictionaryEntries[idx].aliases = (existingAliases + newAliases).joined(separator: ", ")
+            dictionaryEntries[idx].spokenForms = (existingSpoken + newSpoken).joined(separator: ", ")
             if dictionaryEntries[idx].source == .learned { dictionaryEntries[idx].source = .user }
         } else {
+            let (newAliases, newSpoken) = Self.partitionEnrolledMishears(mishears)
             dictionaryEntries.append(DictionaryEntryRow(
-                term: trimmed, aliases: aliases.joined(separator: ", "), biasing: .asrAndLLM))
+                term: trimmed,
+                aliases: newAliases.joined(separator: ", "),
+                spokenForms: newSpoken.joined(separator: ", "),
+                biasing: .asrAndLLM))
         }
         save()
     }
