@@ -30,7 +30,7 @@ const softwareSchema = {
   offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
 };
 
-// All eleven capabilities, flattened into a single uniform grid. Each
+// All twelve capabilities, flattened into a single uniform grid. Each
 // card is glyph + title + ONE distilled sentence, and links to where the
 // full story lives (how-it-works stage/section anchors, or /enterprise).
 // `icon` selects an inline line-glyph drawn in the markup below — the
@@ -62,6 +62,12 @@ const capabilities = [
     blurb: 'A custom dictionary biases the speech model toward your names and jargon, with aliases and a per-term opt-out.',
     icon: 'book',
     href: `${base}/how-it-works/#stage-transcribe`,
+  },
+  {
+    title: 'Tell sound-alike words apart',
+    blurb: 'Optionally enroll a term in your own voice so Parleq can separate a name like "Keavi" from "kiwi" by sound. On-device, opt-in per term — and what\'s kept is an encrypted voiceprint, never a recording.',
+    icon: 'voiceprint',
+    href: `${base}/how-it-works/#voice-enrollment`,
   },
   {
     title: 'Learns from your corrections',
@@ -396,7 +402,7 @@ const capabilities = [
   </section>
 
   <!-- Capabilities grid. One compact section in place of the old three
-       bento clusters: a uniform grid of all eleven capabilities, each an
+       bento clusters: a uniform grid of all twelve capabilities, each an
        EQUAL-size card (no column spans) of glyph + title + one distilled
        sentence, linking to where the full story lives (how-it-works
        stages/sections, or /enterprise). Each card carries a hand-rolled
@@ -410,7 +416,7 @@ const capabilities = [
         Everything it does
       </p>
       <h2 class="mt-3 font-display text-2xl leading-[1.1] font-medium tracking-tight sm:text-3xl">
-        Eleven capabilities, one quiet hotkey.
+        Twelve capabilities, one quiet hotkey.
       </h2>
       <div class="mt-10 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
         {capabilities.map((card) => (
@@ -489,6 +495,11 @@ const capabilities = [
                         <rect x="5" y="11" width="14" height="9" rx="2" />
                         <path d="M8 11V8a4 4 0 0 1 8 0v3" />
                         <path d="M12 15v2" />
+                      </>
+                    )}
+                    {card.icon === 'voiceprint' && (
+                      <>
+                        <path d="M4 10v4M8 6v12M12 9v6M16 5v14M20 10v4" />
                       </>
                     )}
               </svg>
