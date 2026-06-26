@@ -86,10 +86,15 @@ public enum CarrierSentences {
 
     /// Parse model output into usable carrier lines: split on newlines, trim,
     /// strip a leading list marker (`1.` / `2)` / `-` / `*`), drop empties and
-    /// surrounding quotes, and keep only lines that actually contain the term
-    /// (case-insensitive).
+    /// surrounding quotes, and keep only lines in which the term appears EXACTLY
+    /// ONCE as a STANDALONE word (case-insensitive).
+    ///
+    /// A bare substring match (`Keavi's`, `Keavi-related`) is rejected: it would
+    /// later fail the enroller's slot locator (`termSlotIndex`, which compares the
+    /// whole whitespace-word's letters-only form) and silently break enrollment.
+    /// Matching the SAME way here keeps the carrier set and the slot locator in
+    /// agreement.
     static func parseLines(_ raw: String, term: String) -> [String] {
-        let needle = term.lowercased()
         return raw
             .split(whereSeparator: \.isNewline)
             .map { line -> String in
@@ -98,7 +103,39 @@ public enum CarrierSentences {
                 s = s.trimmingCharacters(in: CharacterSet(charactersIn: "\"'“”"))
                 return s.trimmingCharacters(in: .whitespaces)
             }
-            .filter { !$0.isEmpty && $0.lowercased().contains(needle) }
+            .filter { !$0.isEmpty && standaloneOccurrences(of: term, in: $0) == 1 }
+    }
+
+    /// Alphanumeric lowercase normalization. Keeps letters AND digits (so "GPT-4"
+    /// → "gpt4", "S3" → "s3" must appear in full — a line with only "GPT" is
+    /// rejected) while still dropping punctuation, so "Keavi." / "KEAVI," count but
+    /// "Keavi's" / "Keavi-related" do not. This is intentionally AT LEAST as strict
+    /// as the enroller's letters-only slot key (`VoiceprintCoordinator.norm`): any
+    /// line that passes here still contains the term for the enroller to locate, so
+    /// the two stay in agreement. (Residual: purely-symbolic distinctions like the
+    /// "++" in "C++" still normalize away — a rare case; the template fallback covers
+    /// any shortfall and the enroller is no stricter.)
+    private static func norm(_ s: String) -> String {
+        s.lowercased().filter { $0.isLetter || $0.isNumber }
+    }
+
+    /// Count of times the FULL term phrase appears in `line` as a run of
+    /// consecutive STANDALONE words (each word's letters-only form matching the
+    /// term's, in order). For a multi-word term like "New York" both words must
+    /// appear adjacent and in order — a line with only "New" does NOT count — so a
+    /// carrier always carries the whole spoken phrase, not just its first sub-word
+    /// (which the enroller separately uses only to anchor the audio slot).
+    private static func standaloneOccurrences(of term: String, in line: String) -> Int {
+        let termWords = term.split(whereSeparator: { $0.isWhitespace }).map { norm(String($0)) }.filter { !$0.isEmpty }
+        guard !termWords.isEmpty else { return 0 }
+        let lineWords = line.split(whereSeparator: { $0.isWhitespace }).map { norm(String($0)) }
+        guard lineWords.count >= termWords.count else { return 0 }
+        var count = 0
+        for start in 0...(lineWords.count - termWords.count)
+        where Array(lineWords[start..<start + termWords.count]) == termWords {
+            count += 1
+        }
+        return count
     }
 
     /// Strip a leading enumeration marker like "1. ", "2) ", "- ", "* ".

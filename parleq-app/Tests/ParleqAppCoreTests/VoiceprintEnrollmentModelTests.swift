@@ -24,6 +24,42 @@ final class VoiceprintEnrollmentModelTests: XCTestCase {
             onEnrolled: { flags.enrolled = ($0, $1) })
     }
 
+    /// A transcribe stub returning a fabricated ASR result that pools a usable
+    /// "Keavi" embedding at WHATEVER slot the carrier places the term, so
+    /// `analyze()` builds a real draft template without live audio. Eight
+    /// "keavi"-token groups (all == the term key → no harvested confusable, so
+    /// the model routes straight to `.review`) over one feature window.
+    private func fakeKeaviTranscribe() -> @Sendable (Data) async throws -> ASRResult? {
+        // 8 word-groups, each token "keavi" starting a new word (leading space
+        // after the first), spanning [i*0.5, i*0.5+0.4]s.
+        var timings: [TokenTiming] = []
+        for i in 0..<8 {
+            timings.append(TokenTiming(token: i == 0 ? "keavi" : " keavi", tokenId: 1,
+                                       startTime: Double(i) * 0.5, endTime: Double(i) * 0.5 + 0.4,
+                                       confidence: 1.0))
+        }
+        // One feature window covering 0..4.0s (40 frames @ 0.1s), 4-dim frames.
+        let window = EncoderFeatureSequence.Window(
+            frames: Array(repeating: [Float](repeating: 0.5, count: 4), count: 40),
+            globalFrameOffset: 0)
+        let features = EncoderFeatureSequence(windows: [window], hiddenSize: 4, secondsPerFrame: 0.1)
+        let result = ASRResult(text: "keavi", confidence: 1.0, duration: 4.0, processingTime: 0.1,
+                               tokenTimings: timings, encoderFeatures: features)
+        return { _ in result }
+    }
+
+    private func makeAudioModel(coordinator: VoiceprintCoordinator, flags: Flags) -> VoiceprintEnrollmentModel {
+        let services = VoiceprintServices(
+            coordinator: coordinator,
+            makeRecorder: { AudioRecorder() },
+            transcribe: fakeKeaviTranscribe(),
+            llmText: nil)
+        return VoiceprintEnrollmentModel(
+            term: "Keavi", services: services, consented: true,
+            onConsentGranted: { flags.consent = true },
+            onEnrolled: { flags.enrolled = ($0, $1) })
+    }
+
     func test_start_unconsented_goes_to_intro_then_consent() async {
         let flags = Flags()
         let model = makeModel(consented: false, flags: flags)
@@ -73,6 +109,39 @@ final class VoiceprintEnrollmentModelTests: XCTestCase {
         model.save()
         XCTAssertEqual(model.phase, .done)
         XCTAssertEqual(flags.enrolled?.0, "Keavi", "onEnrolled fired with the term")
+    }
+
+    // MARK: storage is deferred to Save (the lifecycle fix)
+
+    /// analyze() builds a draft but must NOT commit it — the store stays empty;
+    /// cancel() then discards the draft, still leaving nothing stored.
+    func test_analyze_then_cancel_stores_nothing() async {
+        let coordinator = VoiceprintCoordinator()
+        let model = makeAudioModel(coordinator: coordinator, flags: Flags())
+        await model.start()
+        model.recordings = Array(repeating: Data([1]), count: model.carriers.count)
+        await model.analyze()
+        XCTAssertEqual(model.phase, .review, "no real-word confusable → straight to review")
+        XCTAssertNotNil(model.outcome, "a draft was built")
+        XCTAssertFalse(coordinator.hasVoiceprint("Keavi"), "analyze must NOT commit to the store")
+
+        model.cancel()
+        XCTAssertFalse(coordinator.hasVoiceprint("Keavi"), "cancel leaves the store untouched")
+    }
+
+    /// Only save() commits the draft to the coordinator's store.
+    func test_save_commits_the_draft() async {
+        let coordinator = VoiceprintCoordinator()
+        let flags = Flags()
+        let model = makeAudioModel(coordinator: coordinator, flags: flags)
+        await model.start()
+        model.recordings = Array(repeating: Data([1]), count: model.carriers.count)
+        await model.analyze()
+        XCTAssertFalse(coordinator.hasVoiceprint("Keavi"), "not committed before Save")
+        model.save()
+        XCTAssertEqual(model.phase, .done)
+        XCTAssertTrue(coordinator.hasVoiceprint("Keavi"), "Save commits the draft voiceprint")
+        XCTAssertEqual(flags.enrolled?.0, "Keavi")
     }
 }
 #endif

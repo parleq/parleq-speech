@@ -8,8 +8,10 @@
 // contrastive negative) → review(quality) → done.
 //
 // Safe-failure: a poor or abandoned enrollment leaves the gate quiet (no veto) —
-// never a corruption. Cancelling after analysis removes the just-stored
-// voiceprint so nothing lingers.
+// never a corruption. NOTHING is stored or persisted until Save: analysis BUILDS
+// a draft template held only in this model; `save()` is the single point that
+// commits it to the coordinator's store (and disk). So dismiss/cancel/quit/crash
+// before Save leaves no voiceprint at all, and cancel is a pure in-memory discard.
 
 #if Concord
 import Foundation
@@ -51,9 +53,10 @@ public final class VoiceprintEnrollmentModel: ObservableObject, Identifiable {
     @Published public private(set) var isWorking = false
     /// Set when analysis produced no usable spans (re-record nudge).
     @Published public private(set) var analysisFailed = false
-    /// The term's template BEFORE this wizard run (a re-enroll overwrites it).
-    /// Captured at `analyze()` so `cancel()` can restore it instead of deleting.
-    private var priorTemplate: VoiceprintTemplate?
+    /// The DRAFT voiceprint built at `analyze()` (and augmented at
+    /// `proceedWithNegative()`). Held only here — NOT in the coordinator store —
+    /// until `save()` commits it. nil before analysis succeeds.
+    private var draftTemplate: VoiceprintTemplate?
 
     public init(term: String,
                 services: VoiceprintServices,
@@ -107,29 +110,32 @@ public final class VoiceprintEnrollmentModel: ObservableObject, Identifiable {
 
     // MARK: analysis
 
-    /// Enroll the positive voiceprint from the recorded carriers, harvest the
-    /// aliases, and branch to the confusable step (when a real-word confusable
-    /// was heard) or straight to review.
+    /// BUILD the positive voiceprint (a draft, not yet stored) from the recorded
+    /// carriers, harvest the aliases, and branch to the confusable step (when a
+    /// real-word confusable was heard) or straight to review. The draft is
+    /// committed only at `save()` — analysis touches nothing on disk.
     public func analyze() async {
         phase = .analyzing
         isWorking = true
         analysisFailed = false
-        // Snapshot any existing enrollment so a cancel can restore it (enrollPositive
-        // overwrites the term's template).
-        priorTemplate = services.coordinator.template(for: termID)
         let clips: [VoiceprintCoordinator.EnrollmentClip] = zip(carriers, recordings).compactMap { text, data in
             data.map { VoiceprintCoordinator.EnrollmentClip(wav: $0, carrierText: text) }
         }
-        let result = await services.coordinator.enrollPositive(
+        let built = await services.coordinator.buildPositive(
             termID: termID, term: term, carriers: clips, transcribe: services.transcribe)
+        // Cancelled mid-analysis (the wizard was dismissed): abandon without writing
+        // draft/outcome/phase. Nothing was persisted (build never stores), so this is
+        // a clean bail — no stale state to leave behind.
+        guard !Task.isCancelled else { isWorking = false; return }
         isWorking = false
-        guard let result else {
+        guard let built else {
             analysisFailed = true
             phase = .carriers   // back to recording with a nudge
             return
         }
-        outcome = result
-        await decidePhaseAfterHarvest(aliases: result.harvestedAliases)
+        draftTemplate = built.template
+        outcome = built.outcome
+        await decidePhaseAfterHarvest(aliases: built.outcome.harvestedAliases)
     }
 
     /// Pure branching on harvested aliases — testable without audio. Computes the
@@ -141,6 +147,7 @@ public final class VoiceprintEnrollmentModel: ObservableObject, Identifiable {
         if let label = confusables.first {
             negativeLabel = label
             negativeCarriers = await services.carrierSentences(term: label, count: Self.negativeCarrierCount)
+            guard !Task.isCancelled else { return }
             negativeRecordings = Array(repeating: nil, count: negativeCarriers.count)
             phase = .confusable
         } else {
@@ -150,15 +157,16 @@ public final class VoiceprintEnrollmentModel: ObservableObject, Identifiable {
 
     // MARK: confusable + finish
 
-    /// Attach the contrastive negative from the recorded confusable carriers.
+    /// Attach the contrastive negative to the DRAFT template from the recorded
+    /// confusable carriers (still not stored — committed at `save()`).
     public func proceedWithNegative() async {
-        guard let label = negativeLabel else { phase = .review; return }
+        guard let label = negativeLabel, let template = draftTemplate else { phase = .review; return }
         isWorking = true
         let clips: [VoiceprintCoordinator.EnrollmentClip] = zip(negativeCarriers, negativeRecordings).compactMap { text, data in
             data.map { VoiceprintCoordinator.EnrollmentClip(wav: $0, carrierText: text) }
         }
-        _ = await services.coordinator.addNegative(
-            termID: termID, label: label, carriers: clips, transcribe: services.transcribe)
+        draftTemplate = await services.coordinator.buildNegativeAttached(
+            to: template, label: label, carriers: clips, transcribe: services.transcribe)
         isWorking = false
         phase = .review
     }
@@ -166,22 +174,20 @@ public final class VoiceprintEnrollmentModel: ObservableObject, Identifiable {
     /// Skip the confusable step (the user says they're not confusable).
     public func skipConfusable() { phase = .review }
 
-    /// Commit: write the dictionary entry (term + aliases) and finish.
+    /// Commit: store the draft voiceprint (the SINGLE persist point), write the
+    /// dictionary entry (term + aliases), and finish.
     public func save() {
+        if let draftTemplate {
+            services.coordinator.commit(draftTemplate)
+        }
         onEnrolled(term, outcome?.harvestedAliases ?? [])
         phase = .done
     }
 
-    /// Abandon after analysis. A re-enroll overwrote the term's template, so restore
-    /// the prior one if there was one; otherwise remove the just-stored voiceprint so
-    /// nothing lingers. (No-op if analysis never ran.)
+    /// Abandon the wizard. Nothing was stored (storage is deferred to `save()`),
+    /// so this is a pure in-memory discard of the draft — no store mutation.
     public func cancel() {
-        guard outcome != nil else { return }
-        if let prior = priorTemplate {
-            services.coordinator.restoreTemplate(prior)
-        } else {
-            services.coordinator.removeVoiceprint(termID: termID)
-        }
+        draftTemplate = nil
     }
 
     /// A fresh recorder configured for the current mic settings (for the view).

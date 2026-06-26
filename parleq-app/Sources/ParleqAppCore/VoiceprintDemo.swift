@@ -2,8 +2,10 @@
 // acoustic-disambiguation feature.
 //
 // `VoiceprintCoordinator` owns the per-term voiceprint lifecycle in the
-// running app: enrollment (`enrollPositive` / `addNegative` from recorded
-// carrier sentences), the runtime acoustic gate that vetoes/reverts an
+// running app: enrollment (`buildPositive` / `buildNegativeAttached` build a
+// DRAFT template from recorded carrier sentences; `commit` is the single point
+// that stores + persists it — the wizard defers commit to Save), the runtime
+// acoustic gate that vetoes/reverts an
 // over-firing dictionary correction (`enforcementGateFactory` →
 // Concord's VoiceprintGate, e.g. keep the fruit "kiwi" instead of the app
 // "Keavi"), and encrypted-at-rest persistence (`loadPersisted` /
@@ -114,7 +116,7 @@ import Concord
 
 /// MainActor coordinator owning the in-memory voiceprint store + acoustic gate.
 /// Always constructed (see main.swift). The PRODUCTIZED surface — wizard-driven
-/// `enrollPositive`/`addNegative`, `removeVoiceprint`/`removeAll`, and the
+/// `buildPositive`/`buildNegativeAttached`/`commit`, `removeVoiceprint`/`removeAll`, and the
 /// `enforcementGateFactory` wired into Concord — is generic over any term. The
 /// `runStartupEnrollment` + `evaluateShadow` + hardcoded Keavi/kiwi windows below
 /// are the DEBUG flywheel path, active only under `PARLEQ_VOICEPRINT_DEMO=1`.
@@ -259,12 +261,8 @@ public final class VoiceprintCoordinator {
 
     /// True once `termID` has a voiceprint (generic; productized callers use this).
     public func hasVoiceprint(_ termID: String) -> Bool { store.template(for: termID) != nil }
-    /// The current template for a term (for the wizard to snapshot before re-enroll).
+    /// The current template for a term.
     public func template(for termID: String) -> VoiceprintTemplate? { store.template(for: termID) }
-    /// Restore a previously-snapshotted template (undo a cancelled re-enroll).
-    public func restoreTemplate(_ template: VoiceprintTemplate) {
-        store.upsert(template); notifyStoreChanged()
-    }
     /// All enrolled term IDs.
     public var enrolledTermIDs: [String] { store.termIDs }
     /// Forget one term's voiceprint (privacy delete; also called when its
@@ -303,16 +301,18 @@ public final class VoiceprintCoordinator {
         return (emb, Self.norm(g.text))
     }
 
-    /// Build + store the POSITIVE voiceprint for `term` from recorded carriers,
-    /// harvesting the ground-truth aliases. Returns nil if no clip produced a
-    /// usable span. The template is stored even when low-quality (the caller
-    /// warns / offers re-enroll); a low-quality or absent template simply leaves
-    /// the gate quiet (no veto) — never a corruption.
-    @discardableResult
-    public func enrollPositive(
+    /// BUILD (don't store) the POSITIVE voiceprint for `term` from recorded
+    /// carriers, harvesting the ground-truth aliases. Returns the DRAFT template
+    /// plus the outcome, or nil if no clip produced a usable span. Storage and
+    /// persistence are DEFERRED to `commit(_:)` (called from the wizard's Save) —
+    /// so an abandoned/cancelled enrollment leaves NOTHING on disk or in the
+    /// store. The template is built even when low-quality (the caller warns /
+    /// offers re-enroll); a low-quality or absent template simply leaves the gate
+    /// quiet (no veto) — never a corruption.
+    public func buildPositive(
         termID: String, term: String, carriers: [EnrollmentClip],
         transcribe: (Data) async throws -> ASRResult?
-    ) async -> EnrollmentOutcome? {
+    ) async -> (template: VoiceprintTemplate, outcome: EnrollmentOutcome)? {
         var embeddings: [[Float]] = []
         var heardTokens: [String] = []
         for clip in carriers {
@@ -323,37 +323,36 @@ public final class VoiceprintCoordinator {
             heardTokens.append(span.heard)
         }
         guard !embeddings.isEmpty else {
-            log("[voiceprint] enroll term=\(termID): no usable spans")
+            log("[voiceprint] build term=\(termID): no usable spans")
             return nil
         }
         let result = VoiceprintEnroller.enroll(
             termID: termID, embeddings: embeddings,
             modelVersion: BundledASREngine.fluidAudioVersion)
-        store.upsert(result.template)
-        notifyStoreChanged()
 
         let termKey = Self.norm(term)
         var seen = Set<String>(); var aliases: [String] = []
         for t in heardTokens where t != termKey && !t.isEmpty && !seen.contains(t) {
             seen.insert(t); aliases.append(t)
         }
-        log("[voiceprint] enrolled term=\(termID) clips=\(embeddings.count) survivingMeanSelfSim=\(String(format: "%.3f", result.survivingMeanSelfSim)) lowQuality=\(result.template.lowQuality) aliases=\(aliases.count)")
-        return EnrollmentOutcome(
+        log("[voiceprint] built term=\(termID) clips=\(embeddings.count) survivingMeanSelfSim=\(String(format: "%.3f", result.survivingMeanSelfSim)) lowQuality=\(result.template.lowQuality) aliases=\(aliases.count) (not committed)")
+        let outcome = EnrollmentOutcome(
             enrolledClips: embeddings.count,
             survivingMeanSelfSim: result.survivingMeanSelfSim,
             lowQuality: result.template.lowQuality,
             harvestedAliases: aliases)
+        return (result.template, outcome)
     }
 
-    /// Attach a per-confusable NEGATIVE prototype to an already-enrolled term,
-    /// from carriers in which the user read the confusable `label`. Returns true
-    /// when at least one usable negative span was pooled and attached.
-    @discardableResult
-    public func addNegative(
-        termID: String, label: String, carriers: [EnrollmentClip],
+    /// BUILD (don't store) a per-confusable NEGATIVE prototype and attach it to
+    /// the DRAFT `template`, from carriers in which the user read the confusable
+    /// `label`. Returns the updated draft template (unchanged if no usable
+    /// negative span was pooled). Like `buildPositive`, this never touches the
+    /// store — `commit(_:)` is the single persist point.
+    public func buildNegativeAttached(
+        to template: VoiceprintTemplate, label: String, carriers: [EnrollmentClip],
         transcribe: (Data) async throws -> ASRResult?
-    ) async -> Bool {
-        guard let template = store.template(for: termID) else { return false }
+    ) async -> VoiceprintTemplate {
         var embeddings: [[Float]] = []
         for clip in carriers {
             guard let slot = Self.termSlotIndex(term: label, in: clip.carrierText) else { continue }
@@ -361,14 +360,20 @@ public final class VoiceprintCoordinator {
             else { continue }
             embeddings.append(span.embedding)
         }
-        guard !embeddings.isEmpty else { return false }
-        let updated = template.withNegative(label: label, embeddings: embeddings)
+        guard !embeddings.isEmpty else { return template }
         // withNegative returns self unchanged if nothing usable survived.
-        guard updated.negatives[label] != nil else { return false }
-        store.upsert(updated)
+        let updated = template.withNegative(label: label, embeddings: embeddings)
+        log("[voiceprint] negative-built term=\(template.termID) label=\(label) clips=\(embeddings.count) (not committed)")
+        return updated
+    }
+
+    /// Commit a DRAFT template into the store — the SINGLE point at which a
+    /// voiceprint is stored AND persisted to disk (via `notifyStoreChanged`).
+    /// Called from the wizard's Save, so nothing biometric lands on disk before
+    /// the user explicitly commits.
+    public func commit(_ template: VoiceprintTemplate) {
+        store.upsert(template)
         notifyStoreChanged()
-        log("[voiceprint] negative term=\(termID) label=\(label) clips=\(embeddings.count)")
-        return true
     }
 
     // MARK: Startup enrollment

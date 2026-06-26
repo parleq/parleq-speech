@@ -53,11 +53,14 @@ let package = Package(
         // the main app in v0.9.0 to drop the local listening socket,
         // simplify supervision, and shed the Hummingbird dependency.
         //
-        // PINNED TO EXACTLY 0.14.5 — the last release before an
-        // over-aggressive CTC vocab-rescorer regression. DO NOT widen this
-        // range without first running the bench biasing arm against a REAL
-        // multi-term dictionary (bench/dictionary-realworld.json).
+        // PINNED to the fork tag 0.15.4-encoder.1 (see "TAGGED FORK PIN" at the
+        // bottom of this block) — the 0.15.4 line PLUS an opt-in encoder-feature
+        // patch for voice enrollment. The over-fire history below is WHY we set
+        // `spotterRescueEnabled=false` in LocalASR to hold 0.14.5-equivalent
+        // over-fire behavior on the 0.15.4 line. DO NOT bump FluidAudio without
+        // running the REGRESSION GATE below AND re-evaluating that flag.
         //
+        // HISTORY — why 0.14.5 was the prior exact pin and why the flag exists:
         // Root cause: upstream commit 410044d1 ("Fix/word boost
         // improvements", PR #634), FIRST RELEASED IN 0.14.8. It reworked
         // the CTC vocab-rescoring pipeline — blank-aware DP rewrite (changes
@@ -78,8 +81,9 @@ let package = Package(
         // version bisect (0.24.1=0.14.5 vs 0.24.2=0.15.3) AND by the bench
         // over-fire arm: identical generic dictionary + 54-clip overfire
         // corpus produced 12 over-fires on 0.14.5 vs 52 on 0.14.8 (~4x,
-        // spreading from 2 terms to 6). We pin 0.14.5 — the version 0.24.1
-        // shipped and the empirically-verified-good config.
+        // spreading from 2 terms to 6). We previously pinned 0.14.5 — the version
+        // 0.24.1 shipped and the empirically-verified-good config — now superseded
+        // by the fork tag below with spotterRescueEnabled=false holding the baseline.
         //
         // NB 0.14.5 is the pre-regression baseline, not zero over-fire:
         // short collision-prone terms (CRAN~"ran", Redis~"ready") still

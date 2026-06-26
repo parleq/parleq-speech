@@ -61,14 +61,55 @@ final class VoiceprintCoordinatorTests: XCTestCase {
         XCTAssertEqual(stub.saved.first?.count, 0, "the empty (all-stale) set saved → blob pruned")
     }
 
-    // MARK: restore (fix B mechanism: cancel can restore a prior template)
+    // MARK: commit is the single store/persist point (deferred from analyze to Save)
 
-    func test_restoreTemplate_round_trips() {
+    func test_commit_stores_and_persists() {
         let c = VoiceprintCoordinator()
+        let stub = StubPersistence(.success([]))
+        c.persistence = stub
         let t = tmpl("Keavi")
-        c.restoreTemplate(t)
+        XCTAssertFalse(c.hasVoiceprint("Keavi"))
+        c.commit(t)
         XCTAssertEqual(c.template(for: "Keavi"), t)
         XCTAssertTrue(c.hasVoiceprint("Keavi"))
+        XCTAssertEqual(stub.saved.count, 1, "commit is the persist point")
+    }
+
+    /// The rename-cleanup invariant the edit sheet relies on: removing the OLD-key
+    /// voiceprint after a rename→enroll must NOT disturb the newly-enrolled term's
+    /// print (they're keyed by distinct terms). Regression guard for the rename→
+    /// enroll→close path that previously rebaselined originalTerm and orphaned old.
+    func test_removeVoiceprint_old_key_leaves_new_term_intact() {
+        let c = VoiceprintCoordinator()
+        c.persistence = StubPersistence(.success([]))
+        c.commit(tmpl("Keavi"))   // old (pre-rename) print
+        c.commit(tmpl("Keavy"))   // new term, freshly enrolled after the rename
+        c.removeVoiceprint(termID: "Keavi")   // cleanupOrphanedVoiceprintOnRename drops only OLD
+        XCTAssertFalse(c.hasVoiceprint("Keavi"), "stale old-term orphan removed")
+        XCTAssertTrue(c.hasVoiceprint("Keavy"), "just-enrolled new-term print survives")
+    }
+
+    /// buildPositive / buildNegativeAttached must NOT touch the store: a draft is
+    /// only committed at Save, so an abandoned wizard leaves nothing behind. With
+    /// a nil-transcribe stub buildPositive yields no usable spans (returns nil) —
+    /// either way the store stays empty until commit.
+    func test_build_does_not_store_until_commit() async {
+        let c = VoiceprintCoordinator()
+        let stub = StubPersistence(.success([]))
+        c.persistence = stub
+        let clips = [VoiceprintCoordinator.EnrollmentClip(wav: Data([1]), carrierText: "Keavi is here")]
+        let built = await c.buildPositive(termID: "Keavi", term: "Keavi", carriers: clips,
+                                          transcribe: { _ in nil })
+        XCTAssertNil(built, "no usable spans → nil")
+        XCTAssertFalse(c.hasVoiceprint("Keavi"))
+        XCTAssertEqual(stub.saved, [], "build never persists")
+
+        // buildNegativeAttached returns the (unchanged) draft without storing.
+        let updated = await c.buildNegativeAttached(to: tmpl("Keavi"), label: "kiwi", carriers: clips,
+                                                    transcribe: { _ in nil })
+        XCTAssertEqual(updated, tmpl("Keavi"))
+        XCTAssertFalse(c.hasVoiceprint("Keavi"))
+        XCTAssertEqual(stub.saved, [], "build never persists")
     }
 
     func test_termSlotIndex_finds_single_word_term() {

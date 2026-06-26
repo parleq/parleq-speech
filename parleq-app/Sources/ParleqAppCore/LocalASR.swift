@@ -595,7 +595,11 @@ enum VocabTuning {
 /// in CLAUDE.md and the parleq-fluidaudio pin notes) on every bump.
 public enum BundledASREngine {
     public static let model = "parakeet-tdt-v3"
-    public static let fluidAudioVersion = "0.14.5"
+    // Matches the FluidAudio pin in Package.swift (the encoder-features fork tag).
+    // ALSO the model-version stamp on voiceprint templates — a change here
+    // invalidates persisted voiceprints (they're pruned on load + re-enrolled),
+    // which is correct: the encoder that produced their embeddings changed.
+    public static let fluidAudioVersion = "0.15.4-encoder.1"
 }
 
 /// Holds the optional CTC vocabulary-boosting models and rescorer.

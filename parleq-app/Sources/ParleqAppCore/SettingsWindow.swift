@@ -3726,6 +3726,10 @@ struct DictionaryTermEditView: View {
     @State private var showAdvanced = false
     /// Drives the "Delete term" confirmation dialog.
     @State private var showDeleteConfirm = false
+    /// The Term value when the editor opened. A voiceprint is keyed by the term
+    /// STRING, so renaming the Term field orphans the old-key voiceprint; on
+    /// close we drop that orphan (see `cleanupOrphanedVoiceprintOnRename`).
+    @State private var originalTerm: String?
     #if Concord
     /// The active voice-enrollment wizard (presented as a sheet on top of
     /// this edit sheet), or nil.
@@ -3747,6 +3751,12 @@ struct DictionaryTermEditView: View {
             }
         }
         .frame(width: 460)
+        .onAppear {
+            if originalTerm == nil {
+                originalTerm = model.dictionaryEntries.first { $0.id == entryID }?
+                    .term.trimmingCharacters(in: .whitespaces)
+            }
+        }
         #if Concord
         .sheet(item: $enrollingModel) { m in
             VoiceprintEnrollmentView(
@@ -3755,10 +3765,39 @@ struct DictionaryTermEditView: View {
                 onClose: { enrollingModel = nil },
                 // Success: close the EDITOR too (which cascades the wizard sheet
                 // shut) so the user lands back on the dictionary list with the
-                // now-filled 🎙 badge — one tap, no extra "Done".
-                onFinished: { enrollingModel = nil; onClose() }
+                // now-filled 🎙 badge — one tap, no extra "Done". We do NOT rebaseline
+                // `originalTerm` here: the just-enrolled print is keyed by the CURRENT
+                // term, while `cleanupOrphanedVoiceprintOnRename` only removes the OLD
+                // key (and only when old != new) — so on a rename→enroll it correctly
+                // drops the stale old-term orphan without touching the new print.
+                onFinished: {
+                    enrollingModel = nil
+                    closeEditor()
+                }
             )
         }
+        #endif
+    }
+
+    /// Close the editor, first dropping any voiceprint orphaned by a Term rename.
+    private func closeEditor() {
+        cleanupOrphanedVoiceprintOnRename()
+        onClose()
+    }
+
+    /// If the Term field was renamed while a voiceprint existed under the OLD
+    /// term, remove that orphan (it's keyed by the old string and the row would
+    /// otherwise read unenrolled forever). We don't silently migrate it to the
+    /// new term — a rename can also mean "reuse this row for a different word" —
+    /// so the user re-enrolls under the new name. No-op off Concord.
+    private func cleanupOrphanedVoiceprintOnRename() {
+        #if Concord
+        guard let services = model.voiceprintServices else { return }
+        let old = (originalTerm ?? "").trimmingCharacters(in: .whitespaces)
+        let new = currentTerm
+        guard !old.isEmpty, old != new, services.coordinator.hasVoiceprint(old) else { return }
+        services.coordinator.removeVoiceprint(termID: old)
+        VoiceEnrollNudge.shared.clearIfMatches(term: old)
         #endif
     }
 
@@ -3799,7 +3838,7 @@ struct DictionaryTermEditView: View {
 
             // Footer.
             HStack {
-                Button(isNew ? "Skip" : "Cancel") { onClose() }
+                Button(isNew ? "Skip" : "Cancel") { closeEditor() }
                     .keyboardShortcut(.cancelAction)
                 // Existing terms can be deleted from here (the browse list is
                 // kept clean — no per-row delete). Subordinate to the primary
@@ -3808,7 +3847,7 @@ struct DictionaryTermEditView: View {
                     Button("Delete term", role: .destructive) { showDeleteConfirm = true }
                 }
                 Spacer()
-                Button("Done") { onClose() }
+                Button("Done") { closeEditor() }
                     .keyboardShortcut(.defaultAction)
                     .buttonStyle(.borderedProminent)
                     .tint(SettingsView.brandAccent)
@@ -3843,9 +3882,12 @@ struct DictionaryTermEditView: View {
     }
 
     /// Remove this dictionary entry — and, on Concord builds, its voiceprint —
-    /// then close the sheet back to the list.
+    /// then close the sheet back to the list. Clears the voiceprint for BOTH the
+    /// current term and (if the Term was renamed in this session) the original
+    /// term it was enrolled under, so a rename-then-delete leaves no orphan.
     private func deleteTerm() {
         #if Concord
+        cleanupOrphanedVoiceprintOnRename()
         let t = currentTerm
         if !t.isEmpty {
             model.voiceprintServices?.coordinator.removeVoiceprint(termID: t)

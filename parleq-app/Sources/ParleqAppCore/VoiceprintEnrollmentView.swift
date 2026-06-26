@@ -18,6 +18,10 @@ public struct VoiceprintEnrollmentView: View {
     @State private var recorder: AudioRecorder?
     @State private var activeRecording: (negative: Bool, index: Int)?
     @State private var micError: String?
+    /// The in-flight analyze task, tracked so Cancel can abandon it. (Even if it
+    /// runs to completion it only builds an in-memory draft — storage is deferred
+    /// to Save — so cancelling mid-analyze can never leave a committed voiceprint.)
+    @State private var analyzeTask: Task<Void, Never>?
 
     public init(model: VoiceprintEnrollmentModel,
                 onClose: @escaping () -> Void,
@@ -53,7 +57,7 @@ public struct VoiceprintEnrollmentView: View {
 
     private var footer: some View {
         HStack {
-            Button("Cancel") { model.cancel(); onClose() }
+            Button("Cancel") { analyzeTask?.cancel(); model.cancel(); onClose() }
             Spacer()
             if model.isWorking { ProgressView().controlSize(.small).padding(.trailing, 8) }
             primaryButton
@@ -67,7 +71,7 @@ public struct VoiceprintEnrollmentView: View {
             Button("Enable voice enrollment") { model.consent() }
                 .keyboardShortcut(.defaultAction)
         case .carriers:
-            Button("Analyze") { Task { await model.analyze() } }
+            Button("Analyze") { analyzeTask = Task { await model.analyze() } }
                 .disabled(!model.carriersReady).keyboardShortcut(.defaultAction)
         case .analyzing:
             EmptyView()

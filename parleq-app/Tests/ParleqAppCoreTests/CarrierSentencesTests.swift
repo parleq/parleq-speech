@@ -76,4 +76,45 @@ final class CarrierSentencesTests: XCTestCase {
         let parsed = CarrierSentences.parseLines("\"I use Keavi.\"\n- Something else\n* Keavi again", term: "Keavi")
         XCTAssertEqual(parsed, ["I use Keavi.", "Keavi again"])
     }
+
+    func test_parseLines_requires_standalone_word_not_substring() {
+        let raw = """
+        I use Keavi daily.
+        Keavi's API is nice.
+        A Keavi-related task.
+        I mentioned Keavi twice: Keavi rocks.
+        Plain Keavi here.
+        """
+        // Only the two lines with exactly one STANDALONE "Keavi" survive:
+        //  - "Keavi's" / "Keavi-related" are substring matches (rejected),
+        //  - the double-occurrence line has two standalone hits (rejected).
+        let parsed = CarrierSentences.parseLines(raw, term: "Keavi")
+        XCTAssertEqual(parsed, ["I use Keavi daily.", "Plain Keavi here."])
+    }
+
+    func test_parseLines_multiword_term_requires_full_phrase() {
+        let raw = """
+        I love New York in the fall.
+        New shoes today.
+        She moved from York to here.
+        We saw New York, New York signs.
+        """
+        // A multi-word term must appear as the full consecutive phrase exactly once:
+        //  - "New shoes" (only "New") and "from York" (only "York") are rejected,
+        //  - the doubled "New York ... New York" line has two phrase hits (rejected),
+        //  - only the single clean occurrence survives.
+        let parsed = CarrierSentences.parseLines(raw, term: "New York")
+        XCTAssertEqual(parsed, ["I love New York in the fall."])
+    }
+
+    func test_parseLines_digit_bearing_term_requires_full_token() {
+        let raw = """
+        I asked GPT for help.
+        We use GPT-4 at work.
+        """
+        // "GPT-4" normalizes to "gpt4": the bare "GPT" line is rejected, only the
+        // line with the full "GPT-4" token survives.
+        let parsed = CarrierSentences.parseLines(raw, term: "GPT-4")
+        XCTAssertEqual(parsed, ["We use GPT-4 at work."])
+    }
 }
