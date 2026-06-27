@@ -567,26 +567,30 @@ public final class VoiceprintCoordinator {
                         startTime: $0.startTime, endTime: $0.endTime, confidence: $0.confidence)
         }
         let wordGroups = VoiceprintDemo.wordGroups(from: timings)
-        var spans: [SpanEmbedding] = []
+        var singleWordSpans: [SpanEmbedding] = []
+        var windowSpans: [SpanEmbedding] = []
 
         // Single-word spans (original behavior — preserved in full).
         for (i, g) in wordGroups.enumerated() {
             guard let emb = features.pooledEmbedding(
                 startSeconds: g.startSeconds, endSeconds: g.endSeconds) else { continue }
             let normalized = g.text.lowercased().filter { $0.isLetter }
-            spans.append(SpanEmbedding(normalizedText: normalized, groupIndex: i,
-                                       startSeconds: g.startSeconds, endSeconds: g.endSeconds, embedding: emb))
+            singleWordSpans.append(SpanEmbedding(normalizedText: normalized, groupIndex: i,
+                                                  startSeconds: g.startSeconds, endSeconds: g.endSeconds,
+                                                  embedding: emb))
         }
 
         // Adjacent 2-word windows — enables merged-span queries (e.g. "Ki V" → "Keavi").
+        // Stored separately so the text+occurrence fallback can exclude them (their
+        // concatenated normalizedText, e.g. "kiv", would produce spurious .contains matches).
         for i in 0..<(wordGroups.count - 1) {
             let first = wordGroups[i], second = wordGroups[i + 1]
             guard let emb = features.pooledEmbedding(
                 startSeconds: first.startSeconds, endSeconds: second.endSeconds) else { continue }
             let normalized = (first.text + second.text).lowercased().filter { $0.isLetter }
-            spans.append(SpanEmbedding(normalizedText: normalized, groupIndex: i,
-                                       startSeconds: first.startSeconds, endSeconds: second.endSeconds,
-                                       embedding: emb))
+            windowSpans.append(SpanEmbedding(normalizedText: normalized, groupIndex: i,
+                                              startSeconds: first.startSeconds, endSeconds: second.endSeconds,
+                                              embedding: emb))
         }
 
         // Adjacent 3-word windows.
@@ -596,13 +600,18 @@ public final class VoiceprintCoordinator {
                 startSeconds: first.startSeconds, endSeconds: last.endSeconds) else { continue }
             let normalized = (wordGroups[i].text + wordGroups[i + 1].text + wordGroups[i + 2].text)
                 .lowercased().filter { $0.isLetter }
-            spans.append(SpanEmbedding(normalizedText: normalized, groupIndex: i,
-                                       startSeconds: first.startSeconds, endSeconds: last.endSeconds,
-                                       embedding: emb))
+            windowSpans.append(SpanEmbedding(normalizedText: normalized, groupIndex: i,
+                                              startSeconds: first.startSeconds, endSeconds: last.endSeconds,
+                                              embedding: emb))
         }
 
-        guard !spans.isEmpty else { return nil }
-        let frozenSpans = spans   // capture as a let so the @Sendable closure captures by value
+        guard !singleWordSpans.isEmpty || !windowSpans.isEmpty else { return nil }
+        // `frozenSpans` = single-word only; used by the text+occurrence fallback (prevents
+        // concatenated window text, e.g. "kiv", from producing spurious .contains matches).
+        // `allFrozenSpans` = single-word + windows; used by the IoU / nearest-start locators
+        // so multi-word merged-span queries still find the right pooled window.
+        let frozenSpans = singleWordSpans
+        let allFrozenSpans = singleWordSpans + windowSpans
 
         return { ctx in
             guard let template = store.template(for: ctx.termID) else { return .noOpinion }
@@ -618,7 +627,9 @@ public final class VoiceprintCoordinator {
             if let start = ctx.startSeconds {
                 if let end = ctx.endSeconds {
                     // IoU-based locator: pick the pooled span with the best overlap.
-                    let bestByIoU = frozenSpans.max { lhs, rhs in
+                    // Uses allFrozenSpans (single-word + windows) so multi-word merged-span
+                    // queries (e.g. "Ki V" → "Keavi") can find the right pooled window.
+                    let bestByIoU = allFrozenSpans.max { lhs, rhs in
                         let interL = max(0.0, min(lhs.endSeconds, end) - max(lhs.startSeconds, start))
                         let unionL = (lhs.endSeconds - lhs.startSeconds) + (end - start) - interL
                         let iouL   = unionL > 0 ? interL / unionL : 0.0
@@ -633,15 +644,16 @@ public final class VoiceprintCoordinator {
                     if union > 0 && inter / union > 0 {
                         span = best
                     } else {
-                        // No overlap — fall back to nearest-start.
-                        guard let nearest = frozenSpans.min(by: {
+                        // No overlap — fall back to nearest-start (all spans).
+                        guard let nearest = allFrozenSpans.min(by: {
                             abs($0.startSeconds - start) < abs($1.startSeconds - start)
                         }) else { return .noOpinion }
                         span = nearest
                     }
                 } else {
                     // endSeconds not set — nearest-start (original behavior, HTTP ASR path).
-                    guard let best = frozenSpans.min(by: {
+                    // Uses allFrozenSpans for maximum locator accuracy.
+                    guard let best = allFrozenSpans.min(by: {
                         abs($0.startSeconds - start) < abs($1.startSeconds - start)
                     }) else { return .noOpinion }
                     span = best
