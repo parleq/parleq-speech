@@ -1254,6 +1254,8 @@ struct SettingsView: View {
     /// Dismiss flag for the Dictionary-section intro banner (@AppStorage so the
     /// section re-renders when dismissed; shares the key with VoiceEnrollBanner).
     @AppStorage(VoiceEnrollBanner.sectionBannerDismissedKey) private var voiceEnrollSectionBannerDismissed = false
+    /// Dismiss flag for the re-enroll-needed banner (post-migration).
+    @AppStorage(NeedsReEnrollBanner.dismissedKey) private var needsReEnrollBannerDismissed = false
     /// Contextual over-fire suggestion ("'X' got confused with 'Y'"). Set from
     /// AppState when the user undoes a dictionary correction; in-memory only.
     @ObservedObject private var enrollNudge = VoiceEnrollNudge.shared
@@ -2983,6 +2985,20 @@ struct SettingsView: View {
                 #if Concord
                 dictionaryIntroBanner
                 overFireNudgeCard
+                if let coord = model.voiceprintServices?.coordinator {
+                    NeedsReEnrollBannerRow(coordinator: coord, isDismissed: $needsReEnrollBannerDismissed) {
+                        // Open the first dictionary term that lacks an active voiceprint
+                        // so the user can re-enroll directly. Falls through to the first
+                        // visible term when all happen to be enrolled already.
+                        let firstID = model.dictionaryEntries.first(where: {
+                            !$0.term.trimmingCharacters(in: .whitespaces).isEmpty &&
+                            !coord.hasVoiceprint($0.term)
+                        })?.id ?? model.dictionaryEntries.first?.id
+                        if let id = firstID {
+                            editingDictionaryTarget = DictionaryEditTarget(id: id, isNew: false)
+                        }
+                    }
+                }
                 #endif
                 SettingsCaption("Terms and names the speech model commonly mishears. Tap a term to edit it — or to teach Parleq to recognize it in your own voice.")
 
@@ -3208,6 +3224,67 @@ struct SettingsView: View {
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(SettingsView.brandAccent.opacity(0.30), lineWidth: 0.5)
             )
+        }
+    }
+
+    // MARK: - Re-enroll banner
+
+    /// Dismissible warning shown when migration discarded voiceprints that
+    /// could not be auto-re-derived (no stored audio, or quality bar failed).
+    ///
+    /// Pulled out as a separate `View` so `@ObservedObject` on the coordinator
+    /// is a first-class `ObservableObject` property rather than an optional
+    /// chain — this ensures `needsReEnrollCount` changes trigger a re-render.
+    private struct NeedsReEnrollBannerRow: View {
+        @ObservedObject var coordinator: VoiceprintCoordinator
+        @Binding var isDismissed: Bool
+        let onReEnroll: () -> Void
+
+        var body: some View {
+            if NeedsReEnrollBanner.shouldShow(
+                dismissed: isDismissed,
+                needsReEnrollCount: coordinator.needsReEnrollCount
+            ) {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                        .font(.system(size: 15))
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(NeedsReEnrollBanner.title)
+                            .font(.callout.weight(.semibold))
+                        Text(NeedsReEnrollBanner.message)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button {
+                            onReEnroll()
+                        } label: {
+                            Text("Re-enroll")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(SettingsView.brandAccent)
+                        .controlSize(.small)
+                        .padding(.top, 2)
+                    }
+                    Spacer(minLength: 8)
+                    Button(action: { isDismissed = true }) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .padding(6)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Dismiss")
+                }
+                .padding(12)
+                .background(Color.orange.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color.orange.opacity(0.25), lineWidth: 0.5)
+                )
+            }
         }
     }
     #endif

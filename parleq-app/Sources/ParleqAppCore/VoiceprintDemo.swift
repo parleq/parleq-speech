@@ -122,7 +122,7 @@ import Concord
 /// `runStartupEnrollment` + `evaluateShadow` + hardcoded Keavi/kiwi windows below
 /// are the DEBUG flywheel path, active only under `PARLEQ_VOICEPRINT_DEMO=1`.
 @MainActor
-public final class VoiceprintCoordinator {
+public final class VoiceprintCoordinator: ObservableObject {
     /// Debug flywheel demo term/negative (used only by `runStartupEnrollment`).
     public static let termID = "Keavi"
     static let negativeLabel = "kiwi"
