@@ -251,4 +251,60 @@ final class ClipStorageMDMTests: XCTestCase {
                        "Unmanaged key must not override the user's stored false")
         XCTAssertFalse(managedKeys.contains("voiceprintClipStorageEnabled"))
     }
+
+    // MARK: - 6. 7089: enrollment gated ≠ management gated
+
+    /// When voiceEnrollmentEnabled is off, enrollment is not offered (the enroll
+    /// entry point must hide/disable), but the coordinator still functions for
+    /// management (load, query, delete). The services wiring is always exposed to
+    /// Settings so existing prints can be viewed and deleted.
+    #if Concord
+    @MainActor
+    func test_7089_enrollment_gated_does_not_block_coordinator_management() {
+        var cfg = Config.default
+        cfg.voiceEnrollmentEnabled = false
+
+        // Enrollment must not be offered.
+        XCTAssertFalse(VoiceprintServices.enrollmentOffered(cfg),
+                       "enrollmentOffered must return false when voiceEnrollmentEnabled=false")
+
+        // Despite enrollment being off, the coordinator itself loads and serves
+        // management requests normally.
+        let c = VoiceprintCoordinator()
+        let current = BundledASREngine.voiceprintEncoderIdentity
+        let stub = StubPersistenceForMDM(.success([
+            VoiceprintTemplate(termID: "MyTerm", voiceprint: [0.1, 0.2], negatives: [:],
+                               dim: 2, lowQuality: false, modelVersion: current)
+        ]))
+        c.persistence = stub
+        c.loadPersisted()
+
+        // Coordinator loaded the print — management handle works.
+        XCTAssertTrue(c.hasVoiceprint("MyTerm"),
+                      "coordinator must load existing prints even when enrollment is off")
+
+        // Delete still works — management operations are not gated by enrollmentOffered.
+        c.removeVoiceprint(termID: "MyTerm")
+        XCTAssertFalse(c.hasVoiceprint("MyTerm"),
+                       "management delete must work even when enrollment is gated")
+        // The delete must have persisted (no resurrection on next load).
+        if let saved = stub.saved.last {
+            XCTAssertFalse(saved.map { $0.termID }.contains("MyTerm"),
+                           "deleted term must not reappear in the persisted payload")
+        }
+    }
+    #endif
 }
+
+// Helper spy scoped to this test file (avoids name conflict with the one in VoiceprintCoordinatorTests).
+#if Concord
+import Concord
+private final class StubPersistenceForMDM: VoiceprintPersistence, @unchecked Sendable {
+    var loadResult: Result<[VoiceprintTemplate], Error>
+    private(set) var saved: [[VoiceprintTemplate]] = []
+    init(_ loadResult: Result<[VoiceprintTemplate], Error>) { self.loadResult = loadResult }
+    func load() throws -> [VoiceprintTemplate] { try loadResult.get() }
+    func save(_ templates: [VoiceprintTemplate]) throws { saved.append(templates) }
+    func deleteAll() throws {}
+}
+#endif

@@ -1497,14 +1497,16 @@ struct ParleqApp {
                                 return (enabled: cfg.voiceprintClipStorageEnabled,
                                         consented: cfg.voiceClipStorageConsented)
                             })
-                        // 7033: voiceEnrollmentEnabled is the master switch (user or
-                        // MDM). When OFF, voice enrollment must be OFF fleet-wide —
-                        // do NOT expose the wizard's services to Settings (the enroll
-                        // UI keys off voiceprintServices != nil) and skip the demo
-                        // enrollment. Existing voiceprints still loaded + migrated +
-                        // matched above; only the enrollment SURFACE is gated.
+                        // 7089: always wire the services so Settings keeps its
+                        // management handle (view/delete voiceprints) regardless of
+                        // whether enrollment is offered. The enroll entry points are
+                        // gated individually — enrollmentHero in SettingsWindow (~3999)
+                        // and startEnroll (~4238) each guard on enrollmentOffered —
+                        // so the enrollment SURFACE stays off when the master switch is
+                        // off, while existing prints remain viewable and deletable.
+                        ParleqAppWindowController.shared.setVoiceprintServices(vpServices)
+                        // 7033: gate only the enrollment-triggering code paths.
                         if VoiceprintServices.enrollmentOffered(Config.load().config) {
-                            ParleqAppWindowController.shared.setVoiceprintServices(vpServices)
                             if VoiceprintDemo.isEnabled {
                                 // Debug flywheel enrollment. The coordinator's
                                 // onStoreChanged callback (wired in AppState's didSet)
