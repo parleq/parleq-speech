@@ -326,12 +326,25 @@ public final class VoiceprintCoordinator: ObservableObject {
     public func removeVoiceprint(termID: String) {
         store.remove(termID: termID)
         try? audioPersistence?.remove(termID: termID)
+        // 7086: also evict any pending-migration template for this termID so a
+        // delete of a pending-only term actually deletes it (notifyStoreChanged
+        // saves active ∪ pendingMigration — leaving the entry there would
+        // rewrite it back to disk).
+        if let idx = pendingMigration.firstIndex(where: { $0.termID == termID }) {
+            pendingMigration.remove(at: idx)
+            if needsReEnrollCount > 0 { needsReEnrollCount -= 1 }
+        }
         notifyStoreChanged()
     }
     /// Forget every voiceprint ("delete all my voiceprints").
     public func removeAll() {
         store.removeAll()
         try? audioPersistence?.deleteAll()
+        // 7086: clear pendingMigration before persisting so "delete all" does
+        // not rewrite the inert templates back to disk via the active ∪ pending
+        // union in notifyStoreChanged.
+        pendingMigration = []
+        needsReEnrollCount = 0
         notifyStoreChanged()
     }
 
