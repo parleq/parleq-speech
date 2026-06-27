@@ -1444,6 +1444,11 @@ struct ParleqApp {
                         // Enrollment-audio persistence: raw WAV clips for future
                         // re-derivation across encoder changes. Set before loadPersisted.
                         coordinator.audioPersistence = EnrollmentAudioStore()
+                        // SI-2: if clip storage is resolved OFF (user or MDM kill-switch),
+                        // erase any already-stored enrollment audio at launch so orgs that
+                        // push the kill-switch after users enrolled actually remove the clips.
+                        coordinator.enforceClipStoragePolicy(
+                            enabled: Config.load().config.voiceprintClipStorageEnabled)
                         stateBox.value?.voiceprint = coordinator
                         coordinator.loadPersisted()
                         // Auto-migrate any voiceprints parked under an unknown encoder

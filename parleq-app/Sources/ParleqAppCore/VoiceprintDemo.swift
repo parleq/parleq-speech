@@ -314,6 +314,14 @@ public final class VoiceprintCoordinator {
         notifyStoreChanged()
     }
 
+    /// SI-2: when clip storage is disabled (user or MDM), erase any stored
+    /// enrollment audio. Call at launch with the resolved (overlaid) flag.
+    public func enforceClipStoragePolicy(enabled: Bool) {
+        guard !enabled else { return }
+        try? audioPersistence?.deleteAll()
+        log("[voiceprint-audio] clip storage disabled — stored clips erased")  // count-free, no content
+    }
+
     /// Persist raw enrollment clips for `termID`, merging with any existing map.
     /// Best-effort (errors silently ignored). Logs count only — never audio or text.
     public func storeEnrollmentClips(termID: String, _ clips: [StoredEnrollmentClip]) {
