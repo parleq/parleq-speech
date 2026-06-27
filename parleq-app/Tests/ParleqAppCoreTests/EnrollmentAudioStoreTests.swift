@@ -109,6 +109,32 @@ final class EnrollmentAudioStoreTests: XCTestCase {
         XCTAssertEqual(try store(tempURL()).load(), [:])
     }
 
+    // MARK: - 7087: permission-fix path covered (overwrite scenario)
+
+    /// Pre-create the destination with loose perms (0644), call save again,
+    /// assert the result is still 0600.
+    func test_7087_save_over_loose_perms_file_restores_0600() throws {
+        let url = tempURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let s = store(url)
+
+        // First write — creates with 0600.
+        try s.save(["Keavi": [positiveClip()]])
+
+        // Loosen the permissions to simulate a file that somehow got 0644.
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: url.path)
+        let looseBefore = (try FileManager.default.attributesOfItem(atPath: url.path)[.posixPermissions] as? Int)
+        XCTAssertEqual(looseBefore, 0o644, "test pre-condition: file is 0644 before the second save")
+
+        // Second write — should restore 0600 via usingNewMetadataOnly atomic replace.
+        try s.save(["Keavi": [positiveClip()], "Claude": [negativeClip()]])
+
+        let attrs = try FileManager.default.attributesOfItem(atPath: url.path)
+        let perms = attrs[.posixPermissions] as? Int
+        XCTAssertEqual(perms, 0o600,
+                       "save over a loose-perms file must restore 0600 (usingNewMetadataOnly)")
+    }
+
     // MARK: - R9: no-leak
 
     /// R9 — EnrollmentAudioStore must write ONLY to its fileURL's directory.
