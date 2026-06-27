@@ -112,6 +112,7 @@ extension VoiceprintDemo {
 // MARK: - Concord-gated enrollment + gate evaluation
 
 #if Concord
+import Combine
 import Concord
 
 /// MainActor coordinator owning the in-memory voiceprint store + acoustic gate.
@@ -186,6 +187,13 @@ public final class VoiceprintCoordinator {
     /// pass. Empty until `loadPersisted` is called. Reset on each call.
     /// `private(set)` so tests can assert without a public setter.
     public private(set) var pendingMigration: [VoiceprintTemplate] = []
+
+    /// Count of voiceprints that could NOT be auto-migrated and therefore need a
+    /// manual re-enroll (no stored audio to re-derive from, or the re-derivation
+    /// failed the quality bar). Set by `migrateIfNeeded`. A later task surfaces a
+    /// banner that OBSERVES this count — deliberately no banner type is referenced
+    /// here (R7).
+    @Published public private(set) var needsReEnrollCount: Int = 0
 
     private func notifyStoreChanged() {
         onStoreChanged?()
@@ -418,6 +426,94 @@ public final class VoiceprintCoordinator {
     public func commit(_ template: VoiceprintTemplate) {
         store.upsert(template)
         notifyStoreChanged()
+    }
+
+    // MARK: - Encoder-change migration (non-destructive, quality-gated; SI-1)
+
+    /// Re-derive a voiceprint for `termID` from its STORED enrollment clips under
+    /// the CURRENT encoder (`transcribe` is the live encoder), pooling positives
+    /// into the term's voiceprint and attaching each distinct confusable's
+    /// negative. Returns the re-stamped DRAFT template plus its quality verdict,
+    /// or nil when no positive clip produced a usable span (nothing to migrate).
+    /// Pure builder — does NOT touch the store or persistence (`migrateIfNeeded`
+    /// owns the install/persist decisions).
+    public func buildTemplate(
+        from clips: [StoredEnrollmentClip], termID: String,
+        transcribe: (Data) async throws -> ASRResult?
+    ) async -> (template: VoiceprintTemplate, lowQuality: Bool)? {
+        let positives = clips
+            .filter { $0.role == .positive }
+            .map { EnrollmentClip(wav: $0.wav, carrierText: $0.carrierText) }
+        guard let (template, outcome) = await buildPositive(
+            termID: termID, term: termID, carriers: positives, transcribe: transcribe)
+        else { return nil }
+
+        // Attach one negative prototype per distinct confusable label, preserving
+        // first-seen order so the build is deterministic.
+        var byLabel: [String: [EnrollmentClip]] = [:]
+        var labelOrder: [String] = []
+        for clip in clips where clip.role == .negative {
+            guard let label = clip.negativeLabel else { continue }
+            if byLabel[label] == nil { labelOrder.append(label) }
+            byLabel[label, default: []].append(
+                EnrollmentClip(wav: clip.wav, carrierText: clip.carrierText))
+        }
+        var finalTemplate = template
+        for label in labelOrder {
+            finalTemplate = await buildNegativeAttached(
+                to: finalTemplate, label: label, carriers: byLabel[label] ?? [], transcribe: transcribe)
+        }
+        return (finalTemplate, outcome.lowQuality)
+    }
+
+    /// Auto-migrate any `pendingMigration` voiceprints (loaded under an unknown
+    /// encoder stamp) by RE-DERIVING them from the stored enrollment audio under
+    /// the current encoder. NON-DESTRUCTIVE (R1/SI-1):
+    /// - If the audio store fails to load, BAIL without writing — the blob is
+    ///   preserved exactly as found.
+    /// - A term with no stored audio, or whose re-derivation fails the quality
+    ///   bar, stays INERT (kept in `pendingMigration` with its OLD stamp) and is
+    ///   counted into `needsReEnrollCount` — never silently dropped.
+    /// - We persist only when at least one term migrated, and the payload is the
+    ///   active store ∪ the still-inert pending templates, so the on-disk blob
+    ///   keeps the inert ones (old stamp) and never collapses to `save([])`.
+    /// Logging is COUNT-ONLY (no term text, no audio, no embeddings).
+    public func migrateIfNeeded(transcribe: (Data) async throws -> ASRResult?) async {
+        guard !pendingMigration.isEmpty, let audioPersistence else { return }
+        let audioMap: [String: [StoredEnrollmentClip]]
+        do {
+            audioMap = try audioPersistence.load()
+        } catch {
+            // R1: audio unavailable → bail, NO save. The voiceprint blob is left
+            // exactly as found (the inert templates keep their old stamp on disk).
+            log("[voiceprint] migrate: audio load failed (\(type(of: error))) — blob preserved")
+            return
+        }
+        var migrated = 0
+        var discarded = 0
+        var stillInert: [VoiceprintTemplate] = []
+        for t in pendingMigration {
+            guard let clips = audioMap[t.termID], !clips.isEmpty else {
+                // No stored audio → can't re-derive; stays inert (needs manual re-enroll).
+                stillInert.append(t); discarded += 1; continue
+            }
+            guard let built = await buildTemplate(from: clips, termID: t.termID, transcribe: transcribe),
+                  !built.lowQuality else {
+                // Re-derivation failed or low quality → don't install a bad gate; stay inert.
+                stillInert.append(t); discarded += 1; continue
+            }
+            store.upsert(built.template); migrated += 1
+        }
+        needsReEnrollCount = discarded
+        if migrated > 0 {
+            // R1: persist active store ∪ still-inert pending. `all` is non-empty
+            // (migrated > 0), so this never degrades to save([]) → deleteAll().
+            let all = store.termIDs.compactMap { store.template(for: $0) } + stillInert
+            try? persistence?.save(all)
+        }
+        pendingMigration = stillInert
+        onStoreChanged?()   // re-install the gate to see the migrated templates
+        log("[voiceprint] migrate: migrated=\(migrated) discarded=\(discarded)")
     }
 
     // MARK: Startup enrollment

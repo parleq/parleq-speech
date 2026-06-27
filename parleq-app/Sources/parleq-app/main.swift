@@ -1446,6 +1446,16 @@ struct ParleqApp {
                         coordinator.audioPersistence = EnrollmentAudioStore()
                         stateBox.value?.voiceprint = coordinator
                         coordinator.loadPersisted()
+                        // Auto-migrate any voiceprints parked under an unknown encoder
+                        // stamp by re-deriving them from the stored enrollment audio
+                        // under the CURRENT encoder. Non-destructive (R1/SI-1): bails
+                        // without writing if the audio store can't load; inert terms
+                        // keep their old stamp on disk.
+                        Task { @MainActor [weak local] in
+                            await coordinator.migrateIfNeeded { wav in
+                                try await local?.transcribeRawForVoiceprint(wav: wav)
+                            }
+                        }
                         // Bundle the wizard's dependencies and hand them to Settings.
                         let vpServices = VoiceprintServices(
                             coordinator: coordinator,
