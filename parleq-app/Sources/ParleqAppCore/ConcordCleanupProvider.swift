@@ -157,10 +157,11 @@ public final class ConcordCleanupProvider: LLMProvider, @unchecked Sendable {
         // UNCHANGED (a safe no-op). Refinement requires a cloud/LLM provider.
         if call.isRefine {
             // Drain the OTHER side-channels too (they were set for this utterance),
-            // so a skipped refine never leaks stale diagnostics/dictionary into a
+            // so a skipped refine never leaks stale diagnostics/dictionary/policies into a
             // later cleanup — preserving the fresh-stateless-per-utterance invariant.
             _ = takeDiagnostics()
             _ = pendingDictionaryTerms()
+            _ = takePolicies()
             // A refine produces no edits — clear any prior cleanup's edits so the
             // overlay highlight from an earlier turn can't leak onto this one.
             setLastEdits([])
@@ -187,13 +188,18 @@ public final class ConcordCleanupProvider: LLMProvider, @unchecked Sendable {
         // ride the shared LLMProvider signature, and the system prompt only
         // carries a free-text hint, not structured terms).
         let dict = pendingDictionaryTerms()
+        // Per-term correction policies (A2: consumed here, engine ignores them;
+        // Task 7 wires up the matching path that acts on them).
+        let policies = takePolicies()
         // Build this utterance's acoustic gate from its diagnostics (enrollment enforce mode). nil
         // → byte-identical baseline behavior.
         let acousticGate = gateFactory().flatMap { $0(diagnostics) }
 
         let result = acousticGate.map {
-            engine.clean(transcript: transcript, tokens: tokens, dictionary: dict, acousticGate: $0)
-        } ?? engine.clean(transcript: transcript, tokens: tokens, dictionary: dict)
+            engine.clean(transcript: transcript, tokens: tokens, dictionary: dict, acousticGate: $0,
+                         policies: policies)
+        } ?? engine.clean(transcript: transcript, tokens: tokens, dictionary: dict,
+                          acousticGate: nil, policies: policies)
 
         // Provenance: retain the full per-stage edit records IN MEMORY for
         // the maintainer's A/B analysis. Counts-only to stderr below.
@@ -252,6 +258,28 @@ public final class ConcordCleanupProvider: LLMProvider, @unchecked Sendable {
         let d = pendingDictionary
         pendingDictionary = []
         return d
+    }
+
+    // MARK: - Per-utterance policy side-channel
+
+    // Per-term correction policies (keyed by canonical term, original case).
+    // Mirrors the pendingDictionary lifecycle: set by AppState before cleanup,
+    // consumed + cleared inside generateStreaming, drained on refine turns.
+    // In A2 the engine ignores the map; Task 7 wires the matching paths that act on it.
+    private var pendingPolicies: [String: CorrectionPolicy] = [:]
+
+    /// Stash the per-term correction policies for the NEXT cleanup call.
+    /// Called by AppState immediately before cleanup (alongside setUtteranceDictionary).
+    public func setUtterancePolicies(_ p: [String: CorrectionPolicy]) {
+        lock.lock(); defer { lock.unlock() }
+        pendingPolicies = p
+    }
+
+    private func takePolicies() -> [String: CorrectionPolicy] {
+        lock.lock(); defer { lock.unlock() }
+        let p = pendingPolicies
+        pendingPolicies = [:]
+        return p
     }
 
     // MARK: - Input construction

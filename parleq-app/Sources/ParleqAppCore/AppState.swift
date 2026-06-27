@@ -3299,6 +3299,11 @@ public final class AppState {
                 // bare transcript + isRefine) are set CENTRALLY inside
                 // streamCleanupOrRefine so every call site is covered uniformly;
                 // this site just forwards the ASR diagnostics it captured.
+                #if Concord
+                let concordEnrolledIDs = self?.voiceprint?.enrolledTermIDs ?? []
+                #else
+                let concordEnrolledIDs: [String] = []
+                #endif
                 let outcome = await streamCleanupOrRefine(
                     llm: resolvedLLM,
                     overlay: overlay,
@@ -3312,6 +3317,7 @@ public final class AppState {
                     pasteDestinationLabel: pasteDestLabel,
                     transform: asRefine ? nil : defaultPreset?.prompt,
                     asrDiagnostics: asrResultRaw.diagnostics,
+                    enrolledTermIDs: concordEnrolledIDs,
                     shouldRenderToOverlay: { [weak self] in
                         self?.shouldStreamRenderToOverlay() ?? false
                     }
@@ -4786,6 +4792,10 @@ private func streamCleanupOrRefine(
     // path and on re-clean call sites). Forwarded to the on-device Concord
     // provider's dictionary stage; ignored by every other provider.
     asrDiagnostics: ASRDiagnostics? = nil,
+    // Enrolled voiceprint term IDs (lowercased by the caller) for per-term
+    // policy classification. Only the main capture path passes these; re-clean
+    // / preset call sites default to empty (engine ignores policies in A2).
+    enrolledTermIDs: [String] = [],
     // Gate for the per-chunk overlay writes. Evaluated on the MainActor
     // before each streamed chunk renders. When it returns false the
     // chunk text still accumulates into `assembled` (so the final
@@ -4989,6 +4999,8 @@ private func streamCleanupOrRefine(
             concord.setUtteranceContext(diagnostics: asrDiagnostics)
             concord.setUtteranceDictionary(customDictionary)
             concord.setUtteranceCall(transcript: rawTranscript, isRefine: asRefine, priorText: priorText)
+            let enrolled = Set(enrolledTermIDs.map { $0.lowercased() })
+            concord.setUtterancePolicies(CorrectionPolicyClassifier.classify(customDictionary, enrolled: enrolled))
         }
         #endif
 
