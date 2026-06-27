@@ -3196,7 +3196,8 @@ struct SettingsView: View {
     /// One-line, dismissible section intro pushing the marquee feature.
     @ViewBuilder
     private var dictionaryIntroBanner: some View {
-        if !voiceEnrollSectionBannerDismissed, model.voiceprintServices != nil {
+        if !voiceEnrollSectionBannerDismissed, model.voiceprintServices != nil,
+           VoiceprintServices.enrollmentOffered(Config.load().config) {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: "mic.circle.fill")
                     .foregroundStyle(SettingsView.brandAccent)
@@ -3233,6 +3234,7 @@ struct SettingsView: View {
     private var overFireNudgeCard: some View {
         if let s = enrollNudge.pending,
            model.voiceprintServices != nil,
+           VoiceprintServices.enrollmentOffered(Config.load().config),
            let matchID = model.dictionaryEntries.first(where: {
                $0.term.lowercased() == s.term.lowercased()
            })?.id {
