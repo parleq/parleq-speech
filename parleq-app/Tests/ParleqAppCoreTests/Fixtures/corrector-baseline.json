@@ -16,12 +16,12 @@
   },
   "keavi" : {
     "overFired" : 0,
-    "recovered" : 42,
-    "total" : 46
+    "recovered" : 45,
+    "total" : 49
   },
   "robo-rev" : {
     "overFired" : 0,
-    "recovered" : 9,
-    "total" : 12
+    "recovered" : 12,
+    "total" : 14
   }
 }

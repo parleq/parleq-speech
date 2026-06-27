@@ -30,6 +30,10 @@ final class CorrectorRegressionHarnessTests: XCTestCase {
     private static let testDict: [DictionaryEntry] = [
         DictionaryEntry(term: "Keavi", aliases: ["kiwi"]),
         DictionaryEntry(term: "RoboRev", aliases: []),
+        // Over-fire guard: "Claude" classifies as .phoneticEligible (distinctive proper noun).
+        // It carries no recovery intent — it sits in the dict so the control clips ("could"/"would")
+        // pin that the corrector never over-fires a common word into "Claude".
+        DictionaryEntry(term: "Claude", aliases: []),
     ]
 
     /// Term intents: which canonical term must appear in the cleaned output.
