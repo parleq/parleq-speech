@@ -566,28 +566,88 @@ public final class VoiceprintCoordinator {
             TokenTiming(token: $0.token, tokenId: $0.tokenId,
                         startTime: $0.startTime, endTime: $0.endTime, confidence: $0.confidence)
         }
+        let wordGroups = VoiceprintDemo.wordGroups(from: timings)
         var spans: [SpanEmbedding] = []
-        for (i, g) in VoiceprintDemo.wordGroups(from: timings).enumerated() {
+
+        // Single-word spans (original behavior — preserved in full).
+        for (i, g) in wordGroups.enumerated() {
             guard let emb = features.pooledEmbedding(
                 startSeconds: g.startSeconds, endSeconds: g.endSeconds) else { continue }
             let normalized = g.text.lowercased().filter { $0.isLetter }
             spans.append(SpanEmbedding(normalizedText: normalized, groupIndex: i,
                                        startSeconds: g.startSeconds, endSeconds: g.endSeconds, embedding: emb))
         }
+
+        // Adjacent 2-word windows — enables merged-span queries (e.g. "Ki V" → "Keavi").
+        for i in 0..<(wordGroups.count - 1) {
+            let first = wordGroups[i], second = wordGroups[i + 1]
+            guard let emb = features.pooledEmbedding(
+                startSeconds: first.startSeconds, endSeconds: second.endSeconds) else { continue }
+            let normalized = (first.text + second.text).lowercased().filter { $0.isLetter }
+            spans.append(SpanEmbedding(normalizedText: normalized, groupIndex: i,
+                                       startSeconds: first.startSeconds, endSeconds: second.endSeconds,
+                                       embedding: emb))
+        }
+
+        // Adjacent 3-word windows.
+        for i in 0..<(wordGroups.count - 2) {
+            let first = wordGroups[i], last = wordGroups[i + 2]
+            guard let emb = features.pooledEmbedding(
+                startSeconds: first.startSeconds, endSeconds: last.endSeconds) else { continue }
+            let normalized = (wordGroups[i].text + wordGroups[i + 1].text + wordGroups[i + 2].text)
+                .lowercased().filter { $0.isLetter }
+            spans.append(SpanEmbedding(normalizedText: normalized, groupIndex: i,
+                                       startSeconds: first.startSeconds, endSeconds: last.endSeconds,
+                                       embedding: emb))
+        }
+
         guard !spans.isEmpty else { return nil }
         let frozenSpans = spans   // capture as a let so the @Sendable closure captures by value
 
         return { ctx in
             guard let template = store.template(for: ctx.termID) else { return .noOpinion }
             // Locate the candidate span. PREFER the engine-provided audio window (robust to a
-            // biasing rewrite, where the word's TEXT no longer matches the raw token label): pick the
-            // pooled group whose start time is closest. Fall back to text + occurrence when no span
-            // is provided (HTTP ASR path).
+            // biasing rewrite, where the word's TEXT no longer matches the raw token label).
+            // When both start and end are provided, pick the stored span with the highest IoU
+            // against the query window — this correctly prefers the exact single-word span
+            // (IoU 1.0) over a wider window for a single-word query, while also preferring
+            // the right multi-word pooled window for a merged-span query. Fall back to
+            // nearest-start when endSeconds is unset or no span overlaps the query window.
+            // Fall back to text + occurrence when no audio window is provided (HTTP ASR path).
             let span: SpanEmbedding
-            if let start = ctx.startSeconds,
-               let best = frozenSpans.min(by: { abs($0.startSeconds - start) < abs($1.startSeconds - start) }) {
-                span = best
+            if let start = ctx.startSeconds {
+                if let end = ctx.endSeconds {
+                    // IoU-based locator: pick the pooled span with the best overlap.
+                    let bestByIoU = frozenSpans.max { lhs, rhs in
+                        let interL = max(0.0, min(lhs.endSeconds, end) - max(lhs.startSeconds, start))
+                        let unionL = (lhs.endSeconds - lhs.startSeconds) + (end - start) - interL
+                        let iouL   = unionL > 0 ? interL / unionL : 0.0
+                        let interR = max(0.0, min(rhs.endSeconds, end) - max(rhs.startSeconds, start))
+                        let unionR = (rhs.endSeconds - rhs.startSeconds) + (end - start) - interR
+                        let iouR   = unionR > 0 ? interR / unionR : 0.0
+                        return iouL < iouR
+                    }
+                    guard let best = bestByIoU else { return .noOpinion }
+                    let inter = max(0.0, min(best.endSeconds, end) - max(best.startSeconds, start))
+                    let union = (best.endSeconds - best.startSeconds) + (end - start) - inter
+                    if union > 0 && inter / union > 0 {
+                        span = best
+                    } else {
+                        // No overlap — fall back to nearest-start.
+                        guard let nearest = frozenSpans.min(by: {
+                            abs($0.startSeconds - start) < abs($1.startSeconds - start)
+                        }) else { return .noOpinion }
+                        span = nearest
+                    }
+                } else {
+                    // endSeconds not set — nearest-start (original behavior, HTTP ASR path).
+                    guard let best = frozenSpans.min(by: {
+                        abs($0.startSeconds - start) < abs($1.startSeconds - start)
+                    }) else { return .noOpinion }
+                    span = best
+                }
             } else {
+                // No audio window at all — text + occurrence fallback.
                 let needle = ctx.originalWord.lowercased().filter { $0.isLetter }
                 guard !needle.isEmpty else { return .noOpinion }
                 let matches = frozenSpans

@@ -128,6 +128,9 @@ final class CorrectorRegressionHarnessTests: XCTestCase {
             return
         }
         let factory = coordinator.enforcementGateFactory()
+        // Pre-compute the enrolled set once — used in every per-clip provider setup so
+        // Task 7's multi-token merge path (acousticGated policy) is actually exercised.
+        let enrolled = Set(coordinator.enrolledTermIDs.map { $0.lowercased() })
 
         // Per-clip helper — mirrors assertEnforceEndToEnd in the reference harness.
         final class Box: @unchecked Sendable { var text = "" }
@@ -158,6 +161,10 @@ final class CorrectorRegressionHarnessTests: XCTestCase {
             provider.setEnrollmentGateFactory(factory)
             provider.setUtteranceContext(diagnostics: diagnostics)
             provider.setUtteranceDictionary(Self.testDict)
+            // Wire policies so acousticGated (Keavi) and phoneticEligible (RoboRev) paths
+            // are active — without this, Task 7's merge logic never fires.
+            provider.setUtterancePolicies(CorrectionPolicyClassifier.classify(Self.testDict,
+                                                                               enrolled: enrolled))
             provider.setUtteranceCall(transcript: asrResult.text, isRefine: false, priorText: nil)
 
             let box = Box()
