@@ -1,0 +1,27 @@
+{
+  "bird" : {
+    "overFired" : 0,
+    "recovered" : 0,
+    "total" : 9
+  },
+  "control" : {
+    "overFired" : 0,
+    "recovered" : 0,
+    "total" : 5
+  },
+  "fruit" : {
+    "overFired" : 0,
+    "recovered" : 0,
+    "total" : 22
+  },
+  "keavi" : {
+    "overFired" : 0,
+    "recovered" : 42,
+    "total" : 46
+  },
+  "robo-rev" : {
+    "overFired" : 0,
+    "recovered" : 9,
+    "total" : 12
+  }
+}

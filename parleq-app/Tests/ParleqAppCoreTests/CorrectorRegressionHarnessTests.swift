@@ -204,10 +204,23 @@ final class CorrectorRegressionHarnessTests: XCTestCase {
             print("  \(intent): recovered=\(t.recovered)/\(t.total)  overFired=\(t.overFired)/\(t.total)")
         }
 
-        // Load the baseline if present; skip (not fail) if absent.
+        // MARK: - Mint path (PARLEQ_CORRECTOR_MINT_BASELINE=1)
+        // When this env flag is set, encode the current tally to
+        // Fixtures/corrector-baseline.json and skip (not fail) so the caller
+        // can inspect and commit the file.  The assertion branch is NOT run
+        // in a mint pass.
         let baselineURL = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .appendingPathComponent("Fixtures/corrector-baseline.json")
+
+        if ProcessInfo.processInfo.environment["PARLEQ_CORRECTOR_MINT_BASELINE"] == "1" {
+            let enc = JSONEncoder()
+            enc.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try enc.encode(tally)
+            try data.write(to: baselineURL, options: .atomic)
+            print("[corrector-regression] baseline minted → \(baselineURL.path)")
+            throw XCTSkip("baseline minted")
+        }
 
         if !FileManager.default.fileExists(atPath: baselineURL.path) {
             print("[corrector-regression] baseline not yet minted — printing tally above and skipping.")
