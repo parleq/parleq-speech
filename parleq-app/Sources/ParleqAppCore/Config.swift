@@ -645,6 +645,18 @@ public struct Config: Sendable {
     /// derived voiceprint (biometric data; persisted encrypted-at-rest on this
     /// device, deletable anytime) is kept. Set once when the user enables the feature.
     public var voiceEnrollmentConsented: Bool
+    /// Master switch for the voice enrollment feature (acoustic-disambiguation).
+    /// Default on; MDM-disable-able. When false, enrollment UI is suppressed and
+    /// voiceprint matching is disabled fleet-wide.
+    public var voiceEnrollmentEnabled: Bool
+    /// Store enrollment audio clips encrypted on-device to enable automatic
+    /// voiceprint migration across model updates. Default on;
+    /// user/MDM-disable-able (fail-closed).
+    public var voiceprintClipStorageEnabled: Bool
+    /// Whether the user has explicitly consented to storing enrollment audio
+    /// clips on-device. Default false; set true on explicit user consent in
+    /// the clip-storage consent UI.
+    public var voiceClipStorageConsented: Bool
     /// Count cap on the correction journal. nil = unlimited (default).
     /// 0 = disable journal entirely (compliance lever; nothing written,
     /// existing file removed) — same semantics as the transcript-history
@@ -792,6 +804,9 @@ public struct Config: Sendable {
         transcriptHistoryRetentionHours: nil,
         learnFromCorrectionsEnabled: false,
         voiceEnrollmentConsented: false,
+        voiceEnrollmentEnabled: true,
+        voiceprintClipStorageEnabled: true,
+        voiceClipStorageConsented: false,
         learnedCorrectionsMaxEntries: nil,
         learnedCorrectionsRetentionHours: nil,
         transformPresetsEnabled: true,
@@ -1786,6 +1801,15 @@ public struct Config: Sendable {
             if let v = features["voice_enrollment_consented"] as? Bool {
                 c.voiceEnrollmentConsented = v
             }
+            if let v = features["voice_enrollment_enabled"] as? Bool {
+                c.voiceEnrollmentEnabled = v
+            }
+            if let v = features["voiceprint_clip_storage_enabled"] as? Bool {
+                c.voiceprintClipStorageEnabled = v
+            }
+            if let v = features["voice_clip_storage_consented"] as? Bool {
+                c.voiceClipStorageConsented = v
+            }
             if let v = features["learned_corrections_max_entries"] as? Int, v >= 0 {
                 c.learnedCorrectionsMaxEntries = v
             }
@@ -1968,6 +1992,9 @@ public struct Config: Sendable {
             "custom_model_entry_enabled": config.customModelEntryEnabled,
             "learn_from_corrections_enabled": config.learnFromCorrectionsEnabled,
             "voice_enrollment_consented": config.voiceEnrollmentConsented,
+            "voice_enrollment_enabled": config.voiceEnrollmentEnabled,
+            "voiceprint_clip_storage_enabled": config.voiceprintClipStorageEnabled,
+            "voice_clip_storage_consented": config.voiceClipStorageConsented,
             "transform_presets_enabled": config.transformPresetsEnabled,
         ]
         if let v = config.transcriptHistoryMaxEntries { featuresDict["transcript_history_max_entries"] = v }
