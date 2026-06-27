@@ -176,6 +176,13 @@ public final class VoiceprintCoordinator {
     /// only (wiped on quit). Set by main.swift before `loadPersisted()`.
     public var persistence: VoiceprintPersistence?
 
+    /// Templates loaded from the blob that could NOT be kept in the store
+    /// (unknown encoder stamp) but are non-empty and therefore potentially
+    /// migratable. Populated by `loadPersisted`; consumed by a future migration
+    /// pass. Empty until `loadPersisted` is called. Reset on each call.
+    /// `private(set)` so tests can assert without a public setter.
+    public private(set) var pendingMigration: [VoiceprintTemplate] = []
+
     private func notifyStoreChanged() {
         onStoreChanged?()
         // Persist the current set (best-effort; encrypted at rest by the backend).
@@ -185,13 +192,26 @@ public final class VoiceprintCoordinator {
         }
     }
 
-    /// Load persisted voiceprints into the store (dropping any stamped with a
-    /// different ASR model version — stale after an encoder bump), then install
-    /// the gate. Prunes stale entries on disk, but a FAILED load (missing key,
-    /// decode error, downgrade) installs the gate WITHOUT saving — saving an empty
-    /// set would wipe the encrypted blob (data loss).
+    /// Load persisted voiceprints into the store, then install the gate.
+    ///
+    /// KEEP predicate (R3): a template is upserted iff its encoder stamp is the
+    /// current `voiceprintEncoderIdentity` OR a declared `legacyCompatibleStamp`,
+    /// AND its voiceprint slice is non-empty.
+    ///
+    /// SI-1 invariant: `loadPersisted` NEVER writes to the persistence backend.
+    /// The on-disk blob is left exactly as found. Pruning/migration is deferred to
+    /// a separate migration pass (a later task) that owns all write decisions.
+    /// This eliminates the footgun where loading with an empty kept-set would
+    /// silently call `save([])` → `deleteAll()`, wiping the user's enrolled data.
+    ///
+    /// Unknown-stamp non-empty templates are placed into `pendingMigration` so
+    /// a future migration pass can re-stamp or re-enroll them.
+    ///
+    /// A FAILED load (missing key, decode error, downgrade) installs the gate
+    /// without touching the blob.
     public func loadPersisted() {
         guard let persistence else { return }
+        pendingMigration = []
         let loaded: [VoiceprintTemplate]
         do {
             loaded = try persistence.load()
@@ -202,19 +222,22 @@ public final class VoiceprintCoordinator {
             onStoreChanged?()   // install gate (empty); do NOT persist → blob preserved
             return
         }
-        let current = BundledASREngine.fluidAudioVersion
+        let current = BundledASREngine.voiceprintEncoderIdentity
         var kept = 0
-        for t in loaded where t.modelVersion == current && !t.voiceprint.isEmpty {
-            store.upsert(t); kept += 1
+        for t in loaded {
+            let compatible = (t.modelVersion == current
+                || BundledASREngine.legacyCompatibleStamps.contains(t.modelVersion))
+            if compatible && !t.voiceprint.isEmpty {
+                store.upsert(t); kept += 1
+            } else if !t.voiceprint.isEmpty {
+                // Unknown stamp but non-empty — potentially migratable; park for
+                // a future migration pass. Empty templates are silently dropped
+                // (nothing to migrate).
+                pendingMigration.append(t)
+            }
         }
-        log("[voiceprint] loadPersisted: loaded=\(loaded.count) kept=\(kept) current-model=\(current)")
-        onStoreChanged?()   // install gate without persisting
-        // Re-persist ONLY when stale entries were actually pruned (avoid a
-        // redundant rewrite of identical data on the happy path).
-        if store.count != loaded.count {
-            let templates = store.termIDs.compactMap { store.template(for: $0) }
-            try? persistence.save(templates)
-        }
+        log("[voiceprint] loadPersisted: loaded=\(loaded.count) kept=\(kept) pending=\(pendingMigration.count) current-model=\(current)")
+        onStoreChanged?()   // install gate; do NOT persist (SI-1)
     }
 
     public init() {}
@@ -328,7 +351,7 @@ public final class VoiceprintCoordinator {
         }
         let result = VoiceprintEnroller.enroll(
             termID: termID, embeddings: embeddings,
-            modelVersion: BundledASREngine.fluidAudioVersion)
+            modelVersion: BundledASREngine.voiceprintEncoderIdentity)
 
         let termKey = Self.norm(term)
         var seen = Set<String>(); var aliases: [String] = []
@@ -466,7 +489,7 @@ public final class VoiceprintCoordinator {
         let result = VoiceprintEnroller.enroll(
             termID: Self.termID,
             embeddings: keaviEmb,
-            modelVersion: BundledASREngine.fluidAudioVersion
+            modelVersion: BundledASREngine.voiceprintEncoderIdentity
         )
         let template = result.template.withNegative(label: Self.negativeLabel, embeddings: kiwiEmb)
         store.upsert(template)

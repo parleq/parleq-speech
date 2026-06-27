@@ -42,8 +42,9 @@ final class VoiceprintCoordinatorTests: XCTestCase {
 
     func test_loadPersisted_happy_path_does_not_rewrite() {
         let c = VoiceprintCoordinator()
-        // Match the model version the coordinator stamps so nothing is pruned.
-        let v = BundledASREngine.fluidAudioVersion
+        // The legacy 0.29.0 stamp ("0.15.4-encoder.1" == fluidAudioVersion) is in
+        // legacyCompatibleStamps, so the template is kept without re-stamping.
+        let v = BundledASREngine.fluidAudioVersion  // "0.15.4-encoder.1"
         let stub = StubPersistence(.success([tmpl("Keavi", version: v)]))
         c.persistence = stub
         c.loadPersisted()
@@ -51,14 +52,19 @@ final class VoiceprintCoordinatorTests: XCTestCase {
         XCTAssertEqual(stub.saved, [], "no pruning → no redundant rewrite")
     }
 
-    func test_loadPersisted_prunes_stale_version_and_resaves() {
+    /// R1: loadPersisted NEVER calls save/deleteAll (SI-1 — the blob is never
+    /// emptied by a load, even when an unknown-stamp template is encountered).
+    /// Unknown-stamp templates land in `pendingMigration`; migration owns writes.
+    func test_loadPersisted_unknown_version_parks_in_pendingMigration_not_resaved() {
         let c = VoiceprintCoordinator()
         let stub = StubPersistence(.success([tmpl("Old", version: "ancient-version")]))
         c.persistence = stub
         c.loadPersisted()
-        XCTAssertFalse(c.hasVoiceprint("Old"), "stale model-version template dropped")
-        XCTAssertEqual(stub.saved.count, 1, "pruned set re-persisted")
-        XCTAssertEqual(stub.saved.first?.count, 0, "the empty (all-stale) set saved → blob pruned")
+        XCTAssertFalse(c.hasVoiceprint("Old"), "unknown-stamp template not upserted into store")
+        XCTAssertEqual(stub.saved.count, 0,
+            "loadPersisted must NOT write (SI-1) — migration pass owns the re-persist")
+        XCTAssertEqual(c.pendingMigration.count, 1, "unknown non-empty template is pending migration")
+        XCTAssertEqual(c.pendingMigration.first?.termID, "Old")
     }
 
     // MARK: commit is the single store/persist point (deferred from analyze to Save)
