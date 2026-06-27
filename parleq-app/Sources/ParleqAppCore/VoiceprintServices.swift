@@ -49,5 +49,15 @@ public final class VoiceprintServices {
     public func carrierSentences(term: String, count: Int, varied: Bool = false) async -> [String] {
         await CarrierSentences.generate(term: term, count: count, llm: llmText, varied: varied)
     }
+
+    /// 7033 gate: voice enrollment is OFFERED (enrollment UI shown + new
+    /// enrollments accepted) only when the master switch is on (user or MDM).
+    /// Existing voiceprints still LOAD and MATCH regardless — this gates only
+    /// the enrollment surface, not playback/matching. Pure + config-driven so
+    /// the gate is unit-testable; both the app-shell wiring (main.swift) and the
+    /// Settings enroll entry point consult it.
+    public nonisolated static func enrollmentOffered(_ config: Config) -> Bool {
+        config.voiceEnrollmentEnabled
+    }
 }
 #endif

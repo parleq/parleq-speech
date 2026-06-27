@@ -1413,6 +1413,22 @@ struct ParleqApp {
         // "Initializing…" overlay instead of starting a black-hole
         // capture against an unloaded model.
         MainActor.assumeIsolated {
+            #if Concord
+            // SI-2 (7034): enforce the clip-storage kill-switch on EVERY launch
+            // path, not just the bundled-ASR ready path where the coordinator is
+            // built. A custom asr.endpoint (no bundled coordinator) or an ASR load
+            // failure (onReadyChanged never fires) must still erase any stored
+            // enrollment audio when clip storage is resolved OFF. The erase only
+            // needs the store + the resolved flag — independent of the coordinator.
+            if !Config.load().config.voiceprintClipStorageEnabled {
+                do {
+                    try EnrollmentAudioStore().deleteAll()
+                    logStderr("[voiceprint-audio] clip storage disabled — stored clips erased")
+                } catch {
+                    logStderr("[voiceprint-audio] clip storage disabled — erase FAILED (\(type(of: error)))")
+                }
+            }
+            #endif
             if let local {
                 stateBox.value?.isSystemReady = { [weak local] in
                     local?.isReady ?? false
@@ -1444,11 +1460,10 @@ struct ParleqApp {
                         // Enrollment-audio persistence: raw WAV clips for future
                         // re-derivation across encoder changes. Set before loadPersisted.
                         coordinator.audioPersistence = EnrollmentAudioStore()
-                        // SI-2: if clip storage is resolved OFF (user or MDM kill-switch),
-                        // erase any already-stored enrollment audio at launch so orgs that
-                        // push the kill-switch after users enrolled actually remove the clips.
-                        coordinator.enforceClipStoragePolicy(
-                            enabled: Config.load().config.voiceprintClipStorageEnabled)
+                        // SI-2: the clip-storage kill-switch erase now fires
+                        // UNCONDITIONALLY at the top of this MainActor block (7034),
+                        // covering every launch path (custom endpoint / load failure),
+                        // so no per-coordinator enforce call is needed here.
                         stateBox.value?.voiceprint = coordinator
                         coordinator.loadPersisted()
                         // Auto-migrate any voiceprints parked under an unknown encoder
@@ -1482,14 +1497,22 @@ struct ParleqApp {
                                 return (enabled: cfg.voiceprintClipStorageEnabled,
                                         consented: cfg.voiceClipStorageConsented)
                             })
-                        ParleqAppWindowController.shared.setVoiceprintServices(vpServices)
-                        if VoiceprintDemo.isEnabled {
-                            // Debug flywheel enrollment. The coordinator's
-                            // onStoreChanged callback (wired in AppState's didSet)
-                            // re-installs the gate factory after it enrolls Keavi.
-                            Task { @MainActor [weak local] in
-                                await coordinator.runStartupEnrollment { wav in
-                                    try await local?.transcribeRawForVoiceprint(wav: wav)
+                        // 7033: voiceEnrollmentEnabled is the master switch (user or
+                        // MDM). When OFF, voice enrollment must be OFF fleet-wide —
+                        // do NOT expose the wizard's services to Settings (the enroll
+                        // UI keys off voiceprintServices != nil) and skip the demo
+                        // enrollment. Existing voiceprints still loaded + migrated +
+                        // matched above; only the enrollment SURFACE is gated.
+                        if VoiceprintServices.enrollmentOffered(Config.load().config) {
+                            ParleqAppWindowController.shared.setVoiceprintServices(vpServices)
+                            if VoiceprintDemo.isEnabled {
+                                // Debug flywheel enrollment. The coordinator's
+                                // onStoreChanged callback (wired in AppState's didSet)
+                                // re-installs the gate factory after it enrolls Keavi.
+                                Task { @MainActor [weak local] in
+                                    await coordinator.runStartupEnrollment { wav in
+                                        try await local?.transcribeRawForVoiceprint(wav: wav)
+                                    }
                                 }
                             }
                         }

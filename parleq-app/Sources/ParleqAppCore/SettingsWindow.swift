@@ -2995,13 +2995,23 @@ struct SettingsView: View {
                 overFireNudgeCard
                 if let coord = model.voiceprintServices?.coordinator {
                     NeedsReEnrollBannerRow(coordinator: coord, isDismissed: $needsReEnrollBannerDismissed) {
-                        // Open the first dictionary term that lacks an active voiceprint
-                        // so the user can re-enroll directly. Falls through to the first
-                        // visible term when all happen to be enrolled already.
-                        let firstID = model.dictionaryEntries.first(where: {
-                            !$0.term.trimmingCharacters(in: .whitespaces).isEmpty &&
-                            !coord.hasVoiceprint($0.term)
-                        })?.id ?? model.dictionaryEntries.first?.id
+                        // 7036(a): open one of the terms that actually FAILED migration
+                        // (the banner is ABOUT those), matched by term string — not just
+                        // the first un-enrolled dictionary term, which may be an unrelated
+                        // term the user simply never enrolled. Fall back to any term
+                        // lacking an active voiceprint, then the first visible term.
+                        let pending = Set(coord.pendingMigrationTermIDs.map {
+                            $0.trimmingCharacters(in: .whitespaces).lowercased()
+                        })
+                        let pendingID = model.dictionaryEntries.first(where: {
+                            pending.contains($0.term.trimmingCharacters(in: .whitespaces).lowercased())
+                        })?.id
+                        let firstID = pendingID
+                            ?? model.dictionaryEntries.first(where: {
+                                !$0.term.trimmingCharacters(in: .whitespaces).isEmpty &&
+                                !coord.hasVoiceprint($0.term)
+                            })?.id
+                            ?? model.dictionaryEntries.first?.id
                         if let id = firstID {
                             editingDictionaryTarget = DictionaryEditTarget(id: id, isNew: false)
                         }
@@ -3983,7 +3993,12 @@ struct DictionaryTermEditView: View {
             }
 
             #if Concord
-            enrollmentHero(row: row)
+            // 7033: hide the enrollment surface entirely when the master switch
+            // (voiceEnrollmentEnabled — user or MDM) is off. Existing voiceprints
+            // still match; only NEW enrollment is suppressed.
+            if VoiceprintServices.enrollmentOffered(Config.load().config) {
+                enrollmentHero(row: row)
+            }
             #endif
 
             // Advanced: the manual fallbacks (aliases / biasing / spoken forms).
@@ -4218,6 +4233,9 @@ struct DictionaryTermEditView: View {
     /// are wired (ASR still loading) or the term is blank.
     private func startEnroll(term: String) {
         guard let services = model.voiceprintServices else { return }
+        // 7033: defense-in-depth — never start a new enrollment when the master
+        // switch is off, even if services were wired before a config change.
+        guard VoiceprintServices.enrollmentOffered(Config.load().config) else { return }
         let trimmed = term.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return }
         // Skip the consent screen ONLY when the user has accepted the AMENDED
