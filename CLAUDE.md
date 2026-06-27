@@ -66,6 +66,10 @@ When in doubt, leave it alone — Parleq dictation works today on the pinned ver
 - **FluidAudio** — Parakeet model versions, CTC vocab boosting tweaks, ANE performance. Now a direct dependency of the main app target (not its retired sidecar package). **When you bump the FluidAudio pin, also update `BundledASREngine.fluidAudioVersion` in `LocalASR.swift`** — it stamps the engine version into flywheel contribution records, and a stale value silently misattributes the baseline of every record written after the upgrade.
 - **swift-nio**, **swift-crypto**, **swift-certificates** — Apple-maintained, security-relevant. Pulled in transitively by Soto.
 
+## Corrector testing standard
+
+Any change to a correction stage (dictionary / phonetic / voiceprint / compound) — and **every FluidAudio version bump** — MUST run the corrector regression harness (`CorrectorRegressionHarnessTests`, real audio from `~/.parleq/flywheel`) and show no regression in per-intent recovery / over-fire vs the committed baseline (`corrector-baseline.json`). The harness self-skips without local models/audio, so this is a **maintainer-run gate, not CI-enforced** — run it and read the delta. Frozen-embedding tests are insufficient (corrector behavior rides on FluidAudio's acoustic output). New corrector behavior ships with labeled-corpus cases that pin it.
+
 ## Repository layout
 
 ```
