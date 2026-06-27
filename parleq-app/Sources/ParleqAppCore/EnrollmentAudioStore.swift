@@ -80,7 +80,11 @@ public struct EnrollmentAudioStore: EnrollmentAudioPersistence {
             throw VoiceprintPersistenceError.writeFailed
         }
         if FileManager.default.fileExists(atPath: fileURL.path) {
-            _ = try FileManager.default.replaceItemAt(fileURL, withItemAt: tmp)
+            // 7030: `.usingNewMetadataOnly` so the replaced file keeps the temp's
+            // 0600 metadata instead of inheriting the destination's (possibly
+            // looser) permissions — the biometric blob must stay owner-only.
+            _ = try FileManager.default.replaceItemAt(
+                fileURL, withItemAt: tmp, options: [.usingNewMetadataOnly])
         } else {
             try FileManager.default.moveItem(at: tmp, to: fileURL)
         }
