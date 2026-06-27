@@ -641,9 +641,14 @@ public struct Config: Sendable {
     public var learnFromCorrectionsEnabled: Bool
     /// One-time consent for voice enrollment (the acoustic-disambiguation
     /// wizard). Off by default: enabling consents to recording short clips of
-    /// the user speaking a term, processed on-device and discarded — only a
-    /// derived voiceprint (biometric data; persisted encrypted-at-rest on this
-    /// device, deletable anytime) is kept. Set once when the user enables the feature.
+    /// the user speaking a term, processed on-device — only a derived
+    /// voiceprint (biometric data; persisted encrypted-at-rest on this device,
+    /// deletable anytime) is kept. When clip storage is enabled
+    /// (`voiceprintClipStorageEnabled`), the enrollment audio clips are also
+    /// kept encrypted on-device so the voiceprint can survive future model
+    /// updates without re-enrollment; clip storage can be turned off
+    /// independently by the user or via MDM. Set once when the user enables
+    /// the feature.
     public var voiceEnrollmentConsented: Bool
     /// Master switch for the voice enrollment feature (acoustic-disambiguation).
     /// Default on; MDM-disable-able. When false, enrollment UI is suppressed and
@@ -926,6 +931,34 @@ public struct Config: Sendable {
         if let v = ManagedConfig.managedInt(forKey: "learnedCorrectionsRetentionHours") {
             c.learnedCorrectionsRetentionHours = v
             managedKeys.insert("learnedCorrectionsRetentionHours")
+        }
+        // Phase 10 — voiceprint MDM controls.
+        //
+        // voiceEnrollmentEnabled (Bool) — fleet-wide master switch for the
+        // voice-enrollment / acoustic-disambiguation feature. Normal Bool key:
+        // managed false disables enrollment UI and voiceprint matching fleet-wide;
+        // managed true explicitly re-enables it. A malformed forced value leaves
+        // the field at its user/default (same fail-open posture as other toggles).
+        if let v = ManagedConfig.managedBool(forKey: "voiceEnrollmentEnabled") {
+            c.voiceEnrollmentEnabled = v
+            managedKeys.insert("voiceEnrollmentEnabled")
+        }
+        // voiceprintClipStorageEnabled (Bool) — kill-switch for on-device
+        // enrollment-clip persistence (SI-2: FAIL CLOSED). A present-but-
+        // malformed forced value (e.g. the string "false") cannot be bridged
+        // to Bool by managedBool — it returns nil. If we treated nil the same
+        // as "not managed" the kill-switch would silently fail open. Instead,
+        // managedValuePresent detects that the key IS managed (regardless of
+        // parse success) and resolveClipStorage maps any non-true forced value
+        // — including malformed/nil — to off. Only an explicit managed true
+        // enables clip storage; anything else disables it.
+        let clipResult = ManagedConfig.resolveClipStorage(
+            present: ManagedConfig.managedValuePresent(forKey: "voiceprintClipStorageEnabled"),
+            parsed: ManagedConfig.managedBool(forKey: "voiceprintClipStorageEnabled")
+        )
+        if clipResult.managed {
+            c.voiceprintClipStorageEnabled = clipResult.value
+            managedKeys.insert("voiceprintClipStorageEnabled")
         }
         // autoUpdateEnabled is Sparkle-side only; we still record managedKeys
         // so UpdatesView can show the lock indicator.
