@@ -226,6 +226,10 @@ final class SettingsModel: ObservableObject {
     /// Mirror of Config.learnedCorrectionsRetentionHours. nil =
     /// unlimited; 0 = disable correction journal entirely.
     @Published var learnedCorrectionsRetentionHours: Int?
+    /// Mirror of Config.voiceprintClipStorageEnabled. Controls whether
+    /// enrollment audio clips are retained on-device for future
+    /// re-derivation. Managed-aware: disabled in UI when MDM-pinned.
+    @Published var voiceprintClipStorageEnabled: Bool
     /// Set of Config keys currently managed by MDM. Rows for managed
     /// keys render as `.disabled(true)` with the ManagedIndicator badge.
     @Published var managedKeys: Set<String>
@@ -494,6 +498,7 @@ final class SettingsModel: ObservableObject {
         self.learnFromCorrectionsEnabled = config.learnFromCorrectionsEnabled
         self.learnedCorrectionsMaxEntries = config.learnedCorrectionsMaxEntries
         self.learnedCorrectionsRetentionHours = config.learnedCorrectionsRetentionHours
+        self.voiceprintClipStorageEnabled = config.voiceprintClipStorageEnabled
         self.managedKeys = config.managedKeys
         self.oidcIssuer = config.oidcIssuer
         self.oidcClientID = config.oidcClientID
@@ -625,6 +630,7 @@ final class SettingsModel: ObservableObject {
         self.learnFromCorrectionsEnabled = config.learnFromCorrectionsEnabled
         self.learnedCorrectionsMaxEntries = config.learnedCorrectionsMaxEntries
         self.learnedCorrectionsRetentionHours = config.learnedCorrectionsRetentionHours
+        self.voiceprintClipStorageEnabled = config.voiceprintClipStorageEnabled
         self.managedKeys = config.managedKeys
         self.oidcIssuer = config.oidcIssuer
         self.oidcClientID = config.oidcClientID
@@ -808,6 +814,7 @@ final class SettingsModel: ObservableObject {
         c.learnFromCorrectionsEnabled = learnFromCorrectionsEnabled
         c.learnedCorrectionsMaxEntries = learnedCorrectionsMaxEntries
         c.learnedCorrectionsRetentionHours = learnedCorrectionsRetentionHours
+        c.voiceprintClipStorageEnabled = voiceprintClipStorageEnabled
         // Enterprise OIDC self-configuration. When MDM-pinned these
         // fields are non-editable in the UI; Config.save() additionally
         // preserves the pinned on-disk value for any key in managedKeys,
@@ -1251,6 +1258,7 @@ struct SettingsView: View {
     @State private var editingDictionaryTarget: DictionaryEditTarget?
     #if Concord
     @State private var showDeleteVoiceprintsConfirm = false
+    @State private var showDeleteClipsConfirm = false
     /// Dismiss flag for the Dictionary-section intro banner (@AppStorage so the
     /// section re-renders when dismissed; shares the key with VoiceEnrollBanner).
     @AppStorage(VoiceEnrollBanner.sectionBannerDismissedKey) private var voiceEnrollSectionBannerDismissed = false
@@ -3038,6 +3046,30 @@ struct SettingsView: View {
                 }
                 .padding(.top, 2)
 
+                #if Concord
+                if model.voiceprintServices != nil {
+                    Divider()
+                    // Clip-storage toggle — managed-aware. Shows only when
+                    // voice enrollment is available (voiceprintServices wired).
+                    HStack {
+                        Toggle("Store voice clips on device", isOn: Binding(
+                            get: { model.voiceprintClipStorageEnabled },
+                            set: { newValue in
+                                if newValue {
+                                    model.voiceprintClipStorageEnabled = true
+                                    model.save()
+                                } else {
+                                    // Show confirmation before erasing stored clips.
+                                    showDeleteClipsConfirm = true
+                                }
+                            }
+                        ))
+                        .disabled(model.managedKeys.contains("voiceprintClipStorageEnabled"))
+                    }
+                    SettingsCaption("Keeps your enrollment recordings encrypted on this device so voiceprints can be automatically re-derived when the speech model updates — without re-recording. Turn off to store only the derived voiceprint.")
+                }
+                #endif
+
                 SettingsCaption("Applied on the next dictation — no restart needed.")
             }
         }
@@ -3058,6 +3090,16 @@ struct SettingsView: View {
             }
         } message: {
             Text("Removes every enrolled voiceprint from this session. Dictionary terms and aliases are kept.")
+        }
+        .confirmationDialog("Delete stored voice clips?", isPresented: $showDeleteClipsConfirm) {
+            Button("Delete clips and turn off storage", role: .destructive) {
+                model.voiceprintClipStorageEnabled = false
+                model.save()
+                model.voiceprintServices?.coordinator.enforceClipStoragePolicy(enabled: false)
+            }
+            Button("Keep clips and cancel", role: .cancel) { }
+        } message: {
+            Text("Turning off clip storage deletes the enrollment audio saved on this device. Your voiceprints are kept — only the recordings used to derive them will be removed.")
         }
         #endif
     }
@@ -4182,8 +4224,15 @@ struct DictionaryTermEditView: View {
         enrollingModel = VoiceprintEnrollmentModel(
             term: trimmed, services: services, consented: consented,
             onConsentGranted: {
+                // SI-3 / C4: the amended consent disclosure (shown in the
+                // intro card) covers both enrollment AND clip storage. Set
+                // both flags together so the cap-gate in AppState knows the
+                // user has seen the full disclosure. Old-cohort users who
+                // never reach this screen stay voiceClipStorageConsented=false
+                // → no clips stored for them.
                 var cfg = Config.load().config
                 cfg.voiceEnrollmentConsented = true
+                cfg.voiceClipStorageConsented = true
                 try? Config.save(cfg)
             },
             onEnrolled: { [weak model] enrolledTerm, aliases in
