@@ -43,24 +43,35 @@ enum CorrectorMetrics {
 
     /// Compare `got` against `baseline`.
     ///
-    /// An intent regresses if:
-    ///   - `got.recovered < baseline.recovered - tolerance`, OR
-    ///   - `got.overFired > baseline.overFired + tolerance`.
+    /// An intent regresses if any of:
+    ///   - `got[intent]` is absent (the bucket vanished entirely), OR
+    ///   - `got.recovered < baseline.recovered - recoveryTolerance`, OR
+    ///   - `got.overFired > baseline.overFired + overFireTolerance`, OR
+    ///   - `got.total < baseline.total - recoveryTolerance` (corpus shrank for that intent).
+    ///
+    /// `recoveryTolerance` absorbs a dropped clip or minor ASR variance (typically 1).
+    /// `overFireTolerance` should be 0 — any over-fire on a non-term clip is a bug.
     ///
     /// Returns `(ok: true, regressions: [])` when no regressions are found.
-    /// Intents present in `baseline` but absent from `got` are treated as regressions
-    /// (recovered=0, overFired=0 against the baseline).
+    /// An absent intent (present in `baseline` but missing from `got`) is always a
+    /// regression — it is NOT substituted with zeros.
     static func withinBaseline(
         _ got: [String: Tally],
         baseline: [String: Tally],
-        tolerance: Int
+        recoveryTolerance: Int,
+        overFireTolerance: Int
     ) -> (ok: Bool, regressions: [String]) {
         var regressions: [String] = []
         for (intent, base) in baseline {
-            let g = got[intent] ?? Tally(recovered: 0, total: 0, overFired: 0)
-            let recoveryRegressed = g.recovered < base.recovered - tolerance
-            let overFireRegressed = g.overFired  > base.overFired  + tolerance
-            if recoveryRegressed || overFireRegressed {
+            guard let g = got[intent] else {
+                // Absent bucket — the intent entirely disappeared.
+                regressions.append(intent)
+                continue
+            }
+            let recoveryRegressed = g.recovered < base.recovered - recoveryTolerance
+            let overFireRegressed = g.overFired  > base.overFired  + overFireTolerance
+            let corpusShrunk      = g.total      < base.total      - recoveryTolerance
+            if recoveryRegressed || overFireRegressed || corpusShrunk {
                 regressions.append(intent)
             }
         }

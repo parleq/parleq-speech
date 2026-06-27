@@ -167,17 +167,36 @@ final class CorrectorRegressionHarnessTests: XCTestCase {
             return box.text.isEmpty ? nil : box.text
         }
 
+        // Preflight: every labeled audio file must exist before we start.
+        // A missing individual clip is a hard failure (not a skip) — the corpus
+        // is expected to be intact once the flywheel is present.
+        var missingPaths: [String] = []
+        for row in labels {
+            let wavURL = flywheelRoot.appendingPathComponent(row.audio)
+            if !FileManager.default.fileExists(atPath: wavURL.path) {
+                missingPaths.append(row.audio)
+            }
+        }
+        if !missingPaths.isEmpty {
+            XCTFail("Labeled audio files missing from flywheel:\n"
+                    + missingPaths.joined(separator: "\n"))
+            return
+        }
+
         // Run all labeled clips and collect outcomes.
         var outcomes: [CorrectorMetrics.Outcome] = []
+        var processedCount = 0
         for row in labels {
             guard let cleaned = try await cleanedText(for: row) else {
-                // If transcription or cleanup fails for a clip, treat it as
-                // neither recovered nor over-fired (safe: doesn't inflate either metric).
+                // If transcription or cleanup returns nil for a clip that exists on
+                // disk, that is an ASR/pipeline failure — count it but mark it so
+                // the corpus-integrity assertion below fires.
                 outcomes.append(CorrectorMetrics.Outcome(intent: row.intent,
                                                           recovered: false,
                                                           overFired: false))
                 continue
             }
+            processedCount += 1
 
             let outcome: CorrectorMetrics.Outcome
             if let targetTerm = Self.intentTerm[row.intent] {
@@ -194,6 +213,14 @@ final class CorrectorRegressionHarnessTests: XCTestCase {
             }
             outcomes.append(outcome)
         }
+
+        // Corpus-integrity check: every clip that exists on disk must produce output.
+        // A nil result for a present clip means ASR/pipeline failed, which is a hard
+        // failure — it hides real regressions by silently scoring clips as non-recovered
+        // and non-over-fired.
+        XCTAssertEqual(processedCount, labels.count,
+                       "\(labels.count - processedCount) clip(s) failed to produce output "
+                       + "— corpus/ASR integrity")
 
         // Tally outcomes.
         let tally = CorrectorMetrics.tally(outcomes)
@@ -230,7 +257,9 @@ final class CorrectorRegressionHarnessTests: XCTestCase {
         let baselineData = try Data(contentsOf: baselineURL)
         let baseline = try JSONDecoder().decode([String: CorrectorMetrics.Tally].self,
                                                from: baselineData)
-        let (ok, regressions) = CorrectorMetrics.withinBaseline(tally, baseline: baseline, tolerance: 1)
+        let (ok, regressions) = CorrectorMetrics.withinBaseline(tally, baseline: baseline,
+                                                                   recoveryTolerance: 1,
+                                                                   overFireTolerance: 0)
         if !ok {
             print("[corrector-regression] REGRESSIONS: \(regressions.joined(separator: ", "))")
         }
