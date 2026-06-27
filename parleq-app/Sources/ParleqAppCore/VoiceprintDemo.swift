@@ -176,6 +176,10 @@ public final class VoiceprintCoordinator {
     /// only (wiped on quit). Set by main.swift before `loadPersisted()`.
     public var persistence: VoiceprintPersistence?
 
+    /// Enrollment-audio persistence backend (raw WAV clips for future re-derivation).
+    /// nil → in-memory only. Set by main.swift after the coordinator is wired.
+    public var audioPersistence: EnrollmentAudioPersistence?
+
     /// Templates loaded from the blob that could NOT be kept in the store
     /// (unknown encoder stamp) but are non-empty and therefore potentially
     /// migratable. Populated by `loadPersisted`; consumed by a future migration
@@ -290,9 +294,26 @@ public final class VoiceprintCoordinator {
     public var enrolledTermIDs: [String] { store.termIDs }
     /// Forget one term's voiceprint (privacy delete; also called when its
     /// dictionary term is removed).
-    public func removeVoiceprint(termID: String) { store.remove(termID: termID); notifyStoreChanged() }
+    public func removeVoiceprint(termID: String) {
+        store.remove(termID: termID)
+        try? audioPersistence?.remove(termID: termID)
+        notifyStoreChanged()
+    }
     /// Forget every voiceprint ("delete all my voiceprints").
-    public func removeAll() { store.removeAll(); notifyStoreChanged() }
+    public func removeAll() {
+        store.removeAll()
+        try? audioPersistence?.deleteAll()
+        notifyStoreChanged()
+    }
+
+    /// Persist raw enrollment clips for `termID`, merging with any existing map.
+    /// Best-effort (errors silently ignored). Logs count only — never audio or text.
+    public func storeEnrollmentClips(termID: String, _ clips: [StoredEnrollmentClip]) {
+        var map = (try? audioPersistence?.load()) ?? [:]
+        map[termID] = clips
+        try? audioPersistence?.save(map)
+        log("[voiceprint-audio] storeEnrollmentClips term=\(termID) count=\(clips.count)")
+    }
 
     /// Letters-only lowercase normalization (matches the gate's slot key).
     private static func norm(_ s: String) -> String { s.lowercased().filter { $0.isLetter } }

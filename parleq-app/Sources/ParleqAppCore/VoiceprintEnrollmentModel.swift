@@ -174,11 +174,32 @@ public final class VoiceprintEnrollmentModel: ObservableObject, Identifiable {
     /// Skip the confusable step (the user says they're not confusable).
     public func skipConfusable() { phase = .review }
 
-    /// Commit: store the draft voiceprint (the SINGLE persist point), write the
-    /// dictionary entry (term + aliases), and finish.
+    /// Commit: store the draft voiceprint (the SINGLE persist point), capture
+    /// enrollment audio (consent + enabled gated), write the dictionary entry
+    /// (term + aliases), and finish.
     public func save() {
         if let draftTemplate {
             services.coordinator.commit(draftTemplate)
+        }
+        // Capture raw enrollment clips for future re-derivation across encoder changes.
+        // Gated on both enabled AND consented (SI-3: no storage without fresh consent).
+        let policy = services.clipStoragePolicy()
+        if policy.enabled && policy.consented {
+            let positiveClips: [StoredEnrollmentClip] = zip(carriers, recordings).compactMap { text, data in
+                data.map { StoredEnrollmentClip(wav: $0, carrierText: text, role: .positive, negativeLabel: nil) }
+            }
+            let negativeClips: [StoredEnrollmentClip]
+            if let label = negativeLabel {
+                negativeClips = zip(negativeCarriers, negativeRecordings).compactMap { text, data in
+                    data.map { StoredEnrollmentClip(wav: $0, carrierText: text, role: .negative, negativeLabel: label) }
+                }
+            } else {
+                negativeClips = []
+            }
+            let allClips = positiveClips + negativeClips
+            if !allClips.isEmpty {
+                services.coordinator.storeEnrollmentClips(termID: termID, allClips)
+            }
         }
         onEnrolled(term, outcome?.harvestedAliases ?? [])
         phase = .done

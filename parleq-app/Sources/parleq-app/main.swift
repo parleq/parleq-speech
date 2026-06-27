@@ -1441,6 +1441,9 @@ struct ParleqApp {
                         // device-only Keychain key). Set BEFORE assigning to AppState
                         // so loadPersisted's gate install lands on the wired callback.
                         coordinator.persistence = EncryptedVoiceprintStore()
+                        // Enrollment-audio persistence: raw WAV clips for future
+                        // re-derivation across encoder changes. Set before loadPersisted.
+                        coordinator.audioPersistence = EnrollmentAudioStore()
                         stateBox.value?.voiceprint = coordinator
                         coordinator.loadPersisted()
                         // Bundle the wizard's dependencies and hand them to Settings.
@@ -1458,6 +1461,11 @@ struct ParleqApp {
                             },
                             llmText: { prompt in
                                 await stateBox.value?.generateCarrierText(prompt: prompt)
+                            },
+                            clipStoragePolicy: {
+                                let cfg = Config.load().config
+                                return (enabled: cfg.voiceprintClipStorageEnabled,
+                                        consented: cfg.voiceClipStorageConsented)
                             })
                         ParleqAppWindowController.shared.setVoiceprintServices(vpServices)
                         if VoiceprintDemo.isEnabled {

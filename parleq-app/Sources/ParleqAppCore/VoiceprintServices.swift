@@ -22,14 +22,22 @@ public final class VoiceprintServices {
     /// generative provider is configured (→ templates).
     private let llmText: (@Sendable (String) async -> String?)?
 
+    /// Read at the write site (save time) to decide whether to persist enrollment
+    /// audio. The closure is called fresh on each save so it sees MDM-overlaid
+    /// values, not a cached UI value. Returns (enabled, consented); if either is
+    /// false, NO audio is stored (SI-3). Default: never store.
+    public let clipStoragePolicy: () -> (enabled: Bool, consented: Bool)
+
     public init(coordinator: VoiceprintCoordinator,
                 makeRecorder: @escaping () -> AudioRecorder,
                 transcribe: @escaping (Data) async throws -> ASRResult?,
-                llmText: (@Sendable (String) async -> String?)?) {
+                llmText: (@Sendable (String) async -> String?)?,
+                clipStoragePolicy: @escaping () -> (enabled: Bool, consented: Bool) = { (false, false) }) {
         self.coordinator = coordinator
         self.makeRecorder = makeRecorder
         self.transcribe = transcribe
         self.llmText = llmText
+        self.clipStoragePolicy = clipStoragePolicy
     }
 
     /// Carrier sentences for `term`: LLM-generated when available, otherwise the
