@@ -68,6 +68,11 @@ public final class VoiceprintEnrollmentModel: ObservableObject, Identifiable {
         self.initiallyConsented = consented
         self.onConsentGranted = onConsentGranted
         self.onEnrolled = onEnrolled
+        // Set the initial phase up front so the consent (`.intro`) screen never
+        // flashes during the async carrier-load: a consented (skip) user lands
+        // straight on `.carriers` (a brief load while sentences arrive); an
+        // unconsented user lands on `.intro` and STAYS until they accept.
+        self.phase = consented ? .carriers : .intro
     }
 
     /// True once every term carrier has a recording (enables Analyze).

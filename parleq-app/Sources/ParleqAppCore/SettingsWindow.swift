@@ -4220,7 +4220,12 @@ struct DictionaryTermEditView: View {
         guard let services = model.voiceprintServices else { return }
         let trimmed = term.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return }
-        let consented = Config.load().config.voiceEnrollmentConsented
+        // Skip the consent screen ONLY when the user has accepted the AMENDED
+        // disclosure (which covers clip storage), tracked by voiceClipStorageConsented.
+        // A grandfathered user who only ever accepted the OLD enrollment consent
+        // (voiceEnrollmentConsented) must still see + accept the amended screen once,
+        // so clip storage can be consented to and the disclosure isn't skipped.
+        let consented = Config.load().config.voiceClipStorageConsented
         enrollingModel = VoiceprintEnrollmentModel(
             term: trimmed, services: services, consented: consented,
             onConsentGranted: {
