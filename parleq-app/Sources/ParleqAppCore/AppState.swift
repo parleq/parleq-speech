@@ -4816,9 +4816,10 @@ private func streamCleanupOrRefine(
     // path and on re-clean call sites). Forwarded to the on-device Concord
     // provider's dictionary stage; ignored by every other provider.
     asrDiagnostics: ASRDiagnostics? = nil,
-    // Enrolled voiceprint term IDs (lowercased by the caller) for per-term
-    // policy classification. Only the main capture path passes these; re-clean
-    // / preset call sites default to empty (engine ignores policies in A2).
+    // Enrolled voiceprint term IDs (case-insensitive; lowercased internally
+    // before classification) for per-term policy classification. All cleanup
+    // call sites forward these uniformly (main capture + re-clean / preset);
+    // the engine ignores policies in A2.
     enrolledTermIDs: [String] = [],
     // Gate for the per-chunk overlay writes. Evaluated on the MainActor
     // before each streamed chunk renders. When it returns false the
