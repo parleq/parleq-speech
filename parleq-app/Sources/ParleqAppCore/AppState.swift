@@ -4212,6 +4212,11 @@ public final class AppState {
             return dest.appName
         }
         inFlightTask = Task { @MainActor [weak self] in
+            #if Concord
+            let concordEnrolledIDs = self?.voiceprint?.enrolledTermIDs ?? []
+            #else
+            let concordEnrolledIDs: [String] = []
+            #endif
             let outcome = await streamCleanupOrRefine(
                 llm: resolvedLLM,
                 overlay: overlay,
@@ -4225,7 +4230,8 @@ public final class AppState {
                 pasteDestinationLabel: pasteDestLabel,
                 // Refine re-runs never fold a preset (mirrors the main
                 // pipeline: the text being refined is already styled).
-                transform: asRefineRerun ? nil : intendedPreset?.prompt
+                transform: asRefineRerun ? nil : intendedPreset?.prompt,
+                enrolledTermIDs: concordEnrolledIDs
             )
             if Task.isCancelled { return }
             // 0.14.0 PR 4 (#219): the model-switch path runs its
@@ -4309,6 +4315,11 @@ public final class AppState {
         inFlightTask?.cancel()
         inFlightTask = Task { @MainActor [weak self] in
             guard let self else { return }
+            #if Concord
+            let concordEnrolledIDs = self.voiceprint?.enrolledTermIDs ?? []
+            #else
+            let concordEnrolledIDs: [String] = []
+            #endif
             // A manual preset tap is a refine pass on the SHOWN text, so
             // references aren't needed — the text already reflects them.
             let outcome = await streamCleanupOrRefine(
@@ -4319,7 +4330,8 @@ public final class AppState {
                 rawTranscript: preset.prompt,
                 priorText: current,
                 targetBundleID: targetBundleID,
-                customDictionary: dictionary
+                customDictionary: dictionary,
+                enrolledTermIDs: concordEnrolledIDs
             )
             if Task.isCancelled {
                 // Clear the transform name on early-exit so a cancelled
@@ -4486,6 +4498,11 @@ public final class AppState {
         }
         inFlightTask?.cancel()
         inFlightTask = Task { @MainActor [weak self] in
+            #if Concord
+            let concordEnrolledIDs = self?.voiceprint?.enrolledTermIDs ?? []
+            #else
+            let concordEnrolledIDs: [String] = []
+            #endif
             let outcome = await streamCleanupOrRefine(
                 llm: resolvedLLM,
                 overlay: overlay,
@@ -4497,7 +4514,8 @@ public final class AppState {
                 customDictionary: dictionary,
                 references: effectiveRefs,
                 pasteDestinationLabel: pasteDestLabel,
-                transform: asRefineRerun ? nil : intendedPreset?.prompt
+                transform: asRefineRerun ? nil : intendedPreset?.prompt,
+                enrolledTermIDs: concordEnrolledIDs
             )
             if Task.isCancelled { return }
             self?.lastLLMLatencyMs = outcome.llmLatencyMs
@@ -4607,6 +4625,11 @@ public final class AppState {
         inFlightTask?.cancel()
         inFlightTask = Task { @MainActor [weak self] in
             guard let self else { return }
+            #if Concord
+            let concordEnrolledIDs = self.voiceprint?.enrolledTermIDs ?? []
+            #else
+            let concordEnrolledIDs: [String] = []
+            #endif
             let outcome = await streamCleanupOrRefine(
                 llm: resolvedLLM,
                 overlay: self.overlay,
@@ -4617,7 +4640,8 @@ public final class AppState {
                 targetBundleID: targetBundleID,
                 customDictionary: dictionary,
                 references: effectiveRefs,
-                pasteDestinationLabel: pasteDestLabel
+                pasteDestinationLabel: pasteDestLabel,
+                enrolledTermIDs: concordEnrolledIDs
             )
             if Task.isCancelled { return }
             self.lastLLMLatencyMs = outcome.llmLatencyMs
