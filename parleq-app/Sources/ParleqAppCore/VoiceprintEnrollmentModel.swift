@@ -86,7 +86,14 @@ public final class VoiceprintEnrollmentModel: ObservableObject, Identifiable {
     public func start() async {
         carriers = await services.carrierSentences(term: term, count: Self.carrierCount)
         recordings = Array(repeating: nil, count: carriers.count)
-        phase = initiallyConsented ? .carriers : .intro
+        // 7050: the initial phase is already set in init. If the user tapped
+        // consent during the await above, consent() advanced phase → .carriers;
+        // re-asserting `initiallyConsented ? … : .intro` here would clobber that
+        // back to .intro for an unconsented user. Only (re)assert the routing if
+        // we're STILL on the pre-consent screen (no advance happened).
+        if phase == .intro {
+            phase = initiallyConsented ? .carriers : .intro
+        }
     }
 
     /// Grant biometric consent (first enrollment only) → proceed to recording.

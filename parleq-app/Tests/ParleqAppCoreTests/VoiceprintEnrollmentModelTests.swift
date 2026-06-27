@@ -143,5 +143,58 @@ final class VoiceprintEnrollmentModelTests: XCTestCase {
         XCTAssertTrue(coordinator.hasVoiceprint("Keavi"), "Save commits the draft voiceprint")
         XCTAssertEqual(flags.enrolled?.0, "Keavi")
     }
+
+    // MARK: - 7050: consent during the carrier-load await must not be clobbered
+
+    /// A gate that suspends the first `wait()` until `signal()` is called — lets
+    /// the test hold `start()` mid-await while it interleaves `consent()`.
+    private actor AsyncGate {
+        private var continuation: CheckedContinuation<Void, Never>?
+        private var signaled = false
+        func wait() async {
+            if signaled { return }
+            await withCheckedContinuation { continuation = $0 }
+        }
+        func signal() {
+            signaled = true
+            continuation?.resume()
+            continuation = nil
+        }
+    }
+
+    func test_consent_during_carrier_load_is_not_clobbered_by_start() async {
+        let flags = Flags()
+        let gate = AsyncGate()
+        // llmText suspends carrierSentences (inside start()'s await) until we
+        // signal the gate, then returns nil → falls back to templates.
+        let services = VoiceprintServices(
+            coordinator: VoiceprintCoordinator(),
+            makeRecorder: { AudioRecorder() },
+            transcribe: { _ in nil },
+            llmText: { _ in await gate.wait(); return nil })
+        let model = VoiceprintEnrollmentModel(
+            term: "Keavi", services: services, consented: false,
+            onConsentGranted: { flags.consent = true },
+            onEnrolled: { _, _ in })
+
+        XCTAssertEqual(model.phase, .intro, "unconsented starts at intro")
+
+        // start() suspends awaiting the gate inside carrierSentences.
+        let task = Task { await model.start() }
+        await Task.yield()
+
+        // User taps consent WHILE start() is suspended → advances to .carriers.
+        model.consent()
+        XCTAssertEqual(model.phase, .carriers, "consent advanced the phase mid-await")
+
+        // Resume the carrier load; start() finishes.
+        await gate.signal()
+        await task.value
+
+        // The race fix: start() must NOT overwrite the consent advance back to .intro.
+        XCTAssertEqual(model.phase, .carriers,
+                       "start() must not clobber a phase already advanced by consent()")
+        XCTAssertEqual(model.carriers.count, VoiceprintEnrollmentModel.carrierCount)
+    }
 }
 #endif
