@@ -15,6 +15,17 @@ private final class StubAudioPersistence: EnrollmentAudioPersistence, @unchecked
     func deleteAll() throws { deleteAllCallCount += 1 }
 }
 
+private struct EraseFailure: Error {}
+
+/// deleteAll() THROWS — exercises the 7034b error path (no crash, no false success).
+private final class ThrowingDeleteAudioPersistence: EnrollmentAudioPersistence, @unchecked Sendable {
+    private(set) var deleteAllCallCount = 0
+    func load() throws -> [String: [StoredEnrollmentClip]] { [:] }
+    func save(_ byTerm: [String: [StoredEnrollmentClip]]) throws {}
+    func remove(termID: String) throws {}
+    func deleteAll() throws { deleteAllCallCount += 1; throw EraseFailure() }
+}
+
 // MARK: - Tests
 
 @MainActor
@@ -38,6 +49,17 @@ final class ClipStorageEnforceTests: XCTestCase {
         c.enforceClipStoragePolicy(enabled: true)
         XCTAssertEqual(stub.deleteAllCallCount, 0,
             "clip storage enabled → deleteAll must NOT be called")
+    }
+
+    /// 7034b: a throwing deleteAll must not crash (the error is caught and logged,
+    /// not swallowed-then-logged-as-success). The attempt still fires exactly once.
+    func test_enforceOff_deleteThrows_noCrash() {
+        let c = VoiceprintCoordinator()
+        let stub = ThrowingDeleteAudioPersistence()
+        c.audioPersistence = stub
+        c.enforceClipStoragePolicy(enabled: false)
+        XCTAssertEqual(stub.deleteAllCallCount, 1,
+            "the erase is still attempted exactly once even when it throws")
     }
 
     /// SI-2: calling with a nil `audioPersistence` must not crash.

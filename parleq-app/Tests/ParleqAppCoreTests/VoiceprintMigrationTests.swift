@@ -188,6 +188,62 @@ final class VoiceprintMigrationTests: XCTestCase {
         XCTAssertEqual(spy.deletedCount, 0, "deleteAll never called across migrations")
     }
 
+    // MARK: - 7027/7032: a commit after a partial migration keeps inert templates
+
+    func test_commit_after_partial_migration_does_not_drop_inert() async {
+        let audio: [String: [StoredEnrollmentClip]] = [
+            "Alpha": [
+                positiveClip(carrier: "Alpha is here", n: 1),
+                positiveClip(carrier: "Alpha is here", n: 2),
+                positiveClip(carrier: "Alpha is here", n: 3),
+            ],
+            // Bee + Cee have no audio → stay inert in pendingMigration.
+        ]
+        let (c, spy, _) = makeCoordinator(pending: ["Alpha", "Bee", "Cee"], audio: .success(audio))
+        await c.migrateIfNeeded(transcribe: goodTranscribe())
+        XCTAssertTrue(c.hasVoiceprint("Alpha"))
+        XCTAssertEqual(Set(c.pendingMigration.map { $0.termID }), ["Bee", "Cee"])
+        let savesBefore = spy.saveCallCount
+
+        // A later commit of a DIFFERENT freshly-enrolled term must persist the
+        // active store ∪ inert pending union — NOT active-only (which would drop
+        // Bee/Cee from the on-disk blob).
+        let fresh = VoiceprintTemplate(termID: "Dee", voiceprint: [1, 0, 0, 0], dim: 4,
+                                       lowQuality: false,
+                                       modelVersion: BundledASREngine.voiceprintEncoderIdentity)
+        c.commit(fresh)
+
+        XCTAssertEqual(spy.saveCallCount, savesBefore + 1, "commit persists")
+        XCTAssertEqual(spy.deletedCount, 0, "commit never deletes")
+        let ids = Set((spy.lastSaved ?? []).map { $0.termID })
+        XCTAssertTrue(ids.contains("Bee"), "inert Bee NOT dropped by a later commit")
+        XCTAssertTrue(ids.contains("Cee"), "inert Cee NOT dropped by a later commit")
+        XCTAssertTrue(ids.contains("Alpha"), "migrated Alpha retained")
+        XCTAssertTrue(ids.contains("Dee"), "freshly committed term present")
+    }
+
+    // MARK: - 7036: re-enrolling a pending term clears its banner slot mid-session
+
+    func test_commit_of_pending_term_decrements_reenroll_count() async {
+        let (c, spy, _) = makeCoordinator(pending: ["Alpha", "Bee"], audio: .success([:]))
+        await c.migrateIfNeeded(transcribe: goodTranscribe())
+        XCTAssertEqual(c.needsReEnrollCount, 2, "both need re-enroll (no stored audio)")
+        XCTAssertEqual(Set(c.pendingMigrationTermIDs), ["Alpha", "Bee"])
+
+        // User re-enrolls Alpha → committing it clears its pending slot + count.
+        let fresh = VoiceprintTemplate(termID: "Alpha", voiceprint: [1, 0, 0, 0], dim: 4,
+                                       lowQuality: false,
+                                       modelVersion: BundledASREngine.voiceprintEncoderIdentity)
+        c.commit(fresh)
+
+        XCTAssertEqual(c.needsReEnrollCount, 1, "banner count decremented mid-session")
+        XCTAssertEqual(c.pendingMigrationTermIDs, ["Bee"], "Alpha removed from pending")
+        XCTAssertTrue(c.hasVoiceprint("Alpha"))
+        // The re-enrolled term must appear exactly once (store wins, no dup).
+        XCTAssertEqual((spy.lastSaved ?? []).filter { $0.termID == "Alpha" }.count, 1,
+                       "no duplicate Alpha in the persisted union")
+    }
+
     // MARK: - No pending → immediate no-op (no save, no deleteAll)
 
     func test_empty_pending_is_noop() async {

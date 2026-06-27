@@ -195,11 +195,32 @@ public final class VoiceprintCoordinator: ObservableObject {
     /// here (R7).
     @Published public private(set) var needsReEnrollCount: Int = 0
 
+    /// Term IDs that could NOT be auto-migrated and therefore need a manual
+    /// re-enroll. The re-enroll banner CTA targets one of THESE (not just the
+    /// first un-enrolled dictionary term, which may be unrelated).
+    public var pendingMigrationTermIDs: [String] { pendingMigration.map { $0.termID } }
+
     private func notifyStoreChanged() {
         onStoreChanged?()
         // Persist the current set (best-effort; encrypted at rest by the backend).
+        // R1/SI-1: the persisted payload is the active store ∪ the still-inert
+        // `pendingMigration` templates (un-migratable, unknown-stamp). Saving
+        // active-only here would overwrite the union that `migrateIfNeeded`
+        // wrote, silently dropping the inert templates on the next commit/remove.
+        // Store wins on a termID collision (the active template is the live one).
         if let persistence {
-            let templates = store.termIDs.compactMap { store.template(for: $0) }
+            var byID: [String: VoiceprintTemplate] = [:]
+            var order: [String] = []
+            for id in store.termIDs {
+                guard let t = store.template(for: id) else { continue }
+                if byID[id] == nil { order.append(id) }
+                byID[id] = t
+            }
+            for t in pendingMigration where byID[t.termID] == nil {
+                byID[t.termID] = t
+                order.append(t.termID)
+            }
+            let templates = order.compactMap { byID[$0] }
             try? persistence.save(templates)
         }
     }
@@ -318,16 +339,36 @@ public final class VoiceprintCoordinator: ObservableObject {
     /// enrollment audio. Call at launch with the resolved (overlaid) flag.
     public func enforceClipStoragePolicy(enabled: Bool) {
         guard !enabled else { return }
-        try? audioPersistence?.deleteAll()
-        log("[voiceprint-audio] clip storage disabled — stored clips erased")  // count-free, no content
+        guard let audioPersistence else { return }
+        // 7034b: don't swallow the delete error and then log success
+        // unconditionally — only claim the clips were erased when the
+        // delete actually succeeded; otherwise log the failure (type only).
+        do {
+            try audioPersistence.deleteAll()
+            log("[voiceprint-audio] clip storage disabled — stored clips erased")  // count-free, no content
+        } catch {
+            log("[voiceprint-audio] clip storage disabled — erase FAILED (\(type(of: error)))")
+        }
     }
 
     /// Persist raw enrollment clips for `termID`, merging with any existing map.
     /// Best-effort (errors silently ignored). Logs count only — never audio or text.
     public func storeEnrollmentClips(termID: String, _ clips: [StoredEnrollmentClip]) {
-        var map = (try? audioPersistence?.load()) ?? [:]
+        guard let audioPersistence else { return }
+        // 7031: distinguish a legit missing-file (load() returns [:]) from a
+        // decode/throw. A throw means the existing blob is present but unreadable;
+        // merging into [:] and saving would write a map with ONLY this term,
+        // clobbering every OTHER term's stored clips. On a throw, SKIP the save
+        // and preserve the existing blob.
+        var map: [String: [StoredEnrollmentClip]]
+        do {
+            map = try audioPersistence.load()
+        } catch {
+            log("[voiceprint-audio] storeEnrollmentClips skipped: existing store unreadable (\(type(of: error)))")
+            return
+        }
         map[termID] = clips
-        try? audioPersistence?.save(map)
+        try? audioPersistence.save(map)
         log("[voiceprint-audio] storeEnrollmentClips term=\(termID) count=\(clips.count)")
     }
 
@@ -433,6 +474,14 @@ public final class VoiceprintCoordinator: ObservableObject {
     /// the user explicitly commits.
     public func commit(_ template: VoiceprintTemplate) {
         store.upsert(template)
+        // 7036(b): if this term was awaiting re-enrollment (un-migratable under
+        // the current encoder), the user just re-enrolled it — drop it from the
+        // pending set and clear its slot in the banner count mid-session, instead
+        // of only self-healing on the next launch.
+        if let idx = pendingMigration.firstIndex(where: { $0.termID == template.termID }) {
+            pendingMigration.remove(at: idx)
+            if needsReEnrollCount > 0 { needsReEnrollCount -= 1 }
+        }
         notifyStoreChanged()
     }
 

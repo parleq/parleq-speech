@@ -32,6 +32,18 @@ private final class StubAudioPersistence: EnrollmentAudioPersistence, @unchecked
     func deleteAll() throws { deleteAllCount += 1 }
 }
 
+private struct DecodeFailure: Error {}
+
+/// load() THROWS (simulating an undecodable existing blob), so storeEnrollmentClips
+/// must NOT save (it would otherwise clobber every other term's clips). Records saves.
+private final class ThrowingLoadAudioPersistence: EnrollmentAudioPersistence, @unchecked Sendable {
+    private(set) var saveCount = 0
+    func load() throws -> [String: [StoredEnrollmentClip]] { throw DecodeFailure() }
+    func save(_ byTerm: [String: [StoredEnrollmentClip]]) throws { saveCount += 1 }
+    func remove(termID: String) throws {}
+    func deleteAll() throws {}
+}
+
 @MainActor
 final class EnrollmentClipCaptureTests: XCTestCase {
 
@@ -122,6 +134,23 @@ final class EnrollmentClipCaptureTests: XCTestCase {
             StoredEnrollmentClip(wav: Data([1]), carrierText: "x", role: .positive, negativeLabel: nil)
         ])
         // If we get here, the nil-guard worked.
+    }
+
+    /// 7031: when the existing store fails to DECODE (load throws), storeEnrollmentClips
+    /// must SKIP the save — otherwise it would persist a map holding ONLY this term,
+    /// clobbering every other term's stored clips. (A legit missing file returns [:],
+    /// which is fine to merge into; only a throw is the dangerous case.)
+    func test_storeEnrollmentClips_skips_save_when_existing_store_undecodable() {
+        let stub = ThrowingLoadAudioPersistence()
+        let c = VoiceprintCoordinator()
+        c.audioPersistence = stub
+
+        c.storeEnrollmentClips(termID: "Keavi", [
+            StoredEnrollmentClip(wav: Data([1]), carrierText: "x", role: .positive, negativeLabel: nil)
+        ])
+
+        XCTAssertEqual(stub.saveCount, 0,
+            "a decode/throw on load must skip the save so other terms' clips aren't clobbered")
     }
 
     // MARK: - Policy gate via VoiceprintEnrollmentModel.save()
