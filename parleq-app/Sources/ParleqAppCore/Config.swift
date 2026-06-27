@@ -2314,6 +2314,25 @@ public struct Config: Sendable {
         }
         // Voice-enrollment consent is never MDM-managed; always written through.
         featuresDict["voice_enrollment_consented"] = config.voiceEnrollmentConsented
+        // voiceEnrollmentEnabled — MDM-managed master switch. Same
+        // carry-forward pattern as the other feature toggles: write the
+        // in-memory value when unmanaged, preserve the on-disk value when
+        // MDM is overriding (so removing the profile restores the user's
+        // pre-MDM choice).
+        if !config.managedKeys.contains("voiceEnrollmentEnabled") {
+            featuresDict["voice_enrollment_enabled"] = config.voiceEnrollmentEnabled
+        } else if let existing = existingFeatures["voice_enrollment_enabled"] {
+            featuresDict["voice_enrollment_enabled"] = existing
+        }
+        // voiceprintClipStorageEnabled — MDM-managed kill-switch (fail-closed).
+        if !config.managedKeys.contains("voiceprintClipStorageEnabled") {
+            featuresDict["voiceprint_clip_storage_enabled"] = config.voiceprintClipStorageEnabled
+        } else if let existing = existingFeatures["voiceprint_clip_storage_enabled"] {
+            featuresDict["voiceprint_clip_storage_enabled"] = existing
+        }
+        // Clip-storage consent is never MDM-managed (consent can't be
+        // admin-granted); always written through, like the enrollment consent.
+        featuresDict["voice_clip_storage_consented"] = config.voiceClipStorageConsented
         if !config.managedKeys.contains("learnedCorrectionsMaxEntries") {
             if let v = config.learnedCorrectionsMaxEntries {
                 featuresDict["learned_corrections_max_entries"] = v

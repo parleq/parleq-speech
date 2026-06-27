@@ -115,4 +115,60 @@ final class ConfigDurableVoiceprintFieldsTests: XCTestCase {
         XCTAssertTrue(c.voiceprintClipStorageEnabled)
         XCTAssertFalse(c.voiceClipStorageConsented)
     }
+
+    // MARK: - mergeForSave round-trip (the path Config.save() actually uses)
+    //
+    // The serializeToDictionary round-trips above pass even when
+    // mergeForSave drops a field — they exercise a different code path.
+    // Config.save() goes through mergeForSave, so persistence across
+    // restart depends on it carrying all three new fields.
+
+    func test_mergeForSave_round_trips_all_three_fields() {
+        var c = Config.default
+        c.voiceEnrollmentEnabled = false
+        c.voiceprintClipStorageEnabled = false
+        c.voiceClipStorageConsented = true
+
+        let dict = Config.mergeForSave(c, existing: [:])
+        let features = dict["features"] as? [String: Any]
+        XCTAssertEqual(features?["voice_enrollment_enabled"] as? Bool, false)
+        XCTAssertEqual(features?["voiceprint_clip_storage_enabled"] as? Bool, false)
+        XCTAssertEqual(features?["voice_clip_storage_consented"] as? Bool, true)
+
+        let reparsed = Config.parse(fromDictionary: dict)
+        XCTAssertFalse(reparsed.voiceEnrollmentEnabled)
+        XCTAssertFalse(reparsed.voiceprintClipStorageEnabled)
+        XCTAssertTrue(reparsed.voiceClipStorageConsented)
+    }
+
+    // MDM-managed keys preserve the on-disk value (carry-forward), so
+    // removing the profile restores the user's pre-MDM choice.
+    func test_mergeForSave_preserves_on_disk_value_for_managed_keys() {
+        var c = Config.default
+        c.voiceEnrollmentEnabled = false       // effective (MDM-forced) value
+        c.voiceprintClipStorageEnabled = false // effective (MDM-forced) value
+        c.managedKeys = ["voiceEnrollmentEnabled", "voiceprintClipStorageEnabled"]
+
+        let existing: [String: Any] = [
+            "features": [
+                "voice_enrollment_enabled": true,        // user's pre-MDM choice
+                "voiceprint_clip_storage_enabled": true, // user's pre-MDM choice
+            ]
+        ]
+        let dict = Config.mergeForSave(c, existing: existing)
+        let features = dict["features"] as? [String: Any]
+        XCTAssertEqual(features?["voice_enrollment_enabled"] as? Bool, true,
+                       "managed key should carry forward the on-disk (pre-MDM) value")
+        XCTAssertEqual(features?["voiceprint_clip_storage_enabled"] as? Bool, true,
+                       "managed key should carry forward the on-disk (pre-MDM) value")
+    }
+
+    // Consent is never MDM-managed: written through even if listed as managed.
+    func test_mergeForSave_consent_always_written_through() {
+        var c = Config.default
+        c.voiceClipStorageConsented = true
+        let dict = Config.mergeForSave(c, existing: [:])
+        let features = dict["features"] as? [String: Any]
+        XCTAssertEqual(features?["voice_clip_storage_consented"] as? Bool, true)
+    }
 }
