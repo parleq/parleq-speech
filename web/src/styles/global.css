@@ -137,6 +137,18 @@ body {
   color: var(--color-text);
 }
 
+/* The one token the cleanup changed (a percent, a name, a dictionary term,
+   a period), emphasized in the cleaned line so the eye lands on what Parleq
+   actually did. Accent color + weight + a soft highlighter tint; the
+   color-mix tint degrades gracefully to plain accent text where unsupported. */
+.hero-demo-mark {
+  color: var(--color-accent);
+  font-weight: 600;
+  border-radius: 3px;
+  padding: 0 0.15em;
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+
 /* Whole-line crossfade used when swapping examples and on the final
    hold→clear. Kept short so the loop feels calm, not flashy. Carries
    both opacity and color so the combined `.hero-demo-cleaned

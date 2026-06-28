@@ -147,16 +147,29 @@ const capabilities = [
       class="mx-auto mb-8 flex min-h-[3.25rem] max-w-xl items-center justify-center px-2 text-center text-sm leading-snug sm:min-h-[2.5rem] sm:text-base"
     >
       <span id="hero-demo-text" class="text-[color:var(--color-text)]"
-        >Can we move the standup to Thursday?</span
+        >We cut latency by <span class="hero-demo-mark">45%</span> last quarter.</span
       >
     </div>
 
+    <!-- On-device trust badge. Frames the demo above: the transform you just
+         watched runs locally. Truthful — the ASR is always on-device, and the
+         cleanup can run on-device too (the "Lightweight" tier). -->
+    <div class="mb-2 flex justify-center">
+      <span class="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3 py-1 text-xs font-medium text-[color:var(--color-text-muted)]">
+        <svg aria-hidden="true" viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="5" y="11" width="14" height="9" rx="2"></rect>
+          <path d="M8 11V7a4 4 0 0 1 8 0v4"></path>
+        </svg>
+        Runs on-device · your voice never leaves your Mac
+      </span>
+    </div>
+
     <h1 class="font-display text-5xl leading-[1.05] font-medium tracking-tight sm:text-6xl md:text-7xl">
-      Press a key.<br />Speak. Paste.
+      Speak messy.<br />Paste clean.
     </h1>
 
     <p class="mx-auto mt-8 max-w-2xl text-lg leading-relaxed text-[color:var(--color-text-muted)] sm:text-xl">
-      <span class="text-[color:var(--color-text)]">Parleq</span> <span class="font-mono text-base text-[color:var(--color-text-subtle)]">/PAR-lek/</span> is a local-first AI dictation app for macOS. Hold a global hotkey, talk, and watch your words appear — cleaned up, punctuated, and pasted into whatever app was focused. Audio stays on your Mac.
+      <span class="text-[color:var(--color-text)]">Parleq</span> <span class="font-mono text-base text-[color:var(--color-text-subtle)]">/PAR-lek/</span> is a local-first AI dictation app for macOS. Hold a global hotkey and talk; your words come back cleaned up — punctuation, numbers and percents, your own jargon, even sound-alike names told apart — and pasted into whatever app was focused. The speech recognition and the cleanup can both run entirely on your Mac, so your voice never has to leave it.
     </p>
 
     <!-- Enterprise teaser pill. Links to the dedicated /enterprise page
@@ -192,6 +205,82 @@ const capabilities = [
     <p class="mt-6 text-sm text-[color:var(--color-text-subtle)]">
       Apache-2.0 · macOS 14+ · Apple Silicon required
     </p>
+  </section>
+
+  <!-- On-device cleanup showcase. Lifts the four distinctive transforms out
+       of the flat capability grid into a focused before→after strip — the
+       "here's how cool it actually is" the homepage was missing. Each card
+       reuses .hero-demo-mark to highlight the changed token. -->
+  <section id="on-device" data-reveal class="scroll-mt-20 border-t border-[color:var(--color-border-subtle)] bg-[color:var(--color-bg)]">
+    <div class="mx-auto max-w-5xl px-6 py-20 sm:py-24">
+      <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">
+        On-device cleanup
+      </p>
+      <h2 class="mt-4 font-display text-3xl leading-[1.1] font-medium tracking-tight sm:text-4xl">
+        Smart cleanup. On your Mac.
+      </h2>
+      <p class="mt-6 max-w-3xl text-lg leading-relaxed text-[color:var(--color-text-muted)]">
+        Local speech recognition is table stakes now. What sets Parleq apart is the cleanup that runs right beside it — punctuation, numbers, your own jargon, even sound-alike names — with no cloud model in the loop. Each example below can run on the "Lightweight" on-device tier; nothing is sent anywhere.
+      </p>
+
+      <div class="mt-12 grid gap-4 sm:grid-cols-2">
+        <!-- Punctuation, casing & disfluency -->
+        <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5">
+          <p class="text-[11px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">Punctuation &amp; casing</p>
+          <div class="mt-3 font-mono text-sm leading-relaxed">
+            <span class="text-[color:var(--color-text-subtle)]">"um so can we move the standup to thursday"</span>
+            <span aria-hidden="true" class="text-[color:var(--color-text-subtle)]"> → </span>
+            <span class="text-[color:var(--color-text)]">Can we move the standup to Thursday<span class="hero-demo-mark">?</span></span>
+          </div>
+          <p class="mt-3 text-sm leading-relaxed text-[color:var(--color-text-muted)]">
+            Capitals, end marks and question marks land where they belong, and the filler words drop out.
+          </p>
+        </div>
+
+        <!-- Numbers, percents & ranges -->
+        <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5">
+          <p class="text-[11px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">Numbers &amp; percents</p>
+          <div class="mt-3 font-mono text-sm leading-relaxed">
+            <span class="text-[color:var(--color-text-subtle)]">"we cut latency by forty five percent"</span>
+            <span aria-hidden="true" class="text-[color:var(--color-text-subtle)]"> → </span>
+            <span class="text-[color:var(--color-text)]">We cut latency by <span class="hero-demo-mark">45%</span></span>
+          </div>
+          <p class="mt-3 text-sm leading-relaxed text-[color:var(--color-text-muted)]">
+            Spelled-out numbers, percents and ranges become digits — "eight point nine million" turns into "8.9 million".
+          </p>
+        </div>
+
+        <!-- Custom dictionary via ASR biasing -->
+        <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5">
+          <p class="text-[11px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">Your words, recognized</p>
+          <div class="mt-3 font-mono text-sm leading-relaxed">
+            <span class="text-[color:var(--color-text-subtle)]">"open a new work tree for the refactor"</span>
+            <span aria-hidden="true" class="text-[color:var(--color-text-subtle)]"> → </span>
+            <span class="text-[color:var(--color-text)]">open a new <span class="hero-demo-mark">worktree</span> for the refactor</span>
+          </div>
+          <p class="mt-3 text-sm leading-relaxed text-[color:var(--color-text-muted)]">
+            A custom dictionary biases the speech model toward your names and jargon — so your terms are often recognized with no cleanup model at all.
+          </p>
+        </div>
+
+        <!-- Voiceprint disambiguation -->
+        <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5">
+          <p class="text-[11px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">Sound-alikes, told apart</p>
+          <div class="mt-3 font-mono text-sm leading-relaxed">
+            <span class="text-[color:var(--color-text-subtle)]">"shipped some updates to kiwi"</span>
+            <span aria-hidden="true" class="text-[color:var(--color-text-subtle)]"> → </span>
+            <span class="text-[color:var(--color-text)]">shipped some updates to <span class="hero-demo-mark">Keavi</span></span>
+          </div>
+          <p class="mt-3 text-sm leading-relaxed text-[color:var(--color-text-muted)]">
+            Enroll a term in your own voice and Parleq separates it from a look-alike word by sound — what's kept is an encrypted voiceprint, never a recording.
+          </p>
+        </div>
+      </div>
+
+      <p class="mt-8 text-sm text-[color:var(--color-text-muted)]">
+        Prefer a cloud model? Parleq also speaks to Gemini, OpenAI, Bedrock, Vertex and Azure — your choice, per the privacy posture you want.
+      </p>
+    </div>
   </section>
 
   <!-- Refinement showcase, as a scenario CAROUSEL. The overlay is the
@@ -712,15 +801,71 @@ const capabilities = [
         // dissolve) plus the cleaned sentence. The raw words include
         // their trailing space so the typed line spaces correctly; the
         // CSS .hero-demo-word preserves that space.
+        // Each example pairs a raw spoken transcript with the cleaned
+        // result, and names the ONE token the on-device cleanup changed
+        // (`highlight`) so the eye catches the magic. The set is chosen to
+        // show the distinctive on-device transforms — numbers/percents, the
+        // voiceprint disambiguation, a biased dictionary term, and
+        // punctuation — not just generic disfluency removal.
         const examples = [
           {
+            // Numbers + percent normalization (deterministic, on-device).
+            raw: [
+              { t: 'we' },
+              { t: 'cut' },
+              { t: 'latency' },
+              { t: 'by' },
+              { t: 'forty' },
+              { t: 'five' },
+              { t: 'percent' },
+              { t: 'last' },
+              { t: 'quarter' },
+            ],
+            cleaned: 'We cut latency by 45% last quarter.',
+            highlight: '45%',
+          },
+          {
+            // Voiceprint disambiguation: the app name "Keavi" sounds like the
+            // fruit "kiwi"; an enrolled voiceprint tells them apart by sound.
+            raw: [
+              { t: 'um', filler: true },
+              { t: 'i' },
+              { t: 'shipped' },
+              { t: 'some' },
+              { t: 'updates' },
+              { t: 'to' },
+              { t: 'kiwi' },
+              { t: 'this' },
+              { t: 'morning' },
+            ],
+            cleaned: 'I shipped some updates to Keavi this morning.',
+            highlight: 'Keavi',
+          },
+          {
+            // Custom dictionary term, recovered from the ASR biasing —
+            // "work tree" → "worktree", often without any cleanup model.
+            raw: [
+              { t: 'okay', filler: true },
+              { t: "let's" },
+              { t: 'open' },
+              { t: 'a' },
+              { t: 'new' },
+              { t: 'work' },
+              { t: 'tree' },
+              { t: 'for' },
+              { t: 'the' },
+              { t: 'refactor' },
+            ],
+            cleaned: "Let's open a new worktree for the refactor.",
+            highlight: 'worktree',
+          },
+          {
+            // Punctuation + casing + disfluency removal.
             raw: [
               { t: 'um', filler: true },
               { t: 'so', filler: true },
-              { t: 'basically', filler: true },
               { t: 'can' },
               { t: 'we' },
-              { t: 'uh', filler: true },
               { t: 'move' },
               { t: 'the' },
               { t: 'standup' },
@@ -728,40 +873,7 @@ const capabilities = [
               { t: 'thursday' },
             ],
             cleaned: 'Can we move the standup to Thursday?',
-          },
-          {
-            raw: [
-              { t: 'okay', filler: true },
-              { t: 'so', filler: true },
-              { t: 'the' },
-              { t: 'uh', filler: true },
-              { t: 'the', filler: true },
-              { t: 'null' },
-              { t: 'check' },
-              { t: 'goes' },
-              { t: 'before' },
-              { t: 'the' },
-              { t: 'early' },
-              { t: 'return' },
-              { t: 'i', filler: true },
-              { t: 'think', filler: true },
-            ],
-            cleaned: 'The null check goes before the early return.',
-          },
-          {
-            raw: [
-              { t: 'send' },
-              { t: 'jamie' },
-              { t: 'the' },
-              { t: 'q3' },
-              { t: 'numbers' },
-              { t: 'and' },
-              { t: 'um', filler: true },
-              { t: 'cc' },
-              { t: 'finance' },
-              { t: 'please', filler: true },
-            ],
-            cleaned: 'Send Jamie the Q3 numbers and CC finance.',
+            highlight: '?',
           },
         ];
 
@@ -872,7 +984,22 @@ const capabilities = [
           await wait(FADE_MS);
           if (!live()) return;
           demoText.className = 'hero-demo-cleaned hero-demo-fade';
-          demoText.textContent = ex.cleaned;
+          // Render the cleaned line with the one changed token emphasized, so
+          // the eye lands on what the on-device cleanup actually did. Built
+          // from text nodes + a span (no innerHTML) to stay injection-safe.
+          demoText.textContent = '';
+          const hi = ex.highlight;
+          const at = hi ? ex.cleaned.indexOf(hi) : -1;
+          if (at >= 0) {
+            demoText.appendChild(document.createTextNode(ex.cleaned.slice(0, at)));
+            const mark = document.createElement('span');
+            mark.className = 'hero-demo-mark';
+            mark.textContent = hi;
+            demoText.appendChild(mark);
+            demoText.appendChild(document.createTextNode(ex.cleaned.slice(at + hi.length)));
+          } else {
+            demoText.textContent = ex.cleaned;
+          }
           demoText.style.opacity = '0';
           // Double rAF so the opacity-0 frame commits before we fade in.
           // This await isn't timer-tracked, so the post-resume live()
