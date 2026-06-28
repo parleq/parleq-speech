@@ -17,7 +17,7 @@ import SiteHeader from '../../components/SiteHeader.astro';
       On-device cleanup
     </h1>
     <p class="mt-6 text-[17px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      Parleq can run the cleanup pass entirely on your Mac — no API key, no cloud account, no per-call cost, and no network boundary for your transcript. There are <strong class="text-[color:var(--color-text)]">two on-device options</strong>, and you pick either one in the setup wizard or under <strong class="text-[color:var(--color-text)]">Settings → Cleanup → Provider</strong>. Both keep your transcript on your machine; they differ in what they can do and what they cost in download and memory.
+      Parleq can run the cleanup pass entirely on your Mac — no API key, no cloud account, no per-call cost, and no network boundary for your transcript. There are <strong class="text-[color:var(--color-text)]">two on-device options</strong>, both available under <strong class="text-[color:var(--color-text)]">Settings → Cleanup → Provider</strong> — and the first-run setup wizard offers the Gemma 4 one directly as its <strong class="text-[color:var(--color-text)]">On-device</strong> choice. Both keep your transcript on your machine; they differ in what they can do and what they cost in download and memory.
     </p>
 
     <h2 class="mt-12 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
@@ -55,7 +55,7 @@ import SiteHeader from '../../components/SiteHeader.astro';
         The Lightweight option is a fast, fully deterministic corrector that runs in-process — nothing to download and almost no memory overhead. It handles the structured cleanup: capitals and end punctuation, spelled-out numbers and percents (so "forty five percent" becomes "45%"), your custom-dictionary terms, and — once you've enrolled them — voiceprint disambiguation of sound-alike words. Because there is no language model on this path, it can't freely rewrite text, so the voice-refine loop, the one-tap style chips, and per-app styling aren't available here; switch to Gemma 4 or a cloud provider when you want those.
       </p>
       <p>
-        To use it, choose <strong class="text-[color:var(--color-text)]">Lightweight (on-device)</strong> in the setup wizard, or open <strong class="text-[color:var(--color-text)]">Settings → Cleanup → Provider</strong> and select it. There's nothing to download and nothing to configure — it's ready immediately, and like every on-device path your transcript never crosses a network boundary.
+        To use it, open <strong class="text-[color:var(--color-text)]">Settings → Cleanup → Provider</strong> and select <strong class="text-[color:var(--color-text)]">Lightweight (on-device)</strong>. (It's a Settings option — the first-run wizard's <strong class="text-[color:var(--color-text)]">On-device</strong> choice is the Gemma 4 model below.) There's nothing to download and nothing to configure — it's ready immediately, and like every on-device path your transcript never crosses a network boundary.
       </p>
     </div>
 
@@ -85,9 +85,9 @@ import SiteHeader from '../../components/SiteHeader.astro';
       <li class="flex gap-4">
         <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums">1.</span>
         <div>
-          <p class="text-[color:var(--color-text)] font-medium">Choose On-device (no cloud).</p>
+          <p class="text-[color:var(--color-text)] font-medium">Choose On-device.</p>
           <p class="mt-2">
-            On first launch the setup wizard asks how you want cleanup handled. Pick <strong class="text-[color:var(--color-text)]">On-device (no cloud)</strong> — the Gemma 4 option (distinct from <strong class="text-[color:var(--color-text)]">Lightweight (on-device)</strong> above). Already past the wizard? Open <strong class="text-[color:var(--color-text)]">Settings… → Cleanup → Provider</strong> and switch to it.
+            On first launch the setup wizard asks how you want cleanup handled. Pick <strong class="text-[color:var(--color-text)]">On-device</strong> — the Gemma 4 model. Already past the wizard? Open <strong class="text-[color:var(--color-text)]">Settings… → Cleanup → Provider</strong> and choose <strong class="text-[color:var(--color-text)]">On-device (no cloud)</strong> — the same option, labeled there to set it apart from Lightweight.
           </p>
           <p class="mt-2 text-[14px] text-[color:var(--color-text-subtle)]">
             On a Mac with less than 12 GB of RAM the option is visible but disabled — the model's ~6 GB working set would crowd out your other apps, so Parleq won't let you select it.
@@ -100,7 +100,7 @@ import SiteHeader from '../../components/SiteHeader.astro';
         <div>
           <p class="text-[color:var(--color-text)] font-medium">Let the model download.</p>
           <p class="mt-2">
-            Selecting On-device (no cloud) starts a one-time ~4 GB download from Hugging Face. Real, byte-accurate progress shows in the wizard and in the menu-bar item, and the download resumes where it left off if it's interrupted — quit, lost network, even a force-quit — rather than starting over. You can keep using Parleq while it downloads (it pastes raw transcription until the model is ready). The model is stored at <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">~/Library/Application Support/Parleq/models/</code>.
+            Selecting On-device starts a one-time ~4 GB download from Hugging Face. Real, byte-accurate progress shows in the wizard and in the menu-bar item, and the download resumes where it left off if it's interrupted — quit, lost network, even a force-quit — rather than starting over. You can keep using Parleq while it downloads (it pastes raw transcription until the model is ready). The model is stored at <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">~/Library/Application Support/Parleq/models/</code>.
           </p>
         </div>
       </li>
