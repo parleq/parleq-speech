@@ -173,17 +173,35 @@ const capabilities = [
       <span class="text-[color:var(--color-text)]">Parleq</span> <span class="font-mono text-sm text-[color:var(--color-text-subtle)]">/PAR-lek/</span> is a local-first AI dictation app for macOS. Hold a global hotkey and talk; the cleaned-up result pastes into whatever app was focused — and the speech recognition and cleanup can both run entirely on your Mac.
     </p>
 
-    <!-- Enterprise teaser pill. Links to the dedicated /enterprise page
-         (the richer IT-buyer story); the consumer pitch above stays
-         untouched. -->
-    <div class="mt-10">
-      <a
-        href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/enterprise/'}
-        class="inline-flex items-center gap-2 rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-4 py-1.5 text-sm font-medium text-[color:var(--color-text-muted)] transition-colors hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-text)]"
-      >
-        <span aria-hidden="true" class="inline-block h-1.5 w-1.5 rounded-full bg-[color:var(--color-accent)]"></span>
-        New · Enterprise SSO for Okta, Entra &amp; any OIDC IdP
-        <span aria-hidden="true">→</span>
+    <!-- Feature chips. First-load-visible strip ABOVE the CTAs. The on-device
+         cleanup family (voiceprints, on-device Gemma 4, numbers, dictionary)
+         carries the Concord-grape accent (.chip-grape) to set it apart;
+         global hotkeys and the enterprise-SSO link stay neutral. Each links to
+         where the feature is explained. Decorative icons are aria-hidden. -->
+    <div class="mt-10 flex flex-wrap items-center justify-center gap-2">
+      <a href={`${base}/how-it-works/#voice-enrollment`} class="chip chip-grape">
+        <svg aria-hidden="true" viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0M12 18v3"></path></svg>
+        Voiceprints
+      </a>
+      <a href={`${base}/docs/on-device/`} class="chip chip-grape">
+        <svg aria-hidden="true" viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2"></rect><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"></path></svg>
+        On-device Gemma 4
+      </a>
+      <a href={`${base}/how-it-works/#stage-cleanup`} class="chip chip-grape">
+        <svg aria-hidden="true" viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3 7 21M17 3l-2 18M4 8h16M3 16h16"></path></svg>
+        Numbers &amp; punctuation
+      </a>
+      <a href={`${base}/how-it-works/#stage-transcribe`} class="chip chip-grape">
+        <svg aria-hidden="true" viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h12v16H6a2 2 0 0 0-2 2zM6 17h12"></path></svg>
+        Custom dictionary
+      </a>
+      <a href={`${base}/how-it-works/#gestures`} class="chip">
+        <svg aria-hidden="true" viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="11" rx="2"></rect><path d="M7 11h.01M11 11h.01M15 11h.01M8 15h8"></path></svg>
+        Global hotkeys
+      </a>
+      <a href={`${base}/enterprise/`} class="chip">
+        <svg aria-hidden="true" viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9V6z"></path></svg>
+        Enterprise SSO
       </a>
     </div>
 
@@ -203,34 +221,6 @@ const capabilities = [
       </a>
     </div>
 
-    <!-- Feature chips. A first-load-visible, quick-glance strip that raises
-         awareness of the standout capabilities; each links to where the
-         feature is explained. Small + muted so it supports the CTAs above
-         rather than competing with them. Decorative icons are aria-hidden;
-         the link text carries the meaning. -->
-    <div class="mt-8 flex flex-wrap items-center justify-center gap-2">
-      <a href={`${base}/how-it-works/#voice-enrollment`} class="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3 py-1 text-xs font-medium text-[color:var(--color-text-muted)] transition-colors hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-text)]">
-        <svg aria-hidden="true" viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0M12 18v3"></path></svg>
-        Voiceprints
-      </a>
-      <a href={`${base}/docs/on-device/`} class="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3 py-1 text-xs font-medium text-[color:var(--color-text-muted)] transition-colors hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-text)]">
-        <svg aria-hidden="true" viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2"></rect><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"></path></svg>
-        On-device Gemma 4
-      </a>
-      <a href={`${base}/how-it-works/#gestures`} class="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3 py-1 text-xs font-medium text-[color:var(--color-text-muted)] transition-colors hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-text)]">
-        <svg aria-hidden="true" viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="11" rx="2"></rect><path d="M7 11h.01M11 11h.01M15 11h.01M8 15h8"></path></svg>
-        Global hotkeys
-      </a>
-      <a href={`${base}/how-it-works/#stage-cleanup`} class="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3 py-1 text-xs font-medium text-[color:var(--color-text-muted)] transition-colors hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-text)]">
-        <svg aria-hidden="true" viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3 7 21M17 3l-2 18M4 8h16M3 16h16"></path></svg>
-        Numbers &amp; punctuation
-      </a>
-      <a href={`${base}/how-it-works/#stage-transcribe`} class="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3 py-1 text-xs font-medium text-[color:var(--color-text-muted)] transition-colors hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-text)]">
-        <svg aria-hidden="true" viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h12v16H6a2 2 0 0 0-2 2zM6 17h12"></path></svg>
-        Custom dictionary
-      </a>
-    </div>
-
     <p class="mt-6 text-sm text-[color:var(--color-text-subtle)]">
       Apache-2.0 · macOS 14+ · Apple Silicon required
     </p>
@@ -240,7 +230,7 @@ const capabilities = [
        of the flat capability grid into a focused before→after strip — the
        "here's how cool it actually is" the homepage was missing. Each card
        reuses .hero-demo-mark to highlight the changed token. -->
-  <section id="on-device" data-reveal class="scroll-mt-20 border-t border-[color:var(--color-border-subtle)] bg-[color:var(--color-bg)]">
+  <section id="on-device" data-reveal class="zone-grape scroll-mt-20 border-t border-[color:var(--color-border-subtle)]">
     <div class="mx-auto max-w-5xl px-6 py-20 sm:py-24">
       <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">
         On-device cleanup

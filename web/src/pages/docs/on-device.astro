@@ -7,7 +7,7 @@ import SiteHeader from '../../components/SiteHeader.astro';
 <Layout title="On-device setup — Parleq" description="Run Parleq's cleanup entirely on your Mac — a fast deterministic Lightweight tier, or the Gemma 4 E4B local model via Apple MLX. No API key, no cloud account, no network boundary.">
   <SiteHeader active="docs" />
 
-  <article class="mx-auto max-w-2xl px-6 pt-16 pb-24">
+  <article class="accent-grape mx-auto max-w-2xl px-6 pt-16 pb-24">
     <p class="text-sm">
       <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/'} class="text-[color:var(--color-text-subtle)] hover:text-[color:var(--color-text-muted)]">← Docs</a>
     </p>
@@ -52,7 +52,7 @@ import SiteHeader from '../../components/SiteHeader.astro';
     </h2>
     <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
       <p>
-        The Lightweight option is a fast, fully deterministic corrector that runs in-process — nothing to download and almost no memory overhead. It handles the structured cleanup: capitals and end punctuation, spelled-out numbers and percents (so "forty five percent" becomes "45%"), your custom-dictionary terms, and — once you've enrolled them — voiceprint disambiguation of sound-alike words. Because there is no language model on this path, it can't freely rewrite text, so the voice-refine loop, the one-tap style chips, and per-app styling aren't available here; switch to Gemma 4 or a cloud provider when you want those.
+        The Lightweight option — built on Concord (by Keavi) — is a fast, fully deterministic corrector that runs in-process, with nothing to download and almost no memory overhead. It handles the structured cleanup: capitals and end punctuation, spelled-out numbers and percents (so "forty five percent" becomes "45%"), your custom-dictionary terms, and — once you've enrolled them — voiceprint disambiguation of sound-alike words. Because there is no language model on this path, it can't freely rewrite text, so the voice-refine loop, the one-tap style chips, and per-app styling aren't available here; switch to Gemma 4 or a cloud provider when you want those.
       </p>
       <p>
         To use it, open <strong class="text-[color:var(--color-text)]">Settings → Cleanup → Provider</strong> and select <strong class="text-[color:var(--color-text)]">Lightweight (on-device)</strong>. (It's a Settings option — the first-run wizard's <strong class="text-[color:var(--color-text)]">On-device</strong> choice is the Gemma 4 model below.) There's nothing to download and nothing to configure — it's ready immediately, and like every on-device path your transcript never crosses a network boundary.
