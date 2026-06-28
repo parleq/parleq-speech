@@ -188,8 +188,8 @@ public final class ConcordCleanupProvider: LLMProvider, @unchecked Sendable {
         // ride the shared LLMProvider signature, and the system prompt only
         // carries a free-text hint, not structured terms).
         let dict = pendingDictionaryTerms()
-        // Per-term correction policies (A2: consumed here, engine ignores them;
-        // Task 7 wires up the matching path that acts on them).
+        // Per-term correction policies (consumed here; the engine ignores them
+        // until a future release wires up the matching path that acts on them).
         let policies = takePolicies()
         // Build this utterance's acoustic gate from its diagnostics (enrollment enforce mode). nil
         // → byte-identical baseline behavior.
@@ -265,7 +265,7 @@ public final class ConcordCleanupProvider: LLMProvider, @unchecked Sendable {
     // Per-term correction policies (keyed by canonical term, original case).
     // Mirrors the pendingDictionary lifecycle: set by AppState before cleanup,
     // consumed + cleared inside generateStreaming, drained on refine turns.
-    // In A2 the engine ignores the map; Task 7 wires the matching paths that act on it.
+    // The engine currently ignores the map; a future release wires the matching paths.
     private var pendingPolicies: [String: CorrectionPolicy] = [:]
 
     /// Stash the per-term correction policies for the NEXT cleanup call.

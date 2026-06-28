@@ -159,7 +159,7 @@ let package = Package(
         // Parleq depends on it through the public API only (SecondPassCleaner).
         // Private repo (keavi-app/concord); pinned tag like the other deps.
         // For local Concord co-dev, override without committing:
-        //   swift package edit Concord --path /Users/jonyoder/Dev/concord
+        //   swift package edit Concord --path ../concord
         .package(url: "https://github.com/keavi-app/concord.git", exact: "0.3.3"),
     ],
     targets: [
