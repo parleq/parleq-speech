@@ -142,11 +142,13 @@ body {
    actually did. Accent color + weight + a soft highlighter tint; the
    color-mix tint degrades gracefully to plain accent text where unsupported. */
 .hero-demo-mark {
-  color: var(--color-accent);
+  /* Darker accent for the TEXT (WCAG AA ≥4.5:1 on the tint over warm white);
+     the lighter accent stays as the highlighter background tint only. */
+  color: var(--color-accent-hover);
   font-weight: 600;
   border-radius: 3px;
   padding: 0 0.15em;
-  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
 }
 
 /* Whole-line crossfade used when swapping examples and on the final
