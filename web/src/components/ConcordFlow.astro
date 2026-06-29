@@ -1,0 +1,220 @@
+---
+interface Props {
+  uid?: string;
+}
+
+const { uid = 'cf' } = Astro.props;
+
+// Flow lines: origins in a TIGHT band near the box center (y 118..244),
+// converging LOOSELY across the engine's left edge (spread), with a gentle S-wave.
+// Two-angle S-curve: the line leaves the box at a LOW angle (cp1 horizontal at the
+// box), bends SHARPLY through the middle, then runs nearly PARALLEL into the card
+// (cp2 horizontal at the card) — not one smooth arc. Glow comes from the lines' own
+// bloom (bright + bunched near the card), not a background gradient.
+// 18 lines, NON-UNIFORM convergence: tight/overlapping near the center, wider at the edges.
+// inY = origin at the box; endY = where each line meets the engine (hand-tuned, non-uniform).
+const inY  = [74, 86, 99, 112, 125, 138, 150, 162, 174, 186, 198, 210, 222, 235, 248, 261, 274, 287];
+const endY = [161, 165, 168, 171, 174, 176, 178, 179, 180, 181, 182, 184, 186, 189, 192, 195, 199, 203];
+// Lines END at the box edge (x=162 / x=398), not inside it.
+const leftPaths = inY.map((y, i) => `M162 ${y} C 182 ${y}, 198 ${endY[i]}, 228 ${endY[i]}`);
+const rightPaths = inY.map((y, i) => `M332 ${endY[i]} C 362 ${endY[i]}, 378 ${y}, 398 ${y}`);
+
+// Orange concentrated near the vertical CENTER, purple outward; heaviest bright-orange line at the
+// very center (idx 9); weights vary; non-uniform tip-glow.
+const amberIdx = new Set([7, 8, 9, 10]);
+const fadeIdx = new Set([0, 17]);          // outermost lines fade out before reaching the box
+const weights = [0.7, 0.95, 0.8, 1.1, 0.85, 1.2, 1.0, 1.25, 1.3, 1.9, 1.25, 1.1, 0.85, 1.2, 0.75, 1.0, 0.7, 0.9];
+const glowAt: Record<number, number> = { 3: 0.5, 6: 0.6, 7: 0.8, 8: 0.7, 9: 1, 10: 0.85, 13: 0.5 };
+---
+
+<svg class="concord-flow absolute inset-0 z-0 h-full w-full" viewBox="0 0 560 360" preserveAspectRatio="none" aria-hidden="true" data-concord-flow={uid}>
+  <defs>
+    <!-- SHARP line gradients: visible-but-dim along the length, saturated near Concord -->
+    <!-- The LINE itself color-shifts amber/lavender → white-hot at the tip. No blur on
+         these, so the color change has NO halo around it — just the line changing color. -->
+    <linearGradient id={`${uid}-gAmber`} x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="var(--flow-voice)" stop-opacity="0.5"></stop>
+      <stop offset="48%" stop-color="#e8830a" stop-opacity="0.62"></stop>
+      <stop offset="80%" stop-color="#ff9f33" stop-opacity="0.95"></stop>
+      <stop offset="93%" stop-color="#ffd590" stop-opacity="1"></stop>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="1"></stop>
+    </linearGradient>
+    <!-- neon violet (brighter/more saturated than the muted grape used elsewhere) → white tip -->
+    <linearGradient id={`${uid}-gLav`} x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#7c3aed" stop-opacity="0.55"></stop>
+      <stop offset="48%" stop-color="#9d5cf5" stop-opacity="0.68"></stop>
+      <stop offset="80%" stop-color="#c18bff" stop-opacity="0.95"></stop>
+      <stop offset="93%" stop-color="#e8d6ff" stop-opacity="1"></stop>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="1"></stop>
+    </linearGradient>
+    <linearGradient id={`${uid}-gOutA`} x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="1"></stop>
+      <stop offset="7%" stop-color="#ffd590" stop-opacity="1"></stop>
+      <stop offset="20%" stop-color="#ff9f33" stop-opacity="0.95"></stop>
+      <stop offset="52%" stop-color="#e8830a" stop-opacity="0.62"></stop>
+      <stop offset="100%" stop-color="var(--flow-voice)" stop-opacity="0.5"></stop>
+    </linearGradient>
+    <linearGradient id={`${uid}-gOutL`} x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="1"></stop>
+      <stop offset="7%" stop-color="#e8d6ff" stop-opacity="1"></stop>
+      <stop offset="20%" stop-color="#c18bff" stop-opacity="0.95"></stop>
+      <stop offset="52%" stop-color="#9d5cf5" stop-opacity="0.68"></stop>
+      <stop offset="100%" stop-color="#7c3aed" stop-opacity="0.55"></stop>
+    </linearGradient>
+    <!-- GLOW underlay gradients: warm/fiery, SATURATED, transparent until near Concord.
+         One warm hue for all glow lines + screen blending → converging glows ADD to a
+         hot orange core instead of graying out. -->
+    <!-- Confined glow: transparent until ~85% (≈ last 12px before the box), then a small
+         white-hot bloom RIGHT at the box only — for the few main lines. -->
+    <linearGradient id={`${uid}-gGlowWarm`} x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#ff9f33" stop-opacity="0"></stop>
+      <stop offset="85%" stop-color="#ff9f33" stop-opacity="0"></stop>
+      <stop offset="94%" stop-color="#ffe0a8" stop-opacity="0.8"></stop>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="1"></stop>
+    </linearGradient>
+    <linearGradient id={`${uid}-gGlowWarmOut`} x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="1"></stop>
+      <stop offset="6%" stop-color="#ffe0a8" stop-opacity="0.8"></stop>
+      <stop offset="15%" stop-color="#ff9f33" stop-opacity="0"></stop>
+      <stop offset="100%" stop-color="#ff9f33" stop-opacity="0"></stop>
+    </linearGradient>
+    <!-- fade variants: transparent at the box, so these lines fade IN after the box edge -->
+    <linearGradient id={`${uid}-gLavFade`} x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#7c3aed" stop-opacity="0"></stop>
+      <stop offset="26%" stop-color="#9d5cf5" stop-opacity="0.5"></stop>
+      <stop offset="80%" stop-color="#c18bff" stop-opacity="0.92"></stop>
+      <stop offset="93%" stop-color="#e8d6ff" stop-opacity="1"></stop>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="1"></stop>
+    </linearGradient>
+    <linearGradient id={`${uid}-gOutLFade`} x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="1"></stop>
+      <stop offset="7%" stop-color="#e8d6ff" stop-opacity="1"></stop>
+      <stop offset="20%" stop-color="#c18bff" stop-opacity="0.92"></stop>
+      <stop offset="74%" stop-color="#9d5cf5" stop-opacity="0.5"></stop>
+      <stop offset="100%" stop-color="#7c3aed" stop-opacity="0"></stop>
+    </linearGradient>
+    <!-- neon-violet confined glow for the purple lines -->
+    <linearGradient id={`${uid}-gGlowViolet`} x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#a64dff" stop-opacity="0"></stop>
+      <stop offset="85%" stop-color="#a64dff" stop-opacity="0"></stop>
+      <stop offset="94%" stop-color="#dcbcff" stop-opacity="0.8"></stop>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="1"></stop>
+    </linearGradient>
+    <linearGradient id={`${uid}-gGlowVioletOut`} x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="1"></stop>
+      <stop offset="6%" stop-color="#dcbcff" stop-opacity="0.8"></stop>
+      <stop offset="15%" stop-color="#a64dff" stop-opacity="0"></stop>
+      <stop offset="100%" stop-color="#a64dff" stop-opacity="0"></stop>
+    </linearGradient>
+    <!-- small, tight bloom (only acts on the already-confined glow strokes) -->
+    <filter id={`${uid}-lineGlow`} x="-80%" y="-300%" width="260%" height="700%">
+      <feGaussianBlur stdDeviation="2.4" result="wide"></feGaussianBlur>
+      <feGaussianBlur stdDeviation="0.9" result="tight"></feGaussianBlur>
+      <feMerge><feMergeNode in="wide"></feMergeNode><feMergeNode in="tight"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge>
+    </filter>
+    <!-- soft radial glows for the on-line accent dots (white-hot core → line hue → transparent) -->
+    <radialGradient id={`${uid}-dotWarm`}>
+      <stop offset="0%" stop-color="#fff3df" stop-opacity="1"></stop>
+      <stop offset="42%" stop-color="#ffb04d" stop-opacity="0.85"></stop>
+      <stop offset="100%" stop-color="#ff9f33" stop-opacity="0"></stop>
+    </radialGradient>
+    <radialGradient id={`${uid}-dotViolet`}>
+      <stop offset="0%" stop-color="#f3e9ff" stop-opacity="1"></stop>
+      <stop offset="42%" stop-color="#c18bff" stop-opacity="0.85"></stop>
+      <stop offset="100%" stop-color="#a64dff" stop-opacity="0"></stop>
+    </radialGradient>
+  </defs>
+  <!-- Confined glow: a NON-UNIFORM subset of lines, last ~12px at the box, varied strength, screen-blended -->
+  <g fill="none" filter={`url(#${uid}-lineGlow)`} stroke-linecap="round" style="mix-blend-mode: screen;">
+    {leftPaths.map((d, i) => (glowAt[i] ? <path d={d} stroke={amberIdx.has(i) ? `url(#${uid}-gGlowWarm)` : `url(#${uid}-gGlowViolet)`} stroke-width="3" opacity={glowAt[i]}></path> : null))}
+    {rightPaths.map((d, i) => (glowAt[i] ? <path d={d} stroke={amberIdx.has(i) ? `url(#${uid}-gGlowWarmOut)` : `url(#${uid}-gGlowVioletOut)`} stroke-width="3" opacity={glowAt[i]}></path> : null))}
+  </g>
+  <!-- SHARP crisp lines on top (NO blur): orange-center / violet-outer, varied weights, some fade before the box -->
+  <g fill="none" stroke-linecap="round">
+    {leftPaths.map((d, i) => <path id={`${uid}-fl-${i}`} d={d} stroke={fadeIdx.has(i) ? `url(#${uid}-gLavFade)` : amberIdx.has(i) ? `url(#${uid}-gAmber)` : `url(#${uid}-gLav)`} stroke-width={weights[i]} opacity={amberIdx.has(i) ? 0.95 : 0.82}></path>)}
+    {rightPaths.map((d, i) => <path id={`${uid}-fr-${i}`} d={d} stroke={fadeIdx.has(i) ? `url(#${uid}-gOutLFade)` : amberIdx.has(i) ? `url(#${uid}-gOutA)` : `url(#${uid}-gOutL)`} stroke-width={weights[i]} opacity={amberIdx.has(i) ? 0.95 : 0.82}></path>)}
+  </g>
+  <!-- (on-line accent dots are added by the script so they sit exactly on the curves) -->
+</svg>
+
+<script>
+  (() => {
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const NS = 'http://www.w3.org/2000/svg';
+    const amberLines = new Set([7, 8, 9, 10]);
+
+    document.querySelectorAll<SVGSVGElement>('[data-concord-flow]').forEach((svg) => {
+      const uid = svg.dataset.concordFlow!;
+      const stage = svg.parentElement;
+
+      const pointAt = (id: string, t: number) => {
+        const p = svg.querySelector<SVGPathElement>(`#${id}`);
+        if (!p) return null;
+        return p.getPointAtLength(p.getTotalLength() * t);
+      };
+
+      // STATIC on-line accents — soft radial glows the SAME hue as the line, brightened, so they read
+      // as the line locally glowing (not a superimposed dot). t=0 is the box on the left / engine on
+      // the right. A couple sit at the box edge (terminators); the rest are mid-line.
+      const accents = [
+        { id: `${uid}-fl-8`, t: 0,    kind: 'warm',   r: 3.5 },  // box terminator (orange line) — smaller
+        { id: `${uid}-fl-3`, t: 0.52, kind: 'violet', r: 3.2 },  // mid-line violet
+        { id: `${uid}-fl-13`, t: 0.58, kind: 'violet', r: 2.6 }, // mid-line violet
+        { id: `${uid}-fr-9`, t: 0.5,  kind: 'warm',   r: 2.6 },  // mid-line orange — smaller
+        { id: `${uid}-fr-4`, t: 0.55, kind: 'violet', r: 2.8 },  // mid-line violet
+      ];
+      const aGroup = document.createElementNS(NS, 'g');
+      aGroup.style.mixBlendMode = 'screen';
+      svg.appendChild(aGroup);
+      for (const a of accents) {
+        const pt = pointAt(a.id, a.t);
+        if (!pt) continue;
+        const c = document.createElementNS(NS, 'circle');
+        c.setAttribute('cx', String(pt.x)); c.setAttribute('cy', String(pt.y));
+        c.setAttribute('r', String(a.r));
+        c.setAttribute('fill', a.kind === 'warm' ? `url(#${uid}-dotWarm)` : `url(#${uid}-dotViolet)`);
+        aGroup.appendChild(c);
+      }
+
+      if (!reduce.matches && stage) {
+        let onScreen = true;
+        new IntersectionObserver((es) => { onScreen = es[0].isIntersecting; }, { threshold: 0.15 }).observe(stage);
+        const railIds = [
+          `${uid}-fl-2`, `${uid}-fl-9`, `${uid}-fl-14`, `${uid}-fl-16`,
+          `${uid}-fr-5`, `${uid}-fr-9`, `${uid}-fr-13`, `${uid}-fr-16`,
+        ];
+        type Dot = { c: SVGCircleElement; path: SVGPathElement; len: number; phase: number; speed: number };
+        const dots: Dot[] = [];
+        railIds.forEach((id, idx) => {
+          const path = svg.querySelector<SVGPathElement>(`#${id}`);
+          if (!path) return;
+          const lineNum = Number(id.split('-').pop());
+          const amber = amberLines.has(lineNum);
+          const len = path.getTotalLength();
+          const count = idx % 3 === 0 ? 2 : 1;
+          for (let k = 0; k < count; k++) {
+            const r = 0.6 + Math.random() * 1.1;
+            const c = document.createElementNS(NS, 'circle');
+            c.setAttribute('r', r.toFixed(2));
+            c.setAttribute('fill', amber ? '#ff9f33' : '#c18bff');
+            c.style.filter = `drop-shadow(0 0 ${(2 + r).toFixed(1)}px ${amber ? '#ff9f33' : '#bf8cff'})`;
+            svg.appendChild(c);
+            dots.push({ c, path, len, phase: (k * 0.5 + Math.random()) % 1, speed: 0.14 + Math.random() * 0.08 });
+          }
+        });
+        let last = 0;
+        const frame = (ts: number) => {
+          const dt = last ? (ts - last) / 1000 : 0; last = ts;
+          if (onScreen) for (const d of dots) {
+            d.phase = (d.phase + d.speed * dt) % 1;
+            const pt = d.path.getPointAtLength(d.len * d.phase);
+            d.c.setAttribute('cx', String(pt.x)); d.c.setAttribute('cy', String(pt.y));
+            d.c.setAttribute('opacity', (0.25 + 0.75 * Math.sin(Math.PI * d.phase)).toFixed(2));
+          }
+          requestAnimationFrame(frame);
+        };
+        requestAnimationFrame(frame);
+      }
+    });
+  })();
+</script>
