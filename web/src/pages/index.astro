@@ -634,16 +634,19 @@ const capabilities = [
   <section data-reveal class="border-t border-[color:var(--color-border-subtle)] bg-[color:var(--color-section-tint)]">
     <div class="mx-auto max-w-5xl px-6 py-24">
       <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">
-        Everything it does
+        The full toolkit
       </p>
       <h2 class="mt-3 font-display text-2xl leading-[1.1] font-medium tracking-tight sm:text-3xl">
         Twelve capabilities, one quiet hotkey.
       </h2>
-      <div class="mt-10 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+      <p class="mt-3 max-w-2xl text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
+        Beyond the headline features above, here's everything Parleq does — tap any card for the full story.
+      </p>
+      <div class="mt-10 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {capabilities.map((card) => (
           <a
             href={card.href}
-            class="group flex flex-col rounded-2xl border border-[color:var(--color-border-subtle)] bg-[color:var(--color-surface)] p-6 transition-colors hover:border-[color:var(--color-accent)]"
+            class="group flex flex-col rounded-2xl border border-[color:var(--color-border-subtle)] bg-[color:var(--color-surface)] p-5 transition-colors hover:border-[color:var(--color-accent)]"
           >
             <span aria-hidden="true" class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[color:var(--color-border-subtle)] bg-[color:var(--color-bg)] text-[color:var(--color-accent)]">
               <svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -725,15 +728,12 @@ const capabilities = [
                     )}
               </svg>
             </span>
-            <h3 class="mt-4 text-lg font-semibold tracking-tight text-[color:var(--color-text)]">
+            <h3 class="mt-3.5 text-[15px] font-semibold tracking-tight text-[color:var(--color-text)] group-hover:text-[color:var(--color-accent-hover)]">
               {card.title}
             </h3>
-            <p class="mt-2 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
+            <p class="mt-1.5 text-[13.5px] leading-relaxed text-[color:var(--color-text-muted)]">
               {card.blurb}
             </p>
-            <span aria-hidden="true" class="mt-4 inline-flex text-[13px] font-medium text-[color:var(--color-accent)] group-hover:underline">
-              Learn more →
-            </span>
           </a>
         ))}
       </div>
