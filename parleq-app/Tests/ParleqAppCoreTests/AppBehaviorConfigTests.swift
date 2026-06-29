@@ -134,4 +134,23 @@ final class AppBehaviorConfigTests: XCTestCase {
         let legacy = try XCTUnwrap(dict["preset_app_defaults"] as? [String: String])
         XCTAssertEqual(legacy["com.legacy.only"], "p9")
     }
+
+    // MARK: - MDM gate
+
+    func test_behaviorForApp_honors_transformPresetsEnabled_gate() throws {
+        // A Polished app with a configured per-app preset surfaces it only when
+        // transform presets are enabled; an MDM-forced disable must suppress the
+        // preset (sourced through presetForApp, the single gate) — never bypass it.
+        var c = Config.default
+        c.transformPresets = [TransformPreset(id: "p1", name: "Friendly", prompt: "be friendly")]
+        c.presetAppDefaults = ["com.tinyspeck.slackmacgap": "p1"]
+
+        c.transformPresetsEnabled = true
+        XCTAssertEqual(c.behaviorForApp("com.tinyspeck.slackmacgap").presetID, "p1")
+
+        c.transformPresetsEnabled = false
+        let gated = c.behaviorForApp("com.tinyspeck.slackmacgap")
+        XCTAssertEqual(gated.mode, .polished)
+        XCTAssertNil(gated.presetID, "MDM-disabled presets must not be surfaced")
+    }
 }
