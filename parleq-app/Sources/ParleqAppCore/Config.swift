@@ -316,6 +316,29 @@ public enum LocalModelDefaults {
     }()
 }
 
+/// How Parleq's cleanup pipeline is routed for a given paste target.
+/// The only genuinely new routing primitive is `.instant` (a forced
+/// on-device Concord override); `.polished` is today's pipeline unchanged
+/// and `.raw` is the existing `none` (paste as transcribed).
+public enum TargetMode: String, Codable, Sendable {
+    case instant
+    case polished
+    case raw
+}
+
+/// The resolved per-app cleanup behavior: a `TargetMode` plus, for the
+/// `.polished` mode only, an optional tone preset id. (`presetID` is
+/// meaningless for `.instant`/`.raw`.)
+public struct AppBehavior: Equatable, Codable, Sendable {
+    public var mode: TargetMode
+    public var presetID: String?
+
+    public init(mode: TargetMode, presetID: String? = nil) {
+        self.mode = mode
+        self.presetID = presetID
+    }
+}
+
 public struct Config: Sendable {
     public var hotkeyBinding: String
     /// #84: raw `hotkey.gestures` map (gesture key → action token) for the
@@ -536,6 +559,18 @@ public struct Config: Sendable {
     /// is folded into the cleanup pass (one LLM call) and the overlay
     /// shows "Styled with <name> · Undo".
     public var presetAppDefaults: [String: String]
+
+    /// Per-app cleanup behavior: target app bundle ID → `AppBehavior`
+    /// (mode + optional tone preset). This is the canonical successor to
+    /// `presetAppDefaults`: a `.polished` entry with a `presetID` is the
+    /// exact equivalent of the old per-app preset assignment, while
+    /// `.instant`/`.raw` entries are new. Empty by default; curated smart
+    /// defaults live in code (`CuratedAppDefaults`), not here, so this map
+    /// stores only user overrides. The legacy `preset_app_defaults` key is
+    /// dual-written on save (derived from `.polished`+`presetID` entries,
+    /// unioned with any legacy-only entries) so an older build opening the
+    /// config doesn't lose per-app styling.
+    public var appBehaviors: [String: AppBehavior]
 
     /// Resolve the per-app default preset for a paste target. nil when
     /// the feature is disabled (MDM), the bundle is unmapped, or the
@@ -797,6 +832,7 @@ public struct Config: Sendable {
         ],
         transformPresets: [],
         presetAppDefaults: [:],
+        appBehaviors: [:],
         contextModel: nil,
         refineModel: nil,
         referenceWindowsEnabled: true,
@@ -1890,6 +1926,31 @@ public struct Config: Sendable {
             }
             c.presetAppDefaults = mapped
         }
+        // Per-app cleanup behavior — top-level "app_behaviors". This is the
+        // successor to `preset_app_defaults`. When present it takes
+        // precedence; legacy entries are synthesized in only for bundles
+        // NOT covered by app_behaviors, so nothing is lost across a build
+        // that wrote one map but not the other. Keys are trimmed; a
+        // missing/invalid `mode` defaults to `.polished`.
+        var behaviors: [String: AppBehavior] = [:]
+        if let raw = parsed["app_behaviors"] as? [String: Any] {
+            for (key, value) in raw {
+                let k = key.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !k.isEmpty, let obj = value as? [String: Any] else { continue }
+                let mode = (obj["mode"] as? String).flatMap(TargetMode.init(rawValue:)) ?? .polished
+                var presetID = (obj["preset"] as? String)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if presetID?.isEmpty == true { presetID = nil }
+                behaviors[k] = AppBehavior(mode: mode, presetID: presetID)
+            }
+        }
+        // Synthesize migrated entries from the legacy map for any bundle not
+        // already covered by app_behaviors (Polished + preset is the exact
+        // equivalent of the old per-app preset assignment).
+        for (bundle, presetID) in c.presetAppDefaults where behaviors[bundle] == nil {
+            behaviors[bundle] = AppBehavior(mode: .polished, presetID: presetID)
+        }
+        c.appBehaviors = behaviors
         return c
     }
 
@@ -2111,8 +2172,35 @@ public struct Config: Sendable {
                 ["id": preset.id, "name": preset.name, "prompt": preset.prompt]
             }
         }
-        if !config.presetAppDefaults.isEmpty {
-            dict["preset_app_defaults"] = config.presetAppDefaults
+        // Per-app cleanup behavior — the canonical key.
+        if !config.appBehaviors.isEmpty {
+            dict["app_behaviors"] = config.appBehaviors.mapValues { behavior -> [String: Any] in
+                var obj: [String: Any] = ["mode": behavior.mode.rawValue]
+                if behavior.mode == .polished, let pid = behavior.presetID, !pid.isEmpty {
+                    obj["preset"] = pid
+                }
+                return obj
+            }
+        }
+        // Dual-write the legacy `preset_app_defaults` so an older build (or a
+        // downgrade) doesn't lose per-app styling. Derive it from the
+        // `.polished`+`presetID` entries of `appBehaviors`, unioned with any
+        // legacy-only entries (bundles present in `presetAppDefaults` but not
+        // in `appBehaviors`) so nothing is dropped. Instant/Raw entries have
+        // no legacy equivalent and are intentionally absent.
+        var legacyDefaults: [String: String] = [:]
+        for (bundle, behavior) in config.appBehaviors
+        where behavior.mode == .polished {
+            if let pid = behavior.presetID, !pid.isEmpty {
+                legacyDefaults[bundle] = pid
+            }
+        }
+        for (bundle, pid) in config.presetAppDefaults
+        where config.appBehaviors[bundle] == nil && !pid.isEmpty {
+            legacyDefaults[bundle] = pid
+        }
+        if !legacyDefaults.isEmpty {
+            dict["preset_app_defaults"] = legacyDefaults
         }
         // Enterprise OIDC federation — emit the top-level "oidc" section
         // only when at least one of its fields is non-default. `scopes` is
