@@ -33,6 +33,13 @@
   --color-accent-soft: #fef3c7;
   --color-wave: #d97706;
 
+  /* Concord grape — a rich muted purple that sets the on-device cleanup
+     family apart (the Lightweight tier, the on-device showcase block, the
+     on-device docs). `-strong` is the darker text/hover variant. This is a
+     COLOR accent only — never a wordmark or logo treatment. */
+  --color-grape: #5b2a86;
+  --color-grape-strong: #43205f;
+
   /* Very faint slate wash for the homepage section rhythm — sits a hair
      below the warm-white base so alternating sections read as distinct
      bands without a hard line. Derived from the slate border palette. */
@@ -135,6 +142,71 @@ body {
 /* Cleaned phase: settle into the site's body text color. */
 .hero-demo-cleaned {
   color: var(--color-text);
+}
+
+/* The one token the cleanup changed (a percent, a name, a dictionary term,
+   a period), emphasized in the cleaned line so the eye lands on what Parleq
+   actually did. Accent color + weight + a soft highlighter tint; the
+   color-mix tint degrades gracefully to plain accent text where unsupported. */
+.hero-demo-mark {
+  /* Darker accent for the TEXT (WCAG AA ≥4.5:1 on the tint over warm white);
+     the lighter accent stays as the highlighter background tint only. */
+  color: var(--color-accent-hover);
+  font-weight: 600;
+  border-radius: 3px;
+  padding: 0 0.15em;
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+}
+
+/* On-device "grape zone". Applied to a block or page that features on-device
+   cleanup, it re-points the accent variables to Concord grape — so every
+   descendant that reads --color-accent (section kickers, .hero-demo-mark
+   highlights, accent links) themes to grape automatically — and lays a very
+   faint grape wash so the zone reads as set-apart without a hard edge. */
+.zone-grape {
+  --color-accent: var(--color-grape);
+  --color-accent-hover: var(--color-grape-strong);
+  background: color-mix(in srgb, var(--color-grape) 4%, var(--color-bg)) !important;
+}
+
+/* Accent-only grape (no background wash) — for a whole on-device PAGE, where a
+   full-height tint would be too heavy but the kickers/links should still read
+   as the on-device family. */
+.accent-grape {
+  --color-accent: var(--color-grape);
+  --color-accent-hover: var(--color-grape-strong);
+}
+
+/* Small pill used for the hero feature strip. Base is neutral; `.chip-grape`
+   marks the on-device cleanup family (voiceprints, on-device Gemma 4, numbers,
+   dictionary) with the Concord-grape accent. SVG icons inherit currentColor. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  border-radius: 9999px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  padding: 0.25rem 0.75rem;
+  font-size: 0.75rem;
+  line-height: 1rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+}
+.chip:hover {
+  border-color: var(--color-accent);
+  color: var(--color-text);
+}
+.chip-grape {
+  border-color: color-mix(in srgb, var(--color-grape) 30%, var(--color-border));
+  background: color-mix(in srgb, var(--color-grape) 6%, var(--color-surface));
+  color: var(--color-grape);
+}
+.chip-grape:hover {
+  border-color: var(--color-grape);
+  background: color-mix(in srgb, var(--color-grape) 12%, var(--color-surface));
+  color: var(--color-grape-strong);
 }
 
 /* Whole-line crossfade used when swapping examples and on the final
