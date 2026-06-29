@@ -3,6 +3,7 @@ import Layout from '../layouts/Layout.astro';
 import OverlayMockup from '../components/OverlayMockup.astro';
 import TransformCard from '../components/TransformCard.astro';
 import ConcordFlow from '../components/ConcordFlow.astro';
+import GrapeCluster from '../components/GrapeCluster.astro';
 import Logo from '../components/Logo.astro';
 import StickyHeader from '../components/StickyHeader.astro';
 import { fetchLatestRelease } from '../lib/release';
@@ -304,6 +305,19 @@ const capabilities = [
       <p class="mt-6 max-w-3xl text-lg leading-relaxed text-[color:var(--color-text-muted)]">
         Local speech recognition is table stakes now. What sets Parleq apart is the cleanup that runs right beside it — punctuation, numbers, your own jargon, even sound-alike names. Your custom terms are recognized on-device no matter which cleanup you choose; pick Parleq's on-device cleanup and the punctuation, number, and voiceprint work never leaves your Mac either.
       </p>
+
+      <!-- The engine, up close: the on-device cleanup tier opens into its grape cluster of small,
+           deterministic helpers (built on Concord). -->
+      <div class="mt-14 rounded-2xl border border-[color:var(--color-border)] bg-white/40 px-6 py-10 text-center sm:px-10">
+        <p class="text-xs font-medium uppercase tracking-[0.18em] text-[color:var(--color-grape)]">The engine, up close</p>
+        <h3 class="mt-2 font-display text-2xl font-medium tracking-tight">A cluster of small, fast corrections.</h3>
+        <p class="mx-auto mt-3 max-w-xl text-[color:var(--color-text-muted)]">
+          On-device cleanup isn't a black box — it's a handful of small, deterministic helpers, each doing one thing well, all running on your Mac. <span class="text-[color:var(--color-text-subtle)]">Built on Concord (by Keavi).</span>
+        </p>
+        <div class="mt-8">
+          <GrapeCluster />
+        </div>
+      </div>
 
       <div class="mt-12 grid gap-4 sm:grid-cols-2">
         <!-- Each card stacks raw → cleaned (block-per-line) so it stays
