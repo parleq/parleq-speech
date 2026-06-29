@@ -383,9 +383,34 @@ const capabilities = [
         </div>
       </div>
 
-      <p class="mt-8 text-sm text-[color:var(--color-text-muted)]">
-        Prefer a cloud model? Parleq also speaks to Gemini, OpenAI, Bedrock, Vertex and Azure — your choice, per the privacy posture you want.
-      </p>
+      <!-- Beat 3: the configurable on-device/cloud split. SHIPPED today (Config.swift:559,
+           SettingsWindow.swift:1954) — a user-configured split, NOT auto-escalation. -->
+      <div class="mt-16">
+        <h3 class="font-display text-2xl font-medium tracking-tight sm:text-3xl">Instant on your Mac. Powerful in your cloud. Your call.</h3>
+        <p class="mt-3 max-w-2xl text-[color:var(--color-text-muted)]">
+          Keep first-pass cleanup on the on-device tier for instant, private results — then send refinement to the cloud provider you bring. You decide the split, per app.
+        </p>
+        <div class="mt-8 grid gap-4 sm:grid-cols-2">
+          <div class="rounded-2xl border border-[color:var(--color-border)] bg-white/50 p-6">
+            <div class="flex items-center gap-2">
+              <span class="inline-flex h-8 w-8 items-center justify-center rounded-lg" style="background: color-mix(in srgb, var(--color-grape) 12%, transparent); color: var(--color-grape);">
+                <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 4 14h7l-2 8 9-12h-7z"></path></svg>
+              </span>
+              <h4 class="font-semibold">On your Mac — instant</h4>
+            </div>
+            <p class="mt-3 text-sm leading-relaxed text-[color:var(--color-text-muted)]">Punctuation, numbers, your dictionary, and voiceprints run on-device in milliseconds. Nothing to set up, no per-call cost, and your transcript never leaves the machine.</p>
+          </div>
+          <div class="rounded-2xl border border-[color:var(--color-border)] bg-white/50 p-6">
+            <div class="flex items-center gap-2">
+              <span class="inline-flex h-8 w-8 items-center justify-center rounded-lg" style="background: color-mix(in srgb, var(--color-accent) 14%, transparent); color: var(--color-accent-hover);">
+                <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.5 19a4.5 4.5 0 0 0 .5-9 6 6 0 0 0-11.5-1.5A4 4 0 0 0 6.5 19z"></path></svg>
+              </span>
+              <h4 class="font-semibold">In your cloud — powerful</h4>
+            </div>
+            <p class="mt-3 text-sm leading-relaxed text-[color:var(--color-text-muted)]">Reach for a bigger model when you want heavier rewriting or voice refinement — Gemini, Bedrock, Vertex, or Azure, with the key or sign-in your team already uses. Your account, your data path.</p>
+          </div>
+        </div>
+      </div>
       </div>
     </section>
   </div>
