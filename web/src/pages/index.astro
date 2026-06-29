@@ -290,8 +290,11 @@ const capabilities = [
        of the flat capability grid into a focused before→after strip — the
        "here's how cool it actually is" the homepage was missing. Each card
        reuses .hero-demo-mark to highlight the changed token. -->
-  <section id="on-device" data-reveal class="zone-grape scroll-mt-20 border-t border-[color:var(--color-border-subtle)]">
-    <div class="mx-auto max-w-5xl px-6 py-20 sm:py-24">
+  <!-- First content section: a card SUPERIMPOSED on the hero — overlaps the purple, rounded top,
+       shadow cast onto it (the "card on purple" transition). Same max-width frame as the hero. -->
+  <div class="mx-auto max-w-[1700px] px-0 sm:px-5">
+    <section id="on-device" data-reveal class="zone-grape relative z-10 -mt-16 scroll-mt-20 rounded-none px-6 py-20 shadow-[0_18px_70px_-16px_rgba(8,3,18,.6)] sm:rounded-t-[28px] sm:px-10 sm:py-24">
+      <div class="mx-auto max-w-5xl">
       <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">
         On-device cleanup
       </p>
@@ -369,8 +372,9 @@ const capabilities = [
       <p class="mt-8 text-sm text-[color:var(--color-text-muted)]">
         Prefer a cloud model? Parleq also speaks to Gemini, OpenAI, Bedrock, Vertex and Azure — your choice, per the privacy posture you want.
       </p>
-    </div>
-  </section>
+      </div>
+    </section>
+  </div>
 
   <!-- Refinement showcase, as a scenario CAROUSEL. The overlay is the
        one surface every Parleq feature lives on, so the pager walks
