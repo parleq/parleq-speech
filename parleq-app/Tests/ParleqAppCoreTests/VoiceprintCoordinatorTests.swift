@@ -42,8 +42,9 @@ final class VoiceprintCoordinatorTests: XCTestCase {
 
     func test_loadPersisted_happy_path_does_not_rewrite() {
         let c = VoiceprintCoordinator()
-        // Match the model version the coordinator stamps so nothing is pruned.
-        let v = BundledASREngine.fluidAudioVersion
+        // The legacy 0.29.0 stamp ("0.15.4-encoder.1" == fluidAudioVersion) is in
+        // legacyCompatibleStamps, so the template is kept without re-stamping.
+        let v = BundledASREngine.fluidAudioVersion  // "0.15.4-encoder.1"
         let stub = StubPersistence(.success([tmpl("Keavi", version: v)]))
         c.persistence = stub
         c.loadPersisted()
@@ -51,14 +52,19 @@ final class VoiceprintCoordinatorTests: XCTestCase {
         XCTAssertEqual(stub.saved, [], "no pruning → no redundant rewrite")
     }
 
-    func test_loadPersisted_prunes_stale_version_and_resaves() {
+    /// R1: loadPersisted NEVER calls save/deleteAll (SI-1 — the blob is never
+    /// emptied by a load, even when an unknown-stamp template is encountered).
+    /// Unknown-stamp templates land in `pendingMigration`; migration owns writes.
+    func test_loadPersisted_unknown_version_parks_in_pendingMigration_not_resaved() {
         let c = VoiceprintCoordinator()
         let stub = StubPersistence(.success([tmpl("Old", version: "ancient-version")]))
         c.persistence = stub
         c.loadPersisted()
-        XCTAssertFalse(c.hasVoiceprint("Old"), "stale model-version template dropped")
-        XCTAssertEqual(stub.saved.count, 1, "pruned set re-persisted")
-        XCTAssertEqual(stub.saved.first?.count, 0, "the empty (all-stale) set saved → blob pruned")
+        XCTAssertFalse(c.hasVoiceprint("Old"), "unknown-stamp template not upserted into store")
+        XCTAssertEqual(stub.saved.count, 0,
+            "loadPersisted must NOT write (SI-1) — migration pass owns the re-persist")
+        XCTAssertEqual(c.pendingMigration.count, 1, "unknown non-empty template is pending migration")
+        XCTAssertEqual(c.pendingMigration.first?.termID, "Old")
     }
 
     // MARK: commit is the single store/persist point (deferred from analyze to Save)
@@ -136,6 +142,90 @@ final class VoiceprintCoordinatorTests: XCTestCase {
         XCTAssertEqual(c.enrolledTermIDs, [])
         c.removeVoiceprint(termID: "Keavi")   // no crash on absent
         c.removeAll()
+    }
+
+    // MARK: 7086 — deletion must not resurrect pending templates
+
+    /// (a) removeVoiceprint of a pending-only term must actually delete it:
+    /// after reload the store must be empty (not resurrected from the on-disk blob).
+    func test_7086_removeVoiceprint_of_pending_only_term_is_gone_after_reload() {
+        let c = VoiceprintCoordinator()
+        let stub = StubPersistence(.success([tmpl("Old", version: "ancient")]))
+        c.persistence = stub
+        c.loadPersisted()
+        XCTAssertFalse(c.hasVoiceprint("Old"), "pending-only term not in active store")
+        XCTAssertEqual(c.pendingMigration.count, 1, "parked in pendingMigration")
+        XCTAssertEqual(c.needsReEnrollCount, 0, "not yet bumped by migration")
+
+        // Delete the pending-only term via removeVoiceprint.
+        c.removeVoiceprint(termID: "Old")
+
+        XCTAssertEqual(c.pendingMigration.count, 0, "pending slot cleared on delete")
+        // The saved payload must NOT contain "Old" — if it does, a new load would
+        // resurrect it.
+        guard let saved = stub.saved.last else {
+            XCTFail("removeVoiceprint must have persisted (notifyStoreChanged)")
+            return
+        }
+        XCTAssertFalse(saved.map { $0.termID }.contains("Old"),
+                       "deleted pending-only term must not appear in the saved payload")
+    }
+
+    /// (b) removeAll with mixed active + pending leaves the store empty on reload —
+    /// no resurrected biometric templates.
+    func test_7086_removeAll_mixed_active_and_pending_leaves_empty_on_reload() {
+        let c = VoiceprintCoordinator()
+        // Load: one current (active) + one stale (pending).
+        let current = BundledASREngine.voiceprintEncoderIdentity
+        let stub = StubPersistence(.success([
+            tmpl("Active", version: current),
+            tmpl("Old", version: "ancient"),
+        ]))
+        c.persistence = stub
+        c.loadPersisted()
+        XCTAssertTrue(c.hasVoiceprint("Active"))
+        XCTAssertEqual(c.pendingMigration.count, 1)
+
+        c.removeAll()
+
+        // Both the active store and pendingMigration must be cleared.
+        XCTAssertFalse(c.hasVoiceprint("Active"), "active template removed")
+        XCTAssertEqual(c.pendingMigration.count, 0, "pendingMigration cleared on removeAll")
+        XCTAssertEqual(c.needsReEnrollCount, 0, "needsReEnrollCount reset on removeAll")
+        // The saved payload must be empty — a future load sees an empty store.
+        guard let saved = stub.saved.last else {
+            XCTFail("removeAll must have persisted (notifyStoreChanged)")
+            return
+        }
+        XCTAssertTrue(saved.isEmpty,
+                      "saved payload must be empty after removeAll — no resurrected templates")
+    }
+
+    /// (c) A normal commit still preserves an unrelated pending template — no
+    /// regression of 7027/7032 behavior.
+    func test_7086_commit_preserves_unrelated_pending_template() {
+        let c = VoiceprintCoordinator()
+        let stub = StubPersistence(.success([tmpl("Old", version: "ancient")]))
+        c.persistence = stub
+        c.loadPersisted()
+        XCTAssertEqual(c.pendingMigration.count, 1)
+
+        // Commit a fresh, unrelated term.
+        let current = BundledASREngine.voiceprintEncoderIdentity
+        c.commit(VoiceprintTemplate(termID: "NewTerm", voiceprint: [1, 0, 0, 0],
+                                    negatives: [:], dim: 4, lowQuality: false,
+                                    modelVersion: current))
+
+        // The inert "Old" template must still be in the saved union — not dropped.
+        guard let saved = stub.saved.last else {
+            XCTFail("commit must persist")
+            return
+        }
+        let ids = Set(saved.map { $0.termID })
+        XCTAssertTrue(ids.contains("Old"),
+                      "inert pending template must survive an unrelated commit (7027/7032)")
+        XCTAssertTrue(ids.contains("NewTerm"), "newly committed term present")
+        XCTAssertEqual(c.pendingMigration.count, 1, "commit of an unrelated term must not touch pendingMigration")
     }
 }
 

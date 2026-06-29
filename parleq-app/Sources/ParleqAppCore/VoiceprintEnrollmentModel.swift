@@ -68,6 +68,11 @@ public final class VoiceprintEnrollmentModel: ObservableObject, Identifiable {
         self.initiallyConsented = consented
         self.onConsentGranted = onConsentGranted
         self.onEnrolled = onEnrolled
+        // Set the initial phase up front so the consent (`.intro`) screen never
+        // flashes during the async carrier-load: a consented (skip) user lands
+        // straight on `.carriers` (a brief load while sentences arrive); an
+        // unconsented user lands on `.intro` and STAYS until they accept.
+        self.phase = consented ? .carriers : .intro
     }
 
     /// True once every term carrier has a recording (enables Analyze).
@@ -81,7 +86,14 @@ public final class VoiceprintEnrollmentModel: ObservableObject, Identifiable {
     public func start() async {
         carriers = await services.carrierSentences(term: term, count: Self.carrierCount)
         recordings = Array(repeating: nil, count: carriers.count)
-        phase = initiallyConsented ? .carriers : .intro
+        // 7050: the initial phase is already set in init. If the user tapped
+        // consent during the await above, consent() advanced phase → .carriers;
+        // re-asserting `initiallyConsented ? … : .intro` here would clobber that
+        // back to .intro for an unconsented user. Only (re)assert the routing if
+        // we're STILL on the pre-consent screen (no advance happened).
+        if phase == .intro {
+            phase = initiallyConsented ? .carriers : .intro
+        }
     }
 
     /// Grant biometric consent (first enrollment only) → proceed to recording.
@@ -174,11 +186,32 @@ public final class VoiceprintEnrollmentModel: ObservableObject, Identifiable {
     /// Skip the confusable step (the user says they're not confusable).
     public func skipConfusable() { phase = .review }
 
-    /// Commit: store the draft voiceprint (the SINGLE persist point), write the
-    /// dictionary entry (term + aliases), and finish.
+    /// Commit: store the draft voiceprint (the SINGLE persist point), capture
+    /// enrollment audio (consent + enabled gated), write the dictionary entry
+    /// (term + aliases), and finish.
     public func save() {
         if let draftTemplate {
             services.coordinator.commit(draftTemplate)
+        }
+        // Capture raw enrollment clips for future re-derivation across encoder changes.
+        // Gated on both enabled AND consented (SI-3: no storage without fresh consent).
+        let policy = services.clipStoragePolicy()
+        if policy.enabled && policy.consented {
+            let positiveClips: [StoredEnrollmentClip] = zip(carriers, recordings).compactMap { text, data in
+                data.map { StoredEnrollmentClip(wav: $0, carrierText: text, role: .positive, negativeLabel: nil) }
+            }
+            let negativeClips: [StoredEnrollmentClip]
+            if let label = negativeLabel {
+                negativeClips = zip(negativeCarriers, negativeRecordings).compactMap { text, data in
+                    data.map { StoredEnrollmentClip(wav: $0, carrierText: text, role: .negative, negativeLabel: label) }
+                }
+            } else {
+                negativeClips = []
+            }
+            let allClips = positiveClips + negativeClips
+            if !allClips.isEmpty {
+                services.coordinator.storeEnrollmentClips(termID: termID, allClips)
+            }
         }
         onEnrolled(term, outcome?.harvestedAliases ?? [])
         phase = .done

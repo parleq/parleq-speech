@@ -56,4 +56,28 @@ final class DictionarySpokenFormsConfigTests: XCTestCase {
         XCTAssertEqual(entry.spokenForms, [])
         XCTAssertEqual(entry.aliases, ["leg a see"])
     }
+
+    // MARK: - voice-enrollment harvest routing (E2E "E2E to E" bug)
+
+    /// Multi-word harvested mishears must route to spokenForms (Concord's per-word
+    /// dictionary matcher ignores multi-word aliases); single-word ones stay aliases.
+    /// Regression: "E2E" enrolled, FluidAudio heard "E2E to E"/"E to E", which were
+    /// stored as multi-word aliases and so never corrected the mishear.
+    func test_enrolled_mishears_route_multiword_to_spoken_forms() {
+        let (aliases, spoken) = SettingsModel.partitionEnrolledMishears(
+            ["E2E to E", "E to E", "eToo", "e2e"])
+        XCTAssertEqual(spoken, ["E2E to E", "E to E"])
+        XCTAssertEqual(aliases, ["eToo", "e2e"])
+    }
+
+    /// Dedup is case-insensitive against existing aliases AND spokenForms, and within
+    /// the incoming batch.
+    func test_enrolled_mishears_dedup_against_existing() {
+        let (aliases, spoken) = SettingsModel.partitionEnrolledMishears(
+            ["E to E", "newbie", "Keavi", "newbie"],
+            existingAliases: ["keavi"],
+            existingSpoken: ["e to e"])
+        XCTAssertEqual(spoken, [])
+        XCTAssertEqual(aliases, ["newbie"])
+    }
 }

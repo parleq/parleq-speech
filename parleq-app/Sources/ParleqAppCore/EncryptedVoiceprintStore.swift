@@ -24,8 +24,6 @@ public enum VoiceprintPersistenceError: Error {
 
 public struct EncryptedVoiceprintStore: VoiceprintPersistence {
     private let fileURL: URL
-    private let keyService = "com.parleq.app"
-    private let keyAccount = "com.parleq.voiceprint.key"
     /// Test seam: a fixed key that bypasses the Keychain (the `swift test` binary
     /// may lack Keychain access). nil in the app → the Keychain-held device key.
     private let keyOverride: SymmetricKey?
@@ -41,7 +39,7 @@ public struct EncryptedVoiceprintStore: VoiceprintPersistence {
         guard FileManager.default.fileExists(atPath: fileURL.path) else { return [] }
         let blob = try Data(contentsOf: fileURL)
         guard !blob.isEmpty else { return [] }
-        let key = try loadOrCreateKey()
+        let key = try VoiceprintCryptoKey.key(override: keyOverride)
         let box = try AES.GCM.SealedBox(combined: blob)
         let json = try AES.GCM.open(box, using: key)
         return try JSONDecoder().decode([VoiceprintTemplate].self, from: json)
@@ -49,7 +47,7 @@ public struct EncryptedVoiceprintStore: VoiceprintPersistence {
 
     public func save(_ templates: [VoiceprintTemplate]) throws {
         if templates.isEmpty { try deleteAll(); return }
-        let key = try loadOrCreateKey()
+        let key = try VoiceprintCryptoKey.key(override: keyOverride)
         let json = try JSONEncoder().encode(templates)
         let sealed = try AES.GCM.seal(json, using: key)
         guard let combined = sealed.combined else { throw VoiceprintPersistenceError.sealFailed }
@@ -63,7 +61,11 @@ public struct EncryptedVoiceprintStore: VoiceprintPersistence {
             throw VoiceprintPersistenceError.writeFailed
         }
         if FileManager.default.fileExists(atPath: fileURL.path) {
-            _ = try FileManager.default.replaceItemAt(fileURL, withItemAt: tmp)
+            // 7030: `.usingNewMetadataOnly` so the replaced file keeps the temp's
+            // 0600 metadata instead of inheriting the destination's (possibly
+            // looser) permissions — the biometric blob must stay owner-only.
+            _ = try FileManager.default.replaceItemAt(
+                fileURL, withItemAt: tmp, options: [.usingNewMetadataOnly])
         } else {
             try FileManager.default.moveItem(at: tmp, to: fileURL)
         }
@@ -73,42 +75,6 @@ public struct EncryptedVoiceprintStore: VoiceprintPersistence {
         if FileManager.default.fileExists(atPath: fileURL.path) {
             try FileManager.default.removeItem(at: fileURL)
         }
-    }
-
-    // MARK: - Keychain key (device-only, non-synchronizable)
-
-    private var keyQuery: [String: Any] {
-        [kSecClass as String: kSecClassGenericPassword,
-         kSecAttrService as String: keyService,
-         kSecAttrAccount as String: keyAccount]
-    }
-
-    private func loadOrCreateKey() throws -> SymmetricKey {
-        if let keyOverride { return keyOverride }
-        if let data = readKey() { return SymmetricKey(data: data) }
-        let key = SymmetricKey(size: .bits256)
-        let data = key.withUnsafeBytes { Data($0) }
-        try storeKey(data)
-        return key
-    }
-
-    private func readKey() -> Data? {
-        var q = keyQuery
-        q[kSecReturnData as String] = true
-        q[kSecMatchLimit as String] = kSecMatchLimitOne
-        var out: AnyObject?
-        guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess,
-              let data = out as? Data else { return nil }
-        return data
-    }
-
-    private func storeKey(_ data: Data) throws {
-        SecItemDelete(keyQuery as CFDictionary)   // replace any stale entry
-        var q = keyQuery
-        q[kSecValueData as String] = data
-        q[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-        let status = SecItemAdd(q as CFDictionary, nil)
-        guard status == errSecSuccess else { throw VoiceprintPersistenceError.keychain(status) }
     }
 }
 #endif

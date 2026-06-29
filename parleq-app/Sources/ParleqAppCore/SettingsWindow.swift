@@ -226,6 +226,10 @@ final class SettingsModel: ObservableObject {
     /// Mirror of Config.learnedCorrectionsRetentionHours. nil =
     /// unlimited; 0 = disable correction journal entirely.
     @Published var learnedCorrectionsRetentionHours: Int?
+    /// Mirror of Config.voiceprintClipStorageEnabled. Controls whether
+    /// enrollment audio clips are retained on-device for future
+    /// re-derivation. Managed-aware: disabled in UI when MDM-pinned.
+    @Published var voiceprintClipStorageEnabled: Bool
     /// Set of Config keys currently managed by MDM. Rows for managed
     /// keys render as `.disabled(true)` with the ManagedIndicator badge.
     @Published var managedKeys: Set<String>
@@ -494,6 +498,7 @@ final class SettingsModel: ObservableObject {
         self.learnFromCorrectionsEnabled = config.learnFromCorrectionsEnabled
         self.learnedCorrectionsMaxEntries = config.learnedCorrectionsMaxEntries
         self.learnedCorrectionsRetentionHours = config.learnedCorrectionsRetentionHours
+        self.voiceprintClipStorageEnabled = config.voiceprintClipStorageEnabled
         self.managedKeys = config.managedKeys
         self.oidcIssuer = config.oidcIssuer
         self.oidcClientID = config.oidcClientID
@@ -625,6 +630,7 @@ final class SettingsModel: ObservableObject {
         self.learnFromCorrectionsEnabled = config.learnFromCorrectionsEnabled
         self.learnedCorrectionsMaxEntries = config.learnedCorrectionsMaxEntries
         self.learnedCorrectionsRetentionHours = config.learnedCorrectionsRetentionHours
+        self.voiceprintClipStorageEnabled = config.voiceprintClipStorageEnabled
         self.managedKeys = config.managedKeys
         self.oidcIssuer = config.oidcIssuer
         self.oidcClientID = config.oidcClientID
@@ -808,6 +814,7 @@ final class SettingsModel: ObservableObject {
         c.learnFromCorrectionsEnabled = learnFromCorrectionsEnabled
         c.learnedCorrectionsMaxEntries = learnedCorrectionsMaxEntries
         c.learnedCorrectionsRetentionHours = learnedCorrectionsRetentionHours
+        c.voiceprintClipStorageEnabled = voiceprintClipStorageEnabled
         // Enterprise OIDC self-configuration. When MDM-pinned these
         // fields are non-editable in the UI; Config.save() additionally
         // preserves the pinned on-disk value for any key in managedKeys,
@@ -1180,23 +1187,63 @@ final class SettingsModel: ObservableObject {
         save()
     }
 
+    /// Split voice-enrollment's harvested mishears into single-word **aliases** and
+    /// multi-word **spokenForms**. Concord's per-word dictionary matcher only applies
+    /// SINGLE-word aliases; a multi-word alias (e.g. "E2E to E" harvested for "E2E") is
+    /// silently ignored, so multi-word mishears must be routed to spokenForms to take
+    /// effect. Dedups case-insensitively against `existing*` and within the batch,
+    /// preserving first-seen order.
+    nonisolated static func partitionEnrolledMishears(
+        _ mishears: [String],
+        existingAliases: [String] = [],
+        existingSpoken: [String] = []
+    ) -> (aliases: [String], spokenForms: [String]) {
+        var seenA = Set(existingAliases.map { $0.lowercased() })
+        var seenS = Set(existingSpoken.map { $0.lowercased() })
+        var aliases: [String] = []
+        var spoken: [String] = []
+        for raw in mishears {
+            let t = raw.trimmingCharacters(in: .whitespaces)
+            guard !t.isEmpty else { continue }
+            let key = t.lowercased()
+            if t.split(separator: " ").count >= 2 {
+                guard !seenS.contains(key) else { continue }
+                seenS.insert(key); spoken.append(t)
+            } else {
+                guard !seenA.contains(key) else { continue }
+                seenA.insert(key); aliases.append(t)
+            }
+        }
+        return (aliases, spoken)
+    }
+
     #if Concord
     /// Merge voice-enrollment's harvested aliases into the dictionary: into the
     /// matching term's row (deduped, comma-separated), or a fresh row when the
     /// term is new ("Add by voice"). Persists.
-    func addEnrolledAliases(_ aliases: [String], toTerm term: String) {
+    func addEnrolledAliases(_ mishears: [String], toTerm term: String) {
         let trimmed = term.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return }
+        func split(_ s: String) -> [String] {
+            s.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        }
         if let idx = dictionaryEntries.firstIndex(where: { $0.term.lowercased() == trimmed.lowercased() }) {
-            var existing = dictionaryEntries[idx].aliases
-                .split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-            let seen = Set(existing.map { $0.lowercased() })
-            for a in aliases where !seen.contains(a.lowercased()) { existing.append(a) }
-            dictionaryEntries[idx].aliases = existing.joined(separator: ", ")
+            let existingAliases = split(dictionaryEntries[idx].aliases)
+            let existingSpoken = split(dictionaryEntries[idx].spokenForms)
+            // Route harvested mishears: single-word → aliases, multi-word → spokenForms
+            // (a multi-word alias is ignored by Concord's per-word matcher — the E2E bug).
+            let (newAliases, newSpoken) = Self.partitionEnrolledMishears(
+                mishears, existingAliases: existingAliases, existingSpoken: existingSpoken)
+            dictionaryEntries[idx].aliases = (existingAliases + newAliases).joined(separator: ", ")
+            dictionaryEntries[idx].spokenForms = (existingSpoken + newSpoken).joined(separator: ", ")
             if dictionaryEntries[idx].source == .learned { dictionaryEntries[idx].source = .user }
         } else {
+            let (newAliases, newSpoken) = Self.partitionEnrolledMishears(mishears)
             dictionaryEntries.append(DictionaryEntryRow(
-                term: trimmed, aliases: aliases.joined(separator: ", "), biasing: .asrAndLLM))
+                term: trimmed,
+                aliases: newAliases.joined(separator: ", "),
+                spokenForms: newSpoken.joined(separator: ", "),
+                biasing: .asrAndLLM))
         }
         save()
     }
@@ -1211,9 +1258,12 @@ struct SettingsView: View {
     @State private var editingDictionaryTarget: DictionaryEditTarget?
     #if Concord
     @State private var showDeleteVoiceprintsConfirm = false
+    @State private var showDeleteClipsConfirm = false
     /// Dismiss flag for the Dictionary-section intro banner (@AppStorage so the
     /// section re-renders when dismissed; shares the key with VoiceEnrollBanner).
     @AppStorage(VoiceEnrollBanner.sectionBannerDismissedKey) private var voiceEnrollSectionBannerDismissed = false
+    /// Dismiss flag for the re-enroll-needed banner (post-migration).
+    @AppStorage(NeedsReEnrollBanner.dismissedKey) private var needsReEnrollBannerDismissed = false
     /// Contextual over-fire suggestion ("'X' got confused with 'Y'"). Set from
     /// AppState when the user undoes a dictionary correction; in-memory only.
     @ObservedObject private var enrollNudge = VoiceEnrollNudge.shared
@@ -2943,6 +2993,30 @@ struct SettingsView: View {
                 #if Concord
                 dictionaryIntroBanner
                 overFireNudgeCard
+                if let coord = model.voiceprintServices?.coordinator {
+                    NeedsReEnrollBannerRow(coordinator: coord, isDismissed: $needsReEnrollBannerDismissed) {
+                        // 7036(a): open one of the terms that actually FAILED migration
+                        // (the banner is ABOUT those), matched by term string — not just
+                        // the first un-enrolled dictionary term, which may be an unrelated
+                        // term the user simply never enrolled. Fall back to any term
+                        // lacking an active voiceprint, then the first visible term.
+                        let pending = Set(coord.pendingMigrationTermIDs.map {
+                            $0.trimmingCharacters(in: .whitespaces).lowercased()
+                        })
+                        let pendingID = model.dictionaryEntries.first(where: {
+                            pending.contains($0.term.trimmingCharacters(in: .whitespaces).lowercased())
+                        })?.id
+                        let firstID = pendingID
+                            ?? model.dictionaryEntries.first(where: {
+                                !$0.term.trimmingCharacters(in: .whitespaces).isEmpty &&
+                                !coord.hasVoiceprint($0.term)
+                            })?.id
+                            ?? model.dictionaryEntries.first?.id
+                        if let id = firstID {
+                            editingDictionaryTarget = DictionaryEditTarget(id: id, isNew: false)
+                        }
+                    }
+                }
                 #endif
                 SettingsCaption("Terms and names the speech model commonly mishears. Tap a term to edit it — or to teach Parleq to recognize it in your own voice.")
 
@@ -2982,6 +3056,30 @@ struct SettingsView: View {
                 }
                 .padding(.top, 2)
 
+                #if Concord
+                if model.voiceprintServices != nil {
+                    Divider()
+                    // Clip-storage toggle — managed-aware. Shows only when
+                    // voice enrollment is available (voiceprintServices wired).
+                    HStack {
+                        Toggle("Store voice clips on device", isOn: Binding(
+                            get: { model.voiceprintClipStorageEnabled },
+                            set: { newValue in
+                                if newValue {
+                                    model.voiceprintClipStorageEnabled = true
+                                    model.save()
+                                } else {
+                                    // Show confirmation before erasing stored clips.
+                                    showDeleteClipsConfirm = true
+                                }
+                            }
+                        ))
+                        .disabled(model.managedKeys.contains("voiceprintClipStorageEnabled"))
+                    }
+                    SettingsCaption("Keeps your enrollment recordings encrypted on this device so voiceprints can be automatically re-derived when the speech model updates — without re-recording. Turn off to store only the derived voiceprint.")
+                }
+                #endif
+
                 SettingsCaption("Applied on the next dictation — no restart needed.")
             }
         }
@@ -3002,6 +3100,16 @@ struct SettingsView: View {
             }
         } message: {
             Text("Removes every enrolled voiceprint from this session. Dictionary terms and aliases are kept.")
+        }
+        .confirmationDialog("Delete stored voice clips?", isPresented: $showDeleteClipsConfirm) {
+            Button("Delete clips and turn off storage", role: .destructive) {
+                model.voiceprintClipStorageEnabled = false
+                model.save()
+                model.voiceprintServices?.coordinator.enforceClipStoragePolicy(enabled: false)
+            }
+            Button("Keep clips and cancel", role: .cancel) { }
+        } message: {
+            Text("Turning off clip storage deletes the enrollment audio saved on this device. Your voiceprints are kept — only the recordings used to derive them will be removed.")
         }
         #endif
     }
@@ -3088,7 +3196,8 @@ struct SettingsView: View {
     /// One-line, dismissible section intro pushing the marquee feature.
     @ViewBuilder
     private var dictionaryIntroBanner: some View {
-        if !voiceEnrollSectionBannerDismissed, model.voiceprintServices != nil {
+        if !voiceEnrollSectionBannerDismissed, model.voiceprintServices != nil,
+           VoiceprintServices.enrollmentOffered(Config.load().config) {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: "mic.circle.fill")
                     .foregroundStyle(SettingsView.brandAccent)
@@ -3125,6 +3234,7 @@ struct SettingsView: View {
     private var overFireNudgeCard: some View {
         if let s = enrollNudge.pending,
            model.voiceprintServices != nil,
+           VoiceprintServices.enrollmentOffered(Config.load().config),
            let matchID = model.dictionaryEntries.first(where: {
                $0.term.lowercased() == s.term.lowercased()
            })?.id {
@@ -3168,6 +3278,67 @@ struct SettingsView: View {
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(SettingsView.brandAccent.opacity(0.30), lineWidth: 0.5)
             )
+        }
+    }
+
+    // MARK: - Re-enroll banner
+
+    /// Dismissible warning shown when migration discarded voiceprints that
+    /// could not be auto-re-derived (no stored audio, or quality bar failed).
+    ///
+    /// Pulled out as a separate `View` so `@ObservedObject` on the coordinator
+    /// is a first-class `ObservableObject` property rather than an optional
+    /// chain — this ensures `needsReEnrollCount` changes trigger a re-render.
+    private struct NeedsReEnrollBannerRow: View {
+        @ObservedObject var coordinator: VoiceprintCoordinator
+        @Binding var isDismissed: Bool
+        let onReEnroll: () -> Void
+
+        var body: some View {
+            if NeedsReEnrollBanner.shouldShow(
+                dismissed: isDismissed,
+                needsReEnrollCount: coordinator.needsReEnrollCount
+            ) {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                        .font(.system(size: 15))
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(NeedsReEnrollBanner.title)
+                            .font(.callout.weight(.semibold))
+                        Text(NeedsReEnrollBanner.message)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button {
+                            onReEnroll()
+                        } label: {
+                            Text("Re-enroll")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(SettingsView.brandAccent)
+                        .controlSize(.small)
+                        .padding(.top, 2)
+                    }
+                    Spacer(minLength: 8)
+                    Button(action: { isDismissed = true }) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .padding(6)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Dismiss")
+                }
+                .padding(12)
+                .background(Color.orange.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color.orange.opacity(0.25), lineWidth: 0.5)
+                )
+            }
         }
     }
     #endif
@@ -3824,7 +3995,12 @@ struct DictionaryTermEditView: View {
             }
 
             #if Concord
-            enrollmentHero(row: row)
+            // 7033: hide the enrollment surface entirely when the master switch
+            // (voiceEnrollmentEnabled — user or MDM) is off. Existing voiceprints
+            // still match; only NEW enrollment is suppressed.
+            if VoiceprintServices.enrollmentOffered(Config.load().config) {
+                enrollmentHero(row: row)
+            }
             #endif
 
             // Advanced: the manual fallbacks (aliases / biasing / spoken forms).
@@ -4059,14 +4235,29 @@ struct DictionaryTermEditView: View {
     /// are wired (ASR still loading) or the term is blank.
     private func startEnroll(term: String) {
         guard let services = model.voiceprintServices else { return }
+        // 7033: defense-in-depth — never start a new enrollment when the master
+        // switch is off, even if services were wired before a config change.
+        guard VoiceprintServices.enrollmentOffered(Config.load().config) else { return }
         let trimmed = term.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return }
-        let consented = Config.load().config.voiceEnrollmentConsented
+        // Skip the consent screen ONLY when the user has accepted the AMENDED
+        // disclosure (which covers clip storage), tracked by voiceClipStorageConsented.
+        // A grandfathered user who only ever accepted the OLD enrollment consent
+        // (voiceEnrollmentConsented) must still see + accept the amended screen once,
+        // so clip storage can be consented to and the disclosure isn't skipped.
+        let consented = Config.load().config.voiceClipStorageConsented
         enrollingModel = VoiceprintEnrollmentModel(
             term: trimmed, services: services, consented: consented,
             onConsentGranted: {
+                // SI-3 / C4: the amended consent disclosure (shown in the
+                // intro card) covers both enrollment AND clip storage. Set
+                // both flags together so the cap-gate in AppState knows the
+                // user has seen the full disclosure. Old-cohort users who
+                // never reach this screen stay voiceClipStorageConsented=false
+                // → no clips stored for them.
                 var cfg = Config.load().config
                 cfg.voiceEnrollmentConsented = true
+                cfg.voiceClipStorageConsented = true
                 try? Config.save(cfg)
             },
             onEnrolled: { [weak model] enrolledTerm, aliases in

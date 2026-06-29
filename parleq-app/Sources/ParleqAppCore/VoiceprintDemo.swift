@@ -112,6 +112,7 @@ extension VoiceprintDemo {
 // MARK: - Concord-gated enrollment + gate evaluation
 
 #if Concord
+import Combine
 import Concord
 
 /// MainActor coordinator owning the in-memory voiceprint store + acoustic gate.
@@ -121,7 +122,7 @@ import Concord
 /// `runStartupEnrollment` + `evaluateShadow` + hardcoded Keavi/kiwi windows below
 /// are the DEBUG flywheel path, active only under `PARLEQ_VOICEPRINT_DEMO=1`.
 @MainActor
-public final class VoiceprintCoordinator {
+public final class VoiceprintCoordinator: ObservableObject {
     /// Debug flywheel demo term/negative (used only by `runStartupEnrollment`).
     public static let termID = "Keavi"
     static let negativeLabel = "kiwi"
@@ -176,22 +177,74 @@ public final class VoiceprintCoordinator {
     /// only (wiped on quit). Set by main.swift before `loadPersisted()`.
     public var persistence: VoiceprintPersistence?
 
+    /// Enrollment-audio persistence backend (raw WAV clips for future re-derivation).
+    /// nil → in-memory only. Set by main.swift after the coordinator is wired.
+    public var audioPersistence: EnrollmentAudioPersistence?
+
+    /// Templates loaded from the blob that could NOT be kept in the store
+    /// (unknown encoder stamp) but are non-empty and therefore potentially
+    /// migratable. Populated by `loadPersisted`; consumed by a future migration
+    /// pass. Empty until `loadPersisted` is called. Reset on each call.
+    /// `private(set)` so tests can assert without a public setter.
+    public private(set) var pendingMigration: [VoiceprintTemplate] = []
+
+    /// Count of voiceprints that could NOT be auto-migrated and therefore need a
+    /// manual re-enroll (no stored audio to re-derive from, or the re-derivation
+    /// failed the quality bar). Set by `migrateIfNeeded`. A later task surfaces a
+    /// banner that OBSERVES this count — deliberately no banner type is referenced
+    /// here (R7).
+    @Published public private(set) var needsReEnrollCount: Int = 0
+
+    /// Term IDs that could NOT be auto-migrated and therefore need a manual
+    /// re-enroll. The re-enroll banner CTA targets one of THESE (not just the
+    /// first un-enrolled dictionary term, which may be unrelated).
+    public var pendingMigrationTermIDs: [String] { pendingMigration.map { $0.termID } }
+
     private func notifyStoreChanged() {
         onStoreChanged?()
         // Persist the current set (best-effort; encrypted at rest by the backend).
+        // R1/SI-1: the persisted payload is the active store ∪ the still-inert
+        // `pendingMigration` templates (un-migratable, unknown-stamp). Saving
+        // active-only here would overwrite the union that `migrateIfNeeded`
+        // wrote, silently dropping the inert templates on the next commit/remove.
+        // Store wins on a termID collision (the active template is the live one).
         if let persistence {
-            let templates = store.termIDs.compactMap { store.template(for: $0) }
+            var byID: [String: VoiceprintTemplate] = [:]
+            var order: [String] = []
+            for id in store.termIDs {
+                guard let t = store.template(for: id) else { continue }
+                if byID[id] == nil { order.append(id) }
+                byID[id] = t
+            }
+            for t in pendingMigration where byID[t.termID] == nil {
+                byID[t.termID] = t
+                order.append(t.termID)
+            }
+            let templates = order.compactMap { byID[$0] }
             try? persistence.save(templates)
         }
     }
 
-    /// Load persisted voiceprints into the store (dropping any stamped with a
-    /// different ASR model version — stale after an encoder bump), then install
-    /// the gate. Prunes stale entries on disk, but a FAILED load (missing key,
-    /// decode error, downgrade) installs the gate WITHOUT saving — saving an empty
-    /// set would wipe the encrypted blob (data loss).
+    /// Load persisted voiceprints into the store, then install the gate.
+    ///
+    /// KEEP predicate (R3): a template is upserted iff its encoder stamp is the
+    /// current `voiceprintEncoderIdentity` OR a declared `legacyCompatibleStamp`,
+    /// AND its voiceprint slice is non-empty.
+    ///
+    /// SI-1 invariant: `loadPersisted` NEVER writes to the persistence backend.
+    /// The on-disk blob is left exactly as found. Pruning/migration is deferred to
+    /// a separate migration pass (a later task) that owns all write decisions.
+    /// This eliminates the footgun where loading with an empty kept-set would
+    /// silently call `save([])` → `deleteAll()`, wiping the user's enrolled data.
+    ///
+    /// Unknown-stamp non-empty templates are placed into `pendingMigration` so
+    /// a future migration pass can re-stamp or re-enroll them.
+    ///
+    /// A FAILED load (missing key, decode error, downgrade) installs the gate
+    /// without touching the blob.
     public func loadPersisted() {
         guard let persistence else { return }
+        pendingMigration = []
         let loaded: [VoiceprintTemplate]
         do {
             loaded = try persistence.load()
@@ -202,19 +255,22 @@ public final class VoiceprintCoordinator {
             onStoreChanged?()   // install gate (empty); do NOT persist → blob preserved
             return
         }
-        let current = BundledASREngine.fluidAudioVersion
+        let current = BundledASREngine.voiceprintEncoderIdentity
         var kept = 0
-        for t in loaded where t.modelVersion == current && !t.voiceprint.isEmpty {
-            store.upsert(t); kept += 1
+        for t in loaded {
+            let compatible = (t.modelVersion == current
+                || BundledASREngine.legacyCompatibleStamps.contains(t.modelVersion))
+            if compatible && !t.voiceprint.isEmpty {
+                store.upsert(t); kept += 1
+            } else if !t.voiceprint.isEmpty {
+                // Unknown stamp but non-empty — potentially migratable; park for
+                // a future migration pass. Empty templates are silently dropped
+                // (nothing to migrate).
+                pendingMigration.append(t)
+            }
         }
-        log("[voiceprint] loadPersisted: loaded=\(loaded.count) kept=\(kept) current-model=\(current)")
-        onStoreChanged?()   // install gate without persisting
-        // Re-persist ONLY when stale entries were actually pruned (avoid a
-        // redundant rewrite of identical data on the happy path).
-        if store.count != loaded.count {
-            let templates = store.termIDs.compactMap { store.template(for: $0) }
-            try? persistence.save(templates)
-        }
+        log("[voiceprint] loadPersisted: loaded=\(loaded.count) kept=\(kept) pending=\(pendingMigration.count) current-model=\(current)")
+        onStoreChanged?()   // install gate; do NOT persist (SI-1)
     }
 
     public init() {}
@@ -267,9 +323,67 @@ public final class VoiceprintCoordinator {
     public var enrolledTermIDs: [String] { store.termIDs }
     /// Forget one term's voiceprint (privacy delete; also called when its
     /// dictionary term is removed).
-    public func removeVoiceprint(termID: String) { store.remove(termID: termID); notifyStoreChanged() }
+    public func removeVoiceprint(termID: String) {
+        store.remove(termID: termID)
+        try? audioPersistence?.remove(termID: termID)
+        // 7086: also evict any pending-migration template for this termID so a
+        // delete of a pending-only term actually deletes it (notifyStoreChanged
+        // saves active ∪ pendingMigration — leaving the entry there would
+        // rewrite it back to disk).
+        if let idx = pendingMigration.firstIndex(where: { $0.termID == termID }) {
+            pendingMigration.remove(at: idx)
+            if needsReEnrollCount > 0 { needsReEnrollCount -= 1 }
+        }
+        notifyStoreChanged()
+    }
     /// Forget every voiceprint ("delete all my voiceprints").
-    public func removeAll() { store.removeAll(); notifyStoreChanged() }
+    public func removeAll() {
+        store.removeAll()
+        try? audioPersistence?.deleteAll()
+        // 7086: clear pendingMigration before persisting so "delete all" does
+        // not rewrite the inert templates back to disk via the active ∪ pending
+        // union in notifyStoreChanged.
+        pendingMigration = []
+        needsReEnrollCount = 0
+        notifyStoreChanged()
+    }
+
+    /// SI-2: when clip storage is disabled (user or MDM), erase any stored
+    /// enrollment audio. Call at launch with the resolved (overlaid) flag.
+    public func enforceClipStoragePolicy(enabled: Bool) {
+        guard !enabled else { return }
+        guard let audioPersistence else { return }
+        // 7034b: don't swallow the delete error and then log success
+        // unconditionally — only claim the clips were erased when the
+        // delete actually succeeded; otherwise log the failure (type only).
+        do {
+            try audioPersistence.deleteAll()
+            log("[voiceprint-audio] clip storage disabled — stored clips erased")  // count-free, no content
+        } catch {
+            log("[voiceprint-audio] clip storage disabled — erase FAILED (\(type(of: error)))")
+        }
+    }
+
+    /// Persist raw enrollment clips for `termID`, merging with any existing map.
+    /// Best-effort (errors silently ignored). Logs count only — never audio or text.
+    public func storeEnrollmentClips(termID: String, _ clips: [StoredEnrollmentClip]) {
+        guard let audioPersistence else { return }
+        // 7031: distinguish a legit missing-file (load() returns [:]) from a
+        // decode/throw. A throw means the existing blob is present but unreadable;
+        // merging into [:] and saving would write a map with ONLY this term,
+        // clobbering every OTHER term's stored clips. On a throw, SKIP the save
+        // and preserve the existing blob.
+        var map: [String: [StoredEnrollmentClip]]
+        do {
+            map = try audioPersistence.load()
+        } catch {
+            log("[voiceprint-audio] storeEnrollmentClips skipped: existing store unreadable (\(type(of: error)))")
+            return
+        }
+        map[termID] = clips
+        try? audioPersistence.save(map)
+        log("[voiceprint-audio] storeEnrollmentClips term=\(termID) count=\(clips.count)")
+    }
 
     /// Letters-only lowercase normalization (matches the gate's slot key).
     private static func norm(_ s: String) -> String { s.lowercased().filter { $0.isLetter } }
@@ -328,7 +442,7 @@ public final class VoiceprintCoordinator {
         }
         let result = VoiceprintEnroller.enroll(
             termID: termID, embeddings: embeddings,
-            modelVersion: BundledASREngine.fluidAudioVersion)
+            modelVersion: BundledASREngine.voiceprintEncoderIdentity)
 
         let termKey = Self.norm(term)
         var seen = Set<String>(); var aliases: [String] = []
@@ -373,7 +487,103 @@ public final class VoiceprintCoordinator {
     /// the user explicitly commits.
     public func commit(_ template: VoiceprintTemplate) {
         store.upsert(template)
+        // 7036(b): if this term was awaiting re-enrollment (un-migratable under
+        // the current encoder), the user just re-enrolled it — drop it from the
+        // pending set and clear its slot in the banner count mid-session, instead
+        // of only self-healing on the next launch.
+        if let idx = pendingMigration.firstIndex(where: { $0.termID == template.termID }) {
+            pendingMigration.remove(at: idx)
+            if needsReEnrollCount > 0 { needsReEnrollCount -= 1 }
+        }
         notifyStoreChanged()
+    }
+
+    // MARK: - Encoder-change migration (non-destructive, quality-gated; SI-1)
+
+    /// Re-derive a voiceprint for `termID` from its STORED enrollment clips under
+    /// the CURRENT encoder (`transcribe` is the live encoder), pooling positives
+    /// into the term's voiceprint and attaching each distinct confusable's
+    /// negative. Returns the re-stamped DRAFT template plus its quality verdict,
+    /// or nil when no positive clip produced a usable span (nothing to migrate).
+    /// Pure builder — does NOT touch the store or persistence (`migrateIfNeeded`
+    /// owns the install/persist decisions).
+    public func buildTemplate(
+        from clips: [StoredEnrollmentClip], termID: String,
+        transcribe: (Data) async throws -> ASRResult?
+    ) async -> (template: VoiceprintTemplate, lowQuality: Bool)? {
+        let positives = clips
+            .filter { $0.role == .positive }
+            .map { EnrollmentClip(wav: $0.wav, carrierText: $0.carrierText) }
+        guard let (template, outcome) = await buildPositive(
+            termID: termID, term: termID, carriers: positives, transcribe: transcribe)
+        else { return nil }
+
+        // Attach one negative prototype per distinct confusable label, preserving
+        // first-seen order so the build is deterministic.
+        var byLabel: [String: [EnrollmentClip]] = [:]
+        var labelOrder: [String] = []
+        for clip in clips where clip.role == .negative {
+            guard let label = clip.negativeLabel else { continue }
+            if byLabel[label] == nil { labelOrder.append(label) }
+            byLabel[label, default: []].append(
+                EnrollmentClip(wav: clip.wav, carrierText: clip.carrierText))
+        }
+        var finalTemplate = template
+        for label in labelOrder {
+            finalTemplate = await buildNegativeAttached(
+                to: finalTemplate, label: label, carriers: byLabel[label] ?? [], transcribe: transcribe)
+        }
+        return (finalTemplate, outcome.lowQuality)
+    }
+
+    /// Auto-migrate any `pendingMigration` voiceprints (loaded under an unknown
+    /// encoder stamp) by RE-DERIVING them from the stored enrollment audio under
+    /// the current encoder. NON-DESTRUCTIVE (R1/SI-1):
+    /// - If the audio store fails to load, BAIL without writing — the blob is
+    ///   preserved exactly as found.
+    /// - A term with no stored audio, or whose re-derivation fails the quality
+    ///   bar, stays INERT (kept in `pendingMigration` with its OLD stamp) and is
+    ///   counted into `needsReEnrollCount` — never silently dropped.
+    /// - We persist only when at least one term migrated, and the payload is the
+    ///   active store ∪ the still-inert pending templates, so the on-disk blob
+    ///   keeps the inert ones (old stamp) and never collapses to `save([])`.
+    /// Logging is COUNT-ONLY (no term text, no audio, no embeddings).
+    public func migrateIfNeeded(transcribe: (Data) async throws -> ASRResult?) async {
+        guard !pendingMigration.isEmpty, let audioPersistence else { return }
+        let audioMap: [String: [StoredEnrollmentClip]]
+        do {
+            audioMap = try audioPersistence.load()
+        } catch {
+            // R1: audio unavailable → bail, NO save. The voiceprint blob is left
+            // exactly as found (the inert templates keep their old stamp on disk).
+            log("[voiceprint] migrate: audio load failed (\(type(of: error))) — blob preserved")
+            return
+        }
+        var migrated = 0
+        var discarded = 0
+        var stillInert: [VoiceprintTemplate] = []
+        for t in pendingMigration {
+            guard let clips = audioMap[t.termID], !clips.isEmpty else {
+                // No stored audio → can't re-derive; stays inert (needs manual re-enroll).
+                stillInert.append(t); discarded += 1; continue
+            }
+            guard let built = await buildTemplate(from: clips, termID: t.termID, transcribe: transcribe),
+                  !built.lowQuality else {
+                // Re-derivation failed or low quality → don't install a bad gate; stay inert.
+                stillInert.append(t); discarded += 1; continue
+            }
+            store.upsert(built.template); migrated += 1
+        }
+        needsReEnrollCount = discarded
+        if migrated > 0 {
+            // R1: persist active store ∪ still-inert pending. `all` is non-empty
+            // (migrated > 0), so this never degrades to save([]) → deleteAll().
+            let all = store.termIDs.compactMap { store.template(for: $0) } + stillInert
+            try? persistence?.save(all)
+        }
+        pendingMigration = stillInert
+        onStoreChanged?()   // re-install the gate to see the migrated templates
+        log("[voiceprint] migrate: migrated=\(migrated) discarded=\(discarded)")
     }
 
     // MARK: Startup enrollment
@@ -466,7 +676,7 @@ public final class VoiceprintCoordinator {
         let result = VoiceprintEnroller.enroll(
             termID: Self.termID,
             embeddings: keaviEmb,
-            modelVersion: BundledASREngine.fluidAudioVersion
+            modelVersion: BundledASREngine.voiceprintEncoderIdentity
         )
         let template = result.template.withNegative(label: Self.negativeLabel, embeddings: kiwiEmb)
         store.upsert(template)
@@ -566,28 +776,100 @@ public final class VoiceprintCoordinator {
             TokenTiming(token: $0.token, tokenId: $0.tokenId,
                         startTime: $0.startTime, endTime: $0.endTime, confidence: $0.confidence)
         }
-        var spans: [SpanEmbedding] = []
-        for (i, g) in VoiceprintDemo.wordGroups(from: timings).enumerated() {
+        let wordGroups = VoiceprintDemo.wordGroups(from: timings)
+        var singleWordSpans: [SpanEmbedding] = []
+        var windowSpans: [SpanEmbedding] = []
+
+        // Single-word spans (original behavior — preserved in full).
+        for (i, g) in wordGroups.enumerated() {
             guard let emb = features.pooledEmbedding(
                 startSeconds: g.startSeconds, endSeconds: g.endSeconds) else { continue }
             let normalized = g.text.lowercased().filter { $0.isLetter }
-            spans.append(SpanEmbedding(normalizedText: normalized, groupIndex: i,
-                                       startSeconds: g.startSeconds, endSeconds: g.endSeconds, embedding: emb))
+            singleWordSpans.append(SpanEmbedding(normalizedText: normalized, groupIndex: i,
+                                                  startSeconds: g.startSeconds, endSeconds: g.endSeconds,
+                                                  embedding: emb))
         }
-        guard !spans.isEmpty else { return nil }
-        let frozenSpans = spans   // capture as a let so the @Sendable closure captures by value
+
+        // Adjacent 2-word windows — enables merged-span queries (e.g. "Ki V" → "Keavi").
+        // Stored separately so the text+occurrence fallback can exclude them (their
+        // concatenated normalizedText, e.g. "kiv", would produce spurious .contains matches).
+        for i in 0..<(wordGroups.count - 1) {
+            let first = wordGroups[i], second = wordGroups[i + 1]
+            guard let emb = features.pooledEmbedding(
+                startSeconds: first.startSeconds, endSeconds: second.endSeconds) else { continue }
+            let normalized = (first.text + second.text).lowercased().filter { $0.isLetter }
+            windowSpans.append(SpanEmbedding(normalizedText: normalized, groupIndex: i,
+                                              startSeconds: first.startSeconds, endSeconds: second.endSeconds,
+                                              embedding: emb))
+        }
+
+        // Adjacent 3-word windows.
+        for i in 0..<(wordGroups.count - 2) {
+            let first = wordGroups[i], last = wordGroups[i + 2]
+            guard let emb = features.pooledEmbedding(
+                startSeconds: first.startSeconds, endSeconds: last.endSeconds) else { continue }
+            let normalized = (wordGroups[i].text + wordGroups[i + 1].text + wordGroups[i + 2].text)
+                .lowercased().filter { $0.isLetter }
+            windowSpans.append(SpanEmbedding(normalizedText: normalized, groupIndex: i,
+                                              startSeconds: first.startSeconds, endSeconds: last.endSeconds,
+                                              embedding: emb))
+        }
+
+        guard !singleWordSpans.isEmpty || !windowSpans.isEmpty else { return nil }
+        // `frozenSpans` = single-word only; used by the text+occurrence fallback (prevents
+        // concatenated window text, e.g. "kiv", from producing spurious .contains matches).
+        // `allFrozenSpans` = single-word + windows; used by the IoU / nearest-start locators
+        // so multi-word merged-span queries still find the right pooled window.
+        let frozenSpans = singleWordSpans
+        let allFrozenSpans = singleWordSpans + windowSpans
 
         return { ctx in
             guard let template = store.template(for: ctx.termID) else { return .noOpinion }
             // Locate the candidate span. PREFER the engine-provided audio window (robust to a
-            // biasing rewrite, where the word's TEXT no longer matches the raw token label): pick the
-            // pooled group whose start time is closest. Fall back to text + occurrence when no span
-            // is provided (HTTP ASR path).
+            // biasing rewrite, where the word's TEXT no longer matches the raw token label).
+            // When both start and end are provided, pick the stored span with the highest IoU
+            // against the query window — this correctly prefers the exact single-word span
+            // (IoU 1.0) over a wider window for a single-word query, while also preferring
+            // the right multi-word pooled window for a merged-span query. Fall back to
+            // nearest-start when endSeconds is unset or no span overlaps the query window.
+            // Fall back to text + occurrence when no audio window is provided (HTTP ASR path).
             let span: SpanEmbedding
-            if let start = ctx.startSeconds,
-               let best = frozenSpans.min(by: { abs($0.startSeconds - start) < abs($1.startSeconds - start) }) {
-                span = best
+            if let start = ctx.startSeconds {
+                if let end = ctx.endSeconds {
+                    // IoU-based locator: pick the pooled span with the best overlap.
+                    // Uses allFrozenSpans (single-word + windows) so multi-word merged-span
+                    // queries (e.g. "Ki V" → "Keavi") can find the right pooled window.
+                    let bestByIoU = allFrozenSpans.max { lhs, rhs in
+                        let interL = max(0.0, min(lhs.endSeconds, end) - max(lhs.startSeconds, start))
+                        let unionL = (lhs.endSeconds - lhs.startSeconds) + (end - start) - interL
+                        let iouL   = unionL > 0 ? interL / unionL : 0.0
+                        let interR = max(0.0, min(rhs.endSeconds, end) - max(rhs.startSeconds, start))
+                        let unionR = (rhs.endSeconds - rhs.startSeconds) + (end - start) - interR
+                        let iouR   = unionR > 0 ? interR / unionR : 0.0
+                        return iouL < iouR
+                    }
+                    guard let best = bestByIoU else { return .noOpinion }
+                    let inter = max(0.0, min(best.endSeconds, end) - max(best.startSeconds, start))
+                    let union = (best.endSeconds - best.startSeconds) + (end - start) - inter
+                    if union > 0 && inter / union > 0 {
+                        span = best
+                    } else {
+                        // No overlap — fall back to nearest-start (all spans).
+                        guard let nearest = allFrozenSpans.min(by: {
+                            abs($0.startSeconds - start) < abs($1.startSeconds - start)
+                        }) else { return .noOpinion }
+                        span = nearest
+                    }
+                } else {
+                    // endSeconds not set — nearest-start (original behavior, HTTP ASR path).
+                    // Uses allFrozenSpans for maximum locator accuracy.
+                    guard let best = allFrozenSpans.min(by: {
+                        abs($0.startSeconds - start) < abs($1.startSeconds - start)
+                    }) else { return .noOpinion }
+                    span = best
+                }
             } else {
+                // No audio window at all — text + occurrence fallback.
                 let needle = ctx.originalWord.lowercased().filter { $0.isLetter }
                 guard !needle.isEmpty else { return .noOpinion }
                 let matches = frozenSpans

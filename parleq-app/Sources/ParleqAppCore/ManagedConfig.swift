@@ -123,6 +123,14 @@ public enum ManagedConfig {
         "awsRoleArn",
         "awsSessionDurationSeconds",
         "vertexWorkforceProvider",
+        // Phase 10 — voiceprint MDM controls (0.29.x).
+        // voiceEnrollmentEnabled: fleet-wide master switch for the voice-
+        //   enrollment / acoustic-disambiguation feature (normal Bool, fail-open).
+        // voiceprintClipStorageEnabled: kill-switch for on-device clip
+        //   persistence (SI-2: fail-CLOSED — a malformed forced value turns
+        //   clip storage OFF, not on).
+        "voiceEnrollmentEnabled",
+        "voiceprintClipStorageEnabled",
     ]
 
     /// Subset of `allKeys` whose effective value is an Int.
@@ -264,6 +272,60 @@ public enum ManagedConfig {
             return intValue != 0
         }
         return nil
+    }
+
+    /// Returns true when `key` is forced in the managed domain
+    /// (/Library/Managed Preferences), regardless of whether its value
+    /// is well-formed or parseable. Unlike `managedBool`, which returns
+    /// nil for both "not managed" AND "managed but malformed", this method
+    /// distinguishes the two cases so callers can implement fail-closed
+    /// logic: a present-but-unparseable forced value still counts as "the
+    /// admin expressed an intent" and should resolve conservatively (off),
+    /// rather than silently falling through to the user default.
+    ///
+    /// Used by `applyManagedOverlay` for the `voiceprintClipStorageEnabled`
+    /// kill-switch (SI-2): enabled ONLY when the forced value is explicitly
+    /// `true`; any other forced value (false, a string, nil-on-read) fails CLOSED.
+    public static func managedValuePresent(forKey key: String) -> Bool {
+        let appID = bundleID as CFString
+        let cfKey = key as CFString
+        return CFPreferencesAppValueIsForced(cfKey, appID)
+    }
+
+    /// Pure fail-closed resolver for a "present-or-off" managed Bool key.
+    ///
+    /// Implements the SI-2 kill-switch truth table:
+    ///   - `(present: false, parsed: _)` → `(value: false, managed: false)`:
+    ///     key is not managed; caller keeps its own user/default value.
+    ///   - `(present: true,  parsed: true)`  → `(value: true,  managed: true)`:
+    ///     explicitly enabled by MDM.
+    ///   - `(present: true,  parsed: false)` → `(value: false, managed: true)`:
+    ///     explicitly disabled by MDM.
+    ///   - `(present: true,  parsed: nil)`   → `(value: false, managed: true)`:
+    ///     forced but malformed — FAILS CLOSED (off). This is the gap that
+    ///     plain `managedBool` (nil on both "not managed" and "malformed")
+    ///     cannot distinguish on its own.
+    ///
+    /// When `managed` is false the returned `value` is a placeholder (`false`);
+    /// callers should use their own user/default value for the field.
+    ///
+    /// Usage in `applyManagedOverlay`:
+    ///
+    ///   let r = ManagedConfig.resolveClipStorage(
+    ///       present: ManagedConfig.managedValuePresent(forKey: key),
+    ///       parsed:  ManagedConfig.managedBool(forKey: key)
+    ///   )
+    ///   if r.managed {
+    ///       c.voiceprintClipStorageEnabled = r.value
+    ///       managedKeys.insert(key)
+    ///   }
+    public static func resolveClipStorage(present: Bool, parsed: Bool?) -> (value: Bool, managed: Bool) {
+        guard present else {
+            // Not managed — caller keeps user/default; placeholder value.
+            return (value: false, managed: false)
+        }
+        // Managed: enabled ONLY when explicitly true; malformed → fail CLOSED.
+        return (value: parsed == true, managed: true)
     }
 
     /// Returns the MDM-managed non-negative Int for `key`, or nil

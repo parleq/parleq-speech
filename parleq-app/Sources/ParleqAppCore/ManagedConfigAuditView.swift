@@ -130,6 +130,24 @@ private func resolveAuditRow(key: String, config: Config, defaults: Config) -> (
             defaultVal: defaults.learnedCorrectionsRetentionHours,
             disabledLabel: "Disabled (no corrections)"
         )
+    case "voiceEnrollmentEnabled":
+        // Phase 10 — voiceprint master switch. Default on (true). When MDM
+        // forces false, enrollment UI is hidden and voiceprint matching is
+        // disabled fleet-wide. Normal fail-open Bool key (managed bool or nil).
+        return formatBool(config.voiceEnrollmentEnabled, managed: isManaged, defaultVal: defaults.voiceEnrollmentEnabled)
+    case "voiceprintClipStorageEnabled":
+        // Phase 10 — on-device clip-storage kill-switch. Default on (true).
+        // SI-2: fails CLOSED — a present-but-malformed forced value disables
+        // clip storage. Annotate the audit row when the key is managed-and-off
+        // so an IT admin sees the fail-closed policy in effect.
+        let display: String
+        if isManaged && !config.voiceprintClipStorageEnabled {
+            display = "false (fail-closed: clip storage disabled by MDM)"
+        } else {
+            display = config.voiceprintClipStorageEnabled ? "true" : "false"
+        }
+        let source: AuditSource = isManaged ? .managed : (config.voiceprintClipStorageEnabled != defaults.voiceprintClipStorageEnabled ? .user : .default)
+        return (display, source)
     case "autoUpdateEnabled":
         // autoUpdateEnabled is Sparkle-side only — read managed value directly since
         // it isn't mirrored into Config fields.

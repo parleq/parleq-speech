@@ -3299,6 +3299,11 @@ public final class AppState {
                 // bare transcript + isRefine) are set CENTRALLY inside
                 // streamCleanupOrRefine so every call site is covered uniformly;
                 // this site just forwards the ASR diagnostics it captured.
+                #if Concord
+                let concordEnrolledIDs = self?.voiceprint?.enrolledTermIDs ?? []
+                #else
+                let concordEnrolledIDs: [String] = []
+                #endif
                 let outcome = await streamCleanupOrRefine(
                     llm: resolvedLLM,
                     overlay: overlay,
@@ -3312,6 +3317,7 @@ public final class AppState {
                     pasteDestinationLabel: pasteDestLabel,
                     transform: asRefine ? nil : defaultPreset?.prompt,
                     asrDiagnostics: asrResultRaw.diagnostics,
+                    enrolledTermIDs: concordEnrolledIDs,
                     shouldRenderToOverlay: { [weak self] in
                         self?.shouldStreamRenderToOverlay() ?? false
                     }
@@ -4206,6 +4212,11 @@ public final class AppState {
             return dest.appName
         }
         inFlightTask = Task { @MainActor [weak self] in
+            #if Concord
+            let concordEnrolledIDs = self?.voiceprint?.enrolledTermIDs ?? []
+            #else
+            let concordEnrolledIDs: [String] = []
+            #endif
             let outcome = await streamCleanupOrRefine(
                 llm: resolvedLLM,
                 overlay: overlay,
@@ -4219,7 +4230,8 @@ public final class AppState {
                 pasteDestinationLabel: pasteDestLabel,
                 // Refine re-runs never fold a preset (mirrors the main
                 // pipeline: the text being refined is already styled).
-                transform: asRefineRerun ? nil : intendedPreset?.prompt
+                transform: asRefineRerun ? nil : intendedPreset?.prompt,
+                enrolledTermIDs: concordEnrolledIDs
             )
             if Task.isCancelled { return }
             // 0.14.0 PR 4 (#219): the model-switch path runs its
@@ -4303,6 +4315,11 @@ public final class AppState {
         inFlightTask?.cancel()
         inFlightTask = Task { @MainActor [weak self] in
             guard let self else { return }
+            #if Concord
+            let concordEnrolledIDs = self.voiceprint?.enrolledTermIDs ?? []
+            #else
+            let concordEnrolledIDs: [String] = []
+            #endif
             // A manual preset tap is a refine pass on the SHOWN text, so
             // references aren't needed — the text already reflects them.
             let outcome = await streamCleanupOrRefine(
@@ -4313,7 +4330,8 @@ public final class AppState {
                 rawTranscript: preset.prompt,
                 priorText: current,
                 targetBundleID: targetBundleID,
-                customDictionary: dictionary
+                customDictionary: dictionary,
+                enrolledTermIDs: concordEnrolledIDs
             )
             if Task.isCancelled {
                 // Clear the transform name on early-exit so a cancelled
@@ -4480,6 +4498,11 @@ public final class AppState {
         }
         inFlightTask?.cancel()
         inFlightTask = Task { @MainActor [weak self] in
+            #if Concord
+            let concordEnrolledIDs = self?.voiceprint?.enrolledTermIDs ?? []
+            #else
+            let concordEnrolledIDs: [String] = []
+            #endif
             let outcome = await streamCleanupOrRefine(
                 llm: resolvedLLM,
                 overlay: overlay,
@@ -4491,7 +4514,8 @@ public final class AppState {
                 customDictionary: dictionary,
                 references: effectiveRefs,
                 pasteDestinationLabel: pasteDestLabel,
-                transform: asRefineRerun ? nil : intendedPreset?.prompt
+                transform: asRefineRerun ? nil : intendedPreset?.prompt,
+                enrolledTermIDs: concordEnrolledIDs
             )
             if Task.isCancelled { return }
             self?.lastLLMLatencyMs = outcome.llmLatencyMs
@@ -4601,6 +4625,11 @@ public final class AppState {
         inFlightTask?.cancel()
         inFlightTask = Task { @MainActor [weak self] in
             guard let self else { return }
+            #if Concord
+            let concordEnrolledIDs = self.voiceprint?.enrolledTermIDs ?? []
+            #else
+            let concordEnrolledIDs: [String] = []
+            #endif
             let outcome = await streamCleanupOrRefine(
                 llm: resolvedLLM,
                 overlay: self.overlay,
@@ -4611,7 +4640,8 @@ public final class AppState {
                 targetBundleID: targetBundleID,
                 customDictionary: dictionary,
                 references: effectiveRefs,
-                pasteDestinationLabel: pasteDestLabel
+                pasteDestinationLabel: pasteDestLabel,
+                enrolledTermIDs: concordEnrolledIDs
             )
             if Task.isCancelled { return }
             self.lastLLMLatencyMs = outcome.llmLatencyMs
@@ -4786,6 +4816,11 @@ private func streamCleanupOrRefine(
     // path and on re-clean call sites). Forwarded to the on-device Concord
     // provider's dictionary stage; ignored by every other provider.
     asrDiagnostics: ASRDiagnostics? = nil,
+    // Enrolled voiceprint term IDs (case-insensitive; lowercased internally
+    // before classification) for per-term policy classification. All cleanup
+    // call sites forward these uniformly (main capture + re-clean / preset);
+    // the engine ignores policies in A2.
+    enrolledTermIDs: [String] = [],
     // Gate for the per-chunk overlay writes. Evaluated on the MainActor
     // before each streamed chunk renders. When it returns false the
     // chunk text still accumulates into `assembled` (so the final
@@ -4989,6 +5024,8 @@ private func streamCleanupOrRefine(
             concord.setUtteranceContext(diagnostics: asrDiagnostics)
             concord.setUtteranceDictionary(customDictionary)
             concord.setUtteranceCall(transcript: rawTranscript, isRefine: asRefine, priorText: priorText)
+            let enrolled = Set(enrolledTermIDs.map { $0.lowercased() })
+            concord.setUtterancePolicies(CorrectionPolicyClassifier.classify(customDictionary, enrolled: enrolled))
         }
         #endif
 

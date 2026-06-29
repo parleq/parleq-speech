@@ -114,9 +114,12 @@ public struct VoiceprintEnrollmentView: View {
             Parleq will record a few short clips of you saying “\(model.term)” in different \
             sentences, so it can tell the term apart from similar-sounding words using your own voice.
 
-            The recordings are processed on your device and discarded — only a mathematical \
-            voiceprint (not audio) is kept, encrypted on your device. This is biometric data: \
-            on-device, opt-in, and deletable anytime.
+            The recordings are processed on your device. The derived voiceprint is kept encrypted \
+            on this device. By default, the enrollment audio clips are also kept encrypted on device \
+            so your voiceprint can be automatically re-derived if the speech model updates — without \
+            re-recording. You can turn clip storage off in Settings → Dictionary.
+
+            This is biometric data: on-device, opt-in, and deletable anytime.
             """)
             .foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
         }

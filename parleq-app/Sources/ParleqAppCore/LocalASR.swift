@@ -596,10 +596,30 @@ enum VocabTuning {
 public enum BundledASREngine {
     public static let model = "parakeet-tdt-v3"
     // Matches the FluidAudio pin in Package.swift (the encoder-features fork tag).
-    // ALSO the model-version stamp on voiceprint templates — a change here
-    // invalidates persisted voiceprints (they're pruned on load + re-enrolled),
-    // which is correct: the encoder that produced their embeddings changed.
+    // Stamped into flywheel contribution records only (NOT voiceprint templates — see below).
     public static let fluidAudioVersion = "0.15.4-encoder.1"
+
+    /// Stable encoder-identity string stamped into voiceprint templates (#109).
+    /// This is the name of the Parakeet encoder graph/weights — it MUST be bumped
+    /// ONLY when the encoder architecture or weights actually change (making old
+    /// embeddings incompatible). It is intentionally DECOUPLED from
+    /// `fluidAudioVersion` (the FluidAudio package tag) so that package-level bumps
+    /// that do NOT change the encoder (runtime fixes, CTC updates, etc.) do NOT
+    /// silently invalidate every user's enrolled voiceprints.
+    public static let voiceprintEncoderIdentity = "parakeet-tdt-0.6b-v3"
+
+    /// Voiceprint template stamps that are KNOWN to have been produced by the same
+    /// Parakeet encoder graph as `voiceprintEncoderIdentity`. Templates carrying any
+    /// of these stamps are grandfathered on load (kept in the store without
+    /// re-enrollment). BUMP `voiceprintEncoderIdentity` — do NOT add entries here —
+    /// when the encoder changes. Only add an entry here when you are CERTAIN the old
+    /// stamp was produced by the SAME encoder weights/architecture as the current
+    /// `voiceprintEncoderIdentity`.
+    ///
+    /// "0.15.4-encoder.1" is the stamp used by the 0.29.0 release (produced before
+    /// the package-version / encoder-identity split). Its embeddings are compatible
+    /// with the parakeet-tdt-0.6b-v3 encoder.
+    public static let legacyCompatibleStamps: Set<String> = ["0.15.4-encoder.1"]
 }
 
 /// Holds the optional CTC vocabulary-boosting models and rescorer.

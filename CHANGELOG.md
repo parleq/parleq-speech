@@ -4,6 +4,21 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.30.0] - Unreleased
+
+Voiceprints that survive app updates, broader phonetic correction, and cleaner numbers, percentages, and capitalization.
+
+### Added
+
+- **Your voiceprints now survive speech-model updates.** Updating Parleq's on-device speech model used to discard the voiceprints you'd enrolled, forcing you to re-record them. Parleq can now keep your short enrollment clips encrypted on your Mac and automatically re-derive each voiceprint after a model update — so your enrolled terms keep working without re-enrolling. It's opt-in with a clear consent step, stays entirely on your Mac, and can be turned off — by you, or fleet-wide via an admin/MDM setting that also gates voice enrollment itself (existing voiceprints remain viewable and deletable when enrollment is disabled).
+- **Broader phonetic correction for enrolled terms.** On-device cleanup now recovers a dictionary term from a wider range of mishearings — including multi-word run-ons — while the acoustic voiceprint still vetoes an over-correction when what you actually said doesn't match the term.
+
+### Changed
+
+- **Cleaner numbers, percentages, and capitalization.** Large spoken numbers like "eight point nine million" now render as "8.9 million" (previously a run of zeros), spoken percentages like "forty five percent" become "45%", and a number that begins a sentence keeps its capital letter.
+
+[0.30.0]: https://github.com/parleq/parleq-speech/releases/tag/v0.30.0
+
 ## [0.29.0] - Unreleased
 
 Voice enrollment — teach a dictionary term in your own voice so on-device speech recognition can tell two similar-sounding words apart (the fruit "kiwi" vs. the app "Keavi"), entirely on your Mac.

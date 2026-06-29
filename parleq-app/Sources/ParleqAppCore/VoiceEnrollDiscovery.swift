@@ -51,6 +51,44 @@ enum VoiceEnrollBanner {
     static func shouldShowInApp(dismissed: Bool) -> Bool { !dismissed }
 }
 
+/// Dismissible banner shown in the Dictionary Settings section when a model
+/// update forced voiceprints to be discarded and the affected terms need a
+/// fresh enrollment. Parallel to `VoiceEnrollBanner` — owns its own
+/// UserDefaults key and is never cleared or mutated by the other banner.
+///
+/// The banner reappears if the user un-dismisses (clears the key); it auto-
+/// clears when the coordinator's `needsReEnrollCount` drops to 0 (the render
+/// site checks both conditions).
+enum NeedsReEnrollBanner {
+    /// UserDefaults key for the dismissed flag (stable; never re-used).
+    static let dismissedKey = "parleq.needsReEnrollBanner.dismissed"
+
+    /// User-facing headline.
+    static let title = "Voice enrollment needs to be redone"
+
+    /// User-facing explanation.
+    static let message = "A model update changed how voiceprints are computed. Re-enroll your terms to restore acoustic disambiguation."
+
+    // MARK: - Persisted state
+
+    static var isDismissed: Bool {
+        UserDefaults.standard.bool(forKey: dismissedKey)
+    }
+
+    static func dismiss() {
+        UserDefaults.standard.set(true, forKey: dismissedKey)
+    }
+
+    // MARK: - Pure visibility rule (unit-tested)
+
+    /// Whether the banner should be visible given the current dismissed flag
+    /// and the count of terms that need re-enrollment. Pure so it is
+    /// unit-testable without touching UserDefaults.
+    static func shouldShow(dismissed: Bool, needsReEnrollCount: Int) -> Bool {
+        !dismissed && needsReEnrollCount > 0
+    }
+}
+
 #if Concord
 import Combine
 
