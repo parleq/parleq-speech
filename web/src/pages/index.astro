@@ -1,7 +1,9 @@
 ---
 import Layout from '../layouts/Layout.astro';
-import SiteHeader from '../components/SiteHeader.astro';
 import OverlayMockup from '../components/OverlayMockup.astro';
+import TransformCard from '../components/TransformCard.astro';
+import ConcordFlow from '../components/ConcordFlow.astro';
+import Logo from '../components/Logo.astro';
 import { fetchLatestRelease } from '../lib/release';
 
 const release = await fetchLatestRelease();
@@ -116,114 +118,121 @@ const capabilities = [
 
 <Layout title="Parleq — Local-first AI dictation for macOS">
   <script type="application/ld+json" slot="head" set:html={JSON.stringify(softwareSchema)} />
-  <SiteHeader active="home" />
-
-  <!-- Hero. Centered headline + waveform motif + dual CTA. The wave
-       bars idle-pulse to suggest the live audio visualization users
-       see in the app while dictating. -->
-  <section class="mx-auto max-w-3xl px-6 pt-24 pb-20 text-center sm:pt-32 sm:pb-28">
-    <div aria-hidden="true" class="mb-6 flex h-16 items-end justify-center">
-      <span class="wave-bar"></span>
-      <span class="wave-bar"></span>
-      <span class="wave-bar"></span>
-      <span class="wave-bar"></span>
-      <span class="wave-bar"></span>
-    </div>
-
-    <!-- Live cleanup demo line. A quiet, looping product demo that sits
-         under the wave bars: a raw spoken transcript (muted monospace,
-         filler words) types out, then morphs into the cleaned sentence
-         (site text color) — the core capture→clean promise, shown rather
-         than told. Decorative (aria-hidden): the h1 below carries the
-         message for screen readers. Server-renders the FIRST example's
-         CLEANED line as the static default, so a no-JS or reduced-motion
-         visitor sees correct, finished content; the script replaces it
-         with the animated loop only when motion is allowed. The fixed
-         min-height reserves space for the longest example wrapped on
-         mobile, so the loop never reflows the hero. -->
+  <!-- Hero: framed dark-grape panel with in-panel nav and ConcordFlow art (Beat 1). -->
+  <section class="mx-auto max-w-6xl px-5 py-8">
     <div
-      id="hero-demo"
-      aria-hidden="true"
-      class="mx-auto mb-8 flex min-h-[3.25rem] max-w-xl items-center justify-center px-2 text-center text-sm leading-snug sm:min-h-[2.5rem] sm:text-base"
+      class="relative overflow-hidden rounded-[28px] px-7 pb-12 pt-5 sm:px-10"
+      style="background:
+               radial-gradient(58% 74% at 72% 52%, color-mix(in srgb, var(--color-grape-600) 55%, transparent), transparent 68%),
+               linear-gradient(180deg, #1d0b33 0%, #140622 100%);
+             box-shadow: 0 30px 80px -30px rgba(20,7,32,.7);"
     >
-      <span id="hero-demo-text" class="text-[color:var(--color-text)]"
-        >We cut latency by <span class="hero-demo-mark">45%</span> last quarter.</span
-      >
+      <!-- IN-PANEL HEADER: logo left, nav right (replaces SiteHeader for this page). -->
+      <header class="relative flex items-center justify-between gap-4 border-b pb-4" style="border-color: color-mix(in srgb, var(--color-grape-300) 16%, transparent);">
+        <Logo dark height="30" />
+        <nav class="hidden items-center gap-6 text-sm md:flex" style="color: var(--color-grape-100);">
+          <a href={`${base}/how-it-works/`} class="transition-colors hover:text-[color:var(--color-panel-ink)]">How it works</a>
+          <a href={`${base}/docs/`} class="transition-colors hover:text-[color:var(--color-panel-ink)]">Docs</a>
+          <a href={`${base}/enterprise/`} class="transition-colors hover:text-[color:var(--color-panel-ink)]">Enterprise</a>
+          <a href={`${base}/about/`} class="transition-colors hover:text-[color:var(--color-panel-ink)]">About</a>
+          <a href={repoUrl} class="transition-colors hover:text-[color:var(--color-panel-ink)]">GitHub ↗</a>
+          <a href={downloadUrl} class="inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-semibold text-white" style="background: var(--color-accent);">
+            <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v11M8 11l4 4 4-4M5 20h14"></path></svg>
+            Download for macOS
+          </a>
+        </nav>
+      </header>
+
+      <div class="relative mt-10 grid items-center gap-10 lg:grid-cols-[40%_60%]">
+        <!-- LEFT column: copy, CTAs, feature chips -->
+        <div>
+          <!-- Audio privacy pill (load-bearing required string). -->
+          <span class="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium" style="border-color: color-mix(in srgb, var(--color-grape-300) 35%, transparent); color: var(--color-grape-200); background: color-mix(in srgb, var(--color-grape-500) 20%, transparent);">
+            <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>
+            Your voice never leaves your Mac
+          </span>
+
+          <!-- Semantic h1: carries the message for screen readers; the flow art is aria-hidden. -->
+          <h1 class="font-display mt-6 text-5xl font-medium leading-[1.02] tracking-tight sm:text-6xl" style="color: var(--color-panel-ink);">
+            Speak freely.<br /><span style="color: var(--color-grape-300);">Paste clean.</span>
+          </h1>
+
+          <p class="mt-6 max-w-md text-base leading-relaxed" style="color: color-mix(in srgb, var(--color-panel-ink) 80%, transparent);">
+            <span style="color: var(--color-panel-ink);">Parleq</span> <span class="font-mono text-xs" style="color: var(--color-grape-200);">/PAR-lek/</span> is a local-first AI dictation app for macOS. Hold a hotkey and talk; the cleaned-up result pastes into whatever app was focused — speech recognition and cleanup can both run on your Mac, or use the cloud you bring.
+          </p>
+
+          <div class="mt-8 flex flex-wrap items-center gap-3">
+            <a
+              href={downloadUrl}
+              data-goatcounter-click="download-hero"
+              class="inline-flex items-center gap-2 rounded-full px-6 py-3 text-sm font-semibold text-white shadow-sm"
+              style="background: var(--color-accent);"
+            >
+              Download for macOS{release.version && ` ${release.version}`}
+              <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v11M8 11l4 4 4-4M5 20h14"></path></svg>
+            </a>
+            <a href="#refine" class="inline-flex items-center gap-2 rounded-full border px-6 py-3 text-sm font-semibold" style="border-color: color-mix(in srgb, var(--color-grape-300) 35%, transparent); color: var(--color-grape-100);">
+              See it in action
+              <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"></path></svg>
+            </a>
+          </div>
+
+          <p class="mt-4 text-xs" style="color: color-mix(in srgb, var(--color-grape-200) 60%, transparent);">
+            Apache-2.0 · macOS 14+ · Apple Silicon required
+          </p>
+
+          <div class="mt-5 flex flex-wrap gap-2">
+            <span class="chip-d">
+              <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0M12 18v3"></path></svg>
+              Voiceprints
+            </span>
+            <span class="chip-d">
+              <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9V6z"></path></svg>
+              On-device cleanup
+            </span>
+            <span class="chip-d">
+              <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3 7 21M17 3l-2 18M4 8h16M3 16h16"></path></svg>
+              Numbers &amp; punctuation
+            </span>
+            <span class="chip-d">
+              <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h12v16H6a2 2 0 0 0-2 2zM6 17h12"></path></svg>
+              Custom dictionary
+            </span>
+          </div>
+        </div>
+
+        <!-- RIGHT: ConcordFlow SVG art + three TransformCards (decorative; h1 carries the message). -->
+        <div class="relative mx-auto h-[360px] w-full max-w-[560px]" aria-hidden="true">
+          <ConcordFlow uid="hero" />
+          <TransformCard
+            variant="input"
+            title="You speak"
+            lines={[
+              {text: 'so we processed <span class="u-tok">eight point nine</span> million rows. did the build pass and is it ready to ship?'},
+              {text: 'the <span class="u-tok">parlay</span> docs are live. shipped some updates to <span class="u-tok">kiwi</span>.'}
+            ]}
+          />
+          <TransformCard
+            variant="engine"
+            items={["Punctuation","Numbers","Voiceprints","Dictionary"]}
+            credit="built on Concord (by Keavi)"
+          />
+          <TransformCard
+            variant="output"
+            title="Parleq pastes"
+            lines={[
+              {text: 'We processed <span class="mk-tok">8.9 million</span> rows. Did the build pass and is it ready to ship?'},
+              {text: 'The <span class="mk-tok">Parleq</span> docs are live. Shipped some updates to <span class="mk-tok">Keavi</span>.'}
+            ]}
+          >
+            <div class="mt-3 inline-flex items-center gap-1.5 text-[10px] font-medium" style="color:#7fd99a;">
+              <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"></path></svg>
+              Pasted
+            </div>
+          </TransformCard>
+        </div>
+      </div>
     </div>
-
-    <!-- Audio-local trust badge. Frames the demo above. Deliberately the
-         AUDIO claim only (always true: ASR is on-device for every provider) —
-         NOT a blanket "runs on-device", since cleanup is cloud by default.
-         aria-hidden: the subhead carries the same message for screen readers. -->
-    <div aria-hidden="true" class="mb-2 flex justify-center">
-      <span class="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3 py-1 text-xs font-medium text-[color:var(--color-text-muted)]">
-        <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="5" y="11" width="14" height="9" rx="2"></rect>
-          <path d="M8 11V7a4 4 0 0 1 8 0v4"></path>
-        </svg>
-        Your voice never leaves your Mac
-      </span>
-    </div>
-
-    <h1 class="font-display text-5xl leading-[1.05] font-medium tracking-tight sm:text-6xl md:text-7xl">
-      Speak freely.<br />Paste clean.
-    </h1>
-
-    <p class="mx-auto mt-8 max-w-2xl text-lg leading-relaxed text-[color:var(--color-text-muted)] sm:text-xl">
-      <span class="text-[color:var(--color-text)]">Parleq</span> <span class="font-mono text-sm text-[color:var(--color-text-subtle)]">/PAR-lek/</span> is a local-first AI dictation app for macOS. Hold a global hotkey and talk; the cleaned-up result pastes into whatever app was focused — and the speech recognition and cleanup can both run entirely on your Mac.
-    </p>
-
-    <!-- Feature chips. First-load-visible strip ABOVE the CTAs. The on-device
-         cleanup family (voiceprints, on-device Gemma 4, numbers, dictionary)
-         carries the Concord-grape accent (.chip-grape) to set it apart;
-         global hotkeys and the enterprise-SSO link stay neutral. Each links to
-         where the feature is explained. Decorative icons are aria-hidden. -->
-    <div class="mt-10 flex flex-wrap items-center justify-center gap-2">
-      <a href={`${base}/how-it-works/#voice-enrollment`} class="chip chip-grape">
-        <svg aria-hidden="true" viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0M12 18v3"></path></svg>
-        Voiceprints
-      </a>
-      <a href={`${base}/docs/on-device/`} class="chip chip-grape">
-        <svg aria-hidden="true" viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2"></rect><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"></path></svg>
-        On-device Gemma 4
-      </a>
-      <a href={`${base}/how-it-works/#stage-cleanup`} class="chip chip-grape">
-        <svg aria-hidden="true" viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3 7 21M17 3l-2 18M4 8h16M3 16h16"></path></svg>
-        Numbers &amp; punctuation
-      </a>
-      <a href={`${base}/how-it-works/#stage-transcribe`} class="chip chip-grape">
-        <svg aria-hidden="true" viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h12v16H6a2 2 0 0 0-2 2zM6 17h12"></path></svg>
-        Custom dictionary
-      </a>
-      <a href={`${base}/how-it-works/#gestures`} class="chip">
-        <svg aria-hidden="true" viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="11" rx="2"></rect><path d="M7 11h.01M11 11h.01M15 11h.01M8 15h8"></path></svg>
-        Global hotkeys
-      </a>
-      <a href={`${base}/enterprise/`} class="chip">
-        <svg aria-hidden="true" viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9V6z"></path></svg>
-        Enterprise SSO
-      </a>
-    </div>
-
-    <div class="mt-6 flex flex-col items-center justify-center gap-3 sm:flex-row sm:gap-4">
-      <a
-        href={downloadUrl}
-        data-goatcounter-click="download-hero"
-        class="inline-flex items-center gap-2 rounded-full bg-[color:var(--color-accent)] px-7 py-3 text-base font-semibold text-white shadow-sm transition-colors hover:bg-[color:var(--color-accent-hover)]"
-      >
-        Download for macOS{release.version && ` ${release.version}`}
-      </a>
-      <a
-        href={repoUrl}
-        class="inline-flex items-center gap-2 rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-7 py-3 text-base font-semibold text-[color:var(--color-text)] transition-colors hover:border-[color:var(--color-text-muted)]"
-      >
-        View source
-      </a>
-    </div>
-
-    <p class="mt-6 text-sm text-[color:var(--color-text-subtle)]">
-      Apache-2.0 · macOS 14+ · Apple Silicon required
-    </p>
   </section>
 
   <!-- On-device cleanup showcase. Lifts the four distinctive transforms out

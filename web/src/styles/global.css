@@ -234,6 +234,41 @@ body {
   color: var(--color-grape-strong);
 }
 
+/* Flow card token highlights — used inside the hero's dark-grape panel to
+   mark the "wrong" tokens in the input card and the "fixed" tokens in the
+   output card. `.u-tok` = amber underline (raw, unrecognized term);
+   `.mk-tok` = lavender grape-200 text on grape-400/42% tint (corrected).
+   Both rely on the grape-ramp variables available globally. */
+.u-tok {
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--color-accent) 75%, transparent);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
+}
+.mk-tok {
+  color: var(--color-grape-200);
+  background: color-mix(in srgb, var(--color-grape-400) 42%, transparent);
+  border-radius: 3px;
+  padding: 0 .18em;
+  font-weight: 600;
+}
+
+/* Dark-panel chip — for feature chips inside the dark hero panel.
+   Grape-200 text, grape-300 border tint, grape-500 background tint.
+   Mirrors prototype.astro's local `.chip-d` as a global utility. */
+.chip-d {
+  display: inline-flex;
+  align-items: center;
+  gap: .375rem;
+  border-radius: 9999px;
+  border: 1px solid color-mix(in srgb, var(--color-grape-300) 28%, transparent);
+  background: color-mix(in srgb, var(--color-grape-500) 14%, transparent);
+  padding: .25rem .75rem;
+  font-size: .75rem;
+  font-weight: 500;
+  color: var(--color-grape-200);
+}
+
 /* Whole-line crossfade used when swapping examples and on the final
    hold→clear. Kept short so the loop feels calm, not flashy. Carries
    both opacity and color so the combined `.hero-demo-cleaned

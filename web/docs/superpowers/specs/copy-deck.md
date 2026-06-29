@@ -30,10 +30,13 @@ Later tasks copy from here. Never pull strings from the codex pack — it contai
 - **Subhead:** "Parleq /PAR-lek/ is a local-first AI dictation app for macOS. Hold a hotkey and talk; the cleaned-up result pastes into whatever app was focused — speech recognition and cleanup can both run on your Mac, or use the cloud you bring."
 - **Primary CTA:** "Download for macOS"
 - **Secondary CTA:** "See it in action"
-- **Transform cards:**
-  - Input (raw dictation): "we cut latency by forty five percent last quarter"
-  - Engine label: "On-device cleanup"
-  - Output (cleaned text): "We cut latency by 45% last quarter."
+- **Transform cards (longer multi-line example matching the blessed hero visual):**
+  - Input line 1: `so we processed <u-tok>eight point nine</u-tok> million rows. did the build pass and is it ready to ship?`
+  - Input line 2: `the <u-tok>parlay</u-tok> docs are live. shipped some updates to <u-tok>kiwi</u-tok>.`
+  - Engine label: "On-device cleanup"; items: Punctuation · Numbers · Voiceprints · Dictionary; credit: "built on Concord (by Keavi)"
+  - Output line 1: `We processed <mk-tok>8.9 million</mk-tok> rows. Did the build pass and is it ready to ship?`
+  - Output line 2: `The <mk-tok>Parleq</mk-tok> docs are live. Shipped some updates to <mk-tok>Keavi</mk-tok>.`
+  - Output indicator: "✓ Pasted" in green (#7fd99a)
 
 ---
 
