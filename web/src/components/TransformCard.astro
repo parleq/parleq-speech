@@ -1,0 +1,65 @@
+---
+interface Props {
+  variant: 'input' | 'engine' | 'output';
+  title?: string;
+  lines?: { text: string; mark?: boolean }[];
+  items?: string[];
+  credit?: string;
+  icon?: 'mark' | 'clipboard';
+  size?: 'sm' | 'md';
+}
+
+const { variant, title, lines = [], items = [], credit, icon, size = 'md' } = Astro.props;
+---
+
+{variant === 'input' && (
+  <article class="absolute left-0 top-[24px] z-[2] h-[312px] w-[160px] overflow-hidden rounded-2xl border p-3.5" style="border-color: color-mix(in srgb, var(--color-grape-300) 16%, transparent); background: color-mix(in srgb, var(--color-grape-800) 42%, transparent);">
+    <div class="flex items-center gap-1.5 text-[12px] font-semibold" style="color: var(--color-panel-ink);">
+      {icon === 'mark' || icon === undefined ? (
+        <svg viewBox="0 0 47 54" class="h-3.5 w-auto" aria-hidden="true" fill="var(--color-accent)"><rect x="0" y="20" width="7" height="20" rx="3.5"></rect><rect x="10" y="12" width="7" height="36" rx="3.5"></rect><rect x="20" y="6" width="7" height="48" rx="3.5"></rect><rect x="30" y="15" width="7" height="30" rx="3.5"></rect><rect x="40" y="9" width="7" height="42" rx="3.5"></rect></svg>
+      ) : (
+        <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="3" width="8" height="4" rx="1"></rect><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"></path></svg>
+      )}
+      {title}
+    </div>
+    {lines.map((line) => (
+      <p class="mt-2.5 font-mono text-[11px] leading-relaxed" style="color: color-mix(in srgb, var(--color-panel-ink) 68%, transparent);" set:html={line.text}></p>
+    ))}
+    <slot />
+  </article>
+)}
+
+{variant === 'engine' && (
+  <article id="engine-card" class="absolute left-1/2 top-1/2 z-[3] w-[112px] -translate-x-1/2 -translate-y-1/2 rounded-2xl border px-2.5 py-3 text-center"
+           style="border-color: color-mix(in srgb, var(--color-grape-300) 85%, transparent); background: #271655; box-shadow: 0 0 30px -2px color-mix(in srgb, var(--color-grape-400) 70%, transparent), inset 0 0 0 1px color-mix(in srgb, var(--color-grape-300) 30%, transparent);">
+    <div class="mx-auto mb-1.5 flex items-center justify-center" aria-hidden="true"><svg viewBox="0 0 47 54" class="h-4 w-auto" fill="var(--color-grape-200)"><rect x="0" y="20" width="7" height="20" rx="3.5"></rect><rect x="10" y="12" width="7" height="36" rx="3.5"></rect><rect x="20" y="6" width="7" height="48" rx="3.5"></rect><rect x="30" y="15" width="7" height="30" rx="3.5"></rect><rect x="40" y="9" width="7" height="42" rx="3.5"></rect></svg></div>
+    <div class="text-[11px] font-semibold leading-tight" style="color: var(--color-panel-ink);" set:html={title ?? 'On-device<br />cleanup'}></div>
+    {items.length > 0 && (
+      <ul class="mt-2 space-y-1 text-left text-[9px]" style="color: color-mix(in srgb, var(--color-grape-100) 82%, transparent);">
+        {items.map((item) => (
+          <li class="flex items-center gap-1"><span style="color:var(--color-grape-300);">✓</span> {item}</li>
+        ))}
+      </ul>
+    )}
+    {credit && (
+      <div class="mt-2 border-t pt-1.5 text-[8px] leading-tight" style="border-color: color-mix(in srgb, var(--color-grape-300) 20%, transparent); color: color-mix(in srgb, var(--color-grape-200) 70%, transparent);">{credit}</div>
+    )}
+  </article>
+)}
+
+{variant === 'output' && (
+  <article class="absolute right-0 top-[24px] z-[2] h-[312px] w-[160px] overflow-hidden rounded-2xl border p-3.5" style="border-color: color-mix(in srgb, var(--color-grape-300) 18%, transparent); background: color-mix(in srgb, var(--color-grape-800) 52%, transparent);">
+    <div class="flex items-center gap-1.5 text-[12px] font-semibold" style="color: var(--color-panel-ink);">
+      {icon === 'clipboard' || icon === undefined ? (
+        <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="3" width="8" height="4" rx="1"></rect><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"></path></svg>
+      ) : (
+        <svg viewBox="0 0 47 54" class="h-3.5 w-auto" aria-hidden="true" fill="var(--color-accent)"><rect x="0" y="20" width="7" height="20" rx="3.5"></rect><rect x="10" y="12" width="7" height="36" rx="3.5"></rect><rect x="20" y="6" width="7" height="48" rx="3.5"></rect><rect x="30" y="15" width="7" height="30" rx="3.5"></rect><rect x="40" y="9" width="7" height="42" rx="3.5"></rect></svg>
+      )}
+      {title}
+    </div>
+    {lines.map((line) => (
+      <p class={`mt-2.5 text-[12px] leading-relaxed`} style="color: var(--color-panel-ink);" set:html={line.text}></p>
+    ))}
+    <slot />
+  </article>
+)}
