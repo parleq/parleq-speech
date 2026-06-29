@@ -584,6 +584,26 @@ public struct Config: Sendable {
         return transformPresets.first { $0.id == presetID }
     }
 
+    /// Resolve the cleanup behavior for a paste target. Resolution order:
+    /// user override (`appBehaviors`) → curated default mode
+    /// (`CuratedAppDefaults`) → `.polished` (today's default). A `nil`/empty
+    /// bundle resolves to `.polished`.
+    ///
+    /// Curated *suggested tones* are intentionally NOT applied here — this
+    /// returns only the user's explicit preset (which can only come from an
+    /// `appBehaviors` override). Suggestions stay off until the user accepts
+    /// them in the App-behavior editor.
+    public func behaviorForApp(_ bundleID: String?) -> AppBehavior {
+        guard let bundleID else { return AppBehavior(mode: .polished) }
+        let trimmed = bundleID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return AppBehavior(mode: .polished) }
+        if let override = appBehaviors[trimmed] { return override }
+        if let mode = CuratedAppDefaults.mode(for: trimmed) {
+            return AppBehavior(mode: mode, presetID: nil)
+        }
+        return AppBehavior(mode: .polished)
+    }
+
     /// Model to use when references are attached to a dictation.
     /// nil means "fall back to the cleanup model" — that's the setup
     /// wizard's "Same as cleanup" default and the legacy behavior for
