@@ -26,13 +26,34 @@ const fadeIdx = new Set([0, 17]);          // outermost lines fade out before re
 const weights = [0.7, 0.95, 0.8, 1.1, 0.85, 1.2, 1.0, 1.25, 1.3, 1.9, 1.25, 1.1, 0.85, 1.2, 0.75, 1.0, 0.7, 0.9];
 const glowAt = { 3: 0.5, 6: 0.6, 7: 0.8, 8: 0.7, 9: 1, 10: 0.85, 13: 0.5 };
 
-const grapes = [
+const helpers = [
+  { label: 'Voiceprints', icon: 'mic' },
+  { label: 'Punctuation', icon: 'quote' },
+  { label: 'Numbers', icon: 'hash' },
+  { label: 'Dictionary', icon: 'book' },
+  { label: 'Compound', icon: 'link' },
+];
+const bunch8 = [
   { x: 54, y: 40 }, { x: 90, y: 40 },
   { x: 36, y: 72 }, { x: 72, y: 72 }, { x: 108, y: 72 },
   { x: 54, y: 104 }, { x: 90, y: 104 },
   { x: 72, y: 134 },
 ];
-const grapeLabels = ['Voiceprints', 'Punctuation', 'Numbers', 'Dictionary', 'Compound'];
+// which grape position carries which stamped icon (the rest stay plain — fullness / room to grow)
+const grapeIcon: Record<number, string> = { 3: 'mic', 1: 'quote', 4: 'hash', 5: 'book', 6: 'link' };
+// recognizable line icons (path markup); rendered as a debossed "impression" via emboss()
+const icons: Record<string, string> = {
+  mic:   '<rect x="6" y="3" width="4" height="7" rx="2"/><path d="M4.5 8.5a3.5 3.5 0 0 0 7 0"/><path d="M8 12v2.4"/>',
+  quote: '<path d="M6.2 6.4C4.8 6.4 4.1 7.5 4.1 8.6c0 1 .7 1.8 1.7 1.8M6.2 6.4c0 2-.6 3.1-1.9 3.9"/><path d="M11.6 6.4c-1.4 0-2.1 1.1-2.1 2.2 0 1 .7 1.8 1.7 1.8M11.6 6.4c0 2-.6 3.1-1.9 3.9"/>',
+  hash:  '<path d="M6.4 3.6 5 14.4M11.2 3.6 9.8 14.4M3 7.2h10M2.6 10.8h10"/>',
+  book:  '<path d="M8 5C6.2 3.9 4.2 3.9 2.7 4.7V13c1.5-.8 3.5-.8 5.3.4M8 5c1.8-1.1 3.8-1.1 5.3-.3V13c-1.5-.8-3.5-.8-5.3.4M8 5v8.4"/>',
+  link:  '<path d="M6.6 7a2.4 2.4 0 0 0 0 4.8M9.4 7a2.4 2.4 0 0 1 0 4.8"/><path d="M6 9.4h4"/>',
+};
+// Debossed "impression": a lighter highlight offset just below + a darker recess on top, both in
+// the grape's own hue family → the icon reads as STAMPED into the skin, not a white overlay.
+const emboss = (d: string) =>
+  `<g transform="translate(0,0.85)" stroke="#cba9ec" stroke-opacity="0.5" stroke-width="1.35" fill="none" stroke-linecap="round" stroke-linejoin="round">${d}</g>` +
+  `<g stroke="#27103e" stroke-opacity="0.92" stroke-width="1.35" fill="none" stroke-linecap="round" stroke-linejoin="round">${d}</g>`;
 ---
 
 <Layout title="Prototype — Parleq redesign spike">
@@ -249,30 +270,44 @@ const grapeLabels = ['Voiceprints', 'Punctuation', 'Numbers', 'Dictionary', 'Com
 
     <!-- ===================== BET 2: grape cluster (now a white CARD over the purple) ===================== -->
     <section class="relative z-10 -mt-10 overflow-hidden rounded-[28px] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-9 py-12 shadow-[0_24px_60px_-30px_rgba(20,7,32,.45)] sm:px-14">
-      <div class="grid items-center gap-10 sm:grid-cols-2">
-      <div>
+      <svg width="0" height="0" class="absolute" aria-hidden="true"><defs>
+        <radialGradient id="cgrape" cx="38%" cy="32%" r="70%"><stop offset="0%" stop-color="var(--color-grape-300)"></stop><stop offset="55%" stop-color="var(--color-grape-500)"></stop><stop offset="100%" stop-color="var(--color-grape-strong)"></stop></radialGradient>
+        <radialGradient id="cleaf" cx="35%" cy="30%" r="80%"><stop offset="0%" stop-color="#7bb564"></stop><stop offset="100%" stop-color="#3f7a39"></stop></radialGradient>
+      </defs></svg>
+
+      <div class="mx-auto max-w-2xl text-center">
         <p class="text-sm font-medium uppercase tracking-[0.18em]" style="color: var(--color-grape);">The engine, up close</p>
         <h2 class="font-display mt-3 text-3xl font-medium tracking-tight">A cluster of small, fast corrections.</h2>
-        <p class="mt-4 max-w-md text-[color:var(--color-text-muted)]">On-device cleanup isn't a black box — it's a handful of small, deterministic helpers, each doing one thing well, all running on your Mac. <span class="text-[color:var(--color-text-subtle)]">Built on Concord (by Keavi).</span></p>
-        <div class="mt-5 flex flex-wrap gap-2">
-          {grapeLabels.map((l) => <span class="rounded-full border border-[color:var(--color-border)] px-3 py-1 text-xs font-medium text-[color:var(--color-grape)]">{l}</span>)}
-        </div>
-        <p class="mt-4 text-xs text-[color:var(--color-text-subtle)]">(In the real page this bunch lives inside the grape zone as the engine "opens up" — on white here only to judge the mark.)</p>
+        <p class="mt-4 text-[color:var(--color-text-muted)]">On-device cleanup isn't a black box — it's a handful of small, deterministic helpers, each doing one thing well, all on your Mac. <span class="text-[color:var(--color-text-subtle)]">Three directions for the cluster — which feels right?</span></p>
       </div>
-      <div class="relative mx-auto h-[220px] w-[180px]">
-        <svg viewBox="0 0 144 190" class="absolute inset-0 h-full w-full" aria-hidden="true">
-          <defs>
-            <radialGradient id="grape" cx="38%" cy="32%" r="70%"><stop offset="0%" stop-color="var(--color-grape-300)"></stop><stop offset="55%" stop-color="var(--color-grape-500)"></stop><stop offset="100%" stop-color="var(--color-grape-strong)"></stop></radialGradient>
-            <radialGradient id="leaf" cx="35%" cy="30%" r="80%"><stop offset="0%" stop-color="#7bb564"></stop><stop offset="100%" stop-color="#3f7a39"></stop></radialGradient>
-          </defs>
+
+      <div class="mt-10 flex flex-col items-center gap-10 sm:flex-row sm:justify-center sm:gap-16">
+        <!-- The chosen cluster: full bunch with debossed impressions on the named grapes -->
+        <svg viewBox="0 0 144 160" class="h-[200px] w-[180px]" aria-hidden="true">
           <path d="M72 6 C 72 16, 72 22, 72 30" fill="none" stroke="#6b4a2a" stroke-width="3" stroke-linecap="round"></path>
-          <path d="M72 12 C 86 4, 100 6, 104 14 C 98 22, 84 22, 72 18 Z" fill="url(#leaf)"></path>
-          {grapes.map((g) => (
-            <g><circle cx={g.x} cy={g.y} r="21" fill="url(#grape)" stroke="var(--color-grape-strong)" stroke-width="0.75"></circle><ellipse cx={g.x - 6} cy={g.y - 7} rx="5" ry="3.5" fill="#ffffff" opacity="0.22"></ellipse></g>
+          <path d="M72 12 C 86 4, 100 6, 104 14 C 98 22, 84 22, 72 18 Z" fill="url(#cleaf)"></path>
+          {bunch8.map((g, i) => (
+            <g>
+              <circle cx={g.x} cy={g.y} r="20" fill="url(#cgrape)" stroke="var(--color-grape-strong)" stroke-width="0.75"></circle>
+              <ellipse cx={g.x - 5} cy={g.y - 6} rx="4.8" ry="3.2" fill="#fff" opacity="0.2"></ellipse>
+              {grapeIcon[i] && <svg x={g.x - 8} y={g.y - 9} width="16" height="18" viewBox="0 0 16 18" set:html={emboss(icons[grapeIcon[i]])}></svg>}
+            </g>
           ))}
         </svg>
+        <ul class="space-y-3">
+          {helpers.map((h) => (
+            <li class="flex items-center gap-3 text-[15px] font-medium text-[color:var(--color-text)]">
+              <svg viewBox="0 0 24 24" class="h-7 w-7 shrink-0" aria-hidden="true">
+                <circle cx="12" cy="12" r="10" fill="url(#cgrape)" stroke="var(--color-grape-strong)" stroke-width="0.75"></circle>
+                <ellipse cx="9" cy="9" rx="2.6" ry="1.7" fill="#fff" opacity="0.22"></ellipse>
+                <svg x="4" y="3" width="16" height="18" viewBox="0 0 16 18" set:html={emboss(icons[h.icon])}></svg>
+              </svg>
+              {h.label}
+            </li>
+          ))}
+        </ul>
       </div>
-      </div>
+      <p class="mt-8 text-center text-xs text-[color:var(--color-text-subtle)]">(In the real page this lives inside the grape zone as the engine "opens up" — shown on white here to judge the mark.)</p>
     </section>
 
     <p class="mt-14 text-center text-xs text-[color:var(--color-text-subtle)]">Reduce-motion test: enable macOS Reduce Motion → the dots must stop entirely.</p>
