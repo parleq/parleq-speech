@@ -135,6 +135,21 @@ final class AppBehaviorConfigTests: XCTestCase {
         XCTAssertEqual(legacy["com.legacy.only"], "p9")
     }
 
+    func test_app_behaviors_serialized_mode_only_even_with_presetID() throws {
+        // Even if an AppBehavior is constructed with a presetID, serialization
+        // must emit MODE only — otherwise parse would fold it back into
+        // presetAppDefaults and re-open the drift bug.
+        var c = Config.default
+        c.appBehaviors = [
+            "com.tinyspeck.slackmacgap": AppBehavior(mode: .polished, presetID: "p1"),
+        ]
+        let dict = Config.serializeToDictionary(c)
+        let behaviors = try XCTUnwrap(dict["app_behaviors"] as? [String: Any])
+        let slack = try XCTUnwrap(behaviors["com.tinyspeck.slackmacgap"] as? [String: Any])
+        XCTAssertEqual(slack["mode"] as? String, "polished")
+        XCTAssertNil(slack["preset"], "app_behaviors must be mode-only in v1")
+    }
+
     // MARK: - MDM gate
 
     func test_behaviorForApp_honors_transformPresetsEnabled_gate() throws {

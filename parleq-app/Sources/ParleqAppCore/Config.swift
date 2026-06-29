@@ -2210,12 +2210,13 @@ public struct Config: Sendable {
         }
         // Per-app cleanup behavior — the canonical key.
         if !config.appBehaviors.isEmpty {
-            dict["app_behaviors"] = config.appBehaviors.mapValues { behavior -> [String: Any] in
-                var obj: [String: Any] = ["mode": behavior.mode.rawValue]
-                if behavior.mode == .polished, let pid = behavior.presetID, !pid.isEmpty {
-                    obj["preset"] = pid
-                }
-                return obj
+            // v1: app_behaviors is MODE-only. The per-app preset lives in
+            // presetAppDefaults (the single source of truth); never serialize
+            // AppBehavior.presetID here, or a stale / externally-constructed
+            // value would be folded back into presetAppDefaults on the next
+            // parse, re-opening the drift bug.
+            dict["app_behaviors"] = config.appBehaviors.mapValues { behavior in
+                ["mode": behavior.mode.rawValue]
             }
         }
         // `preset_app_defaults` is the single source of truth for per-app
