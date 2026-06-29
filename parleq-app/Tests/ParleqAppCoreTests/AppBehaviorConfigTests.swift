@@ -16,7 +16,10 @@ final class AppBehaviorConfigTests: XCTestCase {
 
     // MARK: - Parsing the new key
 
-    func test_parsing_app_behaviors() throws {
+    func test_parsing_app_behaviors_stores_mode_and_folds_preset() throws {
+        // Terminal is a mode-only Instant override. Slack carries a native
+        // `preset`, which must be folded into presetAppDefaults (the single
+        // source of truth) rather than duplicated into appBehaviors.
         let c = try parse("""
         {"app_behaviors":{
             "com.apple.Terminal":{"mode":"instant"},
@@ -24,52 +27,51 @@ final class AppBehaviorConfigTests: XCTestCase {
         }}
         """)
         XCTAssertEqual(c.appBehaviors["com.apple.Terminal"]?.mode, .instant)
-        XCTAssertNil(c.appBehaviors["com.apple.Terminal"]?.presetID)
 
-        let slack = c.appBehaviors["com.tinyspeck.slackmacgap"]
-        XCTAssertEqual(slack?.mode, .polished)
-        XCTAssertEqual(slack?.presetID, "p1")
+        // The native preset lives in presetAppDefaults, not appBehaviors.
+        XCTAssertEqual(c.presetAppDefaults["com.tinyspeck.slackmacgap"], "p1")
+        XCTAssertNil(c.appBehaviors["com.tinyspeck.slackmacgap"]?.presetID)
+        XCTAssertEqual(c.appBehaviors["com.tinyspeck.slackmacgap"]?.mode, .polished)
     }
 
     // MARK: - Migration from the legacy key
 
-    func test_migration_from_legacy_preset_app_defaults() throws {
+    func test_migration_preserves_legacy_preset_without_duplication() throws {
+        // A non-curated app (Mail defaults to Polished) keeps its legacy preset
+        // in presetAppDefaults; no appBehaviors entry is synthesized (the
+        // default mode is already Polished), so the two maps don't duplicate.
         let c = try parse("""
         {"preset_app_defaults":{"com.apple.mail":"p2"}}
         """)
-        XCTAssertEqual(
-            c.appBehaviors["com.apple.mail"],
-            AppBehavior(mode: .polished, presetID: "p2")
-        )
+        XCTAssertEqual(c.presetAppDefaults["com.apple.mail"], "p2")
+        XCTAssertNil(c.appBehaviors["com.apple.mail"])
+        XCTAssertEqual(c.behaviorForApp("com.apple.mail").mode, .polished)
+    }
+
+    func test_migration_preserves_polished_intent_over_curated_instant() throws {
+        // A curated-Instant app (Terminal) that the user had styled under the
+        // old system must STAY Polished (intent preserved), via a mode-only
+        // override — not silently flipped to Instant. The preset stays in
+        // presetAppDefaults.
+        let c = try parse("""
+        {"preset_app_defaults":{"com.apple.Terminal":"p2"}}
+        """)
+        XCTAssertEqual(c.appBehaviors["com.apple.Terminal"]?.mode, .polished)
+        XCTAssertNil(c.appBehaviors["com.apple.Terminal"]?.presetID)
+        XCTAssertEqual(c.presetAppDefaults["com.apple.Terminal"], "p2")
+        XCTAssertEqual(c.behaviorForApp("com.apple.Terminal").mode, .polished)
     }
 
     func test_app_behaviors_wins_over_legacy_when_both_present() throws {
-        // Same bundle in both maps; app_behaviors says Instant, legacy says
-        // a polished preset. app_behaviors must win.
         let c = try parse("""
         {
             "app_behaviors":{"com.apple.mail":{"mode":"instant"}},
             "preset_app_defaults":{"com.apple.mail":"p2"}
         }
         """)
-        XCTAssertEqual(c.appBehaviors["com.apple.mail"]?.mode, .instant)
-        XCTAssertNil(c.appBehaviors["com.apple.mail"]?.presetID)
-    }
-
-    func test_legacy_only_bundles_are_merged_in() throws {
-        // app_behaviors covers one bundle; a legacy-only bundle must still
-        // survive into appBehaviors as a polished+preset entry.
-        let c = try parse("""
-        {
-            "app_behaviors":{"com.apple.Terminal":{"mode":"instant"}},
-            "preset_app_defaults":{"com.apple.mail":"p2"}
-        }
-        """)
-        XCTAssertEqual(c.appBehaviors["com.apple.Terminal"]?.mode, .instant)
-        XCTAssertEqual(
-            c.appBehaviors["com.apple.mail"],
-            AppBehavior(mode: .polished, presetID: "p2")
-        )
+        XCTAssertEqual(c.behaviorForApp("com.apple.mail").mode, .instant)
+        // Instant never carries a preset, even though a legacy one exists.
+        XCTAssertNil(c.behaviorForApp("com.apple.mail").presetID)
     }
 
     // MARK: - Unknown mode
@@ -81,43 +83,51 @@ final class AppBehaviorConfigTests: XCTestCase {
         XCTAssertEqual(c.appBehaviors["com.apple.mail"]?.mode, .polished)
     }
 
-    // MARK: - Dual-write on save
+    // MARK: - Serialize (dual-key) + no-drift / no-resurrection
 
-    func test_dual_write_on_save() throws {
-        // Config.save/load are hardcoded to ~/.parleq/config.json, so exercise
-        // the serialize→parse round-trip in memory (the same path save/load
-        // use) rather than clobbering the developer's real config.
+    func test_serialize_writes_both_keys_authoritatively() throws {
         var c = Config.default
-        c.appBehaviors = [
-            "com.apple.mail": AppBehavior(mode: .polished, presetID: "p2"),
-            "x": AppBehavior(mode: .instant, presetID: nil),
-        ]
+        c.presetAppDefaults = ["com.apple.mail": "p2"]      // preset source of truth
+        c.appBehaviors = ["x": AppBehavior(mode: .instant)] // new mode dimension
 
         let dict = Config.serializeToDictionary(c)
 
-        // Legacy key dual-written: the polished+preset entry survives; the
-        // instant entry has no legacy equivalent.
+        // preset_app_defaults is written verbatim from presetAppDefaults.
         let legacy = try XCTUnwrap(dict["preset_app_defaults"] as? [String: String])
         XCTAssertEqual(legacy["com.apple.mail"], "p2")
         XCTAssertNil(legacy["x"])
 
-        // New key round-trips both entries.
+        // app_behaviors carries the Instant entry (no legacy equivalent).
+        let behaviors = try XCTUnwrap(dict["app_behaviors"] as? [String: Any])
+        let xObj = try XCTUnwrap(behaviors["x"] as? [String: Any])
+        XCTAssertEqual(xObj["mode"] as? String, "instant")
+
+        // Round-trips.
         let reloaded = Config.parse(fromDictionary: dict)
-        XCTAssertEqual(
-            reloaded.appBehaviors["com.apple.mail"],
-            AppBehavior(mode: .polished, presetID: "p2")
-        )
-        XCTAssertEqual(
-            reloaded.appBehaviors["x"],
-            AppBehavior(mode: .instant, presetID: nil)
-        )
+        XCTAssertEqual(reloaded.presetAppDefaults["com.apple.mail"], "p2")
+        XCTAssertEqual(reloaded.appBehaviors["x"]?.mode, .instant)
+    }
+
+    func test_deleted_preset_is_not_resurrected_on_save() throws {
+        // Regression for the dual-source-of-truth drift: parse a legacy preset
+        // for a curated-Instant app (synthesizes a Polished override), then
+        // simulate the Settings UI deleting the preset (mutates presetAppDefaults
+        // only). Serializing must NOT write the deleted preset back out.
+        var c = try parse("""
+        {"preset_app_defaults":{"com.apple.Terminal":"p2"}}
+        """)
+        XCTAssertEqual(c.appBehaviors["com.apple.Terminal"]?.mode, .polished) // override present
+
+        c.presetAppDefaults = [:] // user deletes the per-app preset
+
+        let dict = Config.serializeToDictionary(c)
+        let legacy = dict["preset_app_defaults"] as? [String: String] ?? [:]
+        XCTAssertNil(legacy["com.apple.Terminal"], "deleted preset must not be resurrected")
     }
 
     func test_legacy_only_entries_preserved_on_save() throws {
-        // A bundle present only in the legacy map (e.g. written by an older
-        // build, never migrated into appBehaviors) must not be lost on save.
         var c = Config.default
-        c.appBehaviors = ["x": AppBehavior(mode: .instant, presetID: nil)]
+        c.appBehaviors = ["x": AppBehavior(mode: .instant)]
         c.presetAppDefaults = ["com.legacy.only": "p9"]
 
         let dict = Config.serializeToDictionary(c)

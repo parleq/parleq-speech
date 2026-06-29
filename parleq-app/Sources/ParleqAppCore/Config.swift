@@ -560,16 +560,14 @@ public struct Config: Sendable {
     /// shows "Styled with <name> · Undo".
     public var presetAppDefaults: [String: String]
 
-    /// Per-app cleanup behavior: target app bundle ID → `AppBehavior`
-    /// (mode + optional tone preset). This is the canonical successor to
-    /// `presetAppDefaults`: a `.polished` entry with a `presetID` is the
-    /// exact equivalent of the old per-app preset assignment, while
-    /// `.instant`/`.raw` entries are new. Empty by default; curated smart
-    /// defaults live in code (`CuratedAppDefaults`), not here, so this map
-    /// stores only user overrides. The legacy `preset_app_defaults` key is
-    /// dual-written on save (derived from `.polished`+`presetID` entries,
-    /// unioned with any legacy-only entries) so an older build opening the
-    /// config doesn't lose per-app styling.
+    /// Per-app cleanup MODE overrides: target app bundle ID → `AppBehavior`.
+    /// In v1 this stores the per-app MODE (`.instant`/`.polished`/`.raw`);
+    /// the per-app *preset* remains in `presetAppDefaults` (the single source
+    /// of truth that the Settings UI / LearnedStore mutate), resolved via
+    /// `presetForApp`, so the two maps cannot drift. Empty by default; curated
+    /// smart defaults live in code (`CuratedAppDefaults`), not here, so this
+    /// map stores only explicit user overrides. (`AppBehavior.presetID` is
+    /// reserved for a later unification of the two maps; it is unused in v1.)
     public var appBehaviors: [String: AppBehavior]
 
     /// Resolve the per-app default preset for a paste target. nil when
@@ -597,11 +595,16 @@ public struct Config: Sendable {
         guard let bundleID else { return AppBehavior(mode: .polished) }
         let trimmed = bundleID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return AppBehavior(mode: .polished) }
-        if let override = appBehaviors[trimmed] { return override }
-        if let mode = CuratedAppDefaults.mode(for: trimmed) {
-            return AppBehavior(mode: mode, presetID: nil)
-        }
-        return AppBehavior(mode: .polished)
+        // Mode: explicit override → curated default → today's default.
+        let mode = appBehaviors[trimmed]?.mode
+            ?? CuratedAppDefaults.mode(for: trimmed)
+            ?? .polished
+        // Preset is sourced from presetForApp — the single source of truth
+        // (`presetAppDefaults`) plus the MDM gate — so the two maps can never
+        // drift. Only Polished carries a preset; suggested tones are never
+        // auto-applied.
+        let presetID = mode == .polished ? presetForApp(trimmed)?.id : nil
+        return AppBehavior(mode: mode, presetID: presetID)
     }
 
     /// Model to use when references are attached to a dictation.
@@ -1958,17 +1961,30 @@ public struct Config: Sendable {
                 let k = key.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !k.isEmpty, let obj = value as? [String: Any] else { continue }
                 let mode = (obj["mode"] as? String).flatMap(TargetMode.init(rawValue:)) ?? .polished
-                var presetID = (obj["preset"] as? String)?
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                if presetID?.isEmpty == true { presetID = nil }
-                behaviors[k] = AppBehavior(mode: mode, presetID: presetID)
+                // A native app_behaviors entry may carry a `preset`. Presets
+                // live in `presetAppDefaults` (the single source of truth the
+                // Settings UI / LearnedStore mutate) — fold it there rather than
+                // duplicating it into appBehaviors, which would let the two maps
+                // drift (a delete via the legacy path could be resurrected on
+                // save). appBehaviors stores the MODE override only.
+                if mode == .polished,
+                   let preset = (obj["preset"] as? String)?
+                       .trimmingCharacters(in: .whitespacesAndNewlines),
+                   !preset.isEmpty {
+                    c.presetAppDefaults[k] = preset
+                }
+                behaviors[k] = AppBehavior(mode: mode, presetID: nil)
             }
         }
-        // Synthesize migrated entries from the legacy map for any bundle not
-        // already covered by app_behaviors (Polished + preset is the exact
-        // equivalent of the old per-app preset assignment).
-        for (bundle, presetID) in c.presetAppDefaults where behaviors[bundle] == nil {
-            behaviors[bundle] = AppBehavior(mode: .polished, presetID: presetID)
+        // Preserve a user's explicit Polished+styling intent: if a legacy
+        // per-app preset exists for an app whose CURATED default would flip it
+        // to a non-Polished mode (e.g. a terminal the user had styled), record
+        // a mode-only Polished override so it isn't silently turned literal.
+        // The preset itself stays in presetAppDefaults.
+        for (bundle, _) in c.presetAppDefaults where behaviors[bundle] == nil {
+            if let curated = CuratedAppDefaults.mode(for: bundle), curated != .polished {
+                behaviors[bundle] = AppBehavior(mode: .polished, presetID: nil)
+            }
         }
         c.appBehaviors = behaviors
         return c
@@ -2202,25 +2218,14 @@ public struct Config: Sendable {
                 return obj
             }
         }
-        // Dual-write the legacy `preset_app_defaults` so an older build (or a
-        // downgrade) doesn't lose per-app styling. Derive it from the
-        // `.polished`+`presetID` entries of `appBehaviors`, unioned with any
-        // legacy-only entries (bundles present in `presetAppDefaults` but not
-        // in `appBehaviors`) so nothing is dropped. Instant/Raw entries have
-        // no legacy equivalent and are intentionally absent.
-        var legacyDefaults: [String: String] = [:]
-        for (bundle, behavior) in config.appBehaviors
-        where behavior.mode == .polished {
-            if let pid = behavior.presetID, !pid.isEmpty {
-                legacyDefaults[bundle] = pid
-            }
-        }
-        for (bundle, pid) in config.presetAppDefaults
-        where config.appBehaviors[bundle] == nil && !pid.isEmpty {
-            legacyDefaults[bundle] = pid
-        }
-        if !legacyDefaults.isEmpty {
-            dict["preset_app_defaults"] = legacyDefaults
+        // `preset_app_defaults` is the single source of truth for per-app
+        // presets (the Settings UI / LearnedStore mutate it directly), so write
+        // it verbatim — NOT derived from appBehaviors, which would resurrect a
+        // preset deleted via the legacy path. appBehaviors (above) carries the
+        // new MODE dimension; presets stay here. The dual-key layout keeps an
+        // older build (or a downgrade) working.
+        if !config.presetAppDefaults.isEmpty {
+            dict["preset_app_defaults"] = config.presetAppDefaults
         }
         // Enterprise OIDC federation — emit the top-level "oidc" section
         // only when at least one of its fields is non-default. `scopes` is
