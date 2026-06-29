@@ -1,0 +1,360 @@
+---
+// PROTOTYPE SPIKE (Task 0) — throwaway. Matching the ChatGPT reference image.
+import Layout from '../layouts/Layout.astro';
+import Logo from '../components/Logo.astro';
+
+const nav = ['How it works', 'Docs', 'Enterprise', 'About'];
+
+// Flow lines: origins in a TIGHT band near the box center (y 118..244),
+// converging LOOSELY across the engine's left edge (spread), with a gentle S-wave.
+// Two-angle S-curve: the line leaves the box at a LOW angle (cp1 horizontal at the
+// box), bends SHARPLY through the middle, then runs nearly PARALLEL into the card
+// (cp2 horizontal at the card) — not one smooth arc. Glow comes from the lines' own
+// bloom (bright + bunched near the card), not a background gradient.
+// 18 lines, NON-UNIFORM convergence: tight/overlapping near the center, wider at the edges.
+// inY = origin at the box; endY = where each line meets the engine (hand-tuned, non-uniform).
+const inY  = [74, 86, 99, 112, 125, 138, 150, 162, 174, 186, 198, 210, 222, 235, 248, 261, 274, 287];
+const endY = [161, 165, 168, 171, 174, 176, 178, 179, 180, 181, 182, 184, 186, 189, 192, 195, 199, 203];
+// Lines END at the box edge (x=162 / x=398), not inside it.
+const leftPaths = inY.map((y, i) => `M162 ${y} C 182 ${y}, 198 ${endY[i]}, 228 ${endY[i]}`);
+const rightPaths = inY.map((y, i) => `M332 ${endY[i]} C 362 ${endY[i]}, 378 ${y}, 398 ${y}`);
+
+// Orange concentrated near the vertical CENTER, purple outward; heaviest bright-orange line at the
+// very center (idx 9); weights vary; non-uniform tip-glow.
+const amberIdx = new Set([7, 8, 9, 10]);
+const fadeIdx = new Set([0, 17]);          // outermost lines fade out before reaching the box
+const weights = [0.7, 0.95, 0.8, 1.1, 0.85, 1.2, 1.0, 1.25, 1.3, 1.9, 1.25, 1.1, 0.85, 1.2, 0.75, 1.0, 0.7, 0.9];
+const glowAt = { 3: 0.5, 6: 0.6, 7: 0.8, 8: 0.7, 9: 1, 10: 0.85, 13: 0.5 };
+
+const grapes = [
+  { x: 54, y: 40 }, { x: 90, y: 40 },
+  { x: 36, y: 72 }, { x: 72, y: 72 }, { x: 108, y: 72 },
+  { x: 54, y: 104 }, { x: 90, y: 104 },
+  { x: 72, y: 134 },
+];
+const grapeLabels = ['Voiceprints', 'Punctuation', 'Numbers', 'Dictionary', 'Compound'];
+---
+
+<Layout title="Prototype — Parleq redesign spike">
+  <main class="mx-auto max-w-6xl px-5 py-8">
+    <p class="mb-3 text-xs uppercase tracking-[0.2em] text-[color:var(--color-text-subtle)]">Prototype spike — not the real page</p>
+
+    <!-- ===================== BET 1: hero panel ===================== -->
+    <section
+      class="panel-grape relative overflow-hidden rounded-[28px] px-7 pb-12 pt-5 sm:px-10"
+      style="background:
+               radial-gradient(58% 74% at 72% 52%, color-mix(in srgb, var(--color-grape-600) 55%, transparent), transparent 68%),
+               linear-gradient(180deg, #1d0b33 0%, #140622 100%);
+             box-shadow: 0 30px 80px -30px rgba(20,7,32,.7);"
+    >
+      <!-- IN-PANEL HEADER -->
+      <header class="relative flex items-center justify-between gap-4 border-b pb-4" style="border-color: color-mix(in srgb, var(--color-grape-300) 16%, transparent);">
+        <Logo dark height="30" />
+        <nav class="hidden items-center gap-6 text-sm md:flex" style="color: var(--color-grape-100);">
+          {nav.map((n) => <a href="#" class="transition-colors hover:text-[color:var(--color-panel-ink)]">{n}</a>)}
+          <a href="#" class="transition-colors hover:text-[color:var(--color-panel-ink)]">GitHub ↗</a>
+          <a href="#" class="inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-semibold text-white" style="background: var(--color-accent);">
+            <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11M8 11l4 4 4-4M5 20h14"></path></svg>
+            Download for macOS
+          </a>
+        </nav>
+      </header>
+
+      <div class="relative mt-10 grid items-center gap-10 lg:grid-cols-[40%_60%]">
+        <!-- LEFT -->
+        <div>
+          <span class="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium" style="border-color: color-mix(in srgb, var(--color-grape-300) 35%, transparent); color: var(--color-grape-200); background: color-mix(in srgb, var(--color-grape-500) 20%, transparent);">
+            <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>
+            Your voice never leaves your Mac
+          </span>
+
+          <h1 class="font-display mt-6 text-5xl font-medium leading-[1.02] tracking-tight sm:text-6xl" style="color: var(--color-panel-ink);">
+            Speak freely.<br /><span style="color: var(--color-grape-300);">Paste clean.</span>
+          </h1>
+
+          <p class="mt-6 max-w-md text-base leading-relaxed" style="color: color-mix(in srgb, var(--color-panel-ink) 80%, transparent);">
+            <span style="color: var(--color-panel-ink);">Parleq</span> <span class="font-mono text-xs" style="color: var(--color-grape-200);">/PAR-lek/</span> is a local-first AI dictation app for macOS. Speech recognition and cleanup can both run on your Mac — or use the cloud you bring.
+          </p>
+
+          <div class="mt-8 flex flex-wrap items-center gap-3">
+            <a href="#" class="inline-flex items-center gap-2 rounded-full px-6 py-3 text-sm font-semibold text-white shadow-sm" style="background: var(--color-accent);">
+              Download for macOS
+              <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11M8 11l4 4 4-4M5 20h14"></path></svg>
+            </a>
+            <a href="#" class="inline-flex items-center gap-2 rounded-full border px-6 py-3 text-sm font-semibold" style="border-color: color-mix(in srgb, var(--color-grape-300) 35%, transparent); color: var(--color-grape-100);">
+              See it in action
+              <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg>
+            </a>
+          </div>
+
+          <div class="mt-7 flex flex-wrap gap-2">
+            <span class="chip-d"><svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0M12 18v3"></path></svg>Voiceprints</span>
+            <span class="chip-d"><svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9V6z"></path></svg>On-device cleanup</span>
+            <span class="chip-d"><svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3 7 21M17 3l-2 18M4 8h16M3 16h16"></path></svg>Numbers &amp; punctuation</span>
+            <span class="chip-d"><svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h12v16H6a2 2 0 0 0-2 2zM6 17h12"></path></svg>Custom dictionary</span>
+          </div>
+        </div>
+
+        <!-- RIGHT: flow grammar -->
+        <div class="relative mx-auto h-[360px] w-full max-w-[560px]" id="flow-stage">
+          <svg class="concord-flow absolute inset-0 z-0 h-full w-full" viewBox="0 0 560 360" preserveAspectRatio="none" aria-hidden="true">
+            <defs>
+              <!-- SHARP line gradients: visible-but-dim along the length, saturated near Concord -->
+              <!-- The LINE itself color-shifts amber/lavender → white-hot at the tip. No blur on
+                   these, so the color change has NO halo around it — just the line changing color. -->
+              <linearGradient id="gAmber" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stop-color="var(--flow-voice)" stop-opacity="0.5"></stop>
+                <stop offset="48%" stop-color="#e8830a" stop-opacity="0.62"></stop>
+                <stop offset="80%" stop-color="#ff9f33" stop-opacity="0.95"></stop>
+                <stop offset="93%" stop-color="#ffd590" stop-opacity="1"></stop>
+                <stop offset="100%" stop-color="#ffffff" stop-opacity="1"></stop>
+              </linearGradient>
+              <!-- neon violet (brighter/more saturated than the muted grape used elsewhere) → white tip -->
+              <linearGradient id="gLav" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stop-color="#7c3aed" stop-opacity="0.55"></stop>
+                <stop offset="48%" stop-color="#9d5cf5" stop-opacity="0.68"></stop>
+                <stop offset="80%" stop-color="#c18bff" stop-opacity="0.95"></stop>
+                <stop offset="93%" stop-color="#e8d6ff" stop-opacity="1"></stop>
+                <stop offset="100%" stop-color="#ffffff" stop-opacity="1"></stop>
+              </linearGradient>
+              <linearGradient id="gOutA" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stop-color="#ffffff" stop-opacity="1"></stop>
+                <stop offset="7%" stop-color="#ffd590" stop-opacity="1"></stop>
+                <stop offset="20%" stop-color="#ff9f33" stop-opacity="0.95"></stop>
+                <stop offset="52%" stop-color="#e8830a" stop-opacity="0.62"></stop>
+                <stop offset="100%" stop-color="var(--flow-voice)" stop-opacity="0.5"></stop>
+              </linearGradient>
+              <linearGradient id="gOutL" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stop-color="#ffffff" stop-opacity="1"></stop>
+                <stop offset="7%" stop-color="#e8d6ff" stop-opacity="1"></stop>
+                <stop offset="20%" stop-color="#c18bff" stop-opacity="0.95"></stop>
+                <stop offset="52%" stop-color="#9d5cf5" stop-opacity="0.68"></stop>
+                <stop offset="100%" stop-color="#7c3aed" stop-opacity="0.55"></stop>
+              </linearGradient>
+              <!-- GLOW underlay gradients: warm/fiery, SATURATED, transparent until near Concord.
+                   One warm hue for all glow lines + screen blending → converging glows ADD to a
+                   hot orange core instead of graying out. -->
+              <!-- Confined glow: transparent until ~85% (≈ last 12px before the box), then a small
+                   white-hot bloom RIGHT at the box only — for the few main lines. -->
+              <linearGradient id="gGlowWarm" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stop-color="#ff9f33" stop-opacity="0"></stop>
+                <stop offset="85%" stop-color="#ff9f33" stop-opacity="0"></stop>
+                <stop offset="94%" stop-color="#ffe0a8" stop-opacity="0.8"></stop>
+                <stop offset="100%" stop-color="#ffffff" stop-opacity="1"></stop>
+              </linearGradient>
+              <linearGradient id="gGlowWarmOut" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stop-color="#ffffff" stop-opacity="1"></stop>
+                <stop offset="6%" stop-color="#ffe0a8" stop-opacity="0.8"></stop>
+                <stop offset="15%" stop-color="#ff9f33" stop-opacity="0"></stop>
+                <stop offset="100%" stop-color="#ff9f33" stop-opacity="0"></stop>
+              </linearGradient>
+              <!-- fade variants: transparent at the box, so these lines fade IN after the box edge -->
+              <linearGradient id="gLavFade" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stop-color="#7c3aed" stop-opacity="0"></stop>
+                <stop offset="26%" stop-color="#9d5cf5" stop-opacity="0.5"></stop>
+                <stop offset="80%" stop-color="#c18bff" stop-opacity="0.92"></stop>
+                <stop offset="93%" stop-color="#e8d6ff" stop-opacity="1"></stop>
+                <stop offset="100%" stop-color="#ffffff" stop-opacity="1"></stop>
+              </linearGradient>
+              <linearGradient id="gOutLFade" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stop-color="#ffffff" stop-opacity="1"></stop>
+                <stop offset="7%" stop-color="#e8d6ff" stop-opacity="1"></stop>
+                <stop offset="20%" stop-color="#c18bff" stop-opacity="0.92"></stop>
+                <stop offset="74%" stop-color="#9d5cf5" stop-opacity="0.5"></stop>
+                <stop offset="100%" stop-color="#7c3aed" stop-opacity="0"></stop>
+              </linearGradient>
+              <!-- neon-violet confined glow for the purple lines -->
+              <linearGradient id="gGlowViolet" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stop-color="#a64dff" stop-opacity="0"></stop>
+                <stop offset="85%" stop-color="#a64dff" stop-opacity="0"></stop>
+                <stop offset="94%" stop-color="#dcbcff" stop-opacity="0.8"></stop>
+                <stop offset="100%" stop-color="#ffffff" stop-opacity="1"></stop>
+              </linearGradient>
+              <linearGradient id="gGlowVioletOut" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stop-color="#ffffff" stop-opacity="1"></stop>
+                <stop offset="6%" stop-color="#dcbcff" stop-opacity="0.8"></stop>
+                <stop offset="15%" stop-color="#a64dff" stop-opacity="0"></stop>
+                <stop offset="100%" stop-color="#a64dff" stop-opacity="0"></stop>
+              </linearGradient>
+              <!-- small, tight bloom (only acts on the already-confined glow strokes) -->
+              <filter id="lineGlow" x="-80%" y="-300%" width="260%" height="700%">
+                <feGaussianBlur stdDeviation="2.4" result="wide"></feGaussianBlur>
+                <feGaussianBlur stdDeviation="0.9" result="tight"></feGaussianBlur>
+                <feMerge><feMergeNode in="wide"></feMergeNode><feMergeNode in="tight"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge>
+              </filter>
+              <!-- soft radial glows for the on-line accent dots (white-hot core → line hue → transparent) -->
+              <radialGradient id="dotWarm">
+                <stop offset="0%" stop-color="#fff3df" stop-opacity="1"></stop>
+                <stop offset="42%" stop-color="#ffb04d" stop-opacity="0.85"></stop>
+                <stop offset="100%" stop-color="#ff9f33" stop-opacity="0"></stop>
+              </radialGradient>
+              <radialGradient id="dotViolet">
+                <stop offset="0%" stop-color="#f3e9ff" stop-opacity="1"></stop>
+                <stop offset="42%" stop-color="#c18bff" stop-opacity="0.85"></stop>
+                <stop offset="100%" stop-color="#a64dff" stop-opacity="0"></stop>
+              </radialGradient>
+            </defs>
+            <!-- Confined glow: a NON-UNIFORM subset of lines, last ~12px at the box, varied strength, screen-blended -->
+            <g fill="none" filter="url(#lineGlow)" stroke-linecap="round" style="mix-blend-mode: screen;">
+              {leftPaths.map((d, i) => (glowAt[i] ? <path d={d} stroke={amberIdx.has(i) ? 'url(#gGlowWarm)' : 'url(#gGlowViolet)'} stroke-width="3" opacity={glowAt[i]}></path> : null))}
+              {rightPaths.map((d, i) => (glowAt[i] ? <path d={d} stroke={amberIdx.has(i) ? 'url(#gGlowWarmOut)' : 'url(#gGlowVioletOut)'} stroke-width="3" opacity={glowAt[i]}></path> : null))}
+            </g>
+            <!-- SHARP crisp lines on top (NO blur): orange-center / violet-outer, varied weights, some fade before the box -->
+            <g fill="none" stroke-linecap="round">
+              {leftPaths.map((d, i) => <path id={`fl-${i}`} d={d} stroke={fadeIdx.has(i) ? 'url(#gLavFade)' : amberIdx.has(i) ? 'url(#gAmber)' : 'url(#gLav)'} stroke-width={weights[i]} opacity={amberIdx.has(i) ? 0.95 : 0.82}></path>)}
+              {rightPaths.map((d, i) => <path id={`fr-${i}`} d={d} stroke={fadeIdx.has(i) ? 'url(#gOutLFade)' : amberIdx.has(i) ? 'url(#gOutA)' : 'url(#gOutL)'} stroke-width={weights[i]} opacity={amberIdx.has(i) ? 0.95 : 0.82}></path>)}
+            </g>
+            <!-- (on-line accent dots are added by the script so they sit exactly on the curves) -->
+          </svg>
+
+          <!-- (no background radial glow — the radiance comes from the lines' own bloom) -->
+
+          <!-- INPUT card -->
+          <article class="absolute left-0 top-[24px] z-[2] h-[312px] w-[160px] overflow-hidden rounded-2xl border p-3.5" style="border-color: color-mix(in srgb, var(--color-grape-300) 16%, transparent); background: color-mix(in srgb, var(--color-grape-800) 42%, transparent);">
+            <div class="flex items-center gap-1.5 text-[12px] font-semibold" style="color: var(--color-panel-ink);">
+              <svg viewBox="0 0 47 54" class="h-3.5 w-auto" aria-hidden="true" fill="var(--color-accent)"><rect x="0" y="20" width="7" height="20" rx="3.5"></rect><rect x="10" y="12" width="7" height="36" rx="3.5"></rect><rect x="20" y="6" width="7" height="48" rx="3.5"></rect><rect x="30" y="15" width="7" height="30" rx="3.5"></rect><rect x="40" y="9" width="7" height="42" rx="3.5"></rect></svg>
+              You speak
+            </div>
+            <p class="mt-2.5 font-mono text-[11px] leading-relaxed" style="color: color-mix(in srgb, var(--color-panel-ink) 68%, transparent);">so we processed <span class="u-tok">eight point nine</span> million rows. did the build pass and is it ready to ship?</p>
+            <p class="mt-2 font-mono text-[11px] leading-relaxed" style="color: color-mix(in srgb, var(--color-panel-ink) 68%, transparent);">the <span class="u-tok">parlay</span> docs are live. shipped some updates to <span class="u-tok">kiwi</span>.</p>
+          </article>
+
+          <!-- ENGINE card (darker, bright border + static glow) -->
+          <article id="engine-card" class="absolute left-1/2 top-1/2 z-[3] w-[112px] -translate-x-1/2 -translate-y-1/2 rounded-2xl border px-2.5 py-3 text-center"
+                   style="border-color: color-mix(in srgb, var(--color-grape-300) 85%, transparent); background: #271655; box-shadow: 0 0 30px -2px color-mix(in srgb, var(--color-grape-400) 70%, transparent), inset 0 0 0 1px color-mix(in srgb, var(--color-grape-300) 30%, transparent);">
+            <div class="mx-auto mb-1.5 flex items-center justify-center"><svg viewBox="0 0 47 54" class="h-4 w-auto" aria-hidden="true" fill="var(--color-grape-200)"><rect x="0" y="20" width="7" height="20" rx="3.5"></rect><rect x="10" y="12" width="7" height="36" rx="3.5"></rect><rect x="20" y="6" width="7" height="48" rx="3.5"></rect><rect x="30" y="15" width="7" height="30" rx="3.5"></rect><rect x="40" y="9" width="7" height="42" rx="3.5"></rect></svg></div>
+            <div class="text-[11px] font-semibold leading-tight" style="color: var(--color-panel-ink);">On-device<br />cleanup</div>
+            <ul class="mt-2 space-y-1 text-left text-[9px]" style="color: color-mix(in srgb, var(--color-grape-100) 82%, transparent);">
+              <li class="flex items-center gap-1"><span style="color:var(--color-grape-300);">✓</span> Punctuation</li>
+              <li class="flex items-center gap-1"><span style="color:var(--color-grape-300);">✓</span> Numbers</li>
+              <li class="flex items-center gap-1"><span style="color:var(--color-grape-300);">✓</span> Voiceprints</li>
+              <li class="flex items-center gap-1"><span style="color:var(--color-grape-300);">✓</span> Dictionary</li>
+            </ul>
+            <div class="mt-2 border-t pt-1.5 text-[8px] leading-tight" style="border-color: color-mix(in srgb, var(--color-grape-300) 20%, transparent); color: color-mix(in srgb, var(--color-grape-200) 70%, transparent);">built on Concord (by Keavi)</div>
+          </article>
+
+          <!-- OUTPUT card -->
+          <article class="absolute right-0 top-[24px] z-[2] h-[312px] w-[160px] overflow-hidden rounded-2xl border p-3.5" style="border-color: color-mix(in srgb, var(--color-grape-300) 18%, transparent); background: color-mix(in srgb, var(--color-grape-800) 52%, transparent);">
+            <div class="flex items-center gap-1.5 text-[12px] font-semibold" style="color: var(--color-panel-ink);">
+              <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="3" width="8" height="4" rx="1"></rect><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"></path></svg>
+              Parleq pastes
+            </div>
+            <p class="mt-2.5 text-[12px] leading-relaxed" style="color: var(--color-panel-ink);">We processed <span class="mk-tok">8.9 million</span> rows. Did the build pass and is it ready to ship?</p>
+            <p class="mt-2 text-[12px] leading-relaxed" style="color: var(--color-panel-ink);">The <span class="mk-tok">Parleq</span> docs are live. Shipped some updates to <span class="mk-tok">Keavi</span>.</p>
+            <div class="mt-3 inline-flex items-center gap-1.5 text-[10px] font-medium" style="color:#7fd99a;"><svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"></path></svg>Pasted</div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== BET 2: grape cluster (now a white CARD over the purple) ===================== -->
+    <section class="relative z-10 -mt-10 overflow-hidden rounded-[28px] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-9 py-12 shadow-[0_24px_60px_-30px_rgba(20,7,32,.45)] sm:px-14">
+      <div class="grid items-center gap-10 sm:grid-cols-2">
+      <div>
+        <p class="text-sm font-medium uppercase tracking-[0.18em]" style="color: var(--color-grape);">The engine, up close</p>
+        <h2 class="font-display mt-3 text-3xl font-medium tracking-tight">A cluster of small, fast corrections.</h2>
+        <p class="mt-4 max-w-md text-[color:var(--color-text-muted)]">On-device cleanup isn't a black box — it's a handful of small, deterministic helpers, each doing one thing well, all running on your Mac. <span class="text-[color:var(--color-text-subtle)]">Built on Concord (by Keavi).</span></p>
+        <div class="mt-5 flex flex-wrap gap-2">
+          {grapeLabels.map((l) => <span class="rounded-full border border-[color:var(--color-border)] px-3 py-1 text-xs font-medium text-[color:var(--color-grape)]">{l}</span>)}
+        </div>
+        <p class="mt-4 text-xs text-[color:var(--color-text-subtle)]">(In the real page this bunch lives inside the grape zone as the engine "opens up" — on white here only to judge the mark.)</p>
+      </div>
+      <div class="relative mx-auto h-[220px] w-[180px]">
+        <svg viewBox="0 0 144 190" class="absolute inset-0 h-full w-full" aria-hidden="true">
+          <defs>
+            <radialGradient id="grape" cx="38%" cy="32%" r="70%"><stop offset="0%" stop-color="var(--color-grape-300)"></stop><stop offset="55%" stop-color="var(--color-grape-500)"></stop><stop offset="100%" stop-color="var(--color-grape-strong)"></stop></radialGradient>
+            <radialGradient id="leaf" cx="35%" cy="30%" r="80%"><stop offset="0%" stop-color="#7bb564"></stop><stop offset="100%" stop-color="#3f7a39"></stop></radialGradient>
+          </defs>
+          <path d="M72 6 C 72 16, 72 22, 72 30" fill="none" stroke="#6b4a2a" stroke-width="3" stroke-linecap="round"></path>
+          <path d="M72 12 C 86 4, 100 6, 104 14 C 98 22, 84 22, 72 18 Z" fill="url(#leaf)"></path>
+          {grapes.map((g) => (
+            <g><circle cx={g.x} cy={g.y} r="21" fill="url(#grape)" stroke="var(--color-grape-strong)" stroke-width="0.75"></circle><ellipse cx={g.x - 6} cy={g.y - 7} rx="5" ry="3.5" fill="#ffffff" opacity="0.22"></ellipse></g>
+          ))}
+        </svg>
+      </div>
+      </div>
+    </section>
+
+    <p class="mt-14 text-center text-xs text-[color:var(--color-text-subtle)]">Reduce-motion test: enable macOS Reduce Motion → the dots must stop entirely.</p>
+  </main>
+</Layout>
+
+<style>
+  .chip-d { display:inline-flex; align-items:center; gap:.375rem; border-radius:9999px; border:1px solid color-mix(in srgb, var(--color-grape-300) 28%, transparent); background: color-mix(in srgb, var(--color-grape-500) 14%, transparent); padding:.25rem .75rem; font-size:.75rem; font-weight:500; color: var(--color-grape-200); }
+  .u-tok { text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--color-accent) 75%, transparent); text-decoration-thickness: 1.5px; text-underline-offset: 3px; }
+  .mk-tok { color: var(--color-grape-200); background: color-mix(in srgb, var(--color-grape-400) 42%, transparent); border-radius: 3px; padding: 0 .18em; font-weight: 600; }
+</style>
+
+<script>
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const stage = document.getElementById('flow-stage');
+  const svg = stage?.querySelector('svg.concord-flow') as SVGSVGElement | null;
+  if (stage && svg) {
+    const NS = 'http://www.w3.org/2000/svg';
+    const amberLines = new Set([7, 8, 9, 10]);
+    const pointAt = (id: string, t: number) => {
+      const p = document.getElementById(id) as SVGPathElement | null;
+      if (!p) return null;
+      return p.getPointAtLength(p.getTotalLength() * t);
+    };
+
+    // STATIC on-line accents — soft radial glows the SAME hue as the line, brightened, so they read
+    // as the line locally glowing (not a superimposed dot). t=0 is the box on the left / engine on
+    // the right. A couple sit at the box edge (terminators); the rest are mid-line.
+    const accents = [
+      { id: 'fl-8', t: 0,    kind: 'warm',   r: 3.5 },  // box terminator (orange line) — smaller
+      { id: 'fl-3', t: 0.52, kind: 'violet', r: 3.2 },  // mid-line violet
+      { id: 'fl-13', t: 0.58, kind: 'violet', r: 2.6 }, // mid-line violet
+      { id: 'fr-9', t: 0.5,  kind: 'warm',   r: 2.6 },  // mid-line orange — smaller
+      { id: 'fr-4', t: 0.55, kind: 'violet', r: 2.8 },  // mid-line violet
+    ];
+    const aGroup = document.createElementNS(NS, 'g');
+    aGroup.style.mixBlendMode = 'screen';
+    svg.appendChild(aGroup);
+    for (const a of accents) {
+      const pt = pointAt(a.id, a.t);
+      if (!pt) continue;
+      const c = document.createElementNS(NS, 'circle');
+      c.setAttribute('cx', String(pt.x)); c.setAttribute('cy', String(pt.y));
+      c.setAttribute('r', String(a.r));
+      c.setAttribute('fill', a.kind === 'warm' ? 'url(#dotWarm)' : 'url(#dotViolet)');
+      aGroup.appendChild(c);
+    }
+
+    if (!reduce.matches) {
+      let onScreen = true;
+      new IntersectionObserver((es) => { onScreen = es[0].isIntersecting; }, { threshold: 0.15 }).observe(stage);
+      const railIds = ['fl-2', 'fl-9', 'fl-14', 'fl-16', 'fr-5', 'fr-9', 'fr-13', 'fr-16'];
+      type Dot = { c: SVGCircleElement; path: SVGPathElement; len: number; phase: number; speed: number };
+      const dots: Dot[] = [];
+      railIds.forEach((id, idx) => {
+        const path = document.getElementById(id) as SVGPathElement | null;
+        if (!path) return;
+        const amber = amberLines.has(Number(id.split('-')[1]));
+        const len = path.getTotalLength();
+        const count = idx % 3 === 0 ? 2 : 1;
+        for (let k = 0; k < count; k++) {
+          const r = 0.6 + Math.random() * 1.1;
+          const c = document.createElementNS(NS, 'circle');
+          c.setAttribute('r', r.toFixed(2));
+          c.setAttribute('fill', amber ? '#ff9f33' : '#c18bff');
+          c.style.filter = `drop-shadow(0 0 ${(2 + r).toFixed(1)}px ${amber ? '#ff9f33' : '#bf8cff'})`;
+          svg.appendChild(c);
+          dots.push({ c, path, len, phase: (k * 0.5 + Math.random()) % 1, speed: 0.14 + Math.random() * 0.08 });
+        }
+      });
+      let last = 0;
+      const frame = (ts: number) => {
+        const dt = last ? (ts - last) / 1000 : 0; last = ts;
+        if (onScreen) for (const d of dots) {
+          d.phase = (d.phase + d.speed * dt) % 1;
+          const pt = d.path.getPointAtLength(d.len * d.phase);
+          d.c.setAttribute('cx', String(pt.x)); d.c.setAttribute('cy', String(pt.y));
+          d.c.setAttribute('opacity', (0.25 + 0.75 * Math.sin(Math.PI * d.phase)).toFixed(2));
+        }
+        requestAnimationFrame(frame);
+      };
+      requestAnimationFrame(frame);
+    }
+  }
+</script>

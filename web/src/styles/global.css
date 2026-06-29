@@ -40,6 +40,31 @@
   --color-grape: #5b2a86;
   --color-grape-strong: #43205f;
 
+  /* Concord grape RAMP — derived from --color-grape #5b2a86. Dark steps
+     ground the framed hero panel + trust strip; light steps feed the
+     flow-line gradients, cluster nodes, and the lavender headline.
+     -500 == --color-grape. WCAG (scripts/contrast.mjs), verified pairings:
+       body  #f6f1fb on panel #23103a → 15.66 (AAA)
+       lavender headline #a87fce on #23103a → 5.46 (AA normal)
+       grape-200 #cdb4e6 on #23103a → 9.34
+       amber #d97706 small text on #311551 → 4.86 (just passes AA)
+     RULE: amber small text on the panel is borderline — prefer amber for
+     large text, icons, and CTA fill. (white-on-amber CTA fill is 3.19 —
+     a pre-existing site-wide pattern, tracked for Task 3, not introduced here.) */
+  --color-grape-950: #150720;
+  --color-grape-900: #23103a;
+  --color-grape-800: #311551;
+  --color-grape-700: #472075;
+  --color-grape-600: #552789;
+  --color-grape-500: #5b2a86;
+  --color-grape-400: #7d44b0;
+  --color-grape-300: #a87fce;
+  --color-grape-200: #cdb4e6;
+  --color-grape-100: #ebe0f6;
+  --color-panel-ink: #f6f1fb;             /* near-white body/headline on dark panel */
+  --flow-voice: var(--color-accent);      /* amber spark = voice energy */
+  --flow-clean: var(--color-grape-300);   /* lavender = cleanup/intelligence */
+
   /* Very faint slate wash for the homepage section rhythm — sits a hair
      below the warm-white base so alternating sections read as distinct
      bands without a hard line. Derived from the slate border palette. */
