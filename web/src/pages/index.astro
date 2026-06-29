@@ -118,10 +118,12 @@ const capabilities = [
 
 <Layout title="Parleq — Local-first AI dictation for macOS">
   <script type="application/ld+json" slot="head" set:html={JSON.stringify(softwareSchema)} />
-  <!-- Hero: framed dark-grape panel with in-panel nav and ConcordFlow art (Beat 1). -->
-  <section class="mx-auto max-w-6xl px-5 py-8">
+  <!-- Hero: framed dark-grape panel with in-panel nav and ConcordFlow art (Beat 1).
+       Responsive frame: content grows with the window (cap 1700px), a small ~20px margin on
+       desktop, and FULL-BLEED on mobile (margin → 0, no rounding). -->
+  <section class="mx-auto max-w-[1700px] px-0 py-0 sm:px-5 sm:py-5">
     <div
-      class="relative overflow-hidden rounded-[28px] px-7 pb-12 pt-5 sm:px-10"
+      class="relative overflow-hidden rounded-none px-5 pb-12 pt-5 sm:rounded-[28px] sm:px-10"
       style="background:
                radial-gradient(58% 74% at 72% 52%, color-mix(in srgb, var(--color-grape-600) 55%, transparent), transparent 68%),
                linear-gradient(180deg, #1d0b33 0%, #140622 100%);
