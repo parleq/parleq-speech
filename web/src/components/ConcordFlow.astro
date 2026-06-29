@@ -183,13 +183,14 @@ const glowAt: Record<number, number> = { 3: 0.5, 6: 0.6, 7: 0.8, 8: 0.7, 9: 1, 1
           `${uid}-fl-2`, `${uid}-fl-9`, `${uid}-fl-14`, `${uid}-fl-16`,
           `${uid}-fr-5`, `${uid}-fr-9`, `${uid}-fr-13`, `${uid}-fr-16`,
         ];
-        type Dot = { c: SVGCircleElement; path: SVGPathElement; len: number; phase: number; speed: number };
+        type Dot = { c: SVGCircleElement; path: SVGPathElement; len: number; phase: number; speed: number; left: boolean };
         const dots: Dot[] = [];
         railIds.forEach((id, idx) => {
           const path = svg.querySelector<SVGPathElement>(`#${id}`);
           if (!path) return;
           const lineNum = Number(id.split('-').pop());
           const amber = amberLines.has(lineNum);
+          const left = id.indexOf('-fl-') !== -1;
           const len = path.getTotalLength();
           const count = idx % 3 === 0 ? 2 : 1;
           for (let k = 0; k < count; k++) {
@@ -199,17 +200,55 @@ const glowAt: Record<number, number> = { 3: 0.5, 6: 0.6, 7: 0.8, 8: 0.7, 9: 1, 1
             c.setAttribute('fill', amber ? '#ff9f33' : '#c18bff');
             c.style.filter = `drop-shadow(0 0 ${(2 + r).toFixed(1)}px ${amber ? '#ff9f33' : '#bf8cff'})`;
             svg.appendChild(c);
-            dots.push({ c, path, len, phase: (k * 0.5 + Math.random()) % 1, speed: 0.14 + Math.random() * 0.08 });
+            dots.push({ c, path, len, phase: (k * 0.5 + Math.random()) % 1, speed: 0.095 + Math.random() * 0.05, left });
           }
         });
+
+        // Narrated sequence: a cycle clock pulses the flow left→engine→right so the eye reads
+        // "speak → cleanup → paste". Cards glow in turn; the inactive side dims to an ambient
+        // baseline (never fully off — keeps the flow alive). All synced to ONE clock.
+        const cards = stage as HTMLElement;
+        const inCard = cards.querySelector<HTMLElement>('[data-flow-card="input"]');
+        const engCard = cards.querySelector<HTMLElement>('[data-flow-card="engine"]');
+        const outCard = cards.querySelector<HTMLElement>('[data-flow-card="output"]');
+        const engBase = engCard ? engCard.style.boxShadow : '';
+        for (const el of [inCard, outCard]) if (el) el.style.transition = 'box-shadow 360ms ease';
+        if (engCard) engCard.style.transition = 'box-shadow 280ms ease';
+        // Smooth 0→1→0 bump over [a,b].
+        const bump = (x: number, a: number, b: number) => {
+          if (x < a || x > b) return 0;
+          return Math.sin(Math.PI * ((x - a) / (b - a)));
+        };
+        const PERIOD = 6.4;       // seconds per narrated cycle
+        const glowIn = (g: number) =>
+          inCard && (inCard.style.boxShadow = g < 0.04 ? 'none'
+            : `0 0 ${(18 * g).toFixed(0)}px -2px rgba(255,159,51,${(0.5 * g).toFixed(2)})`);
+        const glowOut = (g: number) =>
+          outCard && (outCard.style.boxShadow = g < 0.04 ? 'none'
+            : `0 0 ${(18 * g).toFixed(0)}px -2px rgba(193,139,255,${(0.5 * g).toFixed(2)})`);
+        const glowEng = (g: number) =>
+          engCard && (engCard.style.boxShadow = g < 0.04 ? engBase
+            : `${engBase}, 0 0 ${(34 * g).toFixed(0)}px ${(2 * g).toFixed(0)}px rgba(220,188,255,${(0.7 * g).toFixed(2)})`);
+
         let last = 0;
         const frame = (ts: number) => {
           const dt = last ? (ts - last) / 1000 : 0; last = ts;
-          if (onScreen) for (const d of dots) {
-            d.phase = (d.phase + d.speed * dt) % 1;
-            const pt = d.path.getPointAtLength(d.len * d.phase);
-            d.c.setAttribute('cx', String(pt.x)); d.c.setAttribute('cy', String(pt.y));
-            d.c.setAttribute('opacity', (0.25 + 0.75 * Math.sin(Math.PI * d.phase)).toFixed(2));
+          if (onScreen) {
+            const t = (ts / 1000) % PERIOD;
+            // windows within the cycle: in-wave, engine handoff, out-wave, rest.
+            const inG = bump(t, 0.0, 2.4);
+            const engG = bump(t, 2.0, 3.1);
+            const outG = bump(t, 2.7, 5.1);
+            const leftGain = 0.4 + 0.6 * inG;    // active side brightens, idle side ~0.4
+            const rightGain = 0.4 + 0.6 * outG;
+            glowIn(inG); glowEng(engG); glowOut(outG);
+            for (const d of dots) {
+              d.phase = (d.phase + d.speed * dt) % 1;
+              const pt = d.path.getPointAtLength(d.len * d.phase);
+              d.c.setAttribute('cx', String(pt.x)); d.c.setAttribute('cy', String(pt.y));
+              const along = 0.25 + 0.75 * Math.sin(Math.PI * d.phase);
+              d.c.setAttribute('opacity', (along * (d.left ? leftGain : rightGain)).toFixed(2));
+            }
           }
           requestAnimationFrame(frame);
         };
