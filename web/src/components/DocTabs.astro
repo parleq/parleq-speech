@@ -1,0 +1,52 @@
+---
+// Reusable progressive-enhancement WAI-ARIA tabs for docs pages.
+//
+// Render <DocTabs /> ONCE per page, AFTER all the tab markup (e.g. just before </article>), so
+// this synchronous inline script runs after the panels are parsed and hides the inactive ones
+// before first paint (no flash). Without JS, every panel renders — content stays accessible and
+// indexable; the tablist buttons simply do nothing.
+//
+// Markup convention (repeat per tab group; multiple groups per page are supported):
+//   <div data-doctabs>
+//     <div role="tablist" aria-label="...">
+//       <button type="button" role="tab" id="tab-a" aria-controls="panel-a" aria-selected="true"> … </button>
+//       <button type="button" role="tab" id="tab-b" aria-controls="panel-b" aria-selected="false" tabindex="-1"> … </button>
+//     </div>
+//     <div role="tabpanel" id="panel-a" aria-labelledby="tab-a"> … </div>   <!-- NO `hidden` in source -->
+//     <div role="tabpanel" id="panel-b" aria-labelledby="tab-b"> … </div>
+//   </div>
+// Style the selected tab with Tailwind aria variants, e.g.
+//   aria-selected:border-[color:var(--color-grape)] aria-selected:bg-[color:var(--color-panel-ink)]
+// IDs must be unique across the page when a page has more than one group.
+---
+
+<script is:inline>
+  (() => {
+    document.querySelectorAll('[data-doctabs]').forEach((root) => {
+      const tabs = Array.from(root.querySelectorAll('[role="tab"]'));
+      if (!tabs.length) return;
+      const panels = tabs.map((t) => document.getElementById(t.getAttribute('aria-controls')));
+      function select(i, focus) {
+        tabs.forEach((t, j) => {
+          const on = i === j;
+          t.setAttribute('aria-selected', on ? 'true' : 'false');
+          t.tabIndex = on ? 0 : -1;
+          if (panels[j]) panels[j].hidden = !on;
+        });
+        if (focus && tabs[i]) tabs[i].focus();
+      }
+      tabs.forEach((t, i) => {
+        t.addEventListener('click', () => select(i));
+        t.addEventListener('keydown', (e) => {
+          const last = tabs.length - 1;
+          if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); select(i === last ? 0 : i + 1, true); }
+          else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); select(i === 0 ? last : i - 1, true); }
+          else if (e.key === 'Home') { e.preventDefault(); select(0, true); }
+          else if (e.key === 'End') { e.preventDefault(); select(last, true); }
+        });
+      });
+      const initial = Math.max(0, tabs.findIndex((t) => t.getAttribute('aria-selected') === 'true'));
+      select(initial);
+    });
+  })();
+</script>
