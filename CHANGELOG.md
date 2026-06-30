@@ -27,6 +27,7 @@ Voiceprints that survive app updates, broader phonetic correction, and cleaner n
 
 - **Cleaner numbers, percentages, and capitalization.** Large spoken numbers like "eight point nine million" now render as "8.9 million" (previously a run of zeros), spoken percentages like "forty five percent" become "45%", and a number that begins a sentence keeps its capital letter.
 
+[0.30.1]: https://github.com/parleq/parleq-speech/releases/tag/v0.30.1
 [0.30.0]: https://github.com/parleq/parleq-speech/releases/tag/v0.30.0
 
 ## [0.29.0] - Unreleased

@@ -419,7 +419,7 @@ All network calls are HTTPS via URLSession or Soto, both using the system trust 
 - **No I/O surface.** Concord is a pure, in-process, *deterministic* text→text transform over the transcript already in memory. It opens no socket, makes **no network call**, writes **nothing to disk**, and holds **no secret or credential**. It is structurally incapable of exfiltrating or persisting dictation data, and that is **verifiable** (§11, check 10: select Lightweight, dictate, observe zero outbound connections). Unlike a cloud provider it *removes* a network boundary rather than adding one; unlike the local Gemma tier it has nothing to download (it is bundled).
 - **Deterministic, not ML.** Rule-based normalization (numbers/ITN, compound de-spacing) and Double-Metaphone dictionary matching with a per-word confidence veto — no model weights, no inference, no training corpus, no nondeterminism. Behavior is bounded and predictable.
 - **Optional, off by default, absent from the open build.** Cloud cleanup is the default; Concord is an opt-in "Lightweight" tier. It is gated behind the `Concord` SwiftPM trait, so the **public open-source build does not include it at all** (the dependency is pruned from resolution — `parleq-app/Package.swift`, `THIRD_PARTY_LICENSES.md`). Fleets can pin `cleanupProvider` away from it via MDM (§9.7), or simply never select it.
-- **Same pinning hygiene** as every other dependency: exact version (`0.1.4`), reviewed bumps.
+- **Same pinning hygiene** as every other dependency: exact version (`0.3.7`), reviewed bumps.
 
 See §9.10 for the accepted-risk framing and §6 for the egress classification.
 
