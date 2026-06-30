@@ -4,20 +4,35 @@ import SiteHeader from '../components/SiteHeader.astro';
 
 const repoUrl = 'https://github.com/parleq/parleq-speech';
 const speekUrl = 'https://github.com/jstruzik/Speek';
+const base = `${import.meta.env.BASE_URL}`.replace(/\/$/, '');
 ---
 
 <Layout title="About — Parleq">
   <SiteHeader active="about" />
 
-  <article class="mx-auto max-w-2xl px-6 pt-20 pb-24">
-    <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">
-      About
-    </p>
-    <h1 class="mt-4 font-display text-4xl leading-[1.1] font-medium tracking-tight sm:text-5xl">
-      Why Parleq exists.
-    </h1>
+  <!-- Light page hero: eyebrow + font-display h1 + one-line subhead.
+       Warm-white bg, not a dark panel — inner pages stay calm and readable.
+       Comfortable pt-16 sm:pt-20 clears the sticky header. -->
+  <section class="bg-[color:var(--color-bg)]">
+    <div class="mx-auto max-w-2xl px-6 pt-16 pb-10 sm:pt-20 sm:pb-12">
+      <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">
+        About
+      </p>
+      <h1 class="mt-4 font-display text-4xl leading-[1.05] font-medium tracking-tight sm:text-5xl">
+        Why Parleq exists.
+      </h1>
+      <p class="mt-5 max-w-xl text-lg leading-relaxed text-[color:var(--color-text-muted)]">
+        Open-source, bring-your-own-cloud dictation for the Mac — the story of how it started, the choices that shaped it, and who's behind it.
+      </p>
+    </div>
+  </section>
 
-    <div class="mt-12 space-y-6 text-[17px] leading-[1.7] text-[color:var(--color-text-muted)]">
+  <!-- Main prose. All first-person content preserved verbatim; headings
+       get font-display treatment to match the design system. The "Thanks"
+       block is visually set off in a surface card for a clean close. -->
+  <article class="mx-auto max-w-2xl px-6 pb-24">
+
+    <div class="space-y-6 text-[17px] leading-[1.7] text-[color:var(--color-text-muted)]">
       <p>
         I'm a software engineer at <a href="https://posit.co" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Posit</a>, where I work on <a href="https://posit.co/products/enterprise/package-manager/" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Posit Package Manager</a> — an enterprise product for managing R and Python packages inside large organizations. I've been writing code professionally for a long time, mostly in Go, and the intersection of speech and AI tooling is where I find myself spending more and more of my curiosity these days.
       </p>
@@ -34,7 +49,7 @@ const speekUrl = 'https://github.com/jstruzik/Speek';
         So I started thinking about what an open-source, local-first version would look like — and what it would take to make it actually pleasant to use, not just defensible on a compliance review.
       </p>
 
-      <h2 class="mt-12 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+      <h2 class="mt-14 font-display text-2xl font-medium tracking-tight text-[color:var(--color-text)]">
         Two things I really wanted.
       </h2>
 
@@ -50,7 +65,7 @@ const speekUrl = 'https://github.com/jstruzik/Speek';
         That overlay-and-iterate loop is the part of Parleq I'm proudest of. It treats the cleaned text as a draft you talk to, not a final output you accept or reject.
       </p>
 
-      <h2 class="mt-12 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+      <h2 class="mt-14 font-display text-2xl font-medium tracking-tight text-[color:var(--color-text)]">
         Open-source, bring your own LLM.
       </h2>
 
@@ -63,7 +78,7 @@ const speekUrl = 'https://github.com/jstruzik/Speek';
       </p>
 
       <p>
-        If you're an IT admin rather than the end user, that same posture extends to fleet deployment. Parleq supports macOS Managed Configuration — you can push a <code class="rounded bg-[color:var(--color-surface)] px-1 font-mono text-[13px]">.mobileconfig</code> profile via your existing MDM that pins the LLM provider, restricts the model list, disables optional features, and prevents users from changing any of it. No Parleq admin portal needed. The <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/admin-guide/'} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Admin Guide</a> has the full deployment walkthrough.
+        If you're an IT admin rather than the end user, that same posture extends to fleet deployment. Parleq supports macOS Managed Configuration — you can push a <code class="rounded bg-[color:var(--color-surface)] px-1 font-mono text-[13px]">.mobileconfig</code> profile via your existing MDM that pins the LLM provider, restricts the model list, disables optional features, and prevents users from changing any of it. No Parleq admin portal needed. The <a href={base + '/docs/admin-guide/'} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Admin Guide</a> has the full deployment walkthrough.
       </p>
 
       <p>
@@ -73,23 +88,29 @@ const speekUrl = 'https://github.com/jstruzik/Speek';
       <p>
         Parleq stands on the shoulders of open-source software — Apple's Swift libraries, Sparkle for auto-updates, Soto for AWS, FluidAudio for on-device ASR, and others. The full list of dependencies and their licenses lives at <a href={`${repoUrl}/blob/main/THIRD_PARTY_LICENSES.md`} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">THIRD_PARTY_LICENSES.md</a> in the repo (also linked from the Parleq window's <strong class="font-semibold text-[color:var(--color-text)]">About</strong> section).
       </p>
+    </div>
 
-      <h2 class="mt-12 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+    <!-- Thanks: set off in a surface card with a subtle border for a clean,
+         grounded close — visually distinct from the prose above it. -->
+    <div class="mt-16 rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-8">
+      <h2 class="font-display text-xl font-medium tracking-tight text-[color:var(--color-text)]">
         Thanks.
       </h2>
+      <div class="mt-4 space-y-4 text-[17px] leading-[1.7] text-[color:var(--color-text-muted)]">
+        <p>
+          A particular thanks to Jake Struzik, whose <a href={speekUrl} class="text-[color:var(--color-text)] underline decoration-[color:var(--color-text-muted)] decoration-1 underline-offset-2 transition-colors hover:decoration-[color:var(--color-text)]">Speek</a> showed me what a clean, local-first dictation tool on macOS could feel like. Parleq's design owes a debt to it.
+        </p>
 
-      <p>
-        A particular thanks to Jake Struzik, whose <a href={speekUrl} class="text-[color:var(--color-text)] underline decoration-[color:var(--color-text-muted)] decoration-1 underline-offset-2 transition-colors hover:decoration-[color:var(--color-text)]">Speek</a> showed me what a clean, local-first dictation tool on macOS could feel like. Parleq's design owes a debt to it.
-      </p>
+        <p>
+          Parleq is built by <strong class="font-semibold text-[color:var(--color-text)]">Keavi LLC</strong>, a Virginia limited liability company — and it's Keavi's first public, open-source project. Contact: <a href="mailto:hello@parleq.app" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">hello@parleq.app</a> · <a href="https://keavi.app" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">keavi.app</a>
+        </p>
 
-      <p>
-        Parleq is built by <strong class="font-semibold text-[color:var(--color-text)]">Keavi LLC</strong>, a Virginia limited liability company — and it's Keavi's first public, open-source project. Contact: <a href="mailto:hello@parleq.app" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">hello@parleq.app</a> · <a href="https://keavi.app" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">keavi.app</a>
-      </p>
-
-      <p class="text-[15px] text-[color:var(--color-text-subtle)]">
-        — Jon
-      </p>
+        <p class="text-[15px] text-[color:var(--color-text-subtle)]">
+          — Jon
+        </p>
+      </div>
     </div>
+
   </article>
 
 </Layout>

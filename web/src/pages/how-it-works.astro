@@ -12,6 +12,7 @@ const stages = [
     slug: 'capture',
     title: 'Capture',
     where: 'on-device',
+    grape: false,
     summary:
       'AVAudioEngine taps the system microphone at the hardware sample rate and converts each buffer in-line to 16 kHz mono Int16 — the format the local ASR model expects. Audio is accumulated as raw samples in process memory; nothing is ever written to disk.',
     detail: [
@@ -27,6 +28,7 @@ const stages = [
     slug: 'transcribe',
     title: 'Transcribe',
     where: 'on-device · Apple Neural Engine',
+    grape: true,
     summary:
       'The audio buffer is handed directly to Parakeet TDT v3 (CoreML) running on the Apple Neural Engine, in-process. Typical latency is ~64 ms for a 5-second clip after the model is warm. The model resides at ~150 MB and downloads from Hugging Face on first launch.',
     detail: [
@@ -41,6 +43,7 @@ const stages = [
     slug: 'cleanup',
     title: 'Clean up',
     where: 'cloud LLM · on-device · or skipped',
+    grape: true,
     summary:
       'The raw transcript streams to a configurable AI provider that polishes it into finished text — capitalization, punctuation, filler-word removal, common transcription errors, and spoken numbers turned into digits when the context is technical. The raw transcript shows in the overlay first, and the cleaned text replaces it progressively as it arrives. Press Enter while the raw is still showing to accept it as-is and skip cleanup; press Enter once cleanup is under way and Parleq finishes it and pastes the complete cleaned text — never a half-streamed fragment. Cleanup can also run entirely on-device (no network boundary) via the on-device option — a one-time ~4 GB model download runs Gemma 4 E4B in-process via Apple MLX; requires 12 GB+ RAM.',
     detail: [
@@ -58,6 +61,7 @@ const stages = [
     slug: 'paste',
     title: 'Paste',
     where: 'on-device',
+    grape: false,
     summary:
       'On accept (auto-timer or manual hotkey tap), the cleaned text pastes into whatever app was focused when you pressed the hotkey originally — not whatever happens to be focused at accept time. CGEventTap synthesizes the keystrokes; the trailing-space heuristic adds a space after the pasted text by default.',
     detail: [
@@ -166,7 +170,7 @@ const gestures = [
         <a
           href="#stage-capture"
           data-stage-nav="0"
-          class="stepper-box rounded-lg border border-[color:var(--color-border-subtle)] bg-[color:var(--color-bg)] p-3 text-left transition-colors hover:border-[color:var(--color-border)]"
+          class="stepper-box rounded-lg border border-[color:var(--color-border-subtle)] bg-[color:var(--color-bg)] p-3 text-left transition-colors hover:border-[color:var(--color-accent)]"
         >
           <p class="text-[10px] font-medium uppercase tracking-wider text-[color:var(--color-text-subtle)]">1 · Audio</p>
           <p class="mt-1 font-mono text-[12px] text-[color:var(--color-text-muted)]">~3 s WAV<br/>16 kHz mono</p>
@@ -176,7 +180,7 @@ const gestures = [
         <a
           href="#stage-transcribe"
           data-stage-nav="1"
-          class="stepper-box rounded-lg border border-[color:var(--color-border-subtle)] bg-[color:var(--color-bg)] p-3 text-left transition-colors hover:border-[color:var(--color-border)]"
+          class="stepper-box rounded-lg border border-[color:var(--color-border-subtle)] bg-[color:var(--color-bg)] p-3 text-left transition-colors hover:border-[color:var(--color-accent)]"
         >
           <p class="text-[10px] font-medium uppercase tracking-wider text-[color:var(--color-text-subtle)]">2 · Transcript</p>
           <p class="mt-1 font-mono text-[12px] text-[color:var(--color-text)]">"lets go to the beach this weekend"</p>
@@ -186,7 +190,7 @@ const gestures = [
         <a
           href="#stage-cleanup"
           data-stage-nav="2"
-          class="stepper-box rounded-lg border border-[color:var(--color-border-subtle)] bg-[color:var(--color-bg)] p-3 text-left transition-colors hover:border-[color:var(--color-border)]"
+          class="stepper-box rounded-lg border border-[color:var(--color-border-subtle)] bg-[color:var(--color-bg)] p-3 text-left transition-colors hover:border-[color:var(--color-accent)]"
         >
           <p class="text-[10px] font-medium uppercase tracking-wider text-[color:var(--color-text-subtle)]">3 · Cleaned</p>
           <p class="mt-1 font-mono text-[12px] text-[color:var(--color-text)]">"Let's go to the beach this weekend."</p>
@@ -222,7 +226,7 @@ const gestures = [
             data-stage-panel={String(i)}
           >
             <div class="grid gap-6 sm:grid-cols-[auto_1fr] sm:gap-8">
-              <div class="font-display text-5xl font-semibold tabular-nums text-[color:var(--color-accent)] leading-none sm:text-6xl">
+              <div class={`font-display text-5xl font-semibold tabular-nums leading-none sm:text-6xl ${stage.grape ? 'text-[color:var(--color-grape)]' : 'text-[color:var(--color-accent)]'}`}>
                 {stage.n}
               </div>
               <div>
@@ -230,7 +234,7 @@ const gestures = [
                   <h2 class="font-display text-2xl font-semibold tracking-tight sm:text-3xl">
                     {stage.title}
                   </h2>
-                  <span class="font-mono text-xs uppercase tracking-wider text-[color:var(--color-text-subtle)]">
+                  <span class={`font-mono text-xs uppercase tracking-wider ${stage.grape ? 'text-[color:var(--color-grape)]' : 'text-[color:var(--color-text-subtle)]'}`}>
                     {stage.where}
                   </span>
                 </div>
@@ -241,13 +245,13 @@ const gestures = [
                      closed by default. Native because Chromium auto-expands
                      them on find-in-page — a reimplemented accordion would
                      hide matches from Ctrl-F. -->
-                <div class="mt-6 space-y-2 border-l border-[color:var(--color-border)] pl-5">
+                <div class={`mt-6 space-y-2 border-l pl-5 ${stage.grape ? 'border-[color:var(--color-grape-200)]' : 'border-[color:var(--color-border)]'}`}>
                   {stage.detail.map(([term, body]) => (
                     <details class="stage-detail group">
                       <summary class="flex cursor-pointer items-center gap-2 text-sm font-semibold text-[color:var(--color-text)]">
                         <svg
                           aria-hidden="true"
-                          class="stage-detail-chevron h-3.5 w-3.5 shrink-0 text-[color:var(--color-accent)] transition-transform"
+                          class={`stage-detail-chevron h-3.5 w-3.5 shrink-0 transition-transform ${stage.grape ? 'text-[color:var(--color-grape)]' : 'text-[color:var(--color-accent)]'}`}
                           viewBox="0 0 24 24"
                           fill="none"
                           stroke="currentColor"
@@ -635,12 +639,12 @@ const gestures = [
        part testers and security-reviewers usually want to skim, so
        it's its own section with a clear visual rhythm rather than
        being buried in stage 4's detail. Rendered as the page's DARK
-       TRUST BAND — same near-black slate gradient family as the
+       TRUST BAND — same near-black grape gradient as the
        homepage #enterprise band — to read as the trust centerpiece.
-       Text + cards are restyled for the dark ground: light slate body,
+       Text + cards are restyled for the dark ground: grape-200 body,
        white emphasis, amber accents, white/10 borders and inline-code
        chips that all clear contrast on the dark surface. -->
-  <section data-reveal class="bg-gradient-to-br from-[#272d35] to-[#15181d] text-[#cbd5e1]">
+  <section data-reveal class="bg-gradient-to-br from-[#23103a] to-[#140622] text-[color:var(--color-grape-200)]">
     <div class="mx-auto max-w-3xl px-6 py-20">
       <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">
         Privacy posture
@@ -652,7 +656,7 @@ const gestures = [
       <div class="mt-10 grid gap-6 sm:grid-cols-2">
         <div class="rounded-2xl border border-white/10 bg-white/[0.04] p-6">
           <h3 class="text-lg font-semibold text-white">Persisted</h3>
-          <ul class="mt-3 space-y-3 text-[15px] leading-relaxed text-[#cbd5e1]">
+          <ul class="mt-3 space-y-3 text-[15px] leading-relaxed text-[color:var(--color-grape-200)]">
             <li><code class="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[13px] text-white">~/.parleq/config.json</code> — settings + custom dictionary, user-authored.</li>
             <li><code class="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[13px] text-white">~/.parleq/usage.jsonl</code> — one line per LLM call: timestamp, model, token counts, latency. <strong class="font-semibold text-white">Metadata only.</strong></li>
             <li><code class="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[13px] text-white">~/.parleq/app.log</code> — diagnostic log. ASR/LLM metrics are length-only ("post-utterance 87 ms, 142 chars / 28 words"); never the transcript itself.</li>
@@ -663,7 +667,7 @@ const gestures = [
         </div>
         <div class="rounded-2xl border border-[color:var(--color-accent)]/30 bg-white/[0.04] p-6">
           <h3 class="text-lg font-semibold text-white">Never on disk</h3>
-          <ul class="mt-3 space-y-3 text-[15px] leading-relaxed text-[#cbd5e1]">
+          <ul class="mt-3 space-y-3 text-[15px] leading-relaxed text-[color:var(--color-grape-200)]">
             <li><strong class="font-semibold text-white">Audio bytes.</strong> WAV / PCM stays in process memory only. The Parakeet model is called directly as a Swift function call — there's no IPC, no listening sockets, no <code class="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[13px] text-white">/tmp/parleq-*.wav</code>.</li>
             <li><strong class="font-semibold text-white">Transcripts.</strong> Raw ASR output stays in memory.</li>
             <li><strong class="font-semibold text-white">Voice-enrollment audio.</strong> The sentences you read aloud during enrollment are processed in memory and discarded — only the derived voiceprint embedding is kept (encrypted; see the Persisted column). No enrollment recording is ever written to disk.</li>
@@ -674,7 +678,7 @@ const gestures = [
         </div>
       </div>
 
-      <p class="mt-10 text-sm text-[#94a3b8]">
+      <p class="mt-10 text-sm text-[color:var(--color-grape-400)]">
         Read the full enterprise-review packet in <a href={`${repoUrl}/blob/main/docs/SECURITY_REVIEW.md`} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">SECURITY_REVIEW.md</a>.
       </p>
     </div>

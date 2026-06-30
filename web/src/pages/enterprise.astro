@@ -12,12 +12,13 @@ const base = `${import.meta.env.BASE_URL}`.replace(/\/$/, '');
 >
   <SiteHeader active="enterprise" />
 
-  <!-- Hero. Leads DARK — the enterprise aesthetic — with the same
-       near-black slate gradient family the homepage #enterprise band and
-       the how-it-works trust band use. Text colors pin to literal light
-       slate values (not the light-mode tokens) so everything clears
-       contrast on the dark ground; the amber accent carries through. -->
-  <section class="bg-gradient-to-br from-[#272d35] to-[#15181d] text-[#cbd5e1]">
+  <!-- Hero. Leads DARK with the grape gradient that matches the homepage
+       enterprise band (from-[#23103a] to-[#140622]) — grape-family rather
+       than a slate gray. Text on grape dark: grape-200 for body, white for
+       the h1, amber for the eyebrow and CTA fill. The grape aesthetic
+       signals control, trust, and calm authority — right for an IT/security
+       audience. -->
+  <section class="bg-gradient-to-br from-[#23103a] to-[#140622] text-[color:var(--color-grape-200)]">
     <div class="mx-auto max-w-3xl px-6 pt-20 pb-24 sm:pt-28 sm:pb-28">
       <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">
         Parleq for organizations
@@ -27,20 +28,20 @@ const base = `${import.meta.env.BASE_URL}`.replace(/\/$/, '');
       </h1>
       <div class="mt-6 flex flex-wrap items-center gap-2 text-[13px] font-medium">
         <span class="inline-flex items-center rounded-full border border-[color:var(--color-accent)]/40 bg-[color:var(--color-accent)]/10 px-3 py-1 text-[color:var(--color-accent)]">Free</span>
-        <span class="inline-flex items-center rounded-full border border-white/20 px-3 py-1 text-[#cbd5e1]">Apache-2.0</span>
-        <span class="inline-flex items-center rounded-full border border-white/20 px-3 py-1 text-[#cbd5e1]">Open source</span>
+        <span class="inline-flex items-center rounded-full border border-[color:var(--color-grape-300)]/30 px-3 py-1 text-[color:var(--color-grape-200)]">Apache-2.0</span>
+        <span class="inline-flex items-center rounded-full border border-[color:var(--color-grape-300)]/30 px-3 py-1 text-[color:var(--color-grape-200)]">Open source</span>
       </div>
-      <p class="mt-8 max-w-2xl text-lg leading-relaxed text-[#cbd5e1] sm:text-xl">
+      <p class="mt-8 max-w-2xl text-lg leading-relaxed text-[color:var(--color-grape-200)] sm:text-xl">
         Back cloud cleanup with your corporate OIDC identity provider — Okta, Microsoft Entra ID, or any OIDC IdP — federated into AWS Bedrock or Google Vertex AI. Every employee dictates with the account they already have. No per-user API keys, no CLI dependence, no Parleq servers in the data path — ever.
       </p>
-      <p class="mt-5 max-w-2xl text-lg leading-relaxed text-[#cbd5e1] sm:text-xl">
+      <p class="mt-5 max-w-2xl text-lg leading-relaxed text-[color:var(--color-grape-200)] sm:text-xl">
         Parleq itself costs nothing — there's no per-seat price and no license to buy. The only bill is your own cloud provider's charge for the LLM tokens, on the contract you already hold.
       </p>
       <div class="mt-10 flex flex-wrap gap-x-6 gap-y-3 text-[15px] font-medium">
         <a href={base + '/docs/enterprise-sso/'} class="inline-flex items-center gap-2 rounded-full bg-[color:var(--color-accent)] px-6 py-2.5 text-white transition-colors hover:bg-[color:var(--color-accent-hover)]">
           Enterprise SSO setup →
         </a>
-        <a href={`${repoUrl}/blob/main/docs/SECURITY_REVIEW.md`} class="inline-flex items-center gap-2 rounded-full border border-white/20 px-6 py-2.5 text-white transition-colors hover:border-white/50">
+        <a href={`${repoUrl}/blob/main/docs/SECURITY_REVIEW.md`} class="inline-flex items-center gap-2 rounded-full border border-[color:var(--color-grape-300)]/30 px-6 py-2.5 text-[color:var(--color-grape-100)] transition-colors hover:border-[color:var(--color-grape-300)]/60">
           Security review packet →
         </a>
       </div>
@@ -92,7 +93,7 @@ const base = `${import.meta.env.BASE_URL}`.replace(/\/$/, '');
 
   <!-- MDM deployment. From the homepage "MDM-deployable for IT admins"
        highlight + the managed-configuration story. Tinted band for the
-       section rhythm. -->
+       section rhythm. Cards get hover accent treatment per the design system. -->
   <section data-reveal class="border-t border-[color:var(--color-border-subtle)] bg-[color:var(--color-section-tint)]">
     <div class="mx-auto max-w-3xl px-6 py-20 sm:py-24">
       <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">
@@ -105,13 +106,13 @@ const base = `${import.meta.env.BASE_URL}`.replace(/\/$/, '');
         Push Parleq through your existing MDM — Jamf, Kandji, Mosyle, or Intune — with a managed configuration profile that pins the parts you care about and locks users out of changing them.
       </p>
       <div class="mt-8 grid gap-4 sm:grid-cols-2">
-        <div class="rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6">
+        <div class="rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6 transition-colors hover:border-[color:var(--color-accent)]">
           <h3 class="text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Pin what matters</h3>
           <p class="mt-3 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
             Pin the provider, restrict the model list, and pin the OIDC issuer and client ID plus the AWS role / GCP workforce provider. Users sign in — but they can't re-point the app at a personal tenant while the profile is in place.
           </p>
         </div>
-        <div class="rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6">
+        <div class="rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6 transition-colors hover:border-[color:var(--color-accent)]">
           <h3 class="text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Nothing to phone home</h3>
           <p class="mt-3 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
             No Parleq admin portal, no license-key system, no license-key check-in or usage beacon — the only call to a Parleq-controlled host is the Sparkle update check against parleq.app (version + OS string, no identifiers, no dictation data). The managed profile is the whole control surface.
@@ -125,11 +126,10 @@ const base = `${import.meta.env.BASE_URL}`.replace(/\/$/, '');
     </div>
   </section>
 
-  <!-- Security review. The "reviewers read the code" pitch — open source,
-       the packet in the repo, and the connection doctor. Dark band again
-       for the security-centerpiece weight, mirroring how-it-works'
-       trust band. -->
-  <section data-reveal class="bg-gradient-to-br from-[#272d35] to-[#15181d] text-[#cbd5e1]">
+  <!-- Security review. Dark grape band — same gradient as the hero and
+       the homepage enterprise section — for the security-centerpiece moment.
+       Grape-200 body text passes AA on grape-900 (#23103a). -->
+  <section data-reveal class="bg-gradient-to-br from-[#23103a] to-[#140622] text-[color:var(--color-grape-200)]">
     <div class="mx-auto max-w-3xl px-6 py-20 sm:py-24">
       <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">
         For your security team
@@ -137,10 +137,10 @@ const base = `${import.meta.env.BASE_URL}`.replace(/\/$/, '');
       <h2 class="mt-4 font-display text-3xl leading-[1.1] font-medium tracking-tight text-white sm:text-4xl">
         Built to be reviewed.
       </h2>
-      <p class="mt-6 max-w-2xl text-lg leading-relaxed text-[#cbd5e1]">
+      <p class="mt-6 max-w-2xl text-lg leading-relaxed text-[color:var(--color-grape-200)]">
         Parleq ships a security-review packet in the repo — data flows, trust boundaries, and audit history — so your security team can read it before procurement. And because Parleq is open source (Apache-2.0), reviewers can read the code itself rather than take a vendor's word for it.
       </p>
-      <ul class="mt-8 space-y-4 text-[15px] leading-relaxed text-[#cbd5e1]">
+      <ul class="mt-8 space-y-4 text-[15px] leading-relaxed text-[color:var(--color-grape-200)]">
         <li class="flex gap-3">
           <span aria-hidden="true" class="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[color:var(--color-accent)]"></span>
           <span><strong class="font-semibold text-white">The packet.</strong> <code class="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[13px] text-white">docs/SECURITY_REVIEW.md</code> on GitHub — data flows, trust boundaries, and the audit history.</span>
@@ -161,10 +161,9 @@ const base = `${import.meta.env.BASE_URL}`.replace(/\/$/, '');
     </div>
   </section>
 
-  <!-- Free for every seat. The procurement advantage: no licensing
-       system to buy, no vendor contract, the bill is the customer's own
-       cloud account, and open source means the security team reads the
-       code. Tinted band for section rhythm; sits before the CTA row. -->
+  <!-- Free for every seat. The procurement advantage: no licensing system
+       to buy, the bill is the customer's own cloud account, open source
+       means security reads the code. Tinted band for section rhythm. -->
   <section data-reveal class="border-t border-[color:var(--color-border-subtle)] bg-[color:var(--color-section-tint)]">
     <div class="mx-auto max-w-3xl px-6 py-20 sm:py-24">
       <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">
@@ -174,19 +173,19 @@ const base = `${import.meta.env.BASE_URL}`.replace(/\/$/, '');
         Free for every seat.
       </h2>
       <div class="mt-8 grid gap-4 sm:grid-cols-3">
-        <div class="rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6">
+        <div class="rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6 transition-colors hover:border-[color:var(--color-accent)]">
           <h3 class="text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Nothing to procure</h3>
           <p class="mt-3 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
             No per-seat pricing, no license keys, no vendor contract to negotiate. Deploy to one Mac or ten thousand at the same price: zero.
           </p>
         </div>
-        <div class="rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6">
+        <div class="rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6 transition-colors hover:border-[color:var(--color-accent)]">
           <h3 class="text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Your existing cloud bill</h3>
           <p class="mt-3 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
             The only cost is your own cloud provider's charge for LLM tokens, billed to the AWS or Google contract you already hold — not to Parleq.
           </p>
         </div>
-        <div class="rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6">
+        <div class="rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6 transition-colors hover:border-[color:var(--color-accent)]">
           <h3 class="text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Read the code, not a whitepaper</h3>
           <p class="mt-3 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
             Apache-2.0 and fully open source. Your security team verifies the claims against the source itself rather than trusting a vendor's word.
@@ -198,24 +197,25 @@ const base = `${import.meta.env.BASE_URL}`.replace(/\/$/, '');
 
   <!-- CTA row. The four next-step links: the SSO setup playbooks, the
        managed-config reference, the admin guide, and the repo. Light
-       base after the dark security band. -->
+       base after the dark security band. Card hovers use amber accent
+       per the design system. -->
   <section data-reveal class="bg-[color:var(--color-bg)]">
     <div class="mx-auto max-w-3xl px-6 py-20 sm:py-24">
       <h2 class="font-display text-3xl leading-[1.1] font-medium tracking-tight sm:text-4xl">
         Where to start.
       </h2>
       <div class="mt-10 grid gap-4 sm:grid-cols-2">
-        <a href={base + '/docs/enterprise-sso/'} class="group rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6 transition-colors hover:border-[color:var(--color-text-muted)]">
+        <a href={base + '/docs/enterprise-sso/'} class="group rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6 transition-colors hover:border-[color:var(--color-accent)]">
           <h3 class="text-xl font-semibold tracking-tight text-[color:var(--color-text)]">Enterprise SSO</h3>
           <p class="mt-3 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">The setup playbooks: federate your IdP into AWS Bedrock and Google Vertex AI, leg by leg.</p>
           <p class="mt-5 text-[13px] font-medium text-[color:var(--color-accent)] group-hover:underline">Setup playbooks →</p>
         </a>
-        <a href={base + '/docs/managed-configuration/'} class="group rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6 transition-colors hover:border-[color:var(--color-text-muted)]">
+        <a href={base + '/docs/managed-configuration/'} class="group rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6 transition-colors hover:border-[color:var(--color-accent)]">
           <h3 class="text-xl font-semibold tracking-tight text-[color:var(--color-text)]">Managed Configuration</h3>
           <p class="mt-3 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">The full schema for every managed-config key — provider pinning, OIDC pins, and the rest.</p>
           <p class="mt-5 text-[13px] font-medium text-[color:var(--color-accent)] group-hover:underline">Schema reference →</p>
         </a>
-        <a href={base + '/docs/admin-guide/'} class="group rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6 transition-colors hover:border-[color:var(--color-text-muted)]">
+        <a href={base + '/docs/admin-guide/'} class="group rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6 transition-colors hover:border-[color:var(--color-accent)]">
           <h3 class="text-xl font-semibold tracking-tight text-[color:var(--color-text)]">Admin Guide</h3>
           <p class="mt-3 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">Deploying to a fleet, step by step — the MDM profile, upload, and verify workflow.</p>
           <p class="mt-5 text-[13px] font-medium text-[color:var(--color-accent)] group-hover:underline">Deployment workflow →</p>
