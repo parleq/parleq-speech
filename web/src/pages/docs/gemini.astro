@@ -8,20 +8,25 @@ import PricingNote from '../../components/PricingNote.astro';
 <Layout title="Gemini setup — Parleq" description="Set up Google Gemini direct API as Parleq's cleanup provider.">
   <SiteHeader active="docs" />
 
-  <article class="mx-auto max-w-2xl px-6 pt-16 pb-24">
+  <article class="mx-auto max-w-2xl px-6 pt-16 pb-24 sm:pt-20">
+    <!-- Back link -->
     <p class="text-sm">
       <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/'} class="text-[color:var(--color-text-subtle)] hover:text-[color:var(--color-text-muted)]">← Docs</a>
     </p>
 
-    <p class="mt-8 text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">Gemini · easiest setup</p>
-    <h1 class="mt-4 font-display text-4xl leading-[1.1] font-medium tracking-tight sm:text-5xl">
-      Google Gemini
-    </h1>
-    <p class="mt-6 text-[17px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      Google AI Studio is Google's direct, lightweight way to use the Gemini family of models. You sign in with any Google account, click a button, and get back an API key — no Google Cloud project to set up, no enterprise contract, no IAM roles to configure. A free tier<sup>†</sup> is available without a credit card; how far it stretches depends on Google's current per-minute and per-day quotas (see <a href="https://ai.google.dev/pricing" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">ai.google.dev/pricing</a>) and on how heavily you dictate. This is the path to pick when you're using Parleq for personal projects, side work, or anywhere you don't have specific compliance constraints on where AI traffic goes.
-    </p>
+    <!-- Page hero -->
+    <div class="mt-8 border-b border-[color:var(--color-border-subtle)] pb-10">
+      <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">Setup guide</p>
+      <h1 class="mt-3 font-display text-4xl leading-[1.1] font-medium tracking-tight sm:text-5xl">
+        Google Gemini
+      </h1>
+      <p class="mt-5 text-[17px] leading-[1.7] text-[color:var(--color-text-muted)]">
+        Google AI Studio is Google's direct, lightweight way to use the Gemini family of models. You sign in with any Google account, click a button, and get back an API key — no Google Cloud project to set up, no enterprise contract, no IAM roles to configure. A free tier<sup>†</sup> is available without a credit card; how far it stretches depends on Google's current per-minute and per-day quotas (see <a href="https://ai.google.dev/pricing" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">ai.google.dev/pricing</a>) and on how heavily you dictate. This is the path to pick when you're using Parleq for personal projects, side work, or anywhere you don't have specific compliance constraints on where AI traffic goes.
+      </p>
+    </div>
 
-    <div class="mt-8 rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6">
+    <!-- At a glance -->
+    <div class="mt-8 rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-section-tint)] p-6">
       <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-text-subtle)]">At a glance</p>
       <ul class="mt-3 space-y-2 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
         <li><strong class="text-[color:var(--color-text)]">Auth:</strong> One API key (starts with <code class="rounded bg-[color:var(--color-bg)] px-1 font-mono text-[13px]">AIza</code>) pasted from AI Studio.</li>
@@ -32,107 +37,122 @@ import PricingNote from '../../components/PricingNote.astro';
       </ul>
     </div>
 
-    <h2 class="mt-12 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
-      Setup
-    </h2>
-    <ol class="mt-6 space-y-7 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      <li class="flex gap-4">
-        <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums">1.</span>
-        <div>
-          <p class="text-[color:var(--color-text)] font-medium">Get an API key.</p>
-          <p class="mt-2">
-            Go to <a href="https://aistudio.google.com/apikey" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Google AI Studio → API keys</a>, sign in with any Google account, and click <strong class="text-[color:var(--color-text)]">Create API key</strong>. The key starts with <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">AIza</code>.
-          </p>
-        </div>
-      </li>
+    <!-- Setup steps -->
+    <section class="mt-12">
+      <h2 class="font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+        Setup
+      </h2>
+      <ol class="mt-6 space-y-7">
+        <li class="flex gap-4">
+          <span class="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[color:var(--color-accent-soft)] font-display text-sm font-semibold leading-none text-[color:var(--color-accent-hover)]">1</span>
+          <div class="text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+            <p class="font-medium text-[color:var(--color-text)]">Get an API key.</p>
+            <p class="mt-2">
+              Go to <a href="https://aistudio.google.com/apikey" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Google AI Studio → API keys</a>, sign in with any Google account, and click <strong class="text-[color:var(--color-text)]">Create API key</strong>. The key starts with <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">AIza</code>.
+            </p>
+          </div>
+        </li>
 
-      <li class="flex gap-4">
-        <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums">2.</span>
-        <div>
-          <p class="text-[color:var(--color-text)] font-medium">Paste it into Parleq's setup wizard.</p>
-          <p class="mt-2">
-            On first launch the wizard will prompt for a provider. Pick <strong class="text-[color:var(--color-text)]">Google Gemini</strong>, paste the key, click <strong class="text-[color:var(--color-text)]">Continue</strong>, then <strong class="text-[color:var(--color-text)]">Finish &amp; Restart</strong>.
-          </p>
-          <p class="mt-2 text-[14px] text-[color:var(--color-text-subtle)]">
-            Already past the wizard? Open <strong class="text-[color:var(--color-text-muted)]">Settings… → Cleanup provider</strong>, switch to Gemini, paste the key, and save. Parleq picks up the key on the next dictation — no restart needed when you're only changing the secret, only when you're switching the provider itself.
-          </p>
-        </div>
-      </li>
+        <li class="flex gap-4">
+          <span class="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[color:var(--color-accent-soft)] font-display text-sm font-semibold leading-none text-[color:var(--color-accent-hover)]">2</span>
+          <div class="text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+            <p class="font-medium text-[color:var(--color-text)]">Paste it into Parleq's setup wizard.</p>
+            <p class="mt-2">
+              On first launch the wizard will prompt for a provider. Pick <strong class="text-[color:var(--color-text)]">Google Gemini</strong>, paste the key, click <strong class="text-[color:var(--color-text)]">Continue</strong>, then <strong class="text-[color:var(--color-text)]">Finish &amp; Restart</strong>.
+            </p>
+            <p class="mt-2 text-[14px] text-[color:var(--color-text-subtle)]">
+              Already past the wizard? Open <strong class="text-[color:var(--color-text-muted)]">Settings… → Cleanup provider</strong>, switch to Gemini, paste the key, and save. Parleq picks up the key on the next dictation — no restart needed when you're only changing the secret, only when you're switching the provider itself.
+            </p>
+          </div>
+        </li>
 
-      <li class="flex gap-4">
-        <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums">3.</span>
-        <div>
-          <p class="text-[color:var(--color-text)] font-medium">Test a dictation.</p>
-          <p class="mt-2">
-            Hold <kbd class="rounded border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-2 py-0.5 font-mono text-sm">right Option</kbd>, say a sentence, release. The overlay should show your raw words being replaced by a punctuated, capitalized version within ~500–700 ms.
-          </p>
-        </div>
-      </li>
-    </ol>
+        <li class="flex gap-4">
+          <span class="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[color:var(--color-accent-soft)] font-display text-sm font-semibold leading-none text-[color:var(--color-accent-hover)]">3</span>
+          <div class="text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+            <p class="font-medium text-[color:var(--color-text)]">Test a dictation.</p>
+            <p class="mt-2">
+              Hold <kbd class="rounded border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-2 py-0.5 font-mono text-sm">right Option</kbd>, say a sentence, release. The overlay should show your raw words being replaced by a punctuated, capitalized version within ~500–700 ms.
+            </p>
+          </div>
+        </li>
+      </ol>
+    </section>
 
-    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
-      Choosing a model
-    </h2>
-    <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      <p>
-        <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">gemini-2.5-flash</code> is the default and is the right choice for almost every dictation use case. Cleanup is a low-stakes, low-token task — Flash matches Pro for it, at a fraction of the latency.
-      </p>
-      <p>
-        To pick a different model, open <strong class="text-[color:var(--color-text)]">Settings → Cleanup</strong>. The <strong class="text-[color:var(--color-text)]">Model</strong> dropdown carries the recommended Gemini variants — <strong class="text-[color:var(--color-text)]">Flash</strong> (default, balanced), <strong class="text-[color:var(--color-text)]">Flash-Lite</strong> (faster + cheaper, occasionally drops detail), and <strong class="text-[color:var(--color-text)]">Pro</strong> (overkill for cleanup but available for long, technical transcripts where accuracy matters more than latency). Pick <strong class="text-[color:var(--color-text)]">Custom (enter below)</strong> to type any other Gemini model identifier, e.g. an experimental preview model. Changes take effect on the next dictation; no restart needed.
-      </p>
-      <p class="text-[14px] text-[color:var(--color-text-subtle)]">
-        Power-user note: every Settings field maps to a key in <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">~/.parleq/config.json</code> and can also be edited there directly. Settings is the recommended path for most users.
-      </p>
-    </div>
-
-    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
-      Pricing &amp; quotas
-    </h2>
-    <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      <p>
-        Google's free tier<sup>†</sup> on AI Studio API keys has per-minute and per-day quotas that change over time and vary by model — check <a href="https://ai.google.dev/pricing" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">ai.google.dev/pricing</a> for current numbers. Cleanup prompts are short (a few hundred input tokens, a few hundred output tokens), so light personal dictation tends to fit comfortably inside the free quotas. Heavy or back-to-back use can hit the per-minute cap, and there's a daily ceiling either way.
-      </p>
-      <p>
-        If you do exceed the free tier, AI Studio prompts you to enable billing on your Google Cloud project. Pricing is per-token and (as of 2026) typically lands at fractions of a cent per dictation on Flash.
-      </p>
-      <PricingNote />
-    </div>
-
-    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
-      Compliance notes
-    </h2>
-    <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      <p>
-        Direct Gemini API requests go to Google's consumer AI endpoints. By default, prompts and responses on the free tier may be used to improve Google's products; paid tier traffic is excluded from training per Google's terms. If you have data-residency requirements or need formal audit logging, use <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/vertex/'} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Vertex AI</a> instead — same Gemini models, on your GCP project, with regional deployment and IAM.
-      </p>
-      <p>
-        Audio never reaches Google. Only the text transcript output by the on-device speech model is sent.
-      </p>
-    </div>
-
-    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
-      Troubleshooting
-    </h2>
-    <div class="mt-6 space-y-6 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      <div>
-        <p class="font-medium text-[color:var(--color-text)]"><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">403 Forbidden</code> on first dictation</p>
-        <p class="mt-2">
-          The key is rejected. Most common causes: copy-pasted with surrounding whitespace (re-paste it), key was deleted or rotated in AI Studio (generate a new one), or the project the key belongs to does not have the Generative Language API enabled (AI Studio enables this automatically when you create a key — check the Google Cloud console for the project if you've changed defaults).
+    <!-- Choosing a model -->
+    <section class="mt-12 border-t border-[color:var(--color-border-subtle)] pt-10">
+      <h2 class="font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+        Choosing a model
+      </h2>
+      <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+        <p>
+          <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">gemini-2.5-flash</code> is the default and is the right choice for almost every dictation use case. Cleanup is a low-stakes, low-token task — Flash matches Pro for it, at a fraction of the latency.
+        </p>
+        <p>
+          To pick a different model, open <strong class="text-[color:var(--color-text)]">Settings → Cleanup</strong>. The <strong class="text-[color:var(--color-text)]">Model</strong> dropdown carries the recommended Gemini variants — <strong class="text-[color:var(--color-text)]">Flash</strong> (default, balanced), <strong class="text-[color:var(--color-text)]">Flash-Lite</strong> (faster + cheaper, occasionally drops detail), and <strong class="text-[color:var(--color-text)]">Pro</strong> (overkill for cleanup but available for long, technical transcripts where accuracy matters more than latency). Pick <strong class="text-[color:var(--color-text)]">Custom (enter below)</strong> to type any other Gemini model identifier, e.g. an experimental preview model. Changes take effect on the next dictation; no restart needed.
+        </p>
+        <p class="text-[14px] text-[color:var(--color-text-subtle)]">
+          Power-user note: every Settings field maps to a key in <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">~/.parleq/config.json</code> and can also be edited there directly. Settings is the recommended path for most users.
         </p>
       </div>
-      <div>
-        <p class="font-medium text-[color:var(--color-text)]"><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">429 Too Many Requests</code></p>
-        <p class="mt-2">
-          You've hit the free-tier quota. Either wait for the per-minute window to reset, or enable billing on the underlying Google Cloud project to lift the cap.
+    </section>
+
+    <!-- Pricing & quotas -->
+    <section class="mt-12 border-t border-[color:var(--color-border-subtle)] pt-10">
+      <h2 class="font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+        Pricing &amp; quotas
+      </h2>
+      <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+        <p>
+          Google's free tier<sup>†</sup> on AI Studio API keys has per-minute and per-day quotas that change over time and vary by model — check <a href="https://ai.google.dev/pricing" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">ai.google.dev/pricing</a> for current numbers. Cleanup prompts are short (a few hundred input tokens, a few hundred output tokens), so light personal dictation tends to fit comfortably inside the free quotas. Heavy or back-to-back use can hit the per-minute cap, and there's a daily ceiling either way.
+        </p>
+        <p>
+          If you do exceed the free tier, AI Studio prompts you to enable billing on your Google Cloud project. Pricing is per-token and (as of 2026) typically lands at fractions of a cent per dictation on Flash.
+        </p>
+        <PricingNote />
+      </div>
+    </section>
+
+    <!-- Compliance notes -->
+    <section class="mt-12 border-t border-[color:var(--color-border-subtle)] pt-10">
+      <h2 class="font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+        Compliance notes
+      </h2>
+      <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+        <p>
+          Direct Gemini API requests go to Google's consumer AI endpoints. By default, prompts and responses on the free tier may be used to improve Google's products; paid tier traffic is excluded from training per Google's terms. If you have data-residency requirements or need formal audit logging, use <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/vertex/'} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Vertex AI</a> instead — same Gemini models, on your GCP project, with regional deployment and IAM.
+        </p>
+        <p>
+          Audio never reaches Google. Only the text transcript output by the on-device speech model is sent.
         </p>
       </div>
-      <div>
-        <p class="font-medium text-[color:var(--color-text)]">Cleanup feels slower than 700 ms</p>
-        <p class="mt-2">
-          Geographic distance from a Google datacenter dominates here — the API picks an endpoint based on your IP. Typical North American + European users see 500–700 ms time-to-first-token; users far from a Google region may see 1–1.5 s. Switching to <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">gemini-2.5-flash-lite</code> shaves 100–200 ms off.
-        </p>
+    </section>
+
+    <!-- Troubleshooting -->
+    <section class="mt-12 border-t border-[color:var(--color-border-subtle)] pt-10">
+      <h2 class="font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+        Troubleshooting
+      </h2>
+      <div class="mt-6 space-y-4">
+        <div class="rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5">
+          <p class="font-medium text-[color:var(--color-text)]"><code class="rounded bg-[color:var(--color-section-tint)] px-1.5 py-0.5 font-mono text-[14px]">403 Forbidden</code> on first dictation</p>
+          <p class="mt-2 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
+            The key is rejected. Most common causes: copy-pasted with surrounding whitespace (re-paste it), key was deleted or rotated in AI Studio (generate a new one), or the project the key belongs to does not have the Generative Language API enabled (AI Studio enables this automatically when you create a key — check the Google Cloud console for the project if you've changed defaults).
+          </p>
+        </div>
+        <div class="rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5">
+          <p class="font-medium text-[color:var(--color-text)]"><code class="rounded bg-[color:var(--color-section-tint)] px-1.5 py-0.5 font-mono text-[14px]">429 Too Many Requests</code></p>
+          <p class="mt-2 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
+            You've hit the free-tier quota. Either wait for the per-minute window to reset, or enable billing on the underlying Google Cloud project to lift the cap.
+          </p>
+        </div>
+        <div class="rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5">
+          <p class="font-medium text-[color:var(--color-text)]">Cleanup feels slower than 700 ms</p>
+          <p class="mt-2 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
+            Geographic distance from a Google datacenter dominates here — the API picks an endpoint based on your IP. Typical North American + European users see 500–700 ms time-to-first-token; users far from a Google region may see 1–1.5 s. Switching to <code class="rounded bg-[color:var(--color-section-tint)] px-1.5 py-0.5 font-mono text-[13px]">gemini-2.5-flash-lite</code> shaves 100–200 ms off.
+          </p>
+        </div>
       </div>
-    </div>
+    </section>
   </article>
 
 </Layout>

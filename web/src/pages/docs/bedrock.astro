@@ -8,12 +8,12 @@ import PricingNote from '../../components/PricingNote.astro';
 <Layout title="AWS Bedrock setup — Parleq" description="Set up AWS Bedrock as Parleq's cleanup provider. Three auth modes: AWS SSO, static IAM access keys, scoped Bedrock API keys.">
   <SiteHeader active="docs" />
 
-  <article class="mx-auto max-w-2xl px-6 pt-16 pb-24">
+  <article class="mx-auto max-w-2xl px-6 pt-16 sm:pt-20 pb-24">
     <p class="text-sm">
       <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/'} class="text-[color:var(--color-text-subtle)] hover:text-[color:var(--color-text-muted)]">← Docs</a>
     </p>
 
-    <p class="mt-8 text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">Bedrock</p>
+    <p class="mt-8 text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">Setup guide</p>
     <h1 class="mt-4 font-display text-4xl leading-[1.1] font-medium tracking-tight sm:text-5xl">
       AWS Bedrock
     </h1>
@@ -22,7 +22,7 @@ import PricingNote from '../../components/PricingNote.astro';
     </p>
 
     <div class="mt-8 rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6">
-      <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-text-subtle)]">At a glance</p>
+      <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">At a glance</p>
       <ul class="mt-3 space-y-2 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
         <li><strong class="text-[color:var(--color-text)]">Auth modes (three):</strong> AWS SSO (recommended for corporate accounts), static IAM access keys (personal accounts or service users), or scoped Bedrock API keys (Bearer tokens with no IAM understanding required).</li>
         <li><strong class="text-[color:var(--color-text)]">Default model:</strong> <code class="rounded bg-[color:var(--color-bg)] px-1 font-mono text-[13px]">openai.gpt-oss-120b-1:0</code> — fastest in benchmarks. Claude Haiku 4.5 is a balanced alternative.</li>
@@ -32,12 +32,12 @@ import PricingNote from '../../components/PricingNote.astro';
       </ul>
     </div>
 
-    <h2 class="mt-12 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+    <h2 class="mt-12 scroll-mt-20 font-display text-2xl font-semibold leading-[1.1] tracking-tight text-[color:var(--color-text)]">
       Before you start
     </h2>
     <ol class="mt-6 space-y-7 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
       <li class="flex gap-4">
-        <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums">1.</span>
+        <span class="font-display text-2xl font-semibold text-[color:var(--color-accent)] tabular-nums">1.</span>
         <div>
           <p class="text-[color:var(--color-text)] font-medium">Enable Bedrock model access in your AWS account.</p>
           <p class="mt-2">
@@ -49,7 +49,7 @@ import PricingNote from '../../components/PricingNote.astro';
         </div>
       </li>
       <li class="flex gap-4">
-        <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums">2.</span>
+        <span class="font-display text-2xl font-semibold text-[color:var(--color-accent)] tabular-nums">2.</span>
         <div>
           <p class="text-[color:var(--color-text)] font-medium">Pick one of three auth modes.</p>
           <p class="mt-2">
@@ -64,7 +64,7 @@ import PricingNote from '../../components/PricingNote.astro';
       </li>
     </ol>
 
-    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+    <h2 class="mt-16 scroll-mt-20 font-display text-2xl font-semibold leading-[1.1] tracking-tight text-[color:var(--color-text)]">
       Mode 1: AWS SSO (recommended)
     </h2>
     <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
@@ -74,7 +74,7 @@ import PricingNote from '../../components/PricingNote.astro';
       <p>
         First-time setup (one-shot):
       </p>
-      <pre class="overflow-x-auto rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4 text-[13px] leading-relaxed font-mono text-[color:var(--color-text)]"><code>{`aws configure sso
+      <pre class="overflow-x-auto rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-section-tint)] p-4 text-[13px] leading-relaxed font-mono text-[color:var(--color-text)]"><code>{`aws configure sso
 # Walk through the prompts: SSO start URL, region, IAM role, profile name.
 # Pick a profile name you'll remember — e.g. "work" or "parleq".
 
@@ -89,7 +89,7 @@ aws sso login --profile work
       </p>
     </div>
 
-    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+    <h2 class="mt-16 scroll-mt-20 font-display text-2xl font-semibold leading-[1.1] tracking-tight text-[color:var(--color-text)]">
       Mode 2: Static IAM access keys
     </h2>
     <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
@@ -99,7 +99,7 @@ aws sso login --profile work
       <p>
         Create an IAM user (or use an existing one) with at minimum the following inline policy. Parleq only ever calls <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">bedrock:InvokeModelWithResponseStream</code>:
       </p>
-      <pre class="overflow-x-auto rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4 text-[13px] leading-relaxed font-mono text-[color:var(--color-text)]"><code>{`{
+      <pre class="overflow-x-auto rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-section-tint)] p-4 text-[13px] leading-relaxed font-mono text-[color:var(--color-text)]"><code>{`{
   "Version": "2012-10-17",
   "Statement": [
     {
@@ -125,7 +125,7 @@ aws sso login --profile work
       </p>
     </div>
 
-    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+    <h2 class="mt-16 scroll-mt-20 font-display text-2xl font-semibold leading-[1.1] tracking-tight text-[color:var(--color-text)]">
       Mode 3: Bedrock API keys
     </h2>
     <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
@@ -143,7 +143,7 @@ aws sso login --profile work
       </p>
     </div>
 
-    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+    <h2 class="mt-16 scroll-mt-20 font-display text-2xl font-semibold leading-[1.1] tracking-tight text-[color:var(--color-text)]">
       Choosing a model
     </h2>
     <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
@@ -179,7 +179,7 @@ aws sso login --profile work
       </p>
     </div>
 
-    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+    <h2 class="mt-16 scroll-mt-20 font-display text-2xl font-semibold leading-[1.1] tracking-tight text-[color:var(--color-text)]">
       Pricing notes
     </h2>
     <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
@@ -192,7 +192,7 @@ aws sso login --profile work
       <PricingNote />
     </div>
 
-    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+    <h2 class="mt-16 scroll-mt-20 font-display text-2xl font-semibold leading-[1.1] tracking-tight text-[color:var(--color-text)]">
       Compliance notes
     </h2>
     <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
@@ -204,29 +204,29 @@ aws sso login --profile work
       </p>
     </div>
 
-    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+    <h2 class="mt-16 scroll-mt-20 font-display text-2xl font-semibold leading-[1.1] tracking-tight text-[color:var(--color-text)]">
       Troubleshooting
     </h2>
-    <div class="mt-6 space-y-6 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      <div>
+    <div class="mt-6 space-y-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
         <p class="font-medium text-[color:var(--color-text)]"><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">AccessDeniedException</code> — model not enabled</p>
         <p class="mt-2">
           You haven't enabled access to the model in this region. Go to <a href="https://console.aws.amazon.com/bedrock/home#/modelaccess" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Bedrock → Model access</a>, switch to the right region, and request access. Approval is usually immediate.
         </p>
       </div>
-      <div>
+      <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
         <p class="font-medium text-[color:var(--color-text)]"><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">ValidationException: model not found</code></p>
         <p class="mt-2">
           The model ID isn't valid for the configured region. Double-check the spelling against AWS's model catalog, and confirm the model is offered in the region you selected (some are <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">us-east-1</code>-only, others have inference profiles like the <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">us.anthropic.*</code> prefix that route across regions).
         </p>
       </div>
-      <div>
+      <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
         <p class="font-medium text-[color:var(--color-text)]">SSO session expired</p>
         <p class="mt-2">
           The overlay surfaces a clear "AWS SSO session expired" error pointing at <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">aws sso login --profile &lt;name&gt;</code>. Run that, then dictate again — no restart needed.
         </p>
       </div>
-      <div>
+      <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
         <p class="font-medium text-[color:var(--color-text)]">Tracing credential resolution</p>
         <p class="mt-2">
           For deep debugging, set <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">PARLEQ_BEDROCK_TRACE=1</code> in the environment before launching Parleq (or via the launch agent plist). Soto will trace each credential provider it tries in order, so you can see exactly which one matched or why each rejected.

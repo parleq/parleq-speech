@@ -8,12 +8,12 @@ import PricingNote from '../../components/PricingNote.astro';
 <Layout title="Azure OpenAI setup — Parleq" description="Set up Azure OpenAI as Parleq's cleanup provider. Two auth modes: API key, or Microsoft Entra ID via az login.">
   <SiteHeader active="docs" />
 
-  <article class="mx-auto max-w-2xl px-6 pt-16 pb-24">
+  <article class="mx-auto max-w-2xl px-6 pt-16 sm:pt-20 pb-24">
     <p class="text-sm">
       <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/'} class="text-[color:var(--color-text-subtle)] hover:text-[color:var(--color-text-muted)]">← Docs</a>
     </p>
 
-    <p class="mt-8 text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">Azure OpenAI</p>
+    <p class="mt-8 text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">Setup guide</p>
     <h1 class="mt-4 font-display text-4xl leading-[1.1] font-medium tracking-tight sm:text-5xl">
       Azure OpenAI
     </h1>
@@ -22,7 +22,7 @@ import PricingNote from '../../components/PricingNote.astro';
     </p>
 
     <div class="mt-8 rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6">
-      <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-text-subtle)]">At a glance</p>
+      <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">At a glance</p>
       <ul class="mt-3 space-y-2 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
         <li><strong class="text-[color:var(--color-text)]">Auth modes (two):</strong> Resource API key (simpler — paste a key from the portal), or Microsoft Entra ID (uses <code class="rounded bg-[color:var(--color-bg)] px-1 font-mono text-[13px]">az login</code> — no key to paste, refreshes automatically).</li>
         <li><strong class="text-[color:var(--color-text)]">Model</strong>: gpt-4o family, gpt-4.1 family, or an o-series reasoning model (o1, o3, o4-mini, etc.). Parleq auto-detects the request shape from the model name — no separate family toggle. Azure itself routes by deployment name, so the actual model is configured in the Azure portal; the model field in Parleq is a hint used to choose the right request body shape.</li>
@@ -32,12 +32,12 @@ import PricingNote from '../../components/PricingNote.astro';
       </ul>
     </div>
 
-    <h2 class="mt-12 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+    <h2 class="mt-12 scroll-mt-20 font-display text-2xl font-semibold leading-[1.1] tracking-tight text-[color:var(--color-text)]">
       Before you start
     </h2>
     <ol class="mt-6 space-y-7 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
       <li class="flex gap-4">
-        <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums">1.</span>
+        <span class="font-display text-2xl font-semibold text-[color:var(--color-accent)] tabular-nums">1.</span>
         <div>
           <p class="text-[color:var(--color-text)] font-medium">Create an Azure OpenAI (or AI Foundry) resource.</p>
           <p class="mt-2">
@@ -49,7 +49,7 @@ import PricingNote from '../../components/PricingNote.astro';
         </div>
       </li>
       <li class="flex gap-4">
-        <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums">2.</span>
+        <span class="font-display text-2xl font-semibold text-[color:var(--color-accent)] tabular-nums">2.</span>
         <div>
           <p class="text-[color:var(--color-text)] font-medium">Deploy a model under the resource.</p>
           <p class="mt-2">
@@ -65,7 +65,7 @@ import PricingNote from '../../components/PricingNote.astro';
       </li>
     </ol>
 
-    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+    <h2 class="mt-16 scroll-mt-20 font-display text-2xl font-semibold leading-[1.1] tracking-tight text-[color:var(--color-text)]">
       Mode 1: Resource API key
     </h2>
     <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
@@ -93,7 +93,7 @@ import PricingNote from '../../components/PricingNote.astro';
       </ol>
     </div>
 
-    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+    <h2 class="mt-16 scroll-mt-20 font-display text-2xl font-semibold leading-[1.1] tracking-tight text-[color:var(--color-text)]">
       Mode 2: Microsoft Entra ID (az login)
     </h2>
     <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
@@ -103,7 +103,7 @@ import PricingNote from '../../components/PricingNote.astro';
       <p>
         Setup:
       </p>
-      <pre class="overflow-x-auto rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4 text-[13px] leading-relaxed font-mono text-[color:var(--color-text)]"><code>{`# Install the Azure CLI if you haven't:
+      <pre class="overflow-x-auto rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-section-tint)] p-4 text-[13px] leading-relaxed font-mono text-[color:var(--color-text)]"><code>{`# Install the Azure CLI if you haven't:
 brew install azure-cli
 
 # Sign in (opens browser):
@@ -125,7 +125,7 @@ az account set --subscription "My Team Subscription"`}</code></pre>
       </p>
     </div>
 
-    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+    <h2 class="mt-16 scroll-mt-20 font-display text-2xl font-semibold leading-[1.1] tracking-tight text-[color:var(--color-text)]">
       The Resource field
     </h2>
     <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
@@ -148,7 +148,7 @@ az account set --subscription "My Team Subscription"`}</code></pre>
       </p>
     </div>
 
-    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+    <h2 class="mt-16 scroll-mt-20 font-display text-2xl font-semibold leading-[1.1] tracking-tight text-[color:var(--color-text)]">
       Choosing a model (and the API version)
     </h2>
     <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
@@ -170,7 +170,7 @@ az account set --subscription "My Team Subscription"`}</code></pre>
       </p>
     </div>
 
-    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+    <h2 class="mt-16 scroll-mt-20 font-display text-2xl font-semibold leading-[1.1] tracking-tight text-[color:var(--color-text)]">
       Pricing &amp; quotas
     </h2>
     <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
@@ -186,7 +186,7 @@ az account set --subscription "My Team Subscription"`}</code></pre>
       <PricingNote />
     </div>
 
-    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+    <h2 class="mt-16 scroll-mt-20 font-display text-2xl font-semibold leading-[1.1] tracking-tight text-[color:var(--color-text)]">
       Compliance notes
     </h2>
     <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
@@ -198,47 +198,47 @@ az account set --subscription "My Team Subscription"`}</code></pre>
       </p>
     </div>
 
-    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+    <h2 class="mt-16 scroll-mt-20 font-display text-2xl font-semibold leading-[1.1] tracking-tight text-[color:var(--color-text)]">
       Troubleshooting
     </h2>
-    <div class="mt-6 space-y-6 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      <div>
+    <div class="mt-6 space-y-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
         <p class="font-medium text-[color:var(--color-text)]"><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">404 Resource not found</code> on first dictation</p>
         <p class="mt-2">
           The URL Parleq built doesn't match a real deployment. Check three things in order: (1) the <strong class="text-[color:var(--color-text)]">Resource</strong> field — for an AI Foundry resource, paste the full hostname (<code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">*.cognitiveservices.azure.com</code>) rather than the bare name; (2) the <strong class="text-[color:var(--color-text)]">Deployment</strong> name — it's case-sensitive and has to match exactly; (3) the API version — bump to <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">2025-04-01-preview</code> or later if you're calling o-series or newer models.
         </p>
       </div>
-      <div>
+      <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
         <p class="font-medium text-[color:var(--color-text)]"><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">401 PermissionDenied</code> in Entra ID mode</p>
         <p class="mt-2">
           Your <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">az login</code> identity doesn't have the data-plane role. Even Owner on the resource isn't enough — Azure OpenAI specifically requires <strong class="text-[color:var(--color-text)]">Cognitive Services OpenAI User</strong>. Grant it on the resource (not the resource group) and wait ~1 minute for propagation.
         </p>
       </div>
-      <div>
+      <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
         <p class="font-medium text-[color:var(--color-text)]"><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">400 max_tokens not supported</code> / "use 'max_completion_tokens'"</p>
         <p class="mt-2">
           Model / deployment mismatch. Your Azure deployment serves a reasoning model (o-series) but Parleq's <strong class="text-[color:var(--color-text)]">Model</strong> field is set to a non-reasoning model name, so Parleq is sending the standard <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">max_tokens</code> shape. Open Settings → Cleanup → switch the Azure model to the o-series name that matches your deployment (e.g. <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">o4-mini</code>), then dictate again.
         </p>
       </div>
-      <div>
+      <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
         <p class="font-medium text-[color:var(--color-text)]"><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">400 unsupported parameter: 'max_completion_tokens'</code></p>
         <p class="mt-2">
           The reverse mismatch: Parleq is set to a reasoning model name but your deployment actually serves a non-reasoning model. Switch Parleq's Azure <strong class="text-[color:var(--color-text)]">Model</strong> field to the gpt-4o / gpt-4.1 name that matches the deployment and try again.
         </p>
       </div>
-      <div>
+      <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
         <p class="font-medium text-[color:var(--color-text)]">Entra ID session expired</p>
         <p class="mt-2">
           In <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">az login</code> mode, the overlay surfaces an "Azure AD token rejected" error pointing at <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">az login</code>. Run that, then dictate again — Parleq invalidates the cached AD token on auth failure and re-mints from your refreshed Azure CLI session on the next call, no restart needed. (API-key mode doesn't need this — the key is re-read from the Keychain on every call, so editing the value in Settings takes effect immediately.)
         </p>
       </div>
-      <div>
+      <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
         <p class="font-medium text-[color:var(--color-text)]"><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">az: command not found</code></p>
         <p class="mt-2">
           Parleq couldn't find <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">az</code> on PATH. Most likely cause: you installed the Azure CLI somewhere outside <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">/opt/homebrew/bin</code> / <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">/usr/local/bin</code>. Symlink it into <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">/usr/local/bin</code>, or switch to API-key mode.
         </p>
       </div>
-      <div>
+      <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
         <p class="font-medium text-[color:var(--color-text)]"><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">429 Too Many Requests</code></p>
         <p class="mt-2">
           You've hit the deployment's TPM quota. Either wait for the per-minute window to reset, or in the Azure portal increase the deployment's TPM allocation under <strong class="text-[color:var(--color-text)]">Deployments → your deployment → Edit</strong>.

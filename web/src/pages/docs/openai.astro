@@ -8,20 +8,25 @@ import PricingNote from '../../components/PricingNote.astro';
 <Layout title="OpenAI setup — Parleq" description="Set up OpenAI direct API as Parleq's cleanup provider. GPT-4o, GPT-4.1, and o-series reasoning models.">
   <SiteHeader active="docs" />
 
-  <article class="mx-auto max-w-2xl px-6 pt-16 pb-24">
+  <article class="mx-auto max-w-2xl px-6 pt-16 pb-24 sm:pt-20">
+    <!-- Back link -->
     <p class="text-sm">
       <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/'} class="text-[color:var(--color-text-subtle)] hover:text-[color:var(--color-text-muted)]">← Docs</a>
     </p>
 
-    <p class="mt-8 text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">OpenAI · easiest setup</p>
-    <h1 class="mt-4 font-display text-4xl leading-[1.1] font-medium tracking-tight sm:text-5xl">
-      OpenAI
-    </h1>
-    <p class="mt-6 text-[17px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      Parleq can call OpenAI's API directly at <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">api.openai.com</code> using your own API key. This gives you access to GPT-4o and GPT-4.1 for cleanup, plus the o1 / o3 / o4-mini reasoning models for context-aware reference turns. If you already have an OpenAI API key for other tools, setup takes about two minutes.
-    </p>
+    <!-- Page hero -->
+    <div class="mt-8 border-b border-[color:var(--color-border-subtle)] pb-10">
+      <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">Setup guide</p>
+      <h1 class="mt-3 font-display text-4xl leading-[1.1] font-medium tracking-tight sm:text-5xl">
+        OpenAI
+      </h1>
+      <p class="mt-5 text-[17px] leading-[1.7] text-[color:var(--color-text-muted)]">
+        Parleq can call OpenAI's API directly at <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">api.openai.com</code> using your own API key. This gives you access to GPT-4o and GPT-4.1 for cleanup, plus the o1 / o3 / o4-mini reasoning models for context-aware reference turns. If you already have an OpenAI API key for other tools, setup takes about two minutes.
+      </p>
+    </div>
 
-    <div class="mt-8 rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6">
+    <!-- At a glance -->
+    <div class="mt-8 rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-section-tint)] p-6">
       <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-text-subtle)]">At a glance</p>
       <ul class="mt-3 space-y-2 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
         <li><strong class="text-[color:var(--color-text)]">Auth:</strong> One API key (starts with <code class="rounded bg-[color:var(--color-bg)] px-1 font-mono text-[13px]">sk-</code>) pasted from platform.openai.com.</li>
@@ -31,124 +36,139 @@ import PricingNote from '../../components/PricingNote.astro';
       </ul>
     </div>
 
-    <h2 class="mt-12 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
-      Setup
-    </h2>
-    <ol class="mt-6 space-y-7 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      <li class="flex gap-4">
-        <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums">1.</span>
-        <div>
-          <p class="text-[color:var(--color-text)] font-medium">Get an API key.</p>
-          <p class="mt-2">
-            Go to <a href="https://platform.openai.com/api-keys" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">platform.openai.com → API keys</a>, sign in, and click <strong class="text-[color:var(--color-text)]">Create new secret key</strong>. The key starts with <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">sk-</code>. Copy it — it's only shown once.
-          </p>
-          <p class="mt-2 text-[14px] text-[color:var(--color-text-subtle)]">
-            Your account needs a positive credit balance or an active paid plan. API keys from a free trial account with no credits will return <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[12px]">429 insufficient_quota</code> on every call.
-          </p>
-        </div>
-      </li>
+    <!-- Setup steps -->
+    <section class="mt-12">
+      <h2 class="font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+        Setup
+      </h2>
+      <ol class="mt-6 space-y-7">
+        <li class="flex gap-4">
+          <span class="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[color:var(--color-accent-soft)] font-display text-sm font-semibold leading-none text-[color:var(--color-accent-hover)]">1</span>
+          <div class="text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+            <p class="font-medium text-[color:var(--color-text)]">Get an API key.</p>
+            <p class="mt-2">
+              Go to <a href="https://platform.openai.com/api-keys" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">platform.openai.com → API keys</a>, sign in, and click <strong class="text-[color:var(--color-text)]">Create new secret key</strong>. The key starts with <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">sk-</code>. Copy it — it's only shown once.
+            </p>
+            <p class="mt-2 text-[14px] text-[color:var(--color-text-subtle)]">
+              Your account needs a positive credit balance or an active paid plan. API keys from a free trial account with no credits will return <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[12px]">429 insufficient_quota</code> on every call.
+            </p>
+          </div>
+        </li>
 
-      <li class="flex gap-4">
-        <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums">2.</span>
-        <div>
-          <p class="text-[color:var(--color-text)] font-medium">Paste it into Parleq's setup wizard.</p>
-          <p class="mt-2">
-            On first launch the wizard will prompt for a provider. Pick <strong class="text-[color:var(--color-text)]">OpenAI</strong>, paste the key, click <strong class="text-[color:var(--color-text)]">Continue</strong>, then <strong class="text-[color:var(--color-text)]">Finish &amp; Restart</strong>.
-          </p>
-          <p class="mt-2 text-[14px] text-[color:var(--color-text-subtle)]">
-            Already past the wizard? Open <strong class="text-[color:var(--color-text-muted)]">Settings… → Cleanup provider</strong>, switch to OpenAI, paste the key, and save. Switching the active provider requires restarting Parleq — Settings surfaces a <strong class="text-[color:var(--color-text-muted)]">Restart Now</strong> banner when this is needed. Once OpenAI is selected and Parleq has restarted, rotating the API key takes effect on the next dictation without restart, because the key is re-read from the Keychain per request.
-          </p>
-        </div>
-      </li>
+        <li class="flex gap-4">
+          <span class="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[color:var(--color-accent-soft)] font-display text-sm font-semibold leading-none text-[color:var(--color-accent-hover)]">2</span>
+          <div class="text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+            <p class="font-medium text-[color:var(--color-text)]">Paste it into Parleq's setup wizard.</p>
+            <p class="mt-2">
+              On first launch the wizard will prompt for a provider. Pick <strong class="text-[color:var(--color-text)]">OpenAI</strong>, paste the key, click <strong class="text-[color:var(--color-text)]">Continue</strong>, then <strong class="text-[color:var(--color-text)]">Finish &amp; Restart</strong>.
+            </p>
+            <p class="mt-2 text-[14px] text-[color:var(--color-text-subtle)]">
+              Already past the wizard? Open <strong class="text-[color:var(--color-text-muted)]">Settings… → Cleanup provider</strong>, switch to OpenAI, paste the key, and save. Switching the active provider requires restarting Parleq — Settings surfaces a <strong class="text-[color:var(--color-text-muted)]">Restart Now</strong> banner when this is needed. Once OpenAI is selected and Parleq has restarted, rotating the API key takes effect on the next dictation without restart, because the key is re-read from the Keychain per request.
+            </p>
+          </div>
+        </li>
 
-      <li class="flex gap-4">
-        <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums">3.</span>
-        <div>
-          <p class="text-[color:var(--color-text)] font-medium">Test a dictation.</p>
-          <p class="mt-2">
-            Hold <kbd class="rounded border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-2 py-0.5 font-mono text-sm">right Option</kbd>, say a sentence, release. The overlay should show your raw words being replaced by a punctuated, capitalized version within ~600–800 ms.
-          </p>
-        </div>
-      </li>
-    </ol>
+        <li class="flex gap-4">
+          <span class="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[color:var(--color-accent-soft)] font-display text-sm font-semibold leading-none text-[color:var(--color-accent-hover)]">3</span>
+          <div class="text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+            <p class="font-medium text-[color:var(--color-text)]">Test a dictation.</p>
+            <p class="mt-2">
+              Hold <kbd class="rounded border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-2 py-0.5 font-mono text-sm">right Option</kbd>, say a sentence, release. The overlay should show your raw words being replaced by a punctuated, capitalized version within ~600–800 ms.
+            </p>
+          </div>
+        </li>
+      </ol>
+    </section>
 
-    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
-      Choosing a model
-    </h2>
-    <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      <p>
-        <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">gpt-4o-mini</code> is the default and covers almost every dictation use case — fast, cheap, and well-calibrated for short cleanup tasks. Open <strong class="text-[color:var(--color-text)]">Settings → Cleanup</strong> to pick from the model list or enter a custom identifier.
-      </p>
-      <p>
-        Standard models (text and vision-capable are marked 👁):
-      </p>
-      <ul class="mt-2 space-y-1 list-disc list-inside marker:text-[color:var(--color-text-subtle)] text-[15px]">
-        <li><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[13px]">gpt-4o-mini</code> — fastest (cleanup default) 👁</li>
-        <li><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[13px]">gpt-4o</code> — highest quality 👁</li>
-        <li><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[13px]">gpt-4.1</code> — current 👁</li>
-        <li><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[13px]">gpt-4.1-mini</code> — current, cheaper 👁</li>
-        <li><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[13px]">gpt-4.1-nano</code> — text-only, smallest</li>
-      </ul>
-      <p>
-        Reasoning models — slower, useful for complex reference-aware turns:
-      </p>
-      <ul class="mt-2 space-y-1 list-disc list-inside marker:text-[color:var(--color-text-subtle)] text-[15px]">
-        <li><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[13px]">o1</code> — reasoning 👁</li>
-        <li><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[13px]">o1-mini</code> — reasoning, text-only</li>
-        <li><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[13px]">o3</code> — reasoning 👁</li>
-        <li><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[13px]">o3-mini</code> — reasoning, text-only</li>
-        <li><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[13px]">o4-mini</code> — reasoning 👁</li>
-      </ul>
-      <p class="text-[14px] text-[color:var(--color-text-subtle)]">
-        Reasoning models send a different request shape (no <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[12px]">temperature</code>, <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[12px]">max_completion_tokens</code> instead of <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[12px]">max_tokens</code>). Parleq detects reasoning models automatically from the model name — no manual family switch needed, unlike Azure.
-      </p>
-    </div>
-
-    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
-      Pricing
-    </h2>
-    <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      <p>
-        Per-token<sup>†</sup> at <a href="https://platform.openai.com/docs/pricing" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">OpenAI's published rates</a>. Cleanup prompts are short (a few hundred input tokens, a few hundred output tokens), so a typical day of personal dictation runs to single-digit cents on gpt-4o-mini. <strong class="text-[color:var(--color-text)]">Settings → Usage</strong> tracks per-call token counts and rolling cost estimates.
-      </p>
-      <PricingNote />
-    </div>
-
-    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
-      Compliance notes
-    </h2>
-    <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      <p>
-        Calls go to OpenAI's API under your account's consumer or pay-as-you-go terms. If your organization needs Microsoft's enterprise data-privacy commitments or Azure's regional deployment guarantees, use <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/azure/'} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Azure OpenAI</a> — the same models on Microsoft infrastructure.
-      </p>
-      <p>
-        Audio never reaches OpenAI. Only the text transcript output by Parleq's on-device speech model is sent.
-      </p>
-    </div>
-
-    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
-      Troubleshooting
-    </h2>
-    <div class="mt-6 space-y-6 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      <div>
-        <p class="font-medium text-[color:var(--color-text)]"><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">401 Unauthorized</code> on first dictation</p>
-        <p class="mt-2">
-          The key is invalid or has been revoked. Re-copy it from <a href="https://platform.openai.com/api-keys" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">platform.openai.com → API keys</a> and paste it into Settings again (make sure there's no leading or trailing whitespace).
+    <!-- Choosing a model -->
+    <section class="mt-12 border-t border-[color:var(--color-border-subtle)] pt-10">
+      <h2 class="font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+        Choosing a model
+      </h2>
+      <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+        <p>
+          <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">gpt-4o-mini</code> is the default and covers almost every dictation use case — fast, cheap, and well-calibrated for short cleanup tasks. Open <strong class="text-[color:var(--color-text)]">Settings → Cleanup</strong> to pick from the model list or enter a custom identifier.
+        </p>
+        <p>
+          Standard models (text and vision-capable are marked 👁):
+        </p>
+        <ul class="mt-2 list-inside list-disc space-y-1 text-[15px] marker:text-[color:var(--color-text-subtle)]">
+          <li><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[13px]">gpt-4o-mini</code> — fastest (cleanup default) 👁</li>
+          <li><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[13px]">gpt-4o</code> — highest quality 👁</li>
+          <li><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[13px]">gpt-4.1</code> — current 👁</li>
+          <li><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[13px]">gpt-4.1-mini</code> — current, cheaper 👁</li>
+          <li><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[13px]">gpt-4.1-nano</code> — text-only, smallest</li>
+        </ul>
+        <p>
+          Reasoning models — slower, useful for complex reference-aware turns:
+        </p>
+        <ul class="mt-2 list-inside list-disc space-y-1 text-[15px] marker:text-[color:var(--color-text-subtle)]">
+          <li><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[13px]">o1</code> — reasoning 👁</li>
+          <li><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[13px]">o1-mini</code> — reasoning, text-only</li>
+          <li><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[13px]">o3</code> — reasoning 👁</li>
+          <li><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[13px]">o3-mini</code> — reasoning, text-only</li>
+          <li><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[13px]">o4-mini</code> — reasoning 👁</li>
+        </ul>
+        <p class="text-[14px] text-[color:var(--color-text-subtle)]">
+          Reasoning models send a different request shape (no <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[12px]">temperature</code>, <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[12px]">max_completion_tokens</code> instead of <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[12px]">max_tokens</code>). Parleq detects reasoning models automatically from the model name — no manual family switch needed, unlike Azure.
         </p>
       </div>
-      <div>
-        <p class="font-medium text-[color:var(--color-text)]"><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">429 insufficient_quota</code></p>
-        <p class="mt-2">
-          Your account has no remaining credit. Add a payment method and top up your balance at <a href="https://platform.openai.com/settings/organization/billing" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">platform.openai.com → Billing</a>.
+    </section>
+
+    <!-- Pricing -->
+    <section class="mt-12 border-t border-[color:var(--color-border-subtle)] pt-10">
+      <h2 class="font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+        Pricing
+      </h2>
+      <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+        <p>
+          Per-token<sup>†</sup> at <a href="https://platform.openai.com/docs/pricing" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">OpenAI's published rates</a>. Cleanup prompts are short (a few hundred input tokens, a few hundred output tokens), so a typical day of personal dictation runs to single-digit cents on gpt-4o-mini. <strong class="text-[color:var(--color-text)]">Settings → Usage</strong> tracks per-call token counts and rolling cost estimates.
+        </p>
+        <PricingNote />
+      </div>
+    </section>
+
+    <!-- Compliance notes -->
+    <section class="mt-12 border-t border-[color:var(--color-border-subtle)] pt-10">
+      <h2 class="font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+        Compliance notes
+      </h2>
+      <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+        <p>
+          Calls go to OpenAI's API under your account's consumer or pay-as-you-go terms. If your organization needs Microsoft's enterprise data-privacy commitments or Azure's regional deployment guarantees, use <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/azure/'} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Azure OpenAI</a> — the same models on Microsoft infrastructure.
+        </p>
+        <p>
+          Audio never reaches OpenAI. Only the text transcript output by Parleq's on-device speech model is sent.
         </p>
       </div>
-      <div>
-        <p class="font-medium text-[color:var(--color-text)]"><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">404 model_not_found</code></p>
-        <p class="mt-2">
-          The model ID isn't available on your account tier, or the name is misspelled. Check the exact ID at <a href="https://platform.openai.com/docs/models" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">platform.openai.com → Models</a> and confirm your account has access to it (some models require org-level access requests).
-        </p>
+    </section>
+
+    <!-- Troubleshooting -->
+    <section class="mt-12 border-t border-[color:var(--color-border-subtle)] pt-10">
+      <h2 class="font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+        Troubleshooting
+      </h2>
+      <div class="mt-6 space-y-4">
+        <div class="rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5">
+          <p class="font-medium text-[color:var(--color-text)]"><code class="rounded bg-[color:var(--color-section-tint)] px-1.5 py-0.5 font-mono text-[14px]">401 Unauthorized</code> on first dictation</p>
+          <p class="mt-2 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
+            The key is invalid or has been revoked. Re-copy it from <a href="https://platform.openai.com/api-keys" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">platform.openai.com → API keys</a> and paste it into Settings again (make sure there's no leading or trailing whitespace).
+          </p>
+        </div>
+        <div class="rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5">
+          <p class="font-medium text-[color:var(--color-text)]"><code class="rounded bg-[color:var(--color-section-tint)] px-1.5 py-0.5 font-mono text-[14px]">429 insufficient_quota</code></p>
+          <p class="mt-2 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
+            Your account has no remaining credit. Add a payment method and top up your balance at <a href="https://platform.openai.com/settings/organization/billing" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">platform.openai.com → Billing</a>.
+          </p>
+        </div>
+        <div class="rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5">
+          <p class="font-medium text-[color:var(--color-text)]"><code class="rounded bg-[color:var(--color-section-tint)] px-1.5 py-0.5 font-mono text-[14px]">404 model_not_found</code></p>
+          <p class="mt-2 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
+            The model ID isn't available on your account tier, or the name is misspelled. Check the exact ID at <a href="https://platform.openai.com/docs/models" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">platform.openai.com → Models</a> and confirm your account has access to it (some models require org-level access requests).
+          </p>
+        </div>
       </div>
-    </div>
+    </section>
   </article>
 
 </Layout>

@@ -24,21 +24,22 @@ import PricingNote from '../../components/PricingNote.astro';
       <strong class="text-[color:var(--color-text)]">Who this page is for:</strong> hobbyists and geeks wiring this up without an IT department &mdash; probably with an AI assistant open in another window. This stuff is fiddly, and the console UIs change constantly. So this page gives you the <em>route map</em> and the gotchas that burn hours; your assistant fills in the exact console-clicking for whatever the current UI looks like. The section at the bottom on <a href="#assistant" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">working with your AI assistant</a> is the intended workflow, not an afterthought.
     </p>
 
-    <div class="mt-6 rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5">
+    <div class="mt-6 rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5">
       <p class="text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
         Setting this up for a company instead? The IT-admin version &mdash; Okta / Entra ID / any OIDC IdP, with MDM pins &mdash; lives in <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/enterprise-sso/'} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Enterprise SSO</a>.
       </p>
     </div>
 
     <!-- Pick your path -->
-    <h2 class="mt-12 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+    <p class="mt-12 text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">Decision table</p>
+    <h2 class="mt-3 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
       Pick your path
     </h2>
     <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
       Three routes, all roughly $0<sup>†</sup> &mdash; Cognito&rsquo;s free tier (10,000 monthly active users on the default Essentials plan), OAuth, STS, and Workforce Identity Federation carry no service charge at personal scale. You pay only for the LLM tokens you use. Start at the top.
     </p>
 
-    <div class="mt-6 overflow-x-auto rounded-xl border border-[color:var(--color-border)]">
+    <div class="mt-6 overflow-x-auto rounded-2xl border border-[color:var(--color-border)]">
       <table class="w-full text-[14px] text-[color:var(--color-text-muted)]">
         <thead class="border-b border-[color:var(--color-border)] bg-[color:var(--color-surface)]">
           <tr>
@@ -71,7 +72,8 @@ import PricingNote from '../../components/PricingNote.astro';
     </p>
 
     <!-- Path A walkthrough -->
-    <h2 class="mt-14 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+    <p class="mt-14 text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">Recommended start &middot; Google &amp; Vertex</p>
+    <h2 id="path-a" class="mt-3 scroll-mt-20 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
       Path A &mdash; Sign in with Google &rarr; Vertex
     </h2>
     <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
@@ -109,7 +111,7 @@ import PricingNote from '../../components/PricingNote.astro';
       </li>
     </ol>
 
-    <div class="mt-4 overflow-x-auto rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
+    <div class="mt-4 overflow-x-auto rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
       <pre class="text-[13px] leading-[1.7] text-[color:var(--color-text-muted)] whitespace-pre overflow-x-auto"><code>{`{
   "oidc": {
     "issuer": "https://accounts.google.com",
@@ -145,14 +147,15 @@ import PricingNote from '../../components/PricingNote.astro';
     </p>
 
     <!-- Granular-consent gotcha -->
-    <div class="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-5">
+    <div class="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-5">
       <p class="text-[14px] leading-relaxed text-amber-900">
         <strong class="font-semibold">Gotcha that burned us live &mdash; tick the box.</strong> Google&rsquo;s granular-consent screen shows &ldquo;See, edit, configure and delete your Google Cloud data&rdquo; as an <strong>unchecked checkbox</strong>. If you don&rsquo;t tick it, you get a working sign-in whose token then <code class="font-mono text-[12px]">403</code>s at Vertex &mdash; and the next silent refresh may sign you out entirely. Parleq now detects a missing grant at sign-in and tells you, but the fix is simple: <strong>tick the box</strong> on the consent screen.
       </p>
     </div>
 
     <!-- Path B -->
-    <h2 class="mt-14 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+    <p class="mt-14 text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">Alternative &middot; Cognito &amp; AWS Bedrock</p>
+    <h2 id="path-b" class="mt-3 scroll-mt-20 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
       Path B &mdash; Cognito &rarr; AWS Bedrock
     </h2>
     <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
@@ -165,7 +168,7 @@ import PricingNote from '../../components/PricingNote.astro';
       <li>&bull; Create a role whose trust policy admits that provider via <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">AssumeRoleWithWebIdentity</code> with an <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">aud</code> condition equal to the client ID. Attach a permissions policy granting <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">bedrock:InvokeModel*</code>.</li>
       <li>&bull; Config: <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">aws.auth_mode</code> = <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">oidc</code>, plus <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">aws.role_arn</code> and <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">aws.region</code>.</li>
     </ul>
-    <div class="mt-4 overflow-x-auto rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
+    <div class="mt-4 overflow-x-auto rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
       <pre class="text-[13px] leading-[1.7] text-[color:var(--color-text-muted)] whitespace-pre overflow-x-auto"><code>{`{
   "oidc": {
     "issuer": "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_EXAMPLE",
@@ -184,8 +187,9 @@ import PricingNote from '../../components/PricingNote.astro';
     </p>
 
     <!-- Path C -->
-    <h2 class="mt-14 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
-      Path C &mdash; Cognito &rarr; GCP Workforce Federation &rarr; Vertex <span class="ml-1 align-middle rounded bg-[color:var(--color-surface)] border border-[color:var(--color-border)] px-2 py-0.5 text-[11px] font-medium text-[color:var(--color-text-subtle)]">Advanced</span>
+    <p class="mt-14 text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">Advanced &middot; Workforce Federation</p>
+    <h2 id="path-c" class="mt-3 scroll-mt-20 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+      Path C &mdash; Cognito &rarr; GCP Workforce Federation &rarr; Vertex <span class="ml-1 align-middle rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-2 py-0.5 text-[11px] font-medium text-[color:var(--color-text-subtle)]">Advanced</span>
     </h2>
     <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
       This is the full federation architecture for Vertex, and the heaviest path on the page. Choose it only if you specifically want workforce federation &mdash; Path A reaches Vertex with far less ceremony. The blocker is that Workforce Identity Pools are an <strong class="text-[color:var(--color-text)]">Organization-level</strong> GCP resource, so you need a Google Cloud org first.
@@ -202,7 +206,8 @@ import PricingNote from '../../components/PricingNote.astro';
     </p>
 
     <!-- Working with your AI assistant -->
-    <h2 id="assistant" class="mt-14 scroll-mt-20 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+    <p class="mt-14 text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">Guided setup</p>
+    <h2 id="assistant" class="mt-3 scroll-mt-20 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
       Working with your AI assistant
     </h2>
     <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
@@ -216,10 +221,11 @@ import PricingNote from '../../components/PricingNote.astro';
     </ul>
 
     <!-- Troubleshooting -->
-    <h2 class="mt-14 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+    <p class="mt-14 text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">Common issues</p>
+    <h2 class="mt-3 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
       Troubleshooting
     </h2>
-    <div class="mt-6 overflow-x-auto rounded-xl border border-[color:var(--color-border)]">
+    <div class="mt-6 overflow-x-auto rounded-2xl border border-[color:var(--color-border)]">
       <table class="w-full text-[14px] text-[color:var(--color-text-muted)]">
         <thead class="border-b border-[color:var(--color-border)] bg-[color:var(--color-surface)]">
           <tr>

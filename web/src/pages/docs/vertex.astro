@@ -8,12 +8,12 @@ import PricingNote from '../../components/PricingNote.astro';
 <Layout title="Vertex AI setup — Parleq" description="Set up Google Vertex AI as Parleq's cleanup provider. Two auth modes: gcloud ADC, or service-account JSON.">
   <SiteHeader active="docs" />
 
-  <article class="mx-auto max-w-2xl px-6 pt-16 pb-24">
+  <article class="mx-auto max-w-2xl px-6 pt-16 sm:pt-20 pb-24">
     <p class="text-sm">
       <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/'} class="text-[color:var(--color-text-subtle)] hover:text-[color:var(--color-text-muted)]">← Docs</a>
     </p>
 
-    <p class="mt-8 text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">Vertex AI</p>
+    <p class="mt-8 text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">Setup guide</p>
     <h1 class="mt-4 font-display text-4xl leading-[1.1] font-medium tracking-tight sm:text-5xl">
       Google Vertex AI
     </h1>
@@ -22,7 +22,7 @@ import PricingNote from '../../components/PricingNote.astro';
     </p>
 
     <div class="mt-8 rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6">
-      <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-text-subtle)]">At a glance</p>
+      <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">At a glance</p>
       <ul class="mt-3 space-y-2 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
         <li><strong class="text-[color:var(--color-text)]">Auth modes (two):</strong> gcloud Application Default Credentials (uses your existing CLI session — easiest on developer machines), or service-account JSON (a dedicated identity for Parleq, no <code class="rounded bg-[color:var(--color-bg)] px-1 font-mono text-[13px]">gcloud</code> install required).</li>
         <li><strong class="text-[color:var(--color-text)]">Default model:</strong> <code class="rounded bg-[color:var(--color-bg)] px-1 font-mono text-[13px]">gemini-2.5-flash</code> — the same model the direct Gemini API serves.</li>
@@ -32,12 +32,12 @@ import PricingNote from '../../components/PricingNote.astro';
       </ul>
     </div>
 
-    <h2 class="mt-12 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+    <h2 class="mt-12 scroll-mt-20 font-display text-2xl font-semibold leading-[1.1] tracking-tight text-[color:var(--color-text)]">
       Before you start
     </h2>
     <ol class="mt-6 space-y-7 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
       <li class="flex gap-4">
-        <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums">1.</span>
+        <span class="font-display text-2xl font-semibold text-[color:var(--color-accent)] tabular-nums">1.</span>
         <div>
           <p class="text-[color:var(--color-text)] font-medium">Have a GCP project with the Vertex AI API enabled.</p>
           <p class="mt-2">
@@ -46,7 +46,7 @@ import PricingNote from '../../components/PricingNote.astro';
         </div>
       </li>
       <li class="flex gap-4">
-        <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums">2.</span>
+        <span class="font-display text-2xl font-semibold text-[color:var(--color-accent)] tabular-nums">2.</span>
         <div>
           <p class="text-[color:var(--color-text)] font-medium">Pick a region with Gemini 2.5 Flash available.</p>
           <p class="mt-2">
@@ -55,7 +55,7 @@ import PricingNote from '../../components/PricingNote.astro';
         </div>
       </li>
       <li class="flex gap-4">
-        <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums">3.</span>
+        <span class="font-display text-2xl font-semibold text-[color:var(--color-accent)] tabular-nums">3.</span>
         <div>
           <p class="text-[color:var(--color-text)] font-medium">Decide who's calling: you or a service account.</p>
           <p class="mt-2">
@@ -65,7 +65,7 @@ import PricingNote from '../../components/PricingNote.astro';
       </li>
     </ol>
 
-    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+    <h2 class="mt-16 scroll-mt-20 font-display text-2xl font-semibold leading-[1.1] tracking-tight text-[color:var(--color-text)]">
       Mode 1: gcloud Application Default Credentials
     </h2>
     <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
@@ -75,7 +75,7 @@ import PricingNote from '../../components/PricingNote.astro';
       <p>
         First-time setup (one-shot):
       </p>
-      <pre class="overflow-x-auto rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4 text-[13px] leading-relaxed font-mono text-[color:var(--color-text)]"><code>{`# Install gcloud if you haven't:
+      <pre class="overflow-x-auto rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-section-tint)] p-4 text-[13px] leading-relaxed font-mono text-[color:var(--color-text)]"><code>{`# Install gcloud if you haven't:
 brew install --cask google-cloud-sdk
 
 # Sign in (opens browser):
@@ -91,7 +91,7 @@ gcloud auth application-default set-quota-project my-team-prod-1234`}</code></pr
       </p>
     </div>
 
-    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+    <h2 class="mt-16 scroll-mt-20 font-display text-2xl font-semibold leading-[1.1] tracking-tight text-[color:var(--color-text)]">
       Mode 2: Service-account JSON
     </h2>
     <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
@@ -123,7 +123,7 @@ gcloud auth application-default set-quota-project my-team-prod-1234`}</code></pr
       </p>
     </div>
 
-    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+    <h2 class="mt-16 scroll-mt-20 font-display text-2xl font-semibold leading-[1.1] tracking-tight text-[color:var(--color-text)]">
       Choosing a model
     </h2>
     <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
@@ -145,7 +145,7 @@ gcloud auth application-default set-quota-project my-team-prod-1234`}</code></pr
       </p>
     </div>
 
-    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+    <h2 class="mt-16 scroll-mt-20 font-display text-2xl font-semibold leading-[1.1] tracking-tight text-[color:var(--color-text)]">
       Pricing &amp; quotas
     </h2>
     <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
@@ -158,7 +158,7 @@ gcloud auth application-default set-quota-project my-team-prod-1234`}</code></pr
       <PricingNote />
     </div>
 
-    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+    <h2 class="mt-16 scroll-mt-20 font-display text-2xl font-semibold leading-[1.1] tracking-tight text-[color:var(--color-text)]">
       Compliance notes
     </h2>
     <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
@@ -173,35 +173,35 @@ gcloud auth application-default set-quota-project my-team-prod-1234`}</code></pr
       </p>
     </div>
 
-    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+    <h2 class="mt-16 scroll-mt-20 font-display text-2xl font-semibold leading-[1.1] tracking-tight text-[color:var(--color-text)]">
       Troubleshooting
     </h2>
-    <div class="mt-6 space-y-6 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      <div>
+    <div class="mt-6 space-y-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
         <p class="font-medium text-[color:var(--color-text)]"><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">PERMISSION_DENIED</code> — caller does not have <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">aiplatform.endpoints.predict</code></p>
         <p class="mt-2">
           The identity Parleq is using doesn't have the <strong class="text-[color:var(--color-text)]">Vertex AI User</strong> role on the configured project. For ADC, this is <em>your</em> identity — check the IAM page for your user. For service-account auth, it's the SA's email — make sure the role was granted on the right project.
         </p>
       </div>
-      <div>
+      <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
         <p class="font-medium text-[color:var(--color-text)]"><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">FAILED_PRECONDITION</code> — Vertex AI API not enabled</p>
         <p class="mt-2">
           Enable the API on the project at <a href="https://console.cloud.google.com/apis/library/aiplatform.googleapis.com" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Cloud Console → API Library</a>.
         </p>
       </div>
-      <div>
+      <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
         <p class="font-medium text-[color:var(--color-text)]">ADC session expired</p>
         <p class="mt-2">
           The overlay surfaces a clear "Vertex ADC token rejected" error pointing at <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">gcloud auth application-default login</code>. Run that, then dictate again — Parleq invalidates the cached token on auth failure and re-mints from your refreshed CLI session on the next call, no restart needed.
         </p>
       </div>
-      <div>
+      <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
         <p class="font-medium text-[color:var(--color-text)]">"Could not obtain an access token" / <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">gcloud: command not found</code></p>
         <p class="mt-2">
           Parleq couldn't find <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">gcloud</code> on PATH. Most likely cause: you installed gcloud somewhere outside <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">/opt/homebrew/bin</code> / <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">/usr/local/bin</code> (e.g., a custom directory referenced from your shell rc only). Either symlink the binary into <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">/usr/local/bin</code>, or switch to the service-account JSON path which doesn't need gcloud at all.
         </p>
       </div>
-      <div>
+      <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
         <p class="font-medium text-[color:var(--color-text)]">"That doesn't look like a service account JSON"</p>
         <p class="mt-2">
           Parleq validates the pasted JSON against the SA-key shape (must have <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">type</code>, <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">client_email</code>, <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">private_key</code>). If you accidentally pasted an OAuth client JSON or a Workload Identity config, this fires. Re-download the SA key from <strong class="text-[color:var(--color-text)]">IAM → Service Accounts → your SA → Keys → Add Key → JSON</strong>.

@@ -1,6 +1,7 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import SiteHeader from '../../components/SiteHeader.astro';
+import GrapeCluster from '../../components/GrapeCluster.astro';
 
 ---
 
@@ -16,7 +17,7 @@ import SiteHeader from '../../components/SiteHeader.astro';
     <h1 class="mt-4 font-display text-4xl leading-[1.1] font-medium tracking-tight sm:text-5xl">
       On-device cleanup
     </h1>
-    <p class="mt-6 text-[17px] leading-[1.7] text-[color:var(--color-text-muted)]">
+    <p class="mt-6 max-w-2xl text-[17px] leading-[1.7] text-[color:var(--color-text-muted)]">
       Parleq can run the cleanup pass entirely on your Mac — no API key, no cloud account, no per-call cost, and no network boundary for your transcript. There are <strong class="text-[color:var(--color-text)]">two on-device options</strong>, both available under <strong class="text-[color:var(--color-text)]">Settings → Cleanup → Provider</strong> — and the first-run setup wizard offers the Gemma 4 one directly as its <strong class="text-[color:var(--color-text)]">On-device</strong> choice. Both keep your transcript on your machine; they differ in what they can do and what they cost in download and memory.
     </p>
 
@@ -24,7 +25,7 @@ import SiteHeader from '../../components/SiteHeader.astro';
       Two ways to run on-device
     </h2>
     <div class="mt-6 grid gap-4 sm:grid-cols-2">
-      <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6">
+      <div class="rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6 transition-colors hover:border-[color:var(--color-accent)]">
         <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">Lightweight (on-device)</p>
         <p class="mt-2 text-[15px] font-medium text-[color:var(--color-text)]">Instant, deterministic cleanup</p>
         <ul class="mt-3 space-y-2 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
@@ -33,7 +34,7 @@ import SiteHeader from '../../components/SiteHeader.astro';
           <li>Can't rewrite text — the voice-refine loop, style chips, and per-app styling need an LLM (Gemma 4 or a cloud provider).</li>
         </ul>
       </div>
-      <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6">
+      <div class="rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6 transition-colors hover:border-[color:var(--color-accent)]">
         <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">On-device LLM (Gemma 4)</p>
         <p class="mt-2 text-[15px] font-medium text-[color:var(--color-text)]">Fuller cleanup + the refine loop</p>
         <ul class="mt-3 space-y-2 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
@@ -59,6 +60,18 @@ import SiteHeader from '../../components/SiteHeader.astro';
       </p>
     </div>
 
+    <!-- The engine, up close: grape-cluster moment for the Lightweight tier -->
+    <div class="mt-10 rounded-2xl border border-[color:var(--color-border)] bg-white/40 px-6 py-10 text-center sm:px-10">
+      <p class="text-xs font-medium uppercase tracking-[0.18em] text-[color:var(--color-grape)]">The engine, up close</p>
+      <h3 class="mt-2 font-display text-2xl font-medium tracking-tight">A cluster of small, fast corrections.</h3>
+      <p class="mx-auto mt-3 max-w-xl text-[color:var(--color-text-muted)]">
+        On-device cleanup isn't a black box — it's a handful of deterministic helpers, each doing one thing well, all running in-process on your Mac. <span class="text-[color:var(--color-text-subtle)]">Built on Concord (by Keavi).</span>
+      </p>
+      <div class="mt-8">
+        <GrapeCluster />
+      </div>
+    </div>
+
     <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
       On-device LLM: Gemma 4
     </h2>
@@ -66,7 +79,7 @@ import SiteHeader from '../../components/SiteHeader.astro';
       The rest of this page covers the Gemma 4 option — the local language model for fuller cleanup and the full refine loop. Pick it when transcript content must never leave your machine but you still want a model to rewrite, not just tidy.
     </p>
 
-    <div class="mt-8 rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6">
+    <div class="mt-8 rounded-2xl border border-[color:var(--color-grape-300)] bg-[color:var(--color-panel-ink)] p-6">
       <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-text-subtle)]">At a glance</p>
       <ul class="mt-3 space-y-2 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
         <li><strong class="text-[color:var(--color-text)]">Auth:</strong> None. No account, no key.</li>
