@@ -403,7 +403,7 @@ All network calls are HTTPS via URLSession or Soto, both using the system trust 
 |---|---|---|---|
 | Soto (`SotoBedrockRuntime`) | AWS SigV4, ConverseStream, SSO credential resolution | `"7.14.0"..<"7.15.0"` | `soto-project/soto` |
 | FluidAudio | In-process ASR (Parakeet TDT v3) + CTC custom-vocab boosting | `"0.14.5"..<"0.14.6"` | `FluidInference/FluidAudio` |
-| Concord | In-process deterministic 2nd-pass cleanup ("Lightweight (on-device)" tier) | exact `0.1.4` | `keavi-app/concord` (private; trait-gated — see below) |
+| Concord | In-process deterministic 2nd-pass cleanup ("Lightweight (on-device)" tier) | exact `0.3.7` | `keavi-app/concord` (private; trait-gated — see below) |
 | Sparkle | Auto-update framework (Ed25519-signed appcast → download → relaunch). Open-source, the de-facto standard for third-party Mac auto-updates, widely deployed across the ecosystem. | `"2.9.0"..<"2.10.0"` | `sparkle-project/Sparkle` |
 | mlx-swift | In-process MLX compute framework for the on-device cleanup tier | exact `0.31.4` | `ml-explore/mlx-swift` |
 | mlx-swift-lm | LLM inference layer (MLXLLM, MLXLMCommon) for the on-device cleanup tier | commit `b95dc78` | `ml-explore/mlx-swift-lm` |
