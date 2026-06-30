@@ -175,21 +175,30 @@ const menuClass = grape
     }
   });
 
-  // Reveal once scrolled ~55% through the hero (responsive, resize-safe). Uses the
-  // hero section's height rather than waiting for the whole hero to clear the viewport.
-  var hero = document.getElementById('hero-sentinel');
-  hero = hero ? hero.closest('section') : document.querySelector('main > section, body > section');
+  // Reveal once scrolled ~55% through the hero (responsive, resize-safe). Uses the hero
+  // section's height rather than waiting for the whole hero to clear the viewport.
+  // This component's script runs BEFORE the hero/sentinel are parsed, so resolve the hero
+  // lazily (cache once found) instead of at parse time — otherwise it'd always fall back.
+  var hero = null;
+  function getHero() {
+    if (hero) return hero;
+    var s = document.getElementById('hero-sentinel');
+    hero = s ? s.closest('section') : document.querySelector('main > section, body > section');
+    return hero;
+  }
   var ticking = false;
   function onScroll() {
     if (ticking) return;
     ticking = true;
     requestAnimationFrame(function () {
-      var trigger = hero ? hero.offsetHeight * 0.55 : 360;
+      var h = getHero();
+      var trigger = h ? h.offsetHeight * 0.55 : 360;
       reveal(window.scrollY > trigger);
       ticking = false;
     });
   }
   window.addEventListener('scroll', onScroll, { passive: true });
+  document.addEventListener('DOMContentLoaded', onScroll);
   onScroll();
 })();
 </script>

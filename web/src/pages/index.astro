@@ -192,6 +192,31 @@ const capabilities = [
         </nav>
       </div>
 
+      <!-- Wire the hero in-panel mobile hamburger to its dropdown (aria + Escape + outside-click). -->
+      <script is:inline>
+        (() => {
+          const btn = document.getElementById('hero-menu-btn');
+          const menu = document.getElementById('hero-mobile-menu');
+          const burger = document.getElementById('hero-hamburger-icon');
+          const close = document.getElementById('hero-close-icon');
+          if (!btn || !menu) return;
+          const setOpen = (open) => {
+            menu.toggleAttribute('hidden', !open);
+            btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+            btn.setAttribute('aria-label', open ? 'Close navigation menu' : 'Open navigation menu');
+            if (burger) burger.classList.toggle('hidden', open);
+            if (close) close.classList.toggle('hidden', !open);
+          };
+          btn.addEventListener('click', () => setOpen(btn.getAttribute('aria-expanded') !== 'true'));
+          document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && btn.getAttribute('aria-expanded') === 'true') { setOpen(false); btn.focus(); }
+          });
+          document.addEventListener('click', (e) => {
+            if (btn.getAttribute('aria-expanded') === 'true' && !menu.contains(e.target) && !btn.contains(e.target)) setOpen(false);
+          });
+        })();
+      </script>
+
       <div class="relative mt-10 grid items-center gap-10 lg:grid-cols-[40%_60%]">
         <!-- LEFT column: copy, CTAs, feature chips -->
         <div>
@@ -251,7 +276,10 @@ const capabilities = [
         </div>
 
         <!-- RIGHT: ConcordFlow SVG art + three TransformCards (decorative; h1 carries the message). -->
-        <div class="relative mx-auto h-[360px] w-full max-w-[560px]" aria-hidden="true">
+        <!-- Flow art uses fixed-position cards sized for the 560px stage; below md it can't
+             scale without overlapping, so it's hidden on small screens (decorative — the h1 +
+             subhead carry the message). A simplified mobile treatment is a follow-up. -->
+        <div class="relative mx-auto hidden h-[360px] w-full max-w-[560px] md:block" aria-hidden="true">
           <ConcordFlow uid="hero" />
           <TransformCard
             variant="input"
@@ -388,7 +416,7 @@ const capabilities = [
       <div class="mt-16">
         <h3 class="font-display text-2xl font-medium tracking-tight sm:text-3xl">Instant on your Mac. Powerful in your cloud. Your call.</h3>
         <p class="mt-3 max-w-2xl text-[color:var(--color-text-muted)]">
-          Keep first-pass cleanup on the on-device tier for instant, private results — then send refinement to the cloud provider you bring. You decide the split, per app.
+          Keep first-pass cleanup on the on-device tier for instant, private results — then send voice refinement to the cloud provider you bring. You decide the split.
         </p>
         <div class="mt-8 grid gap-4 sm:grid-cols-2">
           <div class="rounded-2xl border border-[color:var(--color-border)] bg-white/50 p-6">
@@ -746,14 +774,12 @@ const capabilities = [
 
   <!-- Built for the enterprise. The OIDC-federation story for org
        buyers: one sign-in for everyone, audit attribution, no Parleq
-       servers in the path. A one-off DARK band — a near-black slate
-       gradient breaks the warm-white rhythm so the enterprise pitch
-       reads as a distinct, weightier moment. Text colors are pinned
-       to literal light slate values (not the light-mode tokens) so
-       everything inside passes contrast on the dark ground; the amber
-       accent carries through for the eyebrow, bullets, and links.
-       id anchors the hero pill + the site-wide "Enterprise" nav link;
-       scroll-mt keeps the heading clear of the viewport top on jump. -->
+       servers in the path. A DARK GRAPE band (from-[#23103a] to-[#140622])
+       that bookends the page in the hero's grape atmosphere and reads as a
+       distinct, weightier moment. Text is grape-200 (white emphasis) so it
+       passes contrast on the grape ground; amber carries the eyebrow,
+       bullets, and links. id anchors the hero pill + the site-wide
+       "Enterprise" nav link; scroll-mt clears the heading on jump. -->
   <section
     id="enterprise"
     data-reveal

@@ -22,7 +22,7 @@ import PricingNote from '../../components/PricingNote.astro';
     </p>
 
     <div class="mt-8 rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6">
-      <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">At a glance</p>
+      <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent-hover)]">At a glance</p>
       <ul class="mt-3 space-y-2 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
         <li><strong class="text-[color:var(--color-text)]">Auth modes (two):</strong> Resource API key (simpler — paste a key from the portal), or Microsoft Entra ID (uses <code class="rounded bg-[color:var(--color-bg)] px-1 font-mono text-[13px]">az login</code> — no key to paste, refreshes automatically).</li>
         <li><strong class="text-[color:var(--color-text)]">Model</strong>: gpt-4o family, gpt-4.1 family, or an o-series reasoning model (o1, o3, o4-mini, etc.). Parleq auto-detects the request shape from the model name — no separate family toggle. Azure itself routes by deployment name, so the actual model is configured in the Azure portal; the model field in Parleq is a hint used to choose the right request body shape.</li>
