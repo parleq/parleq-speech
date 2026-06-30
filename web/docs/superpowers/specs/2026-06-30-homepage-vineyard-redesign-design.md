@@ -291,9 +291,11 @@ A prototype pack (3 mockups + design notes) came back from a ChatGPT visual-prot
 
 **Synthesis the pack recommends:** Prototype **B** structure + Prototype **A** restraint + Prototype **C** boundary cue. Treat the images as composition/mood references only — **do not reproduce generated text or icons literally** (several contain the forbidden privacy claims and invented feature labels).
 
-**Two decisions flagged to the maintainer (not changed unilaterally):**
-1. **H1 wording — "Speak messy. Paste clean." vs. the locked "Speak freely. Paste clean."** ChatGPT argues "messy" is more distinctive/conversion-oriented (communicates "don't compose in your head first"); "freely" is more elegant and is the current locked copy. The hero is "already settled," so this is a deliberate change if made — maintainer's call.
-2. **Explorer roster labels** — the prototypes invent Refine grapes (Concise/Structure/Format/Tone/Shorten/Simplify) that are really *preset styles*, not capabilities. Keep the §5 locked roster (AI you bring · talk it into shape · presets · reference windows); presets can be *shown* via a few example chips inside that grape's demo, not as separate grapes. Confirm.
+**Two decisions — resolved by the maintainer (2026-06-30):**
+1. **H1 stays "Speak freely. Paste clean."** — declined "Speak messy"; keep the locked, more elegant headline.
+2. **Keep the §5 locked Refine roster** (AI you bring · talk it into shape · presets · reference windows); preset styles are shown as example chips *inside* the presets grape, not as separate grapes.
+
+**General rule (maintainer):** the ChatGPT prototype **text is non-authoritative** — that session was visual-only. All user-facing copy comes from the copy deck + the team's product knowledge, never the mockups; the images are composition/mood references only.
 
 ---
 
