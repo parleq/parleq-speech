@@ -1,5 +1,5 @@
 {
-  "originHash" : "d5ff80e7ddee010e77cce2f37ad627ddf1e69f033abccecacab205a83cd019d3",
+  "originHash" : "7bac27c54839823398abdd9970601a6ef6ff7a26ceb9cb6fee707c85f71b228a",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/keavi-app/concord.git",
       "state" : {
-        "revision" : "b49b9d4782c2acaffbc63c11abb67253e957b55a",
-        "version" : "0.3.4"
+        "revision" : "c792ce3a309b3535b6c857664fbe5e5a562e8888",
+        "version" : "0.3.6"
       }
     },
     {
