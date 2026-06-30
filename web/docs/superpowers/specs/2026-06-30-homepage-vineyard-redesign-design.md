@@ -1,6 +1,6 @@
 # Homepage redesign — the vineyard, the vine, the clusters, the grapes
 
-**Status:** Design (locked direction, pending spec review)
+**Status:** Design (locked direction) — **review-reconciled 2026-06-30** (two-agent + RoboRev pass; see §12); pending maintainer review
 **Date:** 2026-06-30
 **Branch:** `web/redesign-concord` (worktree `../parleq-worktrees/web-redesign`)
 **Scope this round:** the **homepage** (`web/src/pages/index.astro`) only. Inner pages may adopt the metaphor in a later round.
@@ -22,7 +22,7 @@ That last tell is the diagnosis: the 12-card grid is a **table of contents weari
 
 **Goals**
 1. Make the homepage a short, captivating "trailer" that makes a first-time visitor *want* Parleq and *understand* it fast.
-2. Solve density by **delegating depth** (to inner pages) and by **making depth opt-in** (explorable on click), not by shaving every section.
+2. Solve density by **delegating depth** (to inner pages) and by **progressively disclosing** it (visible at a glance, deeper on click), not by shaving every section. **"Shorter" = default/perceived scroll length and section count, not built-HTML byte count** — the full demo content stays in the DOM (no-JS, screen readers, SEO), just collapsed by default. Target: ≤ 6 scroll sections; the new vine section's always-visible height nets shorter than today's on-device deep-dive + 5-slide carousel + 12-card grid combined.
 3. Give the page one coherent organizing idea that doubles as the competitive wedge.
 4. Fold in the **per-app cleanup** feature (from the `per-target-cleanup` worktree) **if and only if it is runtime-complete at merge** — see §7. As of this writing the feature is config-model-only (not wired into dictation routing), so the old "Beat 4 release gate" is **moved, not retired**.
 
@@ -38,7 +38,7 @@ A single nested metaphor gives the page its spine, its visual language, and its 
 |---|---|---|
 | The boundary | **Vineyard** — fenced ground, gated | Your Mac = the trust boundary. Audio stays inside; text leaves only through a gate you choose. |
 | The plant | **Vine** = Parleq | A collection of clusters that compound — more than the sum of single tricks. |
-| Families | **Clusters** | Capability families: Cleanup (Concord) · Refine · Built for teams. |
+| Families | **Clusters** | Capability families: Cleanup · Refine · Built for teams. *(Cleanup is **built on Concord** — attribution only, never the cluster's name. Of the three, only Cleanup and Refine are interactive on the homepage; Built for teams is a teaser that links out.)* |
 | Capabilities | **Grapes** | Individual features, explorable on click. |
 
 ### 2.1 The vineyard turns our hardest constraint into an asset
@@ -49,7 +49,7 @@ We are forbidden from saying "nothing leaves your Mac" because cleanup *can* cro
 - What crosses the fence is only what you send out **for cleanup**, and only through a **gate you chose**:
   - your **cleaned-up text** — and, *only if you attach it,* a **reference snapshot** you point at (a window, file, or clipboard; PNG/data held in memory, never written to disk);
   - pick **on-device (Instant) cleanup** → *no gate is crossed at all*;
-  - pick **a cloud you bring** → *it crosses to a gate you own and already audited*, and reference snapshots go only to the LLM endpoint you configured.
+  - pick **a cloud you bring** → *it crosses to a gate you control*, and reference snapshots go only to the LLM endpoint you configured.
 - **The gatekeepers are the enterprise story.** Federated SSO is literally who-gets-checked-at-the-gate. So the vineyard **unifies privacy and enterprise** under one idea: *what crosses the fence, and who controls the gate.*
 
 > **Accuracy note (RoboRev 7261):** do **not** write "the only thing that crosses the fence is cleaned-up text." Reference Windows can also send an attached window/file/clipboard snapshot to the configured LLM. The accurate claim is: *audio never crosses; cleaned-up text crosses for cleanup/refine (nothing crosses on Instant/on-device); reference snapshots cross only when you attach them, only to the endpoint you configured.*
@@ -60,7 +60,7 @@ We are forbidden from saying "nothing leaves your Mac" because cleanup *can* cro
 
 ### 2.3 Concord stays correctly scoped, for free
 
-Concord (by Keavi) is **one cluster on the vine** — the on-device deterministic cleanup correctors — credited there and nowhere else. The nesting prevents the attribution from smearing across the whole app. When a visitor opens the **on-device cleanup** grape, its demo reveals *its own* inner Concord sub-cluster; that is the only place "built on Concord (by Keavi)" appears.
+The **Cleanup** cluster is built on Concord (by Keavi) — the on-device deterministic correctors. "Concord" is an **attribution, not the cluster's name or a product label**; the cluster is called "Cleanup." The nesting keeps the attribution from smearing across the whole app: when a visitor opens the **on-device cleanup** grape, its demo reveals *its own* inner correctors sub-cluster, and that is the only place "built on Concord (by Keavi)" appears.
 
 ---
 
@@ -71,9 +71,10 @@ The metaphor is powerful precisely because we hold it back. These are non-negoti
 1. **No literal farm.** No cartoon gatekeepers, no leaves/tendrils/sun/rolling-hills illustration. The vineyard lives in **language + restrained visual containment** (a fence line, a framed boundary, the existing dark-grape ground) — never an illustrated scene.
 2. **The metaphor is a lens, not a renaming.** Real feature labels stay literal: "Per-app cleanup," not "the targeting grape." Headlines may lean poetic; **UI controls, feature names, and nav stay plain.**
 3. **Curate, don't enumerate.** Show abundance and let people explore; never render every grape inline.
-4. **Two flagship interactive clusters only** (Cleanup + Refine). Enterprise teases and links out.
-5. **Privacy is a posture, expressed once as the vineyard** — not a clickable cluster, not repeated in every section.
+4. **Two flagship *interactive* clusters** (Cleanup + Refine). "Built for teams" is the **third cluster on the vine conceptually** but is **non-interactive** on the homepage — a teaser band that links out, not an explorable bunch. (Three families in §2's table; two interactive — keep these consistent.)
+5. **Privacy is a posture, not a clickable cluster.** The **literal** required line ("Your voice never leaves your Mac") anchors it in the hero; the **vineyard** is its single *narrative* expression (§4, section 3). Don't relitigate the fence/gate in every section.
 6. **All existing locked conventions are preserved** (see §8): two-tier hero, FloatingNav, grape footer, card-on-purple transition, GrapeCluster/ConcordFlow/OverlayMockup components, DocTabs, tokens, accessibility/reduced-motion/no-JS discipline.
+7. **The metaphor is never a prerequisite to understanding.** Every literal claim (what Parleq does, the privacy promise, each capability) must stand on its own in plain language; vineyard/vine/cluster/grape is an *enhancement layer* a visitor may enjoy but never has to decode. If understanding the page requires "getting" the metaphor first, it's wrong.
 
 ---
 
@@ -83,28 +84,30 @@ A bold "trailer": short scroll, deep on click, one world holding it together. Se
 
 1. **Hero — "Speak freely. Paste clean."**
    - Keep the live transform demo (the crown jewel) and the FloatingNav-over-grape treatment.
-   - **Sharpen the subhead** to lead with the wedge, not the category. It must still contain the required string "Your voice never leaves your Mac" (in the privacy pill, as today). Lead with the differentiator (talk-it-into-shape + your-words-right) and the vineyard boundary; keep "/PAR-lek/" and the macOS/Apple-Silicon facts.
+   - **Sharpen the subhead** to lead with the wedge, not the category. Lead with the differentiator (talk-it-into-shape + your-words-right); keep "/PAR-lek/" and the macOS/Apple-Silicon facts.
+   - **The literal privacy claim stays prominent.** "Your voice never leaves your Mac" is the legally-vetted, harness-checked line and must read as a clear, first-class statement (the existing privacy pill is fine as its anchor) — **not** demoted beneath the metaphor. The vineyard restatement ("…never leaves the vineyard") is **secondary support, used only after** the literal claim lands and the metaphor is established; a first-time visitor must not have to decode "vineyard" to understand the privacy promise.
    - CTAs unchanged (Download / See it in action). Feature chips may be retuned to name the clusters.
 
 2. **The vine — interactive clusters (the heart).**
-   - A short framing line establishes the wedge: *Parleq isn't one trick; it's a cluster of small, sharp ideas that compound.*
+   - A short framing line establishes the wedge **in text** (so it survives mobile/screen-reader linearization, where the bunch flattens to a list): *Parleq stacks small, sharp wins into clean text — a whole bunch, not one grape.* The comparison stays implicit (no competitor named).
    - **Cluster 1 — Cleanup (built on Concord):** the on-device deterministic correctors. Reuses today's `GrapeCluster`. Opening a grape reveals the Concord sub-cluster + a before→after demo.
    - **Cluster 2 — Refine & shape it:** cleanup with the AI you bring · talk it into shape (the refine loop) · one-tap presets · **per-app cleanup** · reference windows.
    - Each grape is an accessible control that opens a **demo overlay** (see §6) with back/next/close and "next grape."
    - This single section replaces today's separate on-device showcase **and** the 5-slide carousel **and** the 12-card grid — their content is redistributed into grapes (curated, not exhaustive), so depth becomes opt-in.
 
 3. **The vineyard — private by design.**
-   - One confident moment: the fence + the gates. *Your voice never leaves the vineyard.* What crosses is only what you send out for cleanup — your cleaned-up text (and, only if you attach it, a reference snapshot you point at) — through a gate you choose: **nothing crosses at all on Instant/on-device**, or a cloud you already own and audited.
+   - **This section owns the *fence*** (what crosses): the literal "Your voice never leaves your Mac," then — what you send out for cleanup is your cleaned-up text (and, only if you attach it, a reference snapshot you point at), through a gate you choose: **nothing crosses at all on Instant/on-device**, or a cloud you control.
    - **Do not** reduce this to "only cleaned-up text crosses" (see the §2.1 accuracy note — reference snapshots can also cross when attached).
-   - Restrained visual containment only (no farm scene). Links out to how-it-works / security review for depth.
+   - **The fence visual appears here, once.** Restrained containment only (no farm scene). Links out to how-it-works / security review for depth.
 
 4. **The gate for teams — enterprise.**
-   - Keep the dark-grape enterprise band (already tight), reframed lightly as "who controls the gate": one sign-in, per-user audit, no Parleq servers in the path, security-review packet. Links to `/enterprise`, SSO setup, managed configuration, security review. **Enterprise is a teaser cluster — it links out, it is not interactively explorable here.**
+   - **Division of labor:** section 3 owns the *fence*; this section owns the *gatekeeper* (who's checked: SSO, per-user audit). **No repeated fence motif here** — otherwise the two adjacent sections read as saying the same thing twice (the opposite of the goal). Text/enterprise-band moment only.
+   - Keep the dark-grape enterprise band (already tight): one sign-in, per-user audit, no Parleq servers in the path, security-review packet. Links to `/enterprise`, SSO setup, managed configuration, security review. **Non-interactive teaser cluster — it links out.**
 
 5. **Get Parleq.**
-   - Preserve the tester-readable 5-step install walkthrough verbatim-in-spirit (download → drag → permissions-in-context → pick a provider incl. on-device → hotkey). Keep the final CTA + "View source" + license line + the reserved (empty) social-proof slot.
+   - Keep the tester-readable 5-step install walkthrough — **the five steps and their order stay intact** (download → drag → permissions-in-context → pick a provider incl. on-device → hotkey); copy may be lightly retuned to voice, but the permissions-in-context step is preserved. Keep the final CTA + "View source" + license line + the reserved (empty) social-proof slot.
 
-**Net change vs. today:** the on-device deep-dive prose, the standalone refine carousel, and the flat 12-card grid collapse into the single interactive vine section. The hero, enterprise band, and install section stay (sharpened). Page gets materially shorter while gaining depth-on-demand.
+**Net change vs. today:** the on-device deep-dive prose, the standalone refine carousel, and the flat 12-card grid collapse into the single interactive vine section. The hero, enterprise band, and install section stay (sharpened). The page is **shorter by default-scroll** (fewer sections, less always-visible prose) while keeping the depth in the DOM behind progressive disclosure — see the "shorter" definition in §1. It is deliberately **not** shorter in raw HTML (no-JS + SEO resilience).
 
 ---
 
@@ -112,9 +115,9 @@ A bold "trailer": short scroll, deep on click, one world holding it together. Se
 
 Curated, not exhaustive. Enterprise-only capabilities leave the consumer clusters and live in the enterprise teaser / `/enterprise`.
 
-**Cluster 1 — Cleanup (Concord).** Grapes: Punctuation & casing · Numbers & percents · Your words (custom dictionary) · Sound-alikes (voiceprints). *(Phonetic and compound are supporting members shown inside the Concord sub-cluster, not top-level grapes.)*
+**Cluster 1 — Cleanup** (built on Concord — attribution only, not the cluster name). Grapes: Punctuation & casing · Numbers & percents · Your words (custom dictionary) · Sound-alikes (voiceprints). *(Phonetic and compound are supporting members shown inside the on-device correctors sub-cluster, not top-level grapes.)*
 
-**Cluster 2 — Refine & shape it.** Grapes: Cleanup with the AI you bring (providers + on-device LLM) · Talk it into shape (the refine loop) · One-tap presets · Reference windows · **Per-app cleanup** — *gated: include only if runtime-complete at merge (§7); otherwise omit or ship future-tense.*
+**Cluster 2 — Refine & shape it** (lock to **4** grapes). Default roster: Cleanup with the AI you bring (providers + on-device LLM) · Talk it into shape (the refine loop) · One-tap presets · Reference windows. **Per-app cleanup** becomes the 4th *only if* runtime-complete at merge (§7) — and if it's in, **Reference windows demotes** to a supporting member so the cluster stays at 4. Roster size must not depend on whether the gated feature ships.
 
 **Moved OUT of the homepage clusters → enterprise teaser / `/enterprise`:** MDM / managed configuration; compliance-by-default posture (folds into the vineyard moment); per-user audit; federated SSO.
 
@@ -126,29 +129,34 @@ Curated, not exhaustive. Enterprise-only capabilities leave the consumer cluster
 
 ## 6. The grape-overlay demo mechanic
 
-The captivating centerpiece: clicking a grape animates open an in-page overlay that **demonstrates** that capability, with controls to step through it, close, or advance to the next grape.
+The captivating centerpiece. **Two layers, deliberately:**
+
+- **At a glance (no click):** every grape shows its essence inline — a short visible **before→after** (one line each) — so a bouncing visitor and screen-reader / mobile users grasp what each capability does *without interacting*. The wedge ("a bunch beats one grape") must be **legible in text**, not carried by the visual bunch alone (it flattens to a list on mobile / for SR).
+- **On click (extra depth):** the grape opens an overlay with a richer, optionally stepped demo. The overlay is *enhancement* — never the only way to learn what a capability is.
+
+**Division of labor with the hero:** the hero is the single **end-to-end** "speak → clean" wow; the grapes are **atomic, single-mechanism** reveals. Avoid building eight mini-heroes.
 
 ### 6.1 UX
 - **Trigger:** each grape is a real, focusable button (`<button>`), labeled with the capability name (accessible name is the plain feature label, not metaphor copy).
-- **Open:** animates from the grape into a centered overlay/dialog (modal `role="dialog"`, `aria-modal="true"`, labelled by the capability title). Animation respects `prefers-reduced-motion` (instant show under reduced motion).
-- **Content:** a short, stepped demo — typically a **before→after** and/or a reuse of `OverlayMockup` / `TransformCard` / the on-device before→after strip pattern (see §8). 1–4 steps.
-- **Controls:** Back / Next within the demo; Close; and "next grape" to roll on to the following capability without closing.
-- **Close:** Esc, backdrop click, and an explicit close button. Focus is trapped while open and **restored to the originating grape** on close.
+- **Open:** a simple **fade/scale** into a centered dialog (`role="dialog"`, `aria-modal="true"`, labelled by the capability title), rest of page `inert`/`aria-hidden`. **Default to fade/scale, not a shared-element FLIP "animate-from-the-grape"** — that's the costliest, most-often-abandoned part; do it only if someone owns it. Respects `prefers-reduced-motion` (instant show).
+- **Content:** reuse `OverlayMockup` / `TransformCard` / the on-device before→after strip (see §8). **Default every grape to a single before→after (1 step);** reserve multi-step (≤4) only for genuinely sequential capabilities — "talk it into shape" (the refine loop) and per-app (mode-by-app). Don't over-build 4-step demos for atomic corrections.
+- **Controls:** Back / Next within a multi-step demo; Close; and **"next grape"** to roll on without closing. **Traversal is within-cluster only;** the "next grape" control is hidden/disabled at the cluster's last grape (no cross-cluster context-jumping).
+- **Close:** Esc, backdrop click, and an explicit close button. Focus is trapped while open (rest of page `inert`) and **restored to the grape matching the last-viewed demo** on close (not the journey's first grape).
 
 ### 6.2 Accessibility & resilience (locked-system discipline)
-- **No-JS fallback:** every grape's demo content renders in the DOM (e.g. as a `<details>`/disclosure or a statically-visible panel) so the page is fully usable without JS; the script enhances it into the animated modal. (Mirrors the DocTabs no-JS approach.)
+- **Build in two stages.** **v1 (baseline, ship-ready):** every grape is a `<details>`/disclosure whose at-a-glance before→after is always visible and whose extra depth expands **inline** — fully usable with no JS and no modal. **v2 (enhancement):** JS upgrades the disclosure into the fade/scale dialog. v1 alone is a shippable homepage; the modal must **not** be on the critical path. (Mirrors the DocTabs no-JS approach. Note: no existing component is a focus-trapping dialog, so the dialog plumbing is genuinely new — budget it.)
 - **Reduced motion:** no animated open/typing; content appears instantly; any auto-advance is disabled.
 - **Keyboard:** Tab order sane; arrow/Enter/Esc behave conventionally; focus trap + restore.
 - **Screen readers:** dialog labelled by the capability title; a polite live region announces step changes.
-- **Mobile:** the cluster and overlays must degrade gracefully on small screens (the current hero flow art is hidden below `md`; the cluster must NOT inherit that — it is the primary content here and must work on mobile, even if the grape layout simplifies to a stacked/scrollable arrangement).
+- **Mobile:** the cluster is **primary content** here and must work below `md` (unlike the hero flow art, which is hidden there). Below `md`, grapes **expand inline via the disclosure** rather than opening a modal (simplest, most robust). The grape layout may simplify to a stacked list — so the wedge must live in **text**, not the bunch composition (see the at-a-glance note above).
 
 ### 6.3 What a "demo" is (per grape, examples — finalize in the plan)
 - *Punctuation & casing:* `"did the build pass and is it ready to ship"` → `Did the build pass and is it ready to ship?`
 - *Numbers & percents:* `eight point nine million` → `8.9 million`; `forty five percent` → `45%`
 - *Your words:* `parlay` → `Parleq` (dictionary biasing)
-- *Sound-alikes:* `kiwi` → `Keavi` (voiceprint disambiguation; "what's kept is an encrypted voiceprint, never a recording")
+- *Sound-alikes:* `kiwi` → `Keavi` (voiceprint disambiguation; the kept voiceprint is **a derived mathematical signature, not your dictation audio**). ⚠️ Do **not** assert the absolute "never a recording": the Concord/release build's opt-in durable-voiceprints feature keeps encrypted *enrollment* clips at rest (`EnrollmentAudioStore`). This line also appears in today's live copy — reconcile it before shipping (flagged to maintainer).
 - *Talk it into shape:* an `OverlayMockup` with a refine instruction and the reshaped result (reuse a carousel scenario).
-- *Per-app cleanup:* show the same dictation landing differently by app — Instant in a terminal, Polished in Mail/Slack (see §7 for accurate framing).
+- *Per-app cleanup* (⚠️ **gated — see §7**; include only if runtime-complete, else omit/future-tense): show **one app at a time** with the cleanup *level* you set for it (e.g. Instant in a terminal; Polished in Mail). Do **not** show one utterance fanning out to multiple apps — "landing in different apps" reads as destination routing (the private vision). Frame as "the cleanup you set per app," never routing.
 - *Reference windows:* `OverlayMockup` with an attachment pill + the PNG-in-memory privacy note.
 
 ---
@@ -160,7 +168,7 @@ The captivating centerpiece: clicking a grape animates open an in-page overlay t
 When the feature *is* runtime-complete and merged, copy must match it exactly.
 
 **The cleanup modes (`TargetMode`, three values):**
-- **Instant** — forced **on-device Concord** deterministic correction: in-process, ~0 ms, **no LLM, no network, no model download.** (This tier itself shipped in 0.27.0 as the "Lightweight (on-device)" cleanup provider.)
+- **Instant** — forced on-device deterministic correction (built on Concord): in-process, ~0 ms, **no LLM, no network, no model download.** (This tier itself shipped in 0.27.0 as the "Lightweight (on-device)" cleanup provider.) *(Avoid the forbidden phrase "on-device Concord" — see §9.)*
 - **Polished** — today's pipeline unchanged: routes to the user's **configured** cleanup provider, which may be a **cloud LLM (Gemini/Vertex/Bedrock/Azure) OR an on-device option (the MLX `local` LLM, or Concord).** **Polished is NOT synonymous with cloud.**
 - **Raw** — skip cleanup, paste the transcript as recognized (the old `none`).
 
@@ -195,10 +203,10 @@ When the feature *is* runtime-complete and merged, copy must match it exactly.
 
 ## 9. Accuracy & legal constraints (carry-through)
 
-- **Required strings** (homepage built HTML): "Your voice never leaves your Mac"; "built on Concord".
+- **Required strings** (homepage built HTML): "Your voice never leaves your Mac"; "built on Concord" (the `verify-page.mjs` harness checks this substring; **write the attribution in full as "built on Concord (by Keavi)"** to preserve the Keavi LLC credit). Both required strings must sit in **static** DOM, never behind JS-only rendering.
 - **Forbidden strings:** "Nothing leaves your Mac" / "...your device"; "100% on-device"; "On-device Concord"; "Everything runs on your Mac"; voiceprints described as learning / rhythm / filler / hesitations / "sounds like you".
 - **Concord** = attribution only, never a wordmark/product/logo.
-- **voiceprints** = lowercase; they **disambiguate sound-alike words**; they do **not** learn speaking style.
+- **voiceprints** = lowercase; they **disambiguate sound-alike words**; they do **not** learn speaking style. The voiceprint is a **derived signature, not your audio**; do **not** claim an absolute "never a recording" (the opt-in durable-voiceprints feature keeps encrypted *enrollment* clips at rest — `EnrollmentAudioStore`).
 - **Routing/destination vision stays private.** Per-app content = "Parleq applies the cleanup you set per app," never destination routing.
 - **"What crosses the fence" must stay accurate (RoboRev 7261).** Audio never crosses; cleaned-up text crosses for cloud cleanup/refine (nothing crosses on Instant/on-device); **reference snapshots (window/file/clipboard) cross only when the user attaches them**, only to the configured LLM endpoint. Never write "only cleaned-up text crosses."
 - **Entity = Keavi LLC.**
@@ -210,7 +218,9 @@ When the feature *is* runtime-complete and merged, copy must match it exactly.
 
 - `npm run build` clean.
 - `node scripts/verify-page.mjs` green (required/forbidden strings, a11y assertions).
-- Manual: keyboard-only walkthrough of the cluster (open/step/close/next-grape, focus trap + restore); reduced-motion check; no-JS check (grape demos still reachable); mobile layout of the cluster.
+- Manual: keyboard-only walkthrough of the cluster (open/step/close/next-grape, focus trap + restore, background `inert`); reduced-motion check; **no-JS check (grape demos still reachable inline, at-a-glance before→after visible)**; mobile layout (below `md`, grapes expand inline — no modal).
+- **"Shorter" check:** default-scroll section count ≤ 6; the vine section's always-visible height is less than today's combined on-device + carousel + grid. Record the before/after.
+- **SEO check:** the relocated how-it-works-style content + its internal links remain in the **rendered** HTML at reasonable prominence (progressive disclosure, not JS-injection); required strings + the Concord attribution sit in static DOM.
 - RoboRev auto-review on each commit; work through findings before the approval gate.
 - **Release gate (per-app cleanup, §7):** per-app cleanup is currently config-model-only (not runtime-wired). If the homepage ships a present-tense per-app grape, the site **must** ship together with a runtime-complete, merged `per-target-cleanup` feature. If the feature isn't runtime-complete at release, the per-app grape is **omitted or shipped future-tense**. Also still respects the Posit promotion-timing hold.
 
@@ -218,12 +228,48 @@ When the feature *is* runtime-complete and merged, copy must match it exactly.
 
 ## 11. Open questions for the plan
 
-1. **Vine layout:** how the two flagship clusters are arranged on the page (side-by-side vs. stacked), and how grapes lay out within a cluster at each breakpoint.
-2. **How literal the vineyard visual gets** — settle the "restrained containment" treatment (fence line? framed boundary? gate motif?) within guardrail #1.
-3. **Demo depth per grape** — 1 step (before→after) vs. multi-step; which grapes justify multi-step.
-4. **Hero subhead final wording** — sharpen to the wedge while keeping required string + pronunciation + platform facts.
-5. **Final grape roster** — confirm ~4 per cluster against the live + per-target-cleanup capability set.
-6. **Does the existing hero live-demo stay as-is**, or get re-pointed to foreshadow the vine?
+Several earlier opens were **resolved in the 2026-06-30 review reconciliation** (see §12): demo-depth default (1-step; multi only for refine/per-app), the hero-vs-vine division of labor (end-to-end vs atomic), the "shorter" definition, the staged build, and the next-grape traversal. Remaining:
+
+1. **Vine layout** — how the two interactive clusters are arranged (side-by-side vs. stacked), and how grapes lay out within a cluster at each breakpoint.
+2. **How literal the vineyard visual gets** — settle the "restrained containment" treatment (fence line? framed boundary? gate motif?) within guardrails #1/#7. *(Good question for the ChatGPT visual-prototyping handoff.)*
+3. **Hero subhead final wording** — sharpen to the wedge while keeping the prominent literal privacy line + pronunciation + platform facts.
+4. **Final grape roster** — confirm the locked 4-per-cluster against the live + per-target-cleanup capability set.
+5. **What gets dropped *entirely*** — "curated, not exhaustive" means some current grid/carousel capabilities won't appear on the homepage at all (only on how-it-works). Name them explicitly so nothing valuable is silently lost.
+6. **Grape-content table (required plan deliverable)** — one table: grape → demo type → step count → before/after copy → component used. This is where accuracy bugs hide (a dozen-plus authored before/afters, each must pass verify-page.mjs).
+7. **Instrumentation** — whether opening a grape fires a GoatCounter event (captivation is cheaply measurable; CTA tracking already exists).
+8. **Hero live-demo** — keep as-is, or re-point it to foreshadow the vine (now that hero = end-to-end, vine = atomic)?
+
+---
+
+## 12. Review reconciliation (2026-06-30)
+
+The spec was reviewed by two independent agents (one adversarial, one constructive) plus RoboRev. Findings reconciled as follows.
+
+**Applied (accuracy — non-negotiable):**
+- Removed "Concord" as a cluster wordmark (cluster is **Cleanup**; Concord is attribution only) — §2 table, §2.3, §5.
+- Scrubbed the forbidden phrase "on-device Concord" from the spec's own prose — §7.
+- Required attribution written in full as "built on Concord (by Keavi)"; required strings pinned to static DOM — §9.
+- Softened the voiceprint claim away from the absolute "never a recording" (the durable-voiceprints `EnrollmentAudioStore` keeps encrypted *enrollment* clips) — §6.3, §9. **(Also affects today's live copy — flagged below.)**
+- Reframed the per-app demo to one-app-at-a-time "cleanup level," never one-utterance-to-many-apps, to avoid reading as the private routing vision — §6.3.
+- Qualified the vineyard egress copy for reference-window snapshots (RoboRev 7261) — §2.1, §4, §9.
+
+**Applied (design — improves the goals):**
+- Defined **"shorter"** as default/perceived scroll length, not HTML bytes (no-JS keeps content for resilience + SEO); added a section-count budget and a length check — §1, §4, §10.
+- Made grapes **legible at a glance** (visible before→after, no click); the overlay is *extra depth*. Hero = end-to-end wow; grapes = atomic reveals (kills demo-fatigue / behind-the-click risk) — §6.
+- Carried the competitive wedge **in text**, not just the bunch composition (survives mobile/SR) — §4, §6.
+- **Staged the build:** no-JS `<details>` disclosure is v1 (ship-ready); fade/scale modal is v2; dropped shared-element FLIP as the default — §6.2.
+- Kept the **literal privacy line prominent**; vineyard is secondary narrative — §4.1, guardrail #5.
+- Split **fence (§3) vs. gatekeeper (§4)** so the two sections don't repeat — §4.
+- Added guardrail **#7: the metaphor is never a prerequisite to understanding.**
+- Reconciled enterprise as the conceptual-third, non-interactive cluster — §2/§3/§4.
+- Locked Cluster 2 to **4 grapes** regardless of whether per-app ships (Reference windows demotes if per-app is in) — §5.
+- Defined next-grape traversal (within-cluster), focus-restore target (last-viewed grape), background `inert`; mobile = inline disclosure — §6.
+- Added SEO check; added open items for "what's dropped entirely," the grape-content-table deliverable, and instrumentation — §10, §11.
+
+**Flagged to the maintainer (judgment calls — not changed unilaterally):**
+1. **"Never a recording" appears in today's *live* copy** (homepage + copy-deck), and is an overclaim given the opt-in enrollment-audio store. Recommend a small wording fix on the live site too, not just here.
+2. **White-on-amber CTA contrast (3.19:1, below AA)** is currently a non-goal "tracked separately." A flagship relaunch is the natural place to fix it; recommend folding the `--color-accent-hover` swap into this round. Your brand call.
+3. **Wine connotation** of vineyard/grape/cluster for a workplace tool — low-cost to pressure-test with a couple of cold readers; worth a fallback framing if "is this a wine app?" shows up.
 
 ---
 
