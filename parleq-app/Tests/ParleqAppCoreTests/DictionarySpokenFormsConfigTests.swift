@@ -70,6 +70,14 @@ final class DictionarySpokenFormsConfigTests: XCTestCase {
         XCTAssertEqual(aliases, ["eToo", "e2e"])
     }
 
+    /// Degenerate 1–2 char fragments ("e", "et" harvested for "E2E") over-match and must be
+    /// dropped; a ≥3-char distinctive rendering ("ete") and multi-word forms survive.
+    func test_enrolled_mishears_drop_degenerate_short_aliases() {
+        let (aliases, spoken) = SettingsModel.partitionEnrolledMishears(["e", "et", "ete", "E to E"])
+        XCTAssertEqual(aliases, ["ete"])
+        XCTAssertEqual(spoken, ["E to E"])
+    }
+
     /// Dedup is case-insensitive against existing aliases AND spokenForms, and within
     /// the incoming batch.
     func test_enrolled_mishears_dedup_against_existing() {
