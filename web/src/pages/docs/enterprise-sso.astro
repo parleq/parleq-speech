@@ -309,8 +309,50 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
       </div><!-- /panel-generic -->
     </div><!-- /data-doctabs -->
 
-    <!-- AWS setup -->
-    <h2 id="aws-bedrock-setup" class="mt-12 scroll-mt-20 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+    <!-- Cloud-setup tab group: pick which cloud you federate into. DocTabs handles this second
+         group too; the panel headings keep their ids so the enterprise-page deep-links + hash
+         navigation activate the right tab. -->
+    <div class="mt-14" data-doctabs>
+      <h2 class="font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+        Federate into your cloud
+      </h2>
+      <p class="mt-3 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+        Once your IdP is set up, wire it into the cloud that runs cleanup. Pick the leg you need — you can enable more than one.
+      </p>
+
+      <div role="tablist" aria-label="Cloud setup" class="mt-6 grid gap-4 sm:grid-cols-3">
+        <button type="button" role="tab" id="tab-aws" aria-controls="panel-aws" aria-selected="true"
+          class="doctab group flex flex-col rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5 text-left transition-colors hover:border-[color:var(--color-accent)] aria-selected:border-[color:var(--color-grape)] aria-selected:bg-[color:var(--color-panel-ink)] aria-selected:shadow-[0_10px_30px_-16px_rgba(67,32,95,.45)]">
+          <span class="flex items-center gap-2.5">
+            <span aria-hidden="true" class="inline-flex h-8 w-8 items-center justify-center rounded-lg" style="background: color-mix(in srgb, var(--color-grape) 12%, transparent); color: var(--color-grape);"><svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19a4.5 4.5 0 0 0 .5-9 6 6 0 0 0-11.5-1.5A4 4 0 0 0 6.5 19z"/></svg></span>
+            <span class="text-[15px] font-semibold text-[color:var(--color-text)]">AWS Bedrock</span>
+          </span>
+          <span class="mt-3 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">Federate your IdP into AWS via AssumeRoleWithWebIdentity.</span>
+          <span class="mt-3 text-[12px] font-medium text-[color:var(--color-grape)]">OIDC provider + role trust policy</span>
+        </button>
+        <button type="button" role="tab" id="tab-vertex" aria-controls="panel-vertex" aria-selected="false" tabindex="-1"
+          class="doctab group flex flex-col rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5 text-left transition-colors hover:border-[color:var(--color-accent)] aria-selected:border-[color:var(--color-grape)] aria-selected:bg-[color:var(--color-panel-ink)] aria-selected:shadow-[0_10px_30px_-16px_rgba(67,32,95,.45)]">
+          <span class="flex items-center gap-2.5">
+            <span aria-hidden="true" class="inline-flex h-8 w-8 items-center justify-center rounded-lg" style="background: color-mix(in srgb, var(--color-grape) 12%, transparent); color: var(--color-grape);"><svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9V6z"/></svg></span>
+            <span class="text-[15px] font-semibold text-[color:var(--color-text)]">Google Vertex AI</span>
+          </span>
+          <span class="mt-3 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">Federate your IdP into GCP via Workforce Identity Federation.</span>
+          <span class="mt-3 text-[12px] font-medium text-[color:var(--color-grape)]">Workforce pool + provider</span>
+        </button>
+        <button type="button" role="tab" id="tab-google" aria-controls="panel-google" aria-selected="false" tabindex="-1"
+          class="doctab group flex flex-col rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5 text-left transition-colors hover:border-[color:var(--color-accent)] aria-selected:border-[color:var(--color-grape)] aria-selected:bg-[color:var(--color-panel-ink)] aria-selected:shadow-[0_10px_30px_-16px_rgba(67,32,95,.45)]">
+          <span class="flex items-center gap-2.5">
+            <span aria-hidden="true" class="inline-flex h-8 w-8 items-center justify-center rounded-lg" style="background: color-mix(in srgb, var(--color-grape) 12%, transparent); color: var(--color-grape);"><svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></span>
+            <span class="text-[15px] font-semibold text-[color:var(--color-text)]">Google → Vertex direct</span>
+          </span>
+          <span class="mt-3 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">Sign in with Google directly — no federation broker.</span>
+          <span class="mt-3 text-[12px] font-medium text-[color:var(--color-grape)]">googleOAuth · cloud-platform scope</span>
+        </button>
+      </div>
+
+      <!-- Panel: AWS -->
+      <div role="tabpanel" id="panel-aws" aria-labelledby="tab-aws" class="mt-10">
+    <h2 id="aws-bedrock-setup" class="scroll-mt-20 font-display text-xl font-semibold tracking-tight text-[color:var(--color-text)]">
       AWS Bedrock setup
     </h2>
     <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
@@ -356,8 +398,11 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
       Put the role&rsquo;s ARN in <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">aws.role_arn</code> and set <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">aws.auth_mode</code> to <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">oidc</code>. The requested STS session duration is <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">aws.session_duration_seconds</code> (default 3600, clamped to 900&ndash;43200). Bedrock model access is per-region, so make sure the chosen region has the model enabled. The role&rsquo;s session name carries the signed-in user&rsquo;s email for CloudTrail attribution.
     </p>
 
-    <!-- GCP setup -->
-    <h2 id="google-cloud-vertex-ai-setup" class="mt-12 scroll-mt-20 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+      </div><!-- /panel-aws -->
+
+      <!-- Panel: GCP Vertex -->
+      <div role="tabpanel" id="panel-vertex" aria-labelledby="tab-vertex" class="mt-10">
+    <h2 id="google-cloud-vertex-ai-setup" class="scroll-mt-20 font-display text-xl font-semibold tracking-tight text-[color:var(--color-text)]">
       Google Cloud Vertex AI setup
     </h2>
     <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
@@ -372,8 +417,11 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
       Workforce-federated calls must specify a billing/quota project: Parleq sends your configured <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">vertex.project</code> as the <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">x-goog-user-project</code> header on every Vertex request, so that project needs the Vertex AI API enabled and the federated principal needs <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">serviceusage.services.use</code> on it.
     </p>
 
-    <!-- Google account -> Vertex directly -->
-    <h2 class="mt-12 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+      </div><!-- /panel-vertex -->
+
+      <!-- Panel: Google account -> Vertex directly -->
+      <div role="tabpanel" id="panel-google" aria-labelledby="tab-google" class="mt-10">
+    <h2 class="font-display text-xl font-semibold tracking-tight text-[color:var(--color-text)]">
       Google account &rarr; Vertex AI directly
     </h2>
     <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
@@ -389,6 +437,9 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
     <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
       For org-owned Google identities this works the same way &mdash; with no &ldquo;unverified app&rdquo; warning and no refresh-token cap if the OAuth client lives in your Google Cloud organization. The personal-@gmail variant, with its consent-screen trade-offs and the granular-consent gotcha, is covered in the <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/diy-sso/'} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">DIY guide</a>.
     </p>
+
+      </div><!-- /panel-google -->
+    </div><!-- /data-doctabs cloud-setup -->
 
     <!-- MDM key reference pointer -->
     <h2 class="mt-12 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">

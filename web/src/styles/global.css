@@ -367,3 +367,18 @@ body {
     animation: scroll-cue 1.6s ease-in-out infinite;
   }
 }
+
+/* DocTabs panels. Give the selected tab's content a contained "card" treatment so it's clear
+   where the tabbed (per-option) content ends and the page's fixed content resumes below — the
+   issue is most visible on pages whose options have different lengths (e.g. diy-sso). A subtle
+   bordered, faint-grape region; the first child's top margin is reset so it sits flush. */
+[data-doctabs] > [role='tabpanel'] {
+  border: 1px solid var(--color-border);
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--color-grape) 2.5%, var(--color-surface));
+  padding: 1.5rem;
+}
+@media (min-width: 640px) {
+  [data-doctabs] > [role='tabpanel'] { padding: 1.75rem 2rem; }
+}
+[data-doctabs] > [role='tabpanel'] > :first-child { margin-top: 0; }

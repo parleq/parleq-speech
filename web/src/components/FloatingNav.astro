@@ -48,7 +48,9 @@ const items = [
       <div class="hidden items-center gap-6 text-sm font-medium md:flex" style="color: var(--color-grape-100);">
         {items.map((item) =>
           item.key === active ? (
-            <span class="font-semibold text-white underline decoration-[color:var(--color-accent)] decoration-2 underline-offset-[7px]">{item.label}</span>
+            // Active item is still a LINK (clickable to the section root, e.g. Docs from a docs
+            // subpage) — just styled as current with the amber underline.
+            <a href={item.href} aria-current="page" class="font-semibold text-white underline decoration-[color:var(--color-accent)] decoration-2 underline-offset-[7px]">{item.label}</a>
           ) : (
             <a href={item.href} class="transition-colors hover:text-white">{item.label}</a>
           )
