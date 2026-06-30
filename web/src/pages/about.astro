@@ -1,6 +1,6 @@
 ---
 import Layout from '../layouts/Layout.astro';
-import SiteHeader from '../components/SiteHeader.astro';
+import FloatingNav from '../components/FloatingNav.astro';
 
 const repoUrl = 'https://github.com/parleq/parleq-speech';
 const speekUrl = 'https://github.com/jstruzik/Speek';
@@ -8,7 +8,7 @@ const base = `${import.meta.env.BASE_URL}`.replace(/\/$/, '');
 ---
 
 <Layout title="About — Parleq">
-  <SiteHeader active="about" />
+  <FloatingNav active="about" />
 
   <!-- Light page hero: eyebrow + font-display h1 + one-line subhead.
        Warm-white bg, not a dark panel — inner pages stay calm and readable.

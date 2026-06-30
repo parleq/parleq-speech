@@ -1,6 +1,6 @@
 ---
 import Layout from '../layouts/Layout.astro';
-import SiteHeader from '../components/SiteHeader.astro';
+import FloatingNav from '../components/FloatingNav.astro';
 
 const repoUrl = 'https://github.com/parleq/parleq-speech';
 const base = `${import.meta.env.BASE_URL}`.replace(/\/$/, '');
@@ -10,16 +10,20 @@ const base = `${import.meta.env.BASE_URL}`.replace(/\/$/, '');
   title="Parleq for the enterprise — one sign-in for every employee"
   description="Back Parleq's cloud cleanup with one corporate OIDC sign-in instead of per-user API keys. Federate Okta, Microsoft Entra ID, or any OIDC IdP into AWS Bedrock or Google Vertex AI. Audio stays on-device; no Parleq servers in the data path."
 >
-  <SiteHeader active="enterprise" />
+  <FloatingNav active="enterprise" spacer={false} />
 
-  <!-- Hero. Leads DARK with the grape gradient that matches the homepage
-       enterprise band (from-[#23103a] to-[#140622]) — grape-family rather
-       than a slate gray. Text on grape dark: grape-200 for body, white for
-       the h1, amber for the eyebrow and CTA fill. The grape aesthetic
-       signals control, trust, and calm authority — right for an IT/security
-       audience. -->
-  <section class="bg-gradient-to-br from-[#23103a] to-[#140622] text-[color:var(--color-grape-200)]">
-    <div class="mx-auto max-w-3xl px-6 pt-20 pb-24 sm:pt-28 sm:pb-28">
+  <!-- Hero: framed dark-grape panel — the SAME treatment as the homepage hero, so the
+       FloatingNav pill floats over the grape (not over a whitespace gap). Top padding clears
+       the pill; the Trust section below overlaps this panel as a card-on-purple. -->
+  <section class="mx-auto max-w-[1700px] px-0 py-0 sm:px-5 sm:py-5">
+    <div
+      class="relative overflow-hidden rounded-none px-5 pb-32 pt-28 sm:rounded-[28px] sm:px-10 sm:pt-36"
+      style="background:
+               radial-gradient(58% 74% at 70% 42%, color-mix(in srgb, var(--color-grape-600) 45%, transparent), transparent 68%),
+               linear-gradient(180deg, #23103a 0%, #140622 100%);
+             box-shadow: 0 30px 80px -30px rgba(20,7,32,.7);"
+    >
+      <div class="mx-auto max-w-3xl text-[color:var(--color-grape-200)]">
       <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">
         Parleq for organizations
       </p>
@@ -48,11 +52,11 @@ const base = `${import.meta.env.BASE_URL}`.replace(/\/$/, '');
     </div>
   </section>
 
-  <!-- Trust model. The properties a security reviewer skims for, drawn
-       from the homepage band + the Enterprise SSO doc intro. Light base
-       after the dark hero; the dark→light edge is its own separator. -->
-  <section data-reveal class="bg-[color:var(--color-bg)]">
-    <div class="mx-auto max-w-3xl px-6 py-20 sm:py-24">
+  <!-- Trust model — a white card SUPERIMPOSED on the grape hero (homepage card-on-purple
+       transition): overlaps the panel, rounded top, shadow cast onto the grape. -->
+  <div class="mx-auto max-w-[1700px] px-0 sm:px-5">
+    <section data-reveal class="relative z-10 -mt-16 rounded-none bg-[color:var(--color-surface)] px-6 py-20 shadow-[0_18px_70px_-16px_rgba(8,3,18,.6)] sm:rounded-t-[28px] sm:px-10 sm:py-24">
+      <div class="mx-auto max-w-3xl">
       <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">
         Trust model
       </p>
@@ -88,8 +92,9 @@ const base = `${import.meta.env.BASE_URL}`.replace(/\/$/, '');
           <span><strong class="font-semibold text-[color:var(--color-text)]">No Parleq servers in the path.</strong> Tokens go to your IdP and your cloud's STS endpoints; transcript text goes only to the LLM endpoint you already configured. There is no Parleq cloud service to review.</span>
         </li>
       </ul>
-    </div>
-  </section>
+      </div>
+    </section>
+  </div>
 
   <!-- MDM deployment. From the homepage "MDM-deployable for IT admins"
        highlight + the managed-configuration story. Tinted band for the

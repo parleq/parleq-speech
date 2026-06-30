@@ -4,8 +4,7 @@ import OverlayMockup from '../components/OverlayMockup.astro';
 import TransformCard from '../components/TransformCard.astro';
 import ConcordFlow from '../components/ConcordFlow.astro';
 import GrapeCluster from '../components/GrapeCluster.astro';
-import Logo from '../components/Logo.astro';
-import StickyHeader from '../components/StickyHeader.astro';
+import FloatingNav from '../components/FloatingNav.astro';
 import { fetchLatestRelease } from '../lib/release';
 
 const release = await fetchLatestRelease();
@@ -120,104 +119,20 @@ const capabilities = [
 
 <Layout title="Parleq — Local-first AI dictation for macOS">
   <script type="application/ld+json" slot="head" set:html={JSON.stringify(softwareSchema)} />
-  <StickyHeader downloadUrl={downloadUrl} />
-  <!-- Hero: framed dark-grape panel with in-panel nav and ConcordFlow art (Beat 1).
-       Responsive frame: content grows with the window (cap 1700px), a small ~20px margin on
-       desktop, and FULL-BLEED on mobile (margin → 0, no rounding). -->
+  <FloatingNav downloadUrl={downloadUrl} active="home" spacer={false} />
+  <!-- Hero: framed dark-grape panel + ConcordFlow art (Beat 1). The nav is the shared
+       FloatingNav pill (fixed, floats over this panel); the panel's top padding clears it
+       and gives airy space below the pill. Responsive frame: content grows with the window
+       (cap 1700px), ~20px desktop margin, FULL-BLEED on mobile (margin → 0, no rounding). -->
   <section class="mx-auto max-w-[1700px] px-0 py-0 sm:px-5 sm:py-5">
     <div
-      class="relative overflow-hidden rounded-none px-5 pb-28 pt-5 sm:rounded-[28px] sm:px-10"
+      class="relative overflow-hidden rounded-none px-5 pb-28 pt-28 sm:rounded-[28px] sm:px-10 sm:pt-36"
       style="background:
                radial-gradient(58% 74% at 72% 52%, color-mix(in srgb, var(--color-grape-600) 55%, transparent), transparent 68%),
                linear-gradient(180deg, #1d0b33 0%, #140622 100%);
              box-shadow: 0 30px 80px -30px rgba(20,7,32,.7);"
     >
-      <!-- IN-PANEL HEADER: logo left, nav right (replaces SiteHeader for this page). -->
-      <header class="relative flex items-center justify-between gap-4 border-b pb-4" style="border-color: color-mix(in srgb, var(--color-grape-300) 16%, transparent);">
-        <Logo dark height="30" />
-
-        <!-- Mobile hamburger (hero panel) — white icon on dark background -->
-        <button
-          id="hero-menu-btn"
-          type="button"
-          aria-label="Open navigation menu"
-          aria-expanded="false"
-          aria-controls="hero-mobile-menu"
-          class="inline-flex h-9 w-9 items-center justify-center rounded-md text-white md:hidden"
-        >
-          <svg id="hero-hamburger-icon" aria-hidden="true" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="4" y1="6" x2="20" y2="6" />
-            <line x1="4" y1="12" x2="20" y2="12" />
-            <line x1="4" y1="18" x2="20" y2="18" />
-          </svg>
-          <svg id="hero-close-icon" aria-hidden="true" class="hidden h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="6" y1="6" x2="18" y2="18" />
-            <line x1="18" y1="6" x2="6" y2="18" />
-          </svg>
-        </button>
-
-        <nav class="hidden items-center gap-6 text-sm md:flex" style="color: var(--color-grape-100);">
-          <a href={`${base}/how-it-works/`} class="transition-colors hover:text-[color:var(--color-panel-ink)]">How it works</a>
-          <a href={`${base}/docs/`} class="transition-colors hover:text-[color:var(--color-panel-ink)]">Docs</a>
-          <a href={`${base}/enterprise/`} class="transition-colors hover:text-[color:var(--color-panel-ink)]">Enterprise</a>
-          <a href={`${base}/about/`} class="transition-colors hover:text-[color:var(--color-panel-ink)]">About</a>
-          <a href={repoUrl} class="transition-colors hover:text-[color:var(--color-panel-ink)]">GitHub ↗</a>
-          <a href={downloadUrl} class="inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-semibold text-white" style="background: var(--color-accent);">
-            <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v11M8 11l4 4 4-4M5 20h14"></path></svg>
-            Download for macOS
-          </a>
-        </nav>
-      </header>
-
-      <!-- Hero mobile nav dropdown (md:hidden, dark-panel themed) -->
-      <div
-        id="hero-mobile-menu"
-        hidden
-        class="md:hidden"
-        style="border-top: 1px solid color-mix(in srgb, var(--color-grape-300) 16%, transparent);"
-      >
-        <nav class="flex flex-col gap-1 py-4 text-sm font-medium" style="color: var(--color-grape-100);">
-          <a href={`${base}/how-it-works/`} class="py-2 transition-colors hover:text-white">How it works</a>
-          <a href={`${base}/docs/`} class="py-2 transition-colors hover:text-white">Docs</a>
-          <a href={`${base}/enterprise/`} class="py-2 transition-colors hover:text-white">Enterprise</a>
-          <a href={`${base}/about/`} class="py-2 transition-colors hover:text-white">About</a>
-          <a href={repoUrl} class="py-2 transition-colors hover:text-white">GitHub ↗</a>
-          <a
-            href={downloadUrl}
-            class="mt-3 inline-flex items-center justify-center gap-1.5 rounded-full px-4 py-2.5 text-sm font-semibold text-white"
-            style="background: var(--color-accent);"
-          >
-            Download for macOS
-          </a>
-        </nav>
-      </div>
-
-      <!-- Wire the hero in-panel mobile hamburger to its dropdown (aria + Escape + outside-click). -->
-      <script is:inline>
-        (() => {
-          const btn = document.getElementById('hero-menu-btn');
-          const menu = document.getElementById('hero-mobile-menu');
-          const burger = document.getElementById('hero-hamburger-icon');
-          const close = document.getElementById('hero-close-icon');
-          if (!btn || !menu) return;
-          const setOpen = (open) => {
-            menu.toggleAttribute('hidden', !open);
-            btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-            btn.setAttribute('aria-label', open ? 'Close navigation menu' : 'Open navigation menu');
-            if (burger) burger.classList.toggle('hidden', open);
-            if (close) close.classList.toggle('hidden', !open);
-          };
-          btn.addEventListener('click', () => setOpen(btn.getAttribute('aria-expanded') !== 'true'));
-          document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && btn.getAttribute('aria-expanded') === 'true') { setOpen(false); btn.focus(); }
-          });
-          document.addEventListener('click', (e) => {
-            if (btn.getAttribute('aria-expanded') === 'true' && !menu.contains(e.target) && !btn.contains(e.target)) setOpen(false);
-          });
-        })();
-      </script>
-
-      <div class="relative mt-10 grid items-center gap-10 lg:grid-cols-[40%_60%]">
+      <div class="relative grid items-center gap-10 lg:grid-cols-[40%_60%]">
         <!-- LEFT column: copy, CTAs, feature chips -->
         <div>
           <!-- Audio privacy pill (load-bearing required string). -->
@@ -310,9 +225,6 @@ const capabilities = [
         </div>
       </div>
     </div>
-    <!-- Reveal trigger for the sticky header: once this scrolls above the viewport
-         (i.e. the hero is gone), StickyHeader's observer slides the bar in. -->
-    <div id="hero-sentinel" aria-hidden="true" class="h-px w-full"></div>
   </section>
 
   <!-- On-device cleanup showcase. Lifts the four distinctive transforms out
