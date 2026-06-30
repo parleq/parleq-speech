@@ -68,7 +68,7 @@ The **Cleanup** cluster is built on Concord (by Keavi) — the on-device determi
 
 The metaphor is powerful precisely because we hold it back. These are non-negotiable and become review checkpoints:
 
-1. **No literal farm.** No cartoon gatekeepers, no leaves/tendrils/sun/rolling-hills illustration. The vineyard lives in **language + restrained visual containment** (a fence line, a framed boundary, the existing dark-grape ground) — never an illustrated scene.
+1. **No literal farm.** No cartoon gatekeepers, no leaves/tendrils/sun/rolling-hills illustration. The vineyard lives in **language + restrained visual containment** (a fence line, a framed boundary, the existing dark-grape ground) — never an illustrated scene. **Grapes are flat, circular UI buttons** (deep-grape fill, subtle radial highlight, soft rim light, a simple stroke icon, a short label, a clear selected/focus state) — **not** photoreal 3-D fruit, water droplets, vines, leaves, or tendrils. *(The B/C prototype renders with realistic grapes + leaves are explicitly rejected; borrow their composition, not their texture.)*
 2. **The metaphor is a lens, not a renaming.** Real feature labels stay literal: "Per-app cleanup," not "the targeting grape." Headlines may lean poetic; **UI controls, feature names, and nav stay plain.**
 3. **Curate, don't enumerate.** Show abundance and let people explore; never render every grape inline.
 4. **Two flagship *interactive* clusters** (Cleanup + Refine). "Built for teams" is the **third cluster on the vine conceptually** but is **non-interactive** on the homepage — a teaser band that links out, not an explorable bunch. (Three families in §2's table; two interactive — keep these consistent.)
@@ -96,6 +96,7 @@ A bold "trailer": short scroll, deep on click, one world holding it together. Se
    - This single section replaces today's separate on-device showcase **and** the 5-slide carousel **and** the 12-card grid — their content is redistributed into grapes (curated, not exhaustive), so depth becomes opt-in.
 
 3. **The vineyard — private by design.**
+   - **Candidate headline (ChatGPT round):** *"Your Mac is the vineyard."* + support *"Your voice stays inside; text only crosses the gate you choose."* Prototype **C** is the atmospheric reference for this section — borrow its subtle fence/boundary + light-lavender ground (differentiated from the dark hero), drop the literalness.
    - **This section owns the *fence*** (what crosses): the literal "Your voice never leaves your Mac," then — what you send out for cleanup is your cleaned-up text (and, only if you attach it, a reference snapshot you point at), through a gate you choose: **nothing crosses at all on Instant/on-device**, or a cloud you control.
    - **Do not** reduce this to "only cleaned-up text crosses" (see the §2.1 accuracy note — reference snapshots can also cross when attached).
    - **The fence visual appears here, once.** Restrained containment only (no farm scene). Links out to how-it-works / security review for depth.
@@ -127,30 +128,32 @@ Curated, not exhaustive. Enterprise-only capabilities leave the consumer cluster
 
 ---
 
-## 6. The grape-overlay demo mechanic
+## 6. The grape explorer (interaction)
+
+> **Updated 2026-06-30 after the ChatGPT visual-prototyping round (see §13).** The default desktop interaction is now a **split-stage explorer (persistent cluster + in-place demo panel)**, *not* a modal. This is both better UX (the bunch stays visible; exploration is continuous) and a major build de-risk: it's a **tabs/tabpanel** pattern we can model on the existing `DocTabs`, so **no focus-trapping dialog, no `inert`, no backdrop is needed on desktop.** Supersedes the modal-default + staging language recorded in §12.
 
 The captivating centerpiece. **Two layers, deliberately:**
 
-- **At a glance (no click):** every grape shows its essence inline — a short visible **before→after** (one line each) — so a bouncing visitor and screen-reader / mobile users grasp what each capability does *without interacting*. The wedge ("a bunch beats one grape") must be **legible in text**, not carried by the visual bunch alone (it flattens to a list on mobile / for SR).
-- **On click (extra depth):** the grape opens an overlay with a richer, optionally stepped demo. The overlay is *enhancement* — never the only way to learn what a capability is.
+- **At a glance (no interaction):** the cluster's grape **labels + icons** read as a capability map, and **one grape is selected by default**, so its demo panel already shows a real before→after on load. A bouncing or screen-reader / mobile visitor grasps what the section offers without clicking. The wedge ("a bunch beats one grape") is **legible in text** (the section intro), not carried by the bunch shape alone (it flattens to a list on mobile / for SR).
+- **On select (extra depth):** choosing a grape swaps the demo panel **in place** to that capability's demo (optionally stepped). Selection is *enhancement* — never the only way to learn what a capability is.
 
 **Division of labor with the hero:** the hero is the single **end-to-end** "speak → clean" wow; the grapes are **atomic, single-mechanism** reveals. Avoid building eight mini-heroes.
 
-### 6.1 UX
-- **Trigger:** each grape is a real, focusable button (`<button>`), labeled with the capability name (accessible name is the plain feature label, not metaphor copy).
-- **Open:** a simple **fade/scale** into a centered dialog (`role="dialog"`, `aria-modal="true"`, labelled by the capability title), rest of page `inert`/`aria-hidden`. **Default to fade/scale, not a shared-element FLIP "animate-from-the-grape"** — that's the costliest, most-often-abandoned part; do it only if someone owns it. Respects `prefers-reduced-motion` (instant show).
-- **Content:** reuse `OverlayMockup` / `TransformCard` / the on-device before→after strip (see §8). **Default every grape to a single before→after (1 step);** reserve multi-step (≤4) only for genuinely sequential capabilities — "talk it into shape" (the refine loop) and per-app (mode-by-app). Don't over-build 4-step demos for atomic corrections.
-- **Controls:** Back / Next within a multi-step demo; Close; and **"next grape"** to roll on without closing. **Traversal is within-cluster only;** the "next grape" control is hidden/disabled at the cluster's last grape (no cross-cluster context-jumping).
-- **Close:** Esc, backdrop click, and an explicit close button. Focus is trapped while open (rest of page `inert`) and **restored to the grape matching the last-viewed demo** on close (not the journey's first grape).
+### 6.1 Desktop — split-stage explorer (default)
+- **Layout:** left = the section intro + the two clusters (Cleanup, Refine) as grape **buttons**; right = a single **demo panel** styled as Parleq's dark floating overlay (reuse `OverlayMockup`). One grape is selected on load.
+- **Pattern = WAI-ARIA tabs.** The grapes are a `tablist` of `tab` buttons; the demo panel is the `tabpanel`. **Model it on `DocTabs`** (hash-aware deep-link, no-JS fallback). No modal, no focus trap, no `inert`, no backdrop on desktop — far less new plumbing than the earlier modal plan.
+- **Selected grape:** slightly larger, brighter grape rim, subtle amber edge, `aria-selected` + focus-visible ring; decorative amber→violet **flow lines** (reuse `ConcordFlow` language, `aria-hidden`) run from the selected grape into the panel.
+- **Demo panel:** before→after (or a short step sequence); a small **per-grape status chip** (accuracy-critical — see §6.3); optional Back / Next for multi-step; a **"Jump to another grape"** chip row beneath (= quick tab switches) + an "Explore all / how it works →" link out.
+- **Content:** reuse `OverlayMockup` / `TransformCard` / the on-device before→after strip (see §8). **Default every grape to a single before→after (1 step);** reserve multi-step (≤4) only for genuinely sequential capabilities — "talk it into shape" and per-app. Don't over-build 4-step demos for atomic corrections.
 
-### 6.2 Accessibility & resilience (locked-system discipline)
-- **Build in two stages.** **v1 (baseline, ship-ready):** every grape is a `<details>`/disclosure whose at-a-glance before→after is always visible and whose extra depth expands **inline** — fully usable with no JS and no modal. **v2 (enhancement):** JS upgrades the disclosure into the fade/scale dialog. v1 alone is a shippable homepage; the modal must **not** be on the critical path. (Mirrors the DocTabs no-JS approach. Note: no existing component is a focus-trapping dialog, so the dialog plumbing is genuinely new — budget it.)
-- **Reduced motion:** no animated open/typing; content appears instantly; any auto-advance is disabled.
-- **Keyboard:** Tab order sane; arrow/Enter/Esc behave conventionally; focus trap + restore.
-- **Screen readers:** dialog labelled by the capability title; a polite live region announces step changes.
-- **Mobile:** the cluster is **primary content** here and must work below `md` (unlike the hero flow art, which is hidden there). Below `md`, grapes **expand inline via the disclosure** rather than opening a modal (simplest, most robust). The grape layout may simplify to a stacked list — so the wedge must live in **text**, not the bunch composition (see the at-a-glance note above).
+### 6.2 Mobile, no-JS, and accessibility
+- **Mobile (below `md`):** do **not** force the bunch as the control. Small decorative cluster at top; **tabs for Cleanup / Refine**; a **vertical list of grape buttons**; the selected grape **expands inline** into its demo card; flow lines hidden/simplified.
+- **No-JS / baseline (ship-ready v1):** the tablist+panel degrades to the `DocTabs` no-JS model (all panels render; script hides inactive). The at-a-glance before→after stays visible without JS. Everything beyond this is enhancement.
+- **Grapes are real `<button>`s:** keyboard-reachable, visible focus ring, accessible name = the **plain feature label** (never metaphor copy); selected state via tab semantics. Decorative flow lines / art `aria-hidden`. Respect `prefers-reduced-motion` (no path animation; instant panel swap). Transitions ~150–250 ms select / ~300–500 ms panel.
+- **Optional modal:** only if a specific demo needs a larger surface (or on mobile). If used, it behaves like Parleq's overlay with Back/Next/Close and returns focus to the selected grape. **Not the default, not on the critical path.**
 
 ### 6.3 What a "demo" is (per grape, examples — finalize in the plan)
+- **Per-grape status chip (ACCURACY-CRITICAL).** On-device cleanup grapes (punctuation, numbers, your words, sound-alikes) show an **"On-device"** chip and may state processing stays on the Mac *for that capability*. Refine grapes that use the configured provider (talk-it-into-shape, presets, reference windows, per-app Polished) must **not** show "On-device" — chip them "Your cleanup" / "Your provider" or omit the chip. **Never put a section-wide "100% on-device / No cloud / Nothing leaves your Mac" band under the explorer** — the prototype images (B, C) do exactly this, and it's the forbidden blanket claim, because the explorer spans both on-device and cloud-capable grapes. Privacy is scoped **per grape**, via the chip — not asserted over the whole section.
 - *Punctuation & casing:* `"did the build pass and is it ready to ship"` → `Did the build pass and is it ready to ship?`
 - *Numbers & percents:* `eight point nine million` → `8.9 million`; `forty five percent` → `45%`
 - *Your words:* `parlay` → `Parleq` (dictionary biasing)
@@ -218,7 +221,8 @@ When the feature *is* runtime-complete and merged, copy must match it exactly.
 
 - `npm run build` clean.
 - `node scripts/verify-page.mjs` green (required/forbidden strings, a11y assertions).
-- Manual: keyboard-only walkthrough of the cluster (open/step/close/next-grape, focus trap + restore, background `inert`); reduced-motion check; **no-JS check (grape demos still reachable inline, at-a-glance before→after visible)**; mobile layout (below `md`, grapes expand inline — no modal).
+- Manual: keyboard-only walkthrough of the **split-stage explorer** (tab between grapes, panel swaps in place, Back/Next, Jump-to chips); focus-visible ring on grapes; reduced-motion (instant panel swap, no flow-line animation); **no-JS check (all panels render, at-a-glance before→after visible)**; mobile (tabs + inline expand).
+- **Privacy-chip accuracy:** every demo panel's status chip matches the grape (on-device grapes = "On-device"; refine/provider grapes ≠ "On-device"); **no section-wide blanket "on-device / nothing leaves your Mac" claim** anywhere under the explorer.
 - **"Shorter" check:** default-scroll section count ≤ 6; the vine section's always-visible height is less than today's combined on-device + carousel + grid. Record the before/after.
 - **SEO check:** the relocated how-it-works-style content + its internal links remain in the **rendered** HTML at reasonable prominence (progressive disclosure, not JS-injection); required strings + the Concord attribution sit in static DOM.
 - RoboRev auto-review on each commit; work through findings before the approval gate.
@@ -270,6 +274,26 @@ The spec was reviewed by two independent agents (one adversarial, one constructi
 1. **"Never a recording" appears in today's *live* copy** (homepage + copy-deck), and is an overclaim given the opt-in enrollment-audio store. Recommend a small wording fix on the live site too, not just here.
 2. **White-on-amber CTA contrast (3.19:1, below AA)** is currently a non-goal "tracked separately." A flagship relaunch is the natural place to fix it; recommend folding the `--color-accent-hover` swap into this round. Your brand call.
 3. **Wine connotation** of vineyard/grape/cluster for a workplace tool — low-cost to pressure-test with a couple of cold readers; worth a fallback framing if "is this a wine app?" shows up.
+
+---
+
+## 13. ChatGPT visual-prototyping round (2026-06-30)
+
+A prototype pack (3 mockups + design notes) came back from a ChatGPT visual-prototyping pass. The **notes** are committed at `vineyard-prototype-pack/notes/` (alongside this spec); the three **PNG mockups** are kept locally but **gitignored** (large AI renders — `vineyard-prototype-pack/prototypes/`, also in `~/Downloads/parleq-vineyard-prototype-pack/`). It converges strongly with §12 and contributed one material improvement plus one accuracy catch.
+
+**Folded in:**
+- **Split-stage explorer replaces the modal default** (§6) — persistent cluster on the left, in-place demo panel on the right, selected grape stays visible and connected by flow lines, "jump to another grape" chips. Modeled on `DocTabs` (WAI-ARIA tabs), so **no focus-trapping dialog on desktop** — this resolves the §12 / adversarial "modal is the highest build risk" finding. Modal is now optional (mobile / oversized demos only).
+- **Mobile pattern** (§6.2): decorative bunch + Cleanup/Refine tabs + vertical grape buttons + inline expand.
+- **Per-grape status chip is the privacy mechanism** (§6.3, §10): on-device grapes show "On-device"; refine/provider grapes do not. **No section-wide blanket "100% on-device / nothing leaves your Mac" band** — the prototype images (B, C) commit exactly this forbidden claim; do not copy it.
+- **Grape visual style hardened** (guardrail #1): flat circular UI buttons, not photoreal 3-D fruit/leaves/tendrils (prototypes B/C over-render — borrow composition, not texture).
+- **Privacy-section direction** (§4, section 3): candidate headline "Your Mac is the vineyard."; Prototype C as the atmospheric reference.
+- Confirmed alignment on: hero stays product-first (metaphor begins below it), Concord attribution-only, voiceprints = sound-alike disambiguation, "Your voice never leaves your Mac" prominent.
+
+**Synthesis the pack recommends:** Prototype **B** structure + Prototype **A** restraint + Prototype **C** boundary cue. Treat the images as composition/mood references only — **do not reproduce generated text or icons literally** (several contain the forbidden privacy claims and invented feature labels).
+
+**Two decisions flagged to the maintainer (not changed unilaterally):**
+1. **H1 wording — "Speak messy. Paste clean." vs. the locked "Speak freely. Paste clean."** ChatGPT argues "messy" is more distinctive/conversion-oriented (communicates "don't compose in your head first"); "freely" is more elegant and is the current locked copy. The hero is "already settled," so this is a deliberate change if made — maintainer's call.
+2. **Explorer roster labels** — the prototypes invent Refine grapes (Concise/Structure/Format/Tone/Shorten/Simplify) that are really *preset styles*, not capabilities. Keep the §5 locked roster (AI you bring · talk it into shape · presets · reference windows); presets can be *shown* via a few example chips inside that grape's demo, not as separate grapes. Confirm.
 
 ---
 
