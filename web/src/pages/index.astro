@@ -757,7 +757,7 @@ const capabilities = [
   <section
     id="enterprise"
     data-reveal
-    class="scroll-mt-20 bg-gradient-to-br from-[#272d35] to-[#15181d] text-[#cbd5e1]"
+    class="scroll-mt-20 bg-gradient-to-br from-[#23103a] to-[#140622] text-[color:var(--color-grape-200)]"
   >
     <div class="mx-auto max-w-3xl px-6 py-20 sm:py-24">
       <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">
@@ -766,10 +766,10 @@ const capabilities = [
       <h2 class="mt-4 font-display text-3xl leading-[1.1] font-medium tracking-tight text-white sm:text-4xl">
         Built for the enterprise.
       </h2>
-      <p class="mt-6 text-lg leading-relaxed text-[#cbd5e1]">
+      <p class="mt-6 text-lg leading-relaxed text-[color:var(--color-grape-200)]">
         One corporate sign-in backs cloud cleanup for every employee — not just the engineers with a CLI configured. The user authenticates once with your identity provider (Okta, Microsoft Entra ID, or any OIDC IdP); Parleq federates that into AWS Bedrock or Google Cloud Vertex AI and mints short-lived per-cloud credentials at call time. No per-user API keys to distribute or rotate, and no long-lived cloud secret on the device.
       </p>
-      <ul class="mt-8 space-y-4 text-[15px] leading-relaxed text-[#cbd5e1]">
+      <ul class="mt-8 space-y-4 text-[15px] leading-relaxed text-[color:var(--color-grape-200)]">
         <li class="flex gap-3">
           <span aria-hidden="true" class="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[color:var(--color-accent)]"></span>
           <span><strong class="font-semibold text-white">One sign-in for the whole company.</strong> Sales, support, and ops sign in with the same account they already have — federated identity, not a developer-only path.</span>
@@ -835,6 +835,25 @@ const capabilities = [
       <p class="mt-10 text-sm text-[color:var(--color-text-subtle)]">
         First launch downloads the speech model (~150 MB). The menu-bar icon switches from a download glyph to a microphone when ready — typically 30–60 seconds on first run, under 5 seconds on subsequent launches.
       </p>
+
+      <!-- Final CTA: a prominent close to the page (the in-step link stays for the walkthrough). -->
+      <div class="mt-12 flex flex-col items-start gap-3 sm:flex-row sm:items-center">
+        <a
+          href={downloadUrl}
+          data-goatcounter-click="download-get-parleq"
+          class="inline-flex items-center gap-2 rounded-full bg-[color:var(--color-accent)] px-7 py-3 text-base font-semibold text-white shadow-sm transition-colors hover:bg-[color:var(--color-accent-hover)]"
+        >
+          Download for macOS{release.version && ` ${release.version}`}
+          <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v11M8 11l4 4 4-4M5 20h14"></path></svg>
+        </a>
+        <a href={repoUrl} class="inline-flex items-center gap-2 rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-7 py-3 text-base font-semibold text-[color:var(--color-text)] transition-colors hover:border-[color:var(--color-text-muted)]">
+          View source
+        </a>
+      </div>
+      <p class="mt-4 text-sm text-[color:var(--color-text-subtle)]">Apache-2.0 · macOS 14+ · Apple Silicon required · free and open source</p>
+
+      <!-- Reserved social-proof slot (post-Posit). Intentionally empty for now; rendered
+           when there's something true to show — see promotion-timing gate. -->
     </div>
   </section>
 
