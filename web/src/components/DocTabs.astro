@@ -47,6 +47,22 @@
       });
       const initial = Math.max(0, tabs.findIndex((t) => t.getAttribute('aria-selected') === 'true'));
       select(initial);
+
+      // Hash-awareness: if a link targets an element inside a (now-hidden) panel — e.g. an
+      // in-page anchor or arriving with #foo in the URL — activate that panel's tab and scroll
+      // to it, so anchored deep-links keep working with tabs.
+      function activateForHash() {
+        const id = decodeURIComponent((location.hash || '').slice(1));
+        if (!id) return;
+        const el = document.getElementById(id);
+        if (!el) return;
+        const panel = el.closest('[role="tabpanel"]');
+        if (!panel) return;
+        const idx = panels.indexOf(panel);
+        if (idx >= 0) { select(idx); el.scrollIntoView(); }
+      }
+      activateForHash();
+      window.addEventListener('hashchange', activateForHash);
     });
   })();
 </script>
