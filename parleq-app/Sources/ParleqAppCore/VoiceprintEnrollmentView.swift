@@ -180,7 +180,8 @@ public struct VoiceprintEnrollmentView: View {
                 // Report only the alternates actually KEPT: partitionEnrolledMishears drops
                 // degenerate <3-char fragments ("e"/"et") that over-match, so the raw harvest and
                 // the stored result differ. Show what's stored, not what was heard.
-                if case let kept = SettingsModel.partitionEnrolledMishears(o.harvestedAliases).aliases,
+                if case let p = SettingsModel.partitionEnrolledMishears(o.harvestedAliases),
+                   case let kept = p.aliases + p.spokenForms,
                    !kept.isEmpty {
                     Text("Learned alternates: \(kept.joined(separator: ", "))")
                         .foregroundColor(.secondary).font(.callout)
