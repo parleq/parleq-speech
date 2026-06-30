@@ -84,7 +84,9 @@ const providers = [
       <div class="mx-auto max-w-3xl">
         <!-- Light-purple "utility page" hero (docs + FAQ family) — distinct from the deep-grape
              marquee heroes (home/enterprise). Dark text + amber eyebrow, like other light sections. -->
-        <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">Documentation</p>
+        <!-- Grape eyebrow (not amber): on the light-purple hero, amber fails AA (~2.1:1); grape
+             passes (6.6:1) and is more cohesive with the purple-family utility hero. -->
+        <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-grape)]">Documentation</p>
         <h1 class="mt-3 font-display text-4xl leading-[1.1] font-medium tracking-tight sm:text-5xl">
           Set up a cleanup provider.
         </h1>
