@@ -4,6 +4,16 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.30.1] - Unreleased
+
+Fixes for spelled-out acronym correction and voice enrollment.
+
+### Fixed
+
+- Spelled-out digit acronyms — e.g. dictating "E2E", which the recognizer often hears as "E to E" — are now corrected to the acronym on the on-device ("Lightweight") cleanup tier, instead of being mangled (e.g. "E2E to E") or corrected inconsistently. Applies to terms you've enrolled a voiceprint for.
+- Voice enrollment no longer learns noisy one- or two-character alternate spellings (e.g. "e", "et") that could trigger spurious corrections, and the post-enrollment summary now lists exactly the alternates that were saved.
+- Fixed a crash that could occur when a dictation was started and then immediately cancelled (an empty capture).
+
 ## [0.30.0] - Unreleased
 
 Voiceprints that survive app updates, broader phonetic correction, and cleaner numbers, percentages, and capitalization.

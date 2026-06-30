@@ -1,28 +1,19 @@
-Parleq 0.30.0
+Parleq 0.30.1
 
-Voiceprints that survive app updates, broader phonetic correction, and
-cleaner numbers, percentages, and capitalization.
+Fixes for spelled-out acronym correction and voice enrollment.
 
-### Added
+### Fixed
 
-- Your voiceprints now survive speech-model updates. Updating Parleq's
-  on-device speech model used to discard the voiceprints you'd enrolled,
-  forcing you to re-record them. Parleq can now keep your short enrollment
-  clips encrypted on your Mac and automatically re-derive each voiceprint
-  after a model update — so your enrolled terms keep working without
-  re-enrolling. It's opt-in with a clear consent step, stays entirely on
-  your Mac, and can be turned off — by you, or fleet-wide via an admin/MDM
-  setting that also gates voice enrollment itself (existing voiceprints
-  remain viewable and deletable when enrollment is disabled).
+- Spelled-out digit acronyms now correct reliably on-device. Dictating
+  a term like "E2E" — which the recognizer often hears as "E to E" — is
+  now corrected to the acronym on the on-device ("Lightweight") cleanup
+  tier, instead of being mangled (e.g. "E2E to E") or corrected only some
+  of the time. Applies to terms you've enrolled a voiceprint for.
 
-- Broader phonetic correction for enrolled terms. On-device cleanup now
-  recovers a dictionary term from a wider range of mishearings — including
-  multi-word run-ons — while the acoustic voiceprint still vetoes an
-  over-correction when what you actually said doesn't match the term.
+- Cleaner voice enrollment. Enrollment no longer learns noisy one- or
+  two-character alternate spellings (like "e" or "et") that could trigger
+  spurious corrections, and the summary shown after enrolling now lists
+  exactly the alternates that were saved.
 
-### Changed
-
-- Cleaner numbers, percentages, and capitalization. Large spoken numbers
-  like "eight point nine million" now render as "8.9 million" (previously a
-  run of zeros), spoken percentages like "forty five percent" become "45%",
-  and a number that begins a sentence keeps its capital letter.
+- Fixed a crash that could happen when a dictation was started and then
+  immediately cancelled.
