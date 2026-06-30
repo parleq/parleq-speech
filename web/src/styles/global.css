@@ -65,6 +65,12 @@
   --flow-voice: var(--color-accent);      /* amber spark = voice energy */
   --flow-clean: var(--color-grape-300);   /* lavender = cleanup/intelligence */
 
+  /* Light-purple "utility page" hero (docs + FAQ family) — a shade darker than panel-ink so it
+     reads as a hero, but clearly lighter than the deep-grape marquee heroes (home/enterprise).
+     Used as a top→bottom gradient. Dark text + amber eyebrow sit on it (AA-verified). */
+  --color-hero-light-top: #ece4f7;
+  --color-hero-light-bottom: #ddccf0;
+
   /* Very faint slate wash for the homepage section rhythm — sits a hair
      below the warm-white base so alternating sections read as distinct
      bands without a hard line. Derived from the slate border palette. */
