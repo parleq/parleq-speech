@@ -35,21 +35,22 @@ const items = [
 
 <header
   id="site-header"
-  class="sticky top-0 z-50 border-b border-transparent bg-[color:var(--color-bg)]/80 backdrop-blur-md transition-colors"
+  class="sticky top-0 z-50 border-b border-white/5 backdrop-blur-md transition-colors"
+  style="background: #1b0c30e6;"
 >
   <div class="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
     <a href={base + '/'} class="inline-flex items-center">
-      <Logo height="32" />
+      <Logo dark height="32" />
     </a>
-    <nav class="flex items-center gap-6 text-sm font-medium text-[color:var(--color-text-muted)]">
+    <nav class="flex items-center gap-6 text-sm font-medium text-[color:var(--color-grape-100)]">
       {items.map((item) =>
         item.key === active ? (
-          <span class="text-[color:var(--color-text)]">{item.label}</span>
+          <span class="text-white">{item.label}</span>
         ) : (
-          <a href={item.href} class="transition-colors hover:text-[color:var(--color-text)]">{item.label}</a>
+          <a href={item.href} class="transition-colors hover:text-white">{item.label}</a>
         )
       )}
-      <a href={repoUrl} class="transition-colors hover:text-[color:var(--color-text)]">GitHub →</a>
+      <a href={repoUrl} class="transition-colors hover:text-white">GitHub →</a>
     </nav>
   </div>
 </header>
@@ -64,8 +65,8 @@ const items = [
     if (!header) return;
     const sync = () => {
       const scrolled = window.scrollY > 8;
-      header.classList.toggle('border-[color:var(--color-border)]', scrolled);
-      header.classList.toggle('border-transparent', !scrolled);
+      header.classList.toggle('border-white/20', scrolled);
+      header.classList.toggle('border-white/5', !scrolled);
     };
     sync();
     window.addEventListener('scroll', sync, { passive: true });
