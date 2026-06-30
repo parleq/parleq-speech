@@ -50,7 +50,7 @@ const items = [
           item.key === active ? (
             // Active item is still a LINK (clickable to the section root, e.g. Docs from a docs
             // subpage) — just styled as current with the amber underline.
-            <a href={item.href} aria-current="page" class="font-semibold text-white underline decoration-[color:var(--color-accent)] decoration-2 underline-offset-[7px]">{item.label}</a>
+            <a href={item.href} aria-current="true" class="font-semibold text-white underline decoration-[color:var(--color-accent)] decoration-2 underline-offset-[7px]">{item.label}</a>
           ) : (
             <a href={item.href} class="transition-colors hover:text-white">{item.label}</a>
           )
