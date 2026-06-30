@@ -48,7 +48,7 @@ const items = [
       <div class="hidden items-center gap-6 text-sm font-medium md:flex" style="color: var(--color-grape-100);">
         {items.map((item) =>
           item.key === active ? (
-            <span class="text-white">{item.label}</span>
+            <span class="font-semibold text-white underline decoration-[color:var(--color-accent)] decoration-2 underline-offset-[7px]">{item.label}</span>
           ) : (
             <a href={item.href} class="transition-colors hover:text-white">{item.label}</a>
           )
