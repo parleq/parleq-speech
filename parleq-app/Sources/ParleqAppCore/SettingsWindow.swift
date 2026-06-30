@@ -1210,6 +1210,12 @@ final class SettingsModel: ObservableObject {
                 guard !seenS.contains(key) else { continue }
                 seenS.insert(key); spoken.append(t)
             } else {
+                // Drop degenerate short fragments (e.g. "e", "et" harvested for "E2E"): a 1–2 char
+                // alias over-matches via DoubleMetaphone's bare-phoneme collapse and carries no
+                // reliable signal. Require ≥3 alphanumeric core chars. (Multi-token mishears route
+                // to spokenForms above and are unaffected.)
+                let coreLen = t.unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) }.count
+                guard coreLen >= 3 else { continue }
                 guard !seenA.contains(key) else { continue }
                 seenA.insert(key); aliases.append(t)
             }

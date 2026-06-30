@@ -793,7 +793,9 @@ public final class VoiceprintCoordinator: ObservableObject {
         // Adjacent 2-word windows — enables merged-span queries (e.g. "Ki V" → "Keavi").
         // Stored separately so the text+occurrence fallback can exclude them (their
         // concatenated normalizedText, e.g. "kiv", would produce spurious .contains matches).
-        for i in 0..<(wordGroups.count - 1) {
+        // `max(0, …)`: an aborted/empty dictation yields 0 word groups, making `count - 1` negative
+        // and `0..<(-1)` a fatal "lowerBound <= upperBound" trap. Clamp to an empty range instead.
+        for i in 0..<max(0, wordGroups.count - 1) {
             let first = wordGroups[i], second = wordGroups[i + 1]
             guard let emb = features.pooledEmbedding(
                 startSeconds: first.startSeconds, endSeconds: second.endSeconds) else { continue }
@@ -804,7 +806,7 @@ public final class VoiceprintCoordinator: ObservableObject {
         }
 
         // Adjacent 3-word windows.
-        for i in 0..<(wordGroups.count - 2) {
+        for i in 0..<max(0, wordGroups.count - 2) {   // max(0,…): same empty-dictation guard as above
             let first = wordGroups[i], last = wordGroups[i + 2]
             guard let emb = features.pooledEmbedding(
                 startSeconds: first.startSeconds, endSeconds: last.endSeconds) else { continue }
