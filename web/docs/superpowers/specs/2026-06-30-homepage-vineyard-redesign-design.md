@@ -45,11 +45,14 @@ A single nested metaphor gives the page its spine, its visual language, and its 
 
 We are forbidden from saying "nothing leaves your Mac" because cleanup *can* cross to a cloud the user brings. The vineyard **encodes the real model as imagery** instead of fighting it:
 
-- **The vineyard is your Mac.** *Your voice never leaves the vineyard.* (Audio is always local — fully true, and the required string.)
-- The only thing that ever crosses the fence is **cleaned-up text**, and only through a **gate you chose**:
-  - pick **on-device cleanup** → *no gate is crossed at all*;
-  - pick **a cloud you bring** → *a gate you own and already audited*.
+- **The vineyard is your Mac.** *Your voice never leaves the vineyard.* (Audio is always local — fully true, and the required string. **Audio never approaches the gate.**)
+- What crosses the fence is only what you send out **for cleanup**, and only through a **gate you chose**:
+  - your **cleaned-up text** — and, *only if you attach it,* a **reference snapshot** you point at (a window, file, or clipboard; PNG/data held in memory, never written to disk);
+  - pick **on-device (Instant) cleanup** → *no gate is crossed at all*;
+  - pick **a cloud you bring** → *it crosses to a gate you own and already audited*, and reference snapshots go only to the LLM endpoint you configured.
 - **The gatekeepers are the enterprise story.** Federated SSO is literally who-gets-checked-at-the-gate. So the vineyard **unifies privacy and enterprise** under one idea: *what crosses the fence, and who controls the gate.*
+
+> **Accuracy note (RoboRev 7261):** do **not** write "the only thing that crosses the fence is cleaned-up text." Reference Windows can also send an attached window/file/clipboard snapshot to the configured LLM. The accurate claim is: *audio never crosses; cleaned-up text crosses for cleanup/refine (nothing crosses on Instant/on-device); reference snapshots cross only when you attach them, only to the endpoint you configured.*
 
 ### 2.2 The positioning wedge (no competitor named)
 
@@ -91,7 +94,8 @@ A bold "trailer": short scroll, deep on click, one world holding it together. Se
    - This single section replaces today's separate on-device showcase **and** the 5-slide carousel **and** the 12-card grid — their content is redistributed into grapes (curated, not exhaustive), so depth becomes opt-in.
 
 3. **The vineyard — private by design.**
-   - One confident moment: the fence + the gates. *Your voice never leaves the vineyard. The only thing that crosses the fence is cleaned-up text — through a gate you choose: nothing leaves at all on-device, or a cloud you already own and audited.*
+   - One confident moment: the fence + the gates. *Your voice never leaves the vineyard.* What crosses is only what you send out for cleanup — your cleaned-up text (and, only if you attach it, a reference snapshot you point at) — through a gate you choose: **nothing crosses at all on Instant/on-device**, or a cloud you already own and audited.
+   - **Do not** reduce this to "only cleaned-up text crosses" (see the §2.1 accuracy note — reference snapshots can also cross when attached).
    - Restrained visual containment only (no farm scene). Links out to how-it-works / security review for depth.
 
 4. **The gate for teams — enterprise.**
@@ -196,6 +200,7 @@ When the feature *is* runtime-complete and merged, copy must match it exactly.
 - **Concord** = attribution only, never a wordmark/product/logo.
 - **voiceprints** = lowercase; they **disambiguate sound-alike words**; they do **not** learn speaking style.
 - **Routing/destination vision stays private.** Per-app content = "Parleq applies the cleanup you set per app," never destination routing.
+- **"What crosses the fence" must stay accurate (RoboRev 7261).** Audio never crosses; cleaned-up text crosses for cloud cleanup/refine (nothing crosses on Instant/on-device); **reference snapshots (window/file/clipboard) cross only when the user attaches them**, only to the configured LLM endpoint. Never write "only cleaned-up text crosses."
 - **Entity = Keavi LLC.**
 - Run `node scripts/verify-page.mjs` (accuracy + a11y) after every copy change; contrast via `node scripts/contrast.mjs`.
 
