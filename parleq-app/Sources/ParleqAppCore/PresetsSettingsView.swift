@@ -6,6 +6,7 @@
 // an app default folds it into that app's cleanup (see the spec).
 
 import SwiftUI
+import UniformTypeIdentifiers
 
 @MainActor
 struct PresetsSettingsView: View {
@@ -255,12 +256,7 @@ struct PresetsSettingsView: View {
             } else {
                 ForEach(candidates, id: \.bundleID) { app in
                     Button {
-                        // Materialize the app's current resolved mode as an
-                        // explicit entry so the row persists immediately (and
-                        // shows the smart default as its starting point).
-                        model.appBehaviors[app.bundleID] =
-                            AppBehavior(mode: effectiveMode(for: app.bundleID))
-                        model.save()
+                        materializeApp(app.bundleID)
                     } label: {
                         if let icon = app.icon {
                             Label {
@@ -275,9 +271,52 @@ struct PresetsSettingsView: View {
                     }
                 }
             }
+            // The list above is RUNNING apps only. "Choose app…" browses every
+            // installed app (an app that's closed won't appear above until it's
+            // launched).
+            Divider()
+            Button {
+                chooseInstalledApp()
+            } label: {
+                Label("Choose app…", systemImage: "folder")
+            }
         } label: {
             Label("Add app", systemImage: "plus")
         }
+    }
+
+    /// Materialize an app's current resolved mode as an explicit entry so the
+    /// row persists immediately (showing its smart default as the starting
+    /// point). No-op if the app is already configured, so re-adding never
+    /// clobbers an existing choice.
+    private func materializeApp(_ bundleID: String) {
+        guard model.appBehaviors[bundleID] == nil,
+              model.presetAppDefaults[bundleID] == nil else { return }
+        model.appBehaviors[bundleID] = AppBehavior(mode: effectiveMode(for: bundleID))
+        model.save()
+    }
+
+    /// Browse for ANY installed app via NSOpenPanel (the running-apps menu only
+    /// lists apps open right now). Reads the picked .app's bundle identifier and
+    /// materializes it like a running-app pick.
+    private func chooseInstalledApp() {
+        // Parleq is .accessory; activate so the panel takes key-window focus
+        // (same reason the reference-file picker does — see Paster/OverlayWindow).
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.treatsFilePackagesAsDirectories = false
+        panel.allowedContentTypes = [.application]
+        panel.directoryURL = URL(fileURLWithPath: "/Applications")
+        panel.prompt = "Choose"
+        panel.message = "Choose an app to set its cleanup behavior."
+        guard panel.runModal() == .OK,
+              let url = panel.url,
+              let bundleID = Bundle(url: url)?.bundleIdentifier,
+              !bundleID.isEmpty else { return }
+        materializeApp(bundleID)
     }
 
     // MARK: - Helpers
