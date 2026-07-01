@@ -96,9 +96,18 @@ struct StatsView: View {
                 // Stats pane stays focused on the session metrics
                 // above. Expanding triggers a fresh ledger read so
                 // the numbers are current at the moment of reveal.
-                DisclosureGroup("Usage & cost", isExpanded: $usageExpanded) {
+                DisclosureGroup(isExpanded: $usageExpanded) {
                     UsageLedgerContent(model: settingsModel)
                         .padding(.top, 8)
+                } label: {
+                    // Make the whole row toggle the group, not just the chevron
+                    // (clicking the small chevron directly is fiddly). contentShape
+                    // makes the full width hit-testable; the chevron still works.
+                    Text("Usage & cost")
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            withAnimation { usageExpanded.toggle() }
+                        }
                 }
                 .onChange(of: usageExpanded) { _, expanded in
                     if expanded { settingsModel.refreshUsage() }

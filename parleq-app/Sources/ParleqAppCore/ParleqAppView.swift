@@ -55,7 +55,7 @@ struct ParleqAppView: View {
     init(selectedSection: SectionBox, settingsModel: SettingsModel) {
         self.selectedSection = selectedSection
         self.settingsModel = settingsModel
-        _settingsExpanded = State(initialValue: selectedSection.value.isSettings)
+        _settingsExpanded = State(initialValue: selectedSection.value.isSettingsDisclosurePane)
     }
 
     var body: some View {
@@ -116,12 +116,21 @@ struct ParleqAppView: View {
             // sub-sidebar used.
             if case .settings(let pane) = newValue {
                 UserDefaults.standard.set(pane.rawValue, forKey: "parleq.settings.selection")
-                if !settingsExpanded { settingsExpanded = true }
+                // Only auto-expand for panes that live inside the disclosure —
+                // NOT the promoted Dictionary/Presets (top-level Customize rows),
+                // or the disclosure would keep re-opening when the user visits them.
+                if newValue.isSettingsDisclosurePane, !settingsExpanded {
+                    settingsExpanded = true
+                }
             }
         }
         .onAppear {
             if selectedSection.value.isSettings {
                 settingsModel.reload()
+            }
+            // Expand only if landing on a pane actually inside the disclosure
+            // (not the promoted Dictionary/Presets).
+            if selectedSection.value.isSettingsDisclosurePane {
                 settingsExpanded = true
             }
         }

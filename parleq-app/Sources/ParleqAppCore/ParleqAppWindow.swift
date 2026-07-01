@@ -86,6 +86,17 @@ enum ParleqAppSelection: Hashable {
         return false
     }
 
+    /// True only for settings panes that actually live INSIDE the collapsible
+    /// "Settings" sidebar disclosure. Dictionary and Presets are promoted to the
+    /// top-level "Customize" group but keep a `.settings(pane)` selection, so
+    /// selecting them must NOT auto-expand the Settings disclosure.
+    var isSettingsDisclosurePane: Bool {
+        if case .settings(let pane) = self {
+            return pane != .dictionary && pane != .presets
+        }
+        return false
+    }
+
     /// Map a top-level section to a concrete selection. `.settings`
     /// resolves to a specific pane (the supplied `settingsSection`,
     /// or Hotkey as the default landing).
