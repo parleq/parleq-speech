@@ -36,7 +36,7 @@ const softwareSchema = {
 const base = `${import.meta.env.BASE_URL}`.replace(/\/$/, '');
 ---
 
-<Layout title="Parleq — Local-first AI dictation for macOS">
+<Layout title="Parleq — Local-first AI dictation for macOS" description="Press a hotkey, speak, and clean text pastes into any app. Speech recognition runs on-device on Apple Silicon; cleanup runs on-device or a cloud you bring.">
   <script type="application/ld+json" slot="head" set:html={JSON.stringify(softwareSchema)} />
   <FloatingNav downloadUrl={downloadUrl} active="home" spacer={false} />
   <!-- Hero: framed dark-grape panel + ConcordFlow art (Beat 1). The nav is the shared
