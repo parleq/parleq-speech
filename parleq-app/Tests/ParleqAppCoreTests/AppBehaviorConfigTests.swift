@@ -108,6 +108,22 @@ final class AppBehaviorConfigTests: XCTestCase {
         XCTAssertEqual(reloaded.appBehaviors["x"]?.mode, .instant)
     }
 
+    /// Regression: an explicit `.polished` mode override (no preset) MUST
+    /// survive a save→reload. The App-behavior editor writes these when the
+    /// user sets an app to Polished; a serializer that dropped `.polished` as
+    /// "the default" would make the row vanish on reopen (the editor bug that
+    /// motivated persisting every explicit choice). Also covers `.raw`.
+    func test_explicit_polished_and_raw_overrides_round_trip() throws {
+        var c = Config.default
+        c.appBehaviors = [
+            "com.example.polished": AppBehavior(mode: .polished),
+            "com.example.raw": AppBehavior(mode: .raw),
+        ]
+        let reloaded = Config.parse(fromDictionary: Config.serializeToDictionary(c))
+        XCTAssertEqual(reloaded.appBehaviors["com.example.polished"]?.mode, .polished)
+        XCTAssertEqual(reloaded.appBehaviors["com.example.raw"]?.mode, .raw)
+    }
+
     func test_deleted_preset_is_not_resurrected_on_save() throws {
         // Regression for the dual-source-of-truth drift: parse a legacy preset
         // for a curated-Instant app (synthesizes a Polished override), then

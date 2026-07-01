@@ -11,8 +11,6 @@ import SwiftUI
 struct PresetsSettingsView: View {
     @ObservedObject var model: SettingsModel
     @State private var newPresetID: String = ""
-    /// Apps added via "Add app" this session but not yet explicitly configured.
-    @State private var addedApps: Set<String> = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -129,7 +127,6 @@ struct PresetsSettingsView: View {
     @ViewBuilder
     private func appBehaviorRow(bundleID: String, presetsEnabled: Bool) -> some View {
         let effective = effectiveMode(for: bundleID)
-        let hasExplicitOverride = model.appBehaviors[bundleID] != nil
         let curatedDefault = CuratedAppDefaults.mode(for: bundleID)
         let icon = appIcon(for: bundleID)
         let displayName = resolvedAppName(for: bundleID)
@@ -165,7 +162,6 @@ struct PresetsSettingsView: View {
                     }
                     model.appBehaviors.removeValue(forKey: bundleID)
                     model.presetAppDefaults.removeValue(forKey: bundleID)
-                    addedApps.remove(bundleID)
                     model.save()
                 } label: {
                     Image(systemName: "xmark.circle")
@@ -186,9 +182,10 @@ struct PresetsSettingsView: View {
                 .labelsHidden()
                 .frame(maxWidth: 260)
 
-                // Show "Default: X" caption when mode is inherited
-                if !hasExplicitOverride, let curated = curatedDefault {
-                    Text("Default: \(curated.displayLabel)")
+                // Informational: flag when the app sits at Parleq's curated
+                // smart default for its category (e.g. a terminal at Instant).
+                if let curated = curatedDefault, effective == curated {
+                    Text("Parleq default")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -258,7 +255,12 @@ struct PresetsSettingsView: View {
             } else {
                 ForEach(candidates, id: \.bundleID) { app in
                     Button {
-                        addedApps.insert(app.bundleID)
+                        // Materialize the app's current resolved mode as an
+                        // explicit entry so the row persists immediately (and
+                        // shows the smart default as its starting point).
+                        model.appBehaviors[app.bundleID] =
+                            AppBehavior(mode: effectiveMode(for: app.bundleID))
+                        model.save()
                     } label: {
                         if let icon = app.icon {
                             Label {
@@ -280,12 +282,12 @@ struct PresetsSettingsView: View {
 
     // MARK: - Helpers
 
-    /// Sorted union of all bundle IDs with an explicit mode override,
-    /// an explicit preset mapping, or a session-local "just added" entry.
+    /// Sorted union of all bundle IDs with an explicit mode override or an
+    /// explicit preset mapping. Both persist, so a listed app is always a real,
+    /// saved entry (no transient session-only rows that vanish on reopen).
     private var allBehaviorBundleIDs: [String] {
         var ids = Set(model.appBehaviors.keys)
         ids.formUnion(model.presetAppDefaults.keys)
-        ids.formUnion(addedApps)
         return ids.sorted()
     }
 
@@ -313,21 +315,18 @@ struct PresetsSettingsView: View {
         return LearnedStore.appDisplayName(bundleID)
     }
 
-    /// A binding over `appBehaviors[bundleID].mode` that:
-    /// • removes the override when the new mode matches the curated/Polished
-    ///   default AND no preset is mapped (restores the inherited state), and
-    /// • sets an explicit AppBehavior(mode:) override otherwise.
+    /// A binding over `appBehaviors[bundleID].mode`. Setting a mode ALWAYS
+    /// writes an explicit override (even when it equals the curated default), so
+    /// the row is a stable, persistent entry that survives closing/reopening the
+    /// pane. The ✕ reset button is the only way to return an app to inherited
+    /// (which removes it from the list). Do NOT re-add a "remove when equals
+    /// default" optimization here — it made rows vanish when set to their own
+    /// default mode.
     private func modeBinding(for bundleID: String) -> Binding<TargetMode> {
         Binding(
             get: { self.effectiveMode(for: bundleID) },
             set: { newMode in
-                let resolvedDefault = CuratedAppDefaults.mode(for: bundleID) ?? .polished
-                let hasPreset = self.model.presetAppDefaults[bundleID] != nil
-                if newMode == resolvedDefault && !hasPreset {
-                    self.model.appBehaviors.removeValue(forKey: bundleID)
-                } else {
-                    self.model.appBehaviors[bundleID] = AppBehavior(mode: newMode)
-                }
+                self.model.appBehaviors[bundleID] = AppBehavior(mode: newMode)
                 self.model.save()
             }
         )
@@ -397,17 +396,5 @@ struct PresetsSettingsView: View {
                 return RunningAppEntry(bundleID: bundleID, name: name, icon: app.icon)
             }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-    }
-}
-
-// MARK: - TargetMode display helpers
-
-private extension TargetMode {
-    var displayLabel: String {
-        switch self {
-        case .instant: return "Instant"
-        case .polished: return "Polished"
-        case .raw: return "Raw"
-        }
     }
 }
