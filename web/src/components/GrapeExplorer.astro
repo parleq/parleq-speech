@@ -72,6 +72,18 @@ const bunch = [
   { ...refine[3], group: 'refine' },
 ];
 const all = [...cleanup, ...refine];
+
+// No-JS baseline: the default active family + the grape that JS would auto-select on
+// load (prefers the "center"-toned grape of that family). Server-rendered so the
+// explorer is meaningful with JS disabled; the inline <script> below re-applies the
+// same state (idempotent) and adds interactivity on top.
+const DEFAULT_GROUP = 'cleanup';
+const defaultGrapeIndex =
+  bunch.findIndex((g, i) => g.group === DEFAULT_GROUP && POS[i].tone === 'center') >= 0
+    ? bunch.findIndex((g, i) => g.group === DEFAULT_GROUP && POS[i].tone === 'center')
+    : bunch.findIndex((g) => g.group === DEFAULT_GROUP);
+const defaultGrape = bunch[defaultGrapeIndex];
+const DEFAULT_SELECTED_ID = defaultGrape.id;
 ---
 
 <div id="explorer" class="relative mt-12 grid items-center gap-x-12 gap-y-10 lg:grid-cols-[300px_minmax(0,1fr)]">
@@ -149,37 +161,45 @@ const all = [...cleanup, ...refine];
   <!-- LEFT: group tabs + one realistic bunch + preview -->
   <div class="relative z-10">
     <div role="tablist" aria-label="Capability family" class="group-tabs">
-      <button type="button" role="tab" data-tab="cleanup" aria-selected="true" class="group-tab">
+      <button type="button" role="tab" data-tab="cleanup" aria-selected={DEFAULT_GROUP === 'cleanup' ? 'true' : 'false'} tabindex={DEFAULT_GROUP === 'cleanup' ? 0 : -1} class="group-tab">
         <span class="group-tab-title">Cleanup</span>
         <span class="group-tab-copy">Make it correct.</span>
       </button>
-      <button type="button" role="tab" data-tab="refine" aria-selected="false" class="group-tab">
+      <button type="button" role="tab" data-tab="refine" aria-selected={DEFAULT_GROUP === 'refine' ? 'true' : 'false'} tabindex={DEFAULT_GROUP === 'refine' ? 0 : -1} class="group-tab">
         <span class="group-tab-title">Refine &amp; Shape</span>
         <span class="group-tab-copy">Make it right for the moment.</span>
       </button>
     </div>
 
     <div class="bunch">
-      {bunch.map((g, i) => (
-        <button type="button" class="grape" data-id={g.id} data-group={g.group}
-                data-name={g.title} data-desc={g.desc} data-tone={POS[i].tone} aria-label={g.title}
-                style={`left:${POS[i].l}px;top:${POS[i].t}px;z-index:${POS[i].z};--scale:${POS[i].s}`}>
-          <span class="grape-orb">
-            <svg class="g-ic" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" set:html={emboss(g.icon)} />
-            <span class="g-lb">{g.label}</span>
-          </span>
-        </button>
-      ))}
+      {bunch.map((g, i) => {
+        const active = g.group === DEFAULT_GROUP;
+        const selected = g.id === DEFAULT_SELECTED_ID;
+        return (
+          <button type="button" class="grape" data-id={g.id} data-group={g.group}
+                  data-name={g.title} data-desc={g.desc} data-tone={POS[i].tone}
+                  data-active={active ? 'true' : 'false'} data-selected={selected ? 'true' : 'false'}
+                  aria-label={g.title} aria-pressed={selected ? 'true' : 'false'}
+                  aria-hidden={active ? 'false' : 'true'}
+                  tabindex={active ? 0 : -1} disabled={!active}
+                  style={`left:${POS[i].l}px;top:${POS[i].t}px;z-index:${POS[i].z};--scale:${POS[i].s}`}>
+            <span class="grape-orb">
+              <svg class="g-ic" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" set:html={emboss(g.icon)} />
+              <span class="g-lb">{g.label}</span>
+            </span>
+          </button>
+        );
+      })}
     </div>
 
-    <p class="bunch-preview" data-preview></p>
+    <p class="bunch-preview" data-preview set:html={`<b>${defaultGrape.title}</b> — ${defaultGrape.desc}`} />
   </div>
 
   <!-- RIGHT: demo panel -->
   <div class="demo-stack w-full max-w-md justify-self-center lg:justify-self-start">
     <div class="demo-backplate" aria-hidden="true"></div>
     {all.map((g) => (
-      <div class="demo-card" data-panel={g.id} hidden>
+      <div class="demo-card" data-panel={g.id} hidden={g.id !== DEFAULT_SELECTED_ID}>
         <div class="flex items-center justify-between gap-3">
           <div class="flex items-center gap-2.5">
             <span class="demo-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4" set:html={icons[g.icon]} /></span>
@@ -539,6 +559,7 @@ const all = [...cleanup, ...refine];
 
   @media (prefers-reduced-motion: reduce) {
     .grape-orb, .g-ic, .g-lb { transition: none; }
+    .group-tab-title, .group-tab-copy, .group-tab::after { transition: none; }
     #explorer.is-pulsing .flow-runners path { animation: none; }
   }
 </style>
@@ -559,13 +580,21 @@ const all = [...cleanup, ...refine];
       root.classList.add('is-pulsing');
     };
     const selectGrape = (g) => {
-      grapes.forEach((x) => x.setAttribute('data-selected', x === g ? 'true' : 'false'));
+      grapes.forEach((x) => {
+        const sel = x === g;
+        x.setAttribute('data-selected', sel ? 'true' : 'false');
+        x.setAttribute('aria-pressed', sel ? 'true' : 'false');
+      });
       panels.forEach((p) => { p.hidden = p.getAttribute('data-panel') !== g.dataset.id; });
       showPreview(g);
       pulseFlow();
     };
     const setTab = (group) => {
-      tabs.forEach((t) => t.setAttribute('aria-selected', t.dataset.tab === group ? 'true' : 'false'));
+      tabs.forEach((t) => {
+        const on = t.dataset.tab === group;
+        t.setAttribute('aria-selected', on ? 'true' : 'false');
+        t.tabIndex = on ? 0 : -1;
+      });
       grapes.forEach((g) => {
         const active = g.dataset.group === group;
         g.dataset.active = active ? 'true' : 'false';
@@ -577,7 +606,22 @@ const all = [...cleanup, ...refine];
       if (first) selectGrape(first);
     };
 
-    tabs.forEach((t) => t.addEventListener('click', () => setTab(t.dataset.tab)));
+    // Roving-tabindex tablist nav (model: DocTabs) — ArrowLeft/Right + Home/End move
+    // focus between the two group tabs and activate the target group.
+    const activateTab = (i, focus) => {
+      setTab(tabs[i].dataset.tab);
+      if (focus) tabs[i].focus();
+    };
+    tabs.forEach((t, i) => {
+      t.addEventListener('click', () => activateTab(i, false));
+      t.addEventListener('keydown', (e) => {
+        const last = tabs.length - 1;
+        if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); activateTab(i === last ? 0 : i + 1, true); }
+        else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); activateTab(i === 0 ? last : i - 1, true); }
+        else if (e.key === 'Home') { e.preventDefault(); activateTab(0, true); }
+        else if (e.key === 'End') { e.preventDefault(); activateTab(last, true); }
+      });
+    });
     grapes.forEach((g) => {
       g.addEventListener('click', () => { if (g.dataset.active === 'true') selectGrape(g); });
       g.addEventListener('mouseenter', () => { if (g.dataset.active === 'true') showPreview(g); });
