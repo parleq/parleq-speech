@@ -2742,14 +2742,28 @@ private struct OverlayContent: View {
 
     private var headerBadgeState: HeaderBadgeState {
         let cfg = Config.load().config
+        // A styled dictation (a per-app or manual preset was applied — signalled
+        // by appliedPresetName) runs through the REFINE tier, not the base
+        // cleanup tier. Resolve the badge with that in mind so it names the model
+        // that actually produced the text (e.g. the configured cloud model),
+        // instead of the base cleanup model (which, for a Concord/Lightweight
+        // global, would mislabel a cloud-styled result as "Lightweight").
+        let styled = model.appliedPresetName != nil
         let resolvedModel = cfg.modelForInvocation(
             hasReferences: !model.references.isEmpty,
+            isRefine: styled,
             override: model.pickedModelOverride
         )
         let cleanupId = ModelIdentifier(provider: cfg.llmProvider, model: cfg.llmModel)
         var ids: [ModelIdentifier] = [cleanupId]
         if let ctx = cfg.contextModel, ctx != cleanupId {
             ids.append(ctx)
+        }
+        // The refine tier is instance-backed too, so offer it in the picker —
+        // otherwise a styled dictation's resolved (refine) model wouldn't be a
+        // selectable entry.
+        if let rfn = cfg.refineModel, rfn != cleanupId, !ids.contains(rfn) {
+            ids.append(rfn)
         }
         // The configured (non-catalog) identifiers are the only ones backed by
         // a pre-built provider INSTANCE — catalog entries fall back at invoke
