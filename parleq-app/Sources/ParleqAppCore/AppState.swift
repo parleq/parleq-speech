@@ -2623,6 +2623,7 @@ public final class AppState {
         styledPasteDestLabel = nil
         overlay.model.appliedPresetName = nil
         overlay.model.activeTransformName = nil
+        overlay.model.cleanupMode = nil
         lastCleanupFailed = false
         // 0.14.0 PR 4 (#219): clear last-pass timings so a previous
         // dictation's measurements don't leak into this entry if
@@ -3297,16 +3298,28 @@ public final class AppState {
                 let resolvedLLM: (any LLMProvider)?
                 switch behaviorMode {
                 case .instant where !asRefine:
-                    resolvedLLM = self?.instantLLM
-                    if self?.instantLLM == nil {
+                    if let instant = self?.instantLLM {
+                        resolvedLLM = instant
+                        self?.overlay.model.cleanupMode = .instant
+                    } else {
+                        // No-Concord build: Instant falls back to RAW paste,
+                        // so the badge tells the truth (Raw, not Instant).
+                        resolvedLLM = nil
+                        self?.overlay.model.cleanupMode = .raw
                         self?.log("[mode] instant: Concord unavailable in this build — pasting raw ASR")
                     }
                 case .raw where !asRefine:
                     resolvedLLM = nil  // paste raw ASR, no cleanup
+                    self?.overlay.model.cleanupMode = .raw
                 default:
                     resolvedLLM = self?.llmForInvocation(
                         isRefine: asRefine || (defaultPreset != nil)
                     )
+                    // Polished (and every refine turn, which routes to the
+                    // cloud refine tier) → no notable-engine badge. Setting
+                    // .polished here also CLEARS an Instant badge when the user
+                    // refines an Instant result (now cloud-refined).
+                    self?.overlay.model.cleanupMode = .polished
                 }
                 // When imageReferenceEnabled is false, downgrade any
                 // image-mode references to text mode for prompt-building.
@@ -3781,6 +3794,7 @@ public final class AppState {
         styledPasteDestLabel = nil
         overlay.model.appliedPresetName = nil
         overlay.model.activeTransformName = nil
+        overlay.model.cleanupMode = nil
         lastCleanupFailed = false
         pendingContribution = nil
         pasteTarget = nil

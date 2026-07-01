@@ -1318,6 +1318,13 @@ public final class OverlayModel: ObservableObject {
     /// "Styled with <name> · Undo" chip.
     @Published var appliedPresetName: String?
 
+    /// Per-target cleanup engine for the current dictation (Task 4). Set by
+    /// AppState from the resolved mode. Drives the header engine badge, which
+    /// renders ONLY for `.instant` / `.raw` (the notable, forced engines);
+    /// `.polished` and nil fall through to the normal interactive model badge.
+    /// A status label reflecting an automatic choice — never a selector.
+    @Published var cleanupMode: TargetMode?
+
     /// Name of the transform preset currently being applied by a
     /// manual chip tap; drives the cleaning-state status line
     /// ("Applying <name>…"). Set in AppState.runPreset(id:) right
@@ -2631,7 +2638,19 @@ private struct OverlayContent: View {
             // helper so the badge state is computed ONCE per body
             // evaluation (Config.load reads disk; per-property
             // computed-getters would re-read it 3× per render).
-            modelBadgeRegion(headerBadgeState)
+            //
+            // Per-target Instant/Raw (Task 4): the engine is FORCED by the
+            // app's mode, so the interactive model picker doesn't apply — show
+            // a non-interactive EngineBadge that tells the truth about what
+            // cleaned this dictation. Polished (and nil) keep the model badge.
+            switch model.cleanupMode {
+            case .instant:
+                EngineBadge(kind: .instant)
+            case .raw:
+                EngineBadge(kind: .raw)
+            case .polished, .none:
+                modelBadgeRegion(headerBadgeState)
+            }
 
             // + Menu — shown only when referenceWindowsEnabled. Items
             // within the menu are further gated by sub-toggles:

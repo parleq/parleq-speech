@@ -66,3 +66,47 @@ struct ModelBadge: View {
         }
     }
 }
+
+/// Non-interactive header badge flagging the per-target cleanup engine when it
+/// is the *notable* kind — Instant (forced on-device, literal) or Raw (no
+/// cleanup). Unlike `ModelBadge` (a tappable model picker for the cloud/Polished
+/// path), this is a pure STATUS label: the engine is auto-resolved from the
+/// target app's mode, so there is nothing to pick. Cloud-Polished dictations
+/// keep the interactive `ModelBadge` instead of this. Matches ModelBadge's pill
+/// styling so the header reads consistently.
+struct EngineBadge: View {
+    enum Kind { case instant, raw }
+    let kind: Kind
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: kind == .instant ? "bolt.fill" : "text.alignleft")
+                .font(.system(size: 9))
+                .foregroundStyle(.secondary)
+            Text(kind == .instant ? "Instant" : "Raw")
+                .font(.system(size: 10, weight: .medium))
+        }
+        .padding(.horizontal, 7)
+        .padding(.vertical, 3)
+        .background(
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                .fill(Color.secondary.opacity(0.12))
+        )
+        .help(tooltipText)
+        .accessibilityLabel(accessibilityText)
+    }
+
+    private var tooltipText: String {
+        switch kind {
+        case .instant: return "Cleaned on-device — deterministic, no rewriting."
+        case .raw:     return "Pasted as transcribed — no cleanup."
+        }
+    }
+
+    private var accessibilityText: String {
+        switch kind {
+        case .instant: return "Cleanup engine: Instant — on-device, no rewriting"
+        case .raw:     return "Cleanup engine: Raw — pasted as transcribed"
+        }
+    }
+}
