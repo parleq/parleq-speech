@@ -338,7 +338,7 @@ The explorer was prototyped to convergence in `web/src/pages/prototype.astro` (t
 3. **Wine connotation** — cheap cold-reader test.
 
 **Release gates / process (from memory):**
-- **Per-app cleanup is config-model-only / not runtime-wired** (§7) — market present-tense **only if** runtime-complete at merge; else omit/future-tense the per-app grape.
+- **Per-app cleanup — DECISION 2026-06-30:** maintainer chose to **include it present-tense**, represented as its **own "moment"** (a "The right cleanup for every app" section with an App-defaults card showing the Instant/Polished split per app, one app per row) — **not** a grape in the bunch (which stays 9 grapes, Reference retained). Chips stay honest (Instant = on-device green; Polished = your provider). No routing implication. **This binds the release gate:** the site must ship together with a **runtime-complete** `per-target-cleanup` feature (it is config-model-only today); if it isn't runtime-complete at merge, the moment reverts to future-tense or is pulled.
 - **Merge the redesign worktree with `../parleq-worktrees/per-target-cleanup`** before release (ship together).
 - **Posit promotion-timing hold** — don't launch big promotion until it lands.
 - **Hold at the approval gate** — do not push / open a PR until the maintainer approves.
