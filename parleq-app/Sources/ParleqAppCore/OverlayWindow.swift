@@ -2639,15 +2639,17 @@ private struct OverlayContent: View {
             // evaluation (Config.load reads disk; per-property
             // computed-getters would re-read it 3× per render).
             //
-            // Per-target Instant/Raw (Task 4): the engine is FORCED by the
-            // app's mode, so the interactive model picker doesn't apply — show
-            // a non-interactive EngineBadge that tells the truth about what
-            // cleaned this dictation. Polished (and nil) keep the model badge.
+            // Per-target Instant/Raw (Task 4): show an EngineBadge that tells
+            // the truth about what cleaned this dictation (⚡ Instant / Raw).
+            // It stays clickable — opening the SAME model picker — so the
+            // click-to-switch affordance is preserved; on a forced engine,
+            // picking re-cleans this dictation with the chosen model. Polished
+            // (and nil) keep the plain interactive model badge.
             switch model.cleanupMode {
             case .instant:
-                EngineBadge(kind: .instant)
+                engineBadgeRegion(.instant, headerBadgeState)
             case .raw:
-                EngineBadge(kind: .raw)
+                engineBadgeRegion(.raw, headerBadgeState)
             case .polished, .none:
                 modelBadgeRegion(headerBadgeState)
             }
@@ -2804,6 +2806,26 @@ private struct OverlayContent: View {
                 onPick: { picked in
                     model.pickedModelOverride = picked
                     modelPickerShown = false
+                }
+            )
+        }
+    }
+
+    /// Header region for a forced-engine (Instant/Raw) dictation: the truthful
+    /// EngineBadge, still clickable → the same model picker. Because Instant/Raw
+    /// ignore `pickedModelOverride` on the current dictation, picking here
+    /// RE-CLEANS this dictation with the chosen model (→ Polished) via the
+    /// switch-and-recleanup path, rather than just setting an inert override.
+    @ViewBuilder
+    private func engineBadgeRegion(_ kind: EngineBadge.Kind, _ state: HeaderBadgeState) -> some View {
+        EngineBadge(kind: kind, onTap: { modelPickerShown.toggle() })
+        .popover(isPresented: $modelPickerShown, arrowEdge: .top) {
+            ModelPicker(
+                models: state.pickerEntries,
+                selectedModel: state.resolvedModel,
+                onPick: { picked in
+                    modelPickerShown = false
+                    onSwitchToVisionModelAndRecleanup(picked)
                 }
             )
         }
