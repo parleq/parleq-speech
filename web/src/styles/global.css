@@ -49,8 +49,9 @@
        grape-200 #cdb4e6 on #23103a → 9.34
        amber #d97706 small text on #311551 → 4.86 (just passes AA)
      RULE: amber small text on the panel is borderline — prefer amber for
-     large text, icons, and CTA fill. (white-on-amber CTA fill is 3.19 —
-     a pre-existing site-wide pattern, tracked for Task 3, not introduced here.) */
+     large text, icons, and CTA fill. (Solid Download CTAs use the darker
+     --color-accent-hover #b45309 via `.cta-solid` = 5.02:1 white-on-amber;
+     the base #d97706 fill is 3.19 and reserved for large/icon accents.) */
   --color-grape-950: #150720;
   --color-grape-900: #23103a;
   --color-grape-800: #311551;
@@ -188,6 +189,14 @@ body {
   padding: 0 0.15em;
   background: color-mix(in srgb, var(--color-accent) 14%, transparent);
 }
+
+/* Solid brand CTA (the Download buttons). Fills with the DARKER accent so the
+   white label clears WCAG AA — #b45309 on white is 5.02:1, vs the base
+   #d97706's 3.19:1. Hover darkens the *current* accent (color-mix toward
+   black), so a CTA that lands inside a grape zone — where the accent tokens
+   re-point — still themes and darkens correctly. */
+.cta-solid { background: var(--color-accent-hover); }
+.cta-solid:hover { background: color-mix(in srgb, var(--color-accent-hover) 80%, #000); }
 
 /* On-device "grape zone". Applied to a block or page that features on-device
    cleanup, it re-points the accent variables to Concord grape — so every
