@@ -101,7 +101,7 @@ struct PresetsSettingsView: View {
 
     private var appDefaultsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            let presetsEnabled = Config.load().config.transformPresetsEnabled
+            let presetsEnabled = model.transformPresetsEnabled
             let bundleIDs = allBehaviorBundleIDs
 
             Text("App behavior")
@@ -382,36 +382,16 @@ struct PresetsSettingsView: View {
         let icon: NSImage?
     }
 
-    /// System bundle IDs to exclude even when activationPolicy == .regular.
-    /// Mirrors WindowPicker.systemBundleBlocklist.
-    private static let addAppBlocklist: Set<String> = [
-        "com.apple.Spotlight",
-        "com.apple.notificationcenterui",
-        "com.apple.dock",
-        "com.apple.systemuiserver",
-        "com.apple.controlcenter",
-        "com.apple.WindowManager",
-        "com.apple.AppShortcuts.AppShortcutsPreview",
-        "com.apple.AppShortcuts",
-        "com.1password.1password-launcher",
-        "com.1password.1password.helper",
-        "com.apple.systempreferences",
-    ]
-
-    /// Bundle ID prefixes to exclude. Mirrors WindowPicker.systemBundlePrefixBlocklist.
-    private static let addAppPrefixBlocklist: [String] = [
-        "com.apple.AppShortcuts",
-        "com.apple.controlcenter",
-    ]
-
     private var runningUserApps: [RunningAppEntry] {
+        // Reuse WindowPicker's system-surface exclusions (single source of truth)
+        // so a new macOS agent added there is filtered here too.
         NSWorkspace.shared.runningApplications
             .filter { $0.activationPolicy == .regular }
             .compactMap { app -> RunningAppEntry? in
                 guard let bundleID = app.bundleIdentifier,
                       !bundleID.isEmpty else { return nil }
-                guard !Self.addAppBlocklist.contains(bundleID) else { return nil }
-                guard !Self.addAppPrefixBlocklist.contains(
+                guard !WindowPickerModel.systemBundleBlocklist.contains(bundleID) else { return nil }
+                guard !WindowPickerModel.systemBundlePrefixBlocklist.contains(
                     where: { bundleID.hasPrefix($0) }) else { return nil }
                 let name = app.localizedName ?? LearnedStore.appDisplayName(bundleID)
                 return RunningAppEntry(bundleID: bundleID, name: name, icon: app.icon)

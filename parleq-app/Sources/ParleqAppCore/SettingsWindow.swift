@@ -202,6 +202,10 @@ final class SettingsModel: ObservableObject {
 
     /// Mirror of Config.referenceWindowsEnabled.
     @Published var referenceWindowsEnabled: Bool
+    /// Mirror of Config.transformPresetsEnabled (MDM gate). Read-only in the UI
+    /// — surfaced so the App-behavior editor can gate the preset/tone controls
+    /// without a `Config.load()` disk read on every render.
+    @Published var transformPresetsEnabled: Bool
     /// Mirror of Config.clipboardReferenceEnabled.
     @Published var clipboardReferenceEnabled: Bool
     /// Mirror of Config.imageReferenceEnabled.
@@ -494,6 +498,7 @@ final class SettingsModel: ObservableObject {
         self.localAllowUnsupportedRAM = config.localAllowUnsupportedRAM
         // Feature toggles (Phase 5).
         self.referenceWindowsEnabled = config.referenceWindowsEnabled
+        self.transformPresetsEnabled = config.transformPresetsEnabled
         self.clipboardReferenceEnabled = config.clipboardReferenceEnabled
         self.imageReferenceEnabled = config.imageReferenceEnabled
         self.fileReferenceEnabled = config.fileReferenceEnabled
@@ -626,6 +631,7 @@ final class SettingsModel: ObservableObject {
         self.localResidency = config.localResidency
         self.localAllowUnsupportedRAM = config.localAllowUnsupportedRAM
         // Feature toggles (Phase 5).
+        self.transformPresetsEnabled = config.transformPresetsEnabled
         self.referenceWindowsEnabled = config.referenceWindowsEnabled
         self.clipboardReferenceEnabled = config.clipboardReferenceEnabled
         self.imageReferenceEnabled = config.imageReferenceEnabled
