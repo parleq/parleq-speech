@@ -751,6 +751,21 @@ struct ParleqApp {
             return makeProvider(rfnId, "refine-model enabled")
         }()
 
+        // Standing on-device Concord provider for per-app **Instant** mode.
+        // Built unconditionally (trait-gated), INDEPENDENT of the global
+        // cleanup provider, so an Instant-mode target can FORCE literal
+        // on-device cleanup even when the user's global cleanup is a cloud
+        // LLM. The instance is cheap — ConcordCleanupProvider.init just
+        // stores a default engine (no network/auth/RAM/model download). In a
+        // no-Concord (public source) build this is nil and Instant falls back
+        // to RAW paste, not Polished (see AppState's mode routing).
+        #if Concord
+        let instantLLM: (any LLMProvider)? = ConcordCleanupProvider()
+        logStderr("[parleq] Instant tier ready (standing Concord — on-device, no network)")
+        #else
+        let instantLLM: (any LLMProvider)? = nil
+        #endif
+
         let overlay = OverlayWindow()
         let stateBox = StateBox()
         // AppState lives on @MainActor; we have to instantiate it
@@ -764,6 +779,7 @@ struct ParleqApp {
                 llm: llm,
                 contextLLM: contextLLM,
                 refineLLM: refineLLM,
+                instantLLM: instantLLM,
                 overlay: overlay,
                 autoAcceptSeconds: config.autoAcceptSeconds,
                 trailingSpaceEnabled: config.trailingSpace,

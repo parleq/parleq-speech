@@ -60,14 +60,32 @@ public final class AppState {
         }
     }
 
-    /// Install the coordinator's acoustic-gate factory onto the cleanup-tier Concord
+    /// Install the coordinator's acoustic-gate factory onto EVERY standing Concord
     /// provider so its dictionary stage can VETO an over-firing substitution. The gate
     /// self-gates (no-op until a term is enrolled), so this is safe to call eagerly and
-    /// re-call on every store change. Idempotent; a no-op unless the cleanup provider is Concord.
+    /// re-call on every store change. Idempotent; a no-op for non-Concord providers.
+    ///
+    /// Both the cleanup-tier provider (`llm`, when the global cleanup IS Concord) AND
+    /// the standing Instant provider (`instantLLM`) must be gated — otherwise an Instant
+    /// target on a cloud-global config would silently lose the enrolled-voiceprint veto,
+    /// gutting the durable-voiceprints guarantee. (`installEnrollmentGate` covers both.)
     func installVoiceprintEnforcement() {
-        guard let coordinator = voiceprint,
-              let concord = llm as? ConcordCleanupProvider else { return }
-        concord.setEnrollmentGateFactory(coordinator.enforcementGateFactory())
+        guard let coordinator = voiceprint else { return }
+        AppState.installEnrollmentGate(
+            coordinator.enforcementGateFactory(),
+            on: [llm, instantLLM])
+    }
+
+    /// Pure casting+install helper (extracted so it can be unit-tested without
+    /// constructing a full `AppState`, which would require a live `NSPanel`).
+    /// Installs the factory on each provider that is actually a `ConcordCleanupProvider`.
+    static func installEnrollmentGate(
+        _ factory: @escaping @Sendable (ASRDiagnostics?) -> AcousticGate?,
+        on providers: [(any LLMProvider)?]
+    ) {
+        for provider in providers {
+            (provider as? ConcordCleanupProvider)?.setEnrollmentGateFactory(factory)
+        }
     }
     #endif
 
@@ -114,6 +132,13 @@ public final class AppState {
     /// Concord model (which can't perform them). nil → routing falls the
     /// refine tier back to contextLLM, then llm.
     private let refineLLM: (any LLMProvider)?
+    /// Standing on-device Concord provider for per-app **Instant** mode —
+    /// forces literal on-device cleanup for an Instant target REGARDLESS of
+    /// the global cleanup provider. Built once at launch (trait-gated); nil in
+    /// no-Concord builds, where Instant falls back to RAW paste (NOT Polished).
+    /// The enrolled-voiceprint over-fire gate is installed on this instance by
+    /// `installVoiceprintEnforcement()` so Instant-when-cloud keeps the veto.
+    private let instantLLM: (any LLMProvider)?
     /// Enterprise OIDC federation handles. All optional and nil for
     /// non-enterprise users. The session is retained for the Company
     /// Account UI (Task 8); the two exchange caches are pre-warmed at
@@ -662,6 +687,7 @@ public final class AppState {
         llm: (any LLMProvider)?,
         contextLLM: (any LLMProvider)? = nil,
         refineLLM: (any LLMProvider)? = nil,
+        instantLLM: (any LLMProvider)? = nil,
         overlay: OverlayWindow,
         autoAcceptSeconds: TimeInterval = 0,  // 0 = never auto-accept
         trailingSpaceEnabled: Bool = true,
@@ -676,6 +702,7 @@ public final class AppState {
         self.llm = llm
         self.contextLLM = contextLLM
         self.refineLLM = refineLLM
+        self.instantLLM = instantLLM
         self.oidcSession = oidcSession
         self.oidcAWSExchange = oidcAWSExchange
         self.oidcGCPExchange = oidcGCPExchange
@@ -3235,26 +3262,52 @@ public final class AppState {
                     pending.spelloutTerms = SpellOutDetector.candidates(in: asrResult.text)
                     self?.pendingContribution = pending
                 }
-                // Per-app default preset: resolved on fresh cleanup turns
-                // only. Refine turns never fold a transform (the text being
-                // refined is already styled). Hoisted ABOVE the provider
-                // resolution because a per-app default preset is a STYLE
-                // the on-device Concord tier can't apply — so a fresh
-                // cleanup that folds one must route to the refine (cloud)
-                // tier, same as an explicit refine. (Re-used below for the
-                // actual cleanup call's `transform` argument.)
-                let defaultPreset: TransformPreset? = asRefine
-                    ? nil
-                    : loadedConfig.presetForApp(targetBundleID)
-                // Resolve which provider to use for this dictation:
-                // override > references > refine > cleanup, honoring the
-                // pickedModelOverride the user may have set via the
-                // in-overlay ModelPicker (Task 9). isRefine is true for an
-                // explicit refine OR a styled (per-app preset) cleanup —
-                // both are operations the on-device tier can't perform.
-                let resolvedLLM = self?.llmForInvocation(
-                    isRefine: asRefine || (defaultPreset != nil)
-                )
+                // Per-target mode: resolve the cleanup behavior for the app
+                // captured at hotkey-down. Only fresh cleanup turns route on
+                // mode — a refine turn is an explicit user operation on
+                // already-shown text and always uses the refine tier (below),
+                // exactly as before. `behaviorForApp` order: user override →
+                // curated default → Polished (today's default).
+                let behaviorMode: TargetMode = asRefine
+                    ? .polished
+                    : loadedConfig.behaviorForApp(targetBundleID).mode
+                // Per-app default preset: only meaningful for Polished, and
+                // only on fresh cleanup turns (refine text is already styled;
+                // Instant/Raw carry no style). Hoisted ABOVE provider
+                // resolution because a preset is a STYLE the on-device tier
+                // can't apply — a fresh Polished cleanup that folds one routes
+                // to the refine (cloud) tier, same as an explicit refine.
+                // (Re-used below for the cleanup call's `transform` argument.)
+                let defaultPreset: TransformPreset? =
+                    (!asRefine && behaviorMode == .polished)
+                    ? loadedConfig.presetForApp(targetBundleID)
+                    : nil
+                // Resolve which provider to use for this dictation, keyed on
+                // the target mode:
+                //   • Instant → FORCE the standing on-device Concord instance
+                //     regardless of the global provider. nil in a no-Concord
+                //     build → fall to RAW paste (NOT Polished): routing
+                //     terminal/editor dictation through a rewriting cloud LLM
+                //     would be the opposite of Instant's intent.
+                //   • Raw → no cleanup (nil provider → paste raw ASR).
+                //   • Polished (and every refine turn) → today's path,
+                //     UNCHANGED: override > references > refine > cleanup,
+                //     honoring the in-overlay ModelPicker; isRefine true for an
+                //     explicit refine OR a styled (preset) cleanup.
+                let resolvedLLM: (any LLMProvider)?
+                switch behaviorMode {
+                case .instant where !asRefine:
+                    resolvedLLM = self?.instantLLM
+                    if self?.instantLLM == nil {
+                        self?.log("[mode] instant: Concord unavailable in this build — pasting raw ASR")
+                    }
+                case .raw where !asRefine:
+                    resolvedLLM = nil  // paste raw ASR, no cleanup
+                default:
+                    resolvedLLM = self?.llmForInvocation(
+                        isRefine: asRefine || (defaultPreset != nil)
+                    )
+                }
                 // When imageReferenceEnabled is false, downgrade any
                 // image-mode references to text mode for prompt-building.
                 // The reference chips in the overlay still show the

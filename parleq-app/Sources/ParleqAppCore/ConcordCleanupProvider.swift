@@ -103,6 +103,16 @@ public final class ConcordCleanupProvider: LLMProvider, @unchecked Sendable {
         return _gateFactory
     }
 
+    #if DEBUG
+    /// Test-only: whether an enrollment-gate factory is currently installed.
+    /// Guards the regression where a standing Instant instance silently lacked
+    /// the enrolled-voiceprint over-fire veto (see `AppState.installEnrollmentGate`).
+    var hasEnrollmentGate: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return _gateFactory != nil
+    }
+    #endif
+
     private func setLastEdits(_ edits: [EditRecord]) {
         lock.lock(); defer { lock.unlock() }
         lastEdits = edits
