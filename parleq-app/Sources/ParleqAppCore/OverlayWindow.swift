@@ -2727,6 +2727,11 @@ private struct OverlayContent: View {
     private struct HeaderBadgeState {
         let resolvedModel: ModelIdentifier
         let pickerEntries: [ModelPicker.ModelEntry]
+        /// Count of leading `pickerEntries` that are configured, instance-backed
+        /// identifiers (cleanup + context) — the rest are catalog entries that
+        /// fall back at invoke time. The engine badge's re-clean picker offers
+        /// only this prefix.
+        let configuredCount: Int
         let conflict: ModelConflict?
     }
 
@@ -2741,6 +2746,12 @@ private struct OverlayContent: View {
         if let ctx = cfg.contextModel, ctx != cleanupId {
             ids.append(ctx)
         }
+        // The configured (non-catalog) identifiers are the only ones backed by
+        // a pre-built provider INSTANCE — catalog entries fall back at invoke
+        // time (llmForInvocation logs + degrades). The Instant/Raw engine badge
+        // RE-CLEANS on pick, so it must offer only these backed models, or the
+        // badge would claim a model the fallback didn't actually run.
+        let configuredCount = ids.count
         // Task #54: extend the picker with the configured providers'
         // CURATED CATALOG, so switching models is a picker tap instead
         // of a config edit. Rules:
@@ -2788,6 +2799,7 @@ private struct OverlayContent: View {
         return HeaderBadgeState(
             resolvedModel: resolvedModel,
             pickerEntries: entries,
+            configuredCount: configuredCount,
             conflict: conflict
         )
     }
@@ -2818,10 +2830,14 @@ private struct OverlayContent: View {
     /// switch-and-recleanup path, rather than just setting an inert override.
     @ViewBuilder
     private func engineBadgeRegion(_ kind: EngineBadge.Kind, _ state: HeaderBadgeState) -> some View {
+        // Offer ONLY the configured, instance-backed models — picking re-cleans
+        // immediately, so a catalog entry (which falls back at invoke time)
+        // would produce output from a different model than the badge claims.
+        let backedEntries = Array(state.pickerEntries.prefix(state.configuredCount))
         EngineBadge(kind: kind, onTap: { modelPickerShown.toggle() })
         .popover(isPresented: $modelPickerShown, arrowEdge: .top) {
             ModelPicker(
-                models: state.pickerEntries,
+                models: backedEntries,
                 selectedModel: state.resolvedModel,
                 onPick: { picked in
                     modelPickerShown = false
