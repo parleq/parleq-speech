@@ -88,7 +88,7 @@ const defaultGrape = bunch[defaultGrapeIndex];
 const DEFAULT_SELECTED_ID = defaultGrape.id;
 ---
 
-<div id="explorer" class="relative mt-12 grid items-center gap-x-12 gap-y-10 lg:grid-cols-[300px_minmax(0,1fr)]">
+<div id="explorer" class="relative mt-12 grid grid-cols-1 items-center gap-x-12 gap-y-10 lg:grid-cols-[300px_minmax(0,1fr)]">
   <svg class="flow-lines" viewBox="0 0 464 190" preserveAspectRatio="none" aria-hidden="true">
     <defs>
       <linearGradient id="flowLav" x1="0" y1="0" x2="1" y2="0">
@@ -558,6 +558,23 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
   .foot-paste { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:.62rem; letter-spacing:.1em; text-transform:uppercase; color: rgba(255,255,255,.4); }
   .foot-actions { display:flex; align-items:center; gap:.5rem; font-size:.68rem; color: rgba(255,255,255,.5); }
   .foot-actions b { border-radius:.4rem; background: var(--color-accent); padding:.18rem .6rem; color:#fff; font-weight:600; }
+
+  /* Mobile (< lg): the flow lines are already hidden, so drop the two-column
+     grid and stack simply — the interactive bunch on top, the demo card below.
+     Cap everything to the viewport and let the monospace before/after wrap so
+     the dark card never overflows the screen (the grid's default auto track
+     sizes to the card's max-content and pushes it off-screen otherwise). */
+  @media (max-width: 1023px) {
+    #explorer { display: block; }
+    #explorer > .relative { max-width: 100%; }
+    .bunch { margin-left: auto; margin-right: auto; }
+    .bunch-preview { margin-left: auto; margin-right: auto; text-align: center; max-width: 22rem; }
+    .demo-stack { width: 100%; max-width: 100%; margin-top: 2rem; }
+    .demo-card { max-width: 100%; }
+    .demo-card > .flex { flex-wrap: wrap; }
+    .ba-before, .ba-after { overflow-wrap: anywhere; }
+    .foot-paste, .foot-actions { font-size: .6rem; }
+  }
 
   @media (prefers-reduced-motion: reduce) {
     .grape-orb, .g-ic, .g-lb { transition: none; }
