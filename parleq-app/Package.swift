@@ -53,9 +53,10 @@ let package = Package(
         // the main app in v0.9.0 to drop the local listening socket,
         // simplify supervision, and shed the Hummingbird dependency.
         //
-        // PINNED to the fork tag 0.15.4-encoder.1 (see "TAGGED FORK PIN" at the
+        // PINNED to the fork tag 0.15.4-encoder.2 (see "TAGGED FORK PIN" at the
         // bottom of this block) — the 0.15.4 line PLUS an opt-in encoder-feature
-        // patch for voice enrollment. The over-fire history below is WHY we set
+        // patch for voice enrollment AND the final-window tail-drop rescue
+        // (#747). The over-fire history below is WHY we set
         // `spotterRescueEnabled=false` in LocalASR to hold 0.14.5-equivalent
         // over-fire behavior on the 0.15.4 line. DO NOT bump FluidAudio without
         // running the REGRESSION GATE below AND re-evaluating that flag.
@@ -105,9 +106,9 @@ let package = Package(
         //     --dictionary bench/dictionary-overfire.json --out bench/results/overfire-<ver>.json
         //   python3 bench/score_overfire.py bench/results/overfire-<ver>.json \
         //     bench/dictionary-overfire.json   # expect total_overfires ~12, alarm near ~52
-        // TAGGED FORK PIN (voice-enrollment, 0.29.0): pinned exactly to the
-        // fork tag 0.15.4-encoder.1 (jonyoder/FluidAudio), a fork of
-        // FluidInference/FluidAudio's 0.15.4 line that adds an opt-in
+        // TAGGED FORK PIN (voice-enrollment, 0.29.0; tail-drop rescue, this PR):
+        // pinned exactly to the fork tag 0.15.4-encoder.2 (jonyoder/FluidAudio),
+        // a fork of FluidInference/FluidAudio's 0.15.4 line that adds an opt-in
         // encoder-feature-exposure patch (ASRResult.encoderFeatures) needed by
         // the voiceprint acoustic-disambiguation gate. Because this rides the
         // 0.15.4 line rather than 0.14.5, we set spotterRescueEnabled=false in
