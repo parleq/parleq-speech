@@ -78,7 +78,8 @@ Later tasks copy from here. Never pull strings from the codex pack — it contai
 
   ### Voiceprints
   - Before/after examples: "parlay → Parleq" ; "kiwi → Keavi"
-  - Copy: "Tell sound-alike names apart by voice. On-device, opt-in per term; what's kept is an encrypted voiceprint, never a recording."
+  - Copy: "Tell sound-alike names apart by voice. On-device, opt-in per term; what's kept is an encrypted voiceprint — a mathematical fingerprint of the sound, not a transcript of your words."
+  - Accuracy note: do NOT claim "never a recording" / "audio is discarded" / "never written to disk" for enrollment. The shipped (Concord/release) build has an optional, consent-gated, off-by-default `~/.parleq/enrollment-audio.enc` store (AES-GCM, device-only, never uploaded, erased when disabled) that keeps enrollment clips so a voiceprint can be re-derived after an on-device model update. Detail pages (Privacy/FAQ/how-it-works) disclose it; marketing spots stay simple ("fingerprint of the sound, not a transcript"). Dictation-audio "never written to disk" claims remain TRUE and unchanged.
 
   ### Custom dictionary
   - Before/after example: "Q2RFC → Q2 RFC"
