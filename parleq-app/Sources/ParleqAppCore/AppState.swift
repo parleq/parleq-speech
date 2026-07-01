@@ -4238,11 +4238,6 @@ public final class AppState {
         // Cancel any lingering auto-accept timer so it doesn't fire
         // mid-re-cleanup.
         cancelAutoAcceptTimer()
-        // A model-switch re-clean routes to the picked cloud model, so the
-        // result is Polished — clear any Instant/Raw engine badge. (The model
-        // picker that drives this is only shown on Polished dictations, so this
-        // is defensive, but keeps the badge invariant airtight.)
-        overlay.model.cleanupMode = .polished
         phase = .cleaning
 
         let overlay = self.overlay
@@ -4393,11 +4388,6 @@ public final class AppState {
         // cleaning state reads "Applying <name>…" instead of the
         // anonymous indicator.
         overlay.model.activeTransformName = preset.name
-        // A manual preset tap re-cleans the shown text through the cloud/refine
-        // tier, so the result is no longer an Instant/Raw output — clear the
-        // engine badge (→ Polished, no badge) or it would falsely claim the
-        // text was still on-device / uncleaned.
-        overlay.model.cleanupMode = .polished
         phase = .cleaning
         // Defensive: the awaitingAccept guard means any prior task has
         // completed, but cancel before reassigning anyway — matching
@@ -4451,6 +4441,12 @@ public final class AppState {
                         )
                     )
                 }
+                // A successful preset re-clean produced cloud/refine output, so
+                // the engine badge is now Polished (clears any ⚡ Instant / Raw
+                // badge from the original dictation). Set ONLY on success — on
+                // fallback the displayed text is still the Instant/Raw output,
+                // so its badge must stay truthful (left untouched below).
+                self.overlay.model.cleanupMode = .polished
                 // A manual transform supersedes the auto-applied default's
                 // provenance — the text is no longer just "Styled with X".
                 // On failure the fallback IS the still-styled prior text,
@@ -4550,11 +4546,6 @@ public final class AppState {
               overlay.model.reauthState == .signedIn,
               !lastRawTranscript.isEmpty else { return }
         cancelAutoAcceptTimer()
-        // A federation re-clean routes to the cloud provider → Polished output,
-        // so clear any Instant/Raw badge. (Not reachable for an on-device
-        // Instant dictation, which can't hit a federation auth failure, but
-        // keeps the badge invariant airtight.)
-        overlay.model.cleanupMode = .polished
         phase = .cleaning
         let overlay = self.overlay
         let rawTranscript = lastRawTranscript
@@ -4715,11 +4706,6 @@ public final class AppState {
         // Cancel any lingering auto-accept timer so it doesn't fire
         // mid-re-cleanup.
         cancelAutoAcceptTimer()
-        // Undo-style re-runs plain cleanup on the shown text — a Polished
-        // path (it's only reachable from the "Styled with X" chip, i.e. a
-        // Polished dictation), so keep the badge Polished for uniformity with
-        // the other review-time re-clean paths.
-        overlay.model.cleanupMode = .polished
         phase = .cleaning
         // Defensive: cancel before reassigning (matching the main
         // capture path) so a dropped reference can never keep streaming.
