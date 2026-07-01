@@ -35,7 +35,7 @@ const providers = [
   {
     slug: 'on-device',
     name: 'On-device',
-    blurb: 'In-process Gemma 4 E4B via Apple MLX. No API key, no cloud account, no per-call cost — cleanup runs entirely on your Mac with no network boundary. One-time ~4 GB model download; needs a Mac with 12 GB+ RAM.',
+    blurb: 'Two on-device tiers: Lightweight (deterministic, built on Concord — no download, no RAM floor) and the Gemma 4 E4B LLM via Apple MLX (full rewriting; ~4 GB download, 12 GB+ RAM). No API key, no cloud account, no per-call cost — cleanup runs entirely on your Mac with no network boundary.',
     difficulty: 'Easiest — no account',
   },
   {
@@ -91,7 +91,7 @@ const providers = [
           Set up a cleanup provider.
         </h1>
         <p class="mt-5 max-w-2xl text-lg leading-relaxed text-[color:var(--color-text-muted)]">
-          Parleq's speech recognition runs entirely on-device. The optional cleanup pass — punctuation, capitalization, light disfluency removal, name spelling — runs either on-device or against a cloud LLM provider you configure with your own credentials. Pick the one that fits your situation:
+          Parleq's speech recognition runs entirely on-device. The optional cleanup pass runs either on-device — deterministic corrections with Lightweight, or full LLM rewriting with the Gemma 4 option — or against a cloud LLM provider you configure with your own credentials. Pick the one that fits your situation:
         </p>
       </div>
     </div>
