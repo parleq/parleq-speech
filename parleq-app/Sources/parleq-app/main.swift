@@ -1161,9 +1161,10 @@ struct ParleqApp {
             // to re-run the flow can do so from the menu bar or
             // via Settings → "Run Setup Again".
             let accessGrantedAtLaunch = LaunchPermissions.accessibilityGranted
-            if LaunchPermissions.shouldShowWizardAtLaunch(
+            let showWizardAtLaunch = LaunchPermissions.shouldShowWizardAtLaunch(
                 wizardCompleted: config.wizardCompleted,
-                accessibilityGranted: accessGrantedAtLaunch) {
+                accessibilityGranted: accessGrantedAtLaunch)
+            if showWizardAtLaunch {
                 if !config.wizardCompleted {
                     logStderr("[parleq] wizard: launching first-run setup (config.wizardCompleted=false)")
                     wizard.show()
@@ -1172,6 +1173,25 @@ struct ParleqApp {
                     // the permissions step only (no full re-flow, no config reset).
                     logStderr("[parleq] wizard: Accessibility missing — showing permissions re-grant (#82)")
                     wizard.show(permissionsOnly: true)
+                }
+            }
+
+            // Per-app cleanup modes (per-target feature): a one-time heads-up so
+            // an EXISTING user's dictation into terminals/editors/spreadsheets
+            // doesn't silently switch to Instant without explanation. New installs
+            // (wizard not yet completed) onboard WITH the feature and are marked
+            // seen silently. When the permissions wizard is up, defer to the next
+            // launch so we don't stack two modals.
+            if !UserDefaults.standard.bool(forKey: PerAppModesNotice.seenKey) {
+                if !config.wizardCompleted {
+                    UserDefaults.standard.set(true, forKey: PerAppModesNotice.seenKey)
+                } else if !showWizardAtLaunch {
+                    // Defer to after launch settles so a synchronous modal doesn't
+                    // block the remaining app setup below.
+                    DispatchQueue.main.async {
+                        PerAppModesNotice.show()
+                        UserDefaults.standard.set(true, forKey: PerAppModesNotice.seenKey)
+                    }
                 }
             }
 
