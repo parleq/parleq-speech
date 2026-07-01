@@ -127,6 +127,18 @@ extension ModelIdentifier {
     /// "gpt-") and Title-Cases the remainder so it reads naturally
     /// in the UI without duplicating the group header.
     public var displayShort: String {
+        // Provider-level tiers carry no model name (empty `model` field) — the
+        // on-device Concord "Lightweight" corrector is the main one. Fall back
+        // to a human provider name so the ModelBadge / picker row never renders
+        // blank (which read as a nameless checked item + an icon-only badge).
+        if model.trimmingCharacters(in: .whitespaces).isEmpty {
+            switch provider.lowercased() {
+            case "concord": return "Lightweight"
+            case "local":   return "On-device"
+            case "none", "": return "None"
+            default:        return provider.prefix(1).uppercased() + provider.dropFirst()
+            }
+        }
         // Strip known provider prefixes so the badge reads
         // "2.5 Flash" (not "gemini-2.5-flash") or "Sonnet 4-5"
         // (not "claude-sonnet-4-5").
