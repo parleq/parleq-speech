@@ -71,6 +71,29 @@ const bunch = [
   { ...cleanup[4], group: 'cleanup' },
   { ...refine[3], group: 'refine' },
 ];
+// SPIKE (2026-07-01): a third "How it works" family. Its grapes are the bigger,
+// multi-step features — shown as a bounded in-place walkthrough instead of the
+// how-it-works page's long scroll. Only ONE grape (the refine loop) is wired to a
+// stepper demo for now; the rest are visible-but-inert to feel the tab. These
+// grapes are a separate overlay (data-group="howitworks"), so Cleanup/Refine are
+// untouched — CSS shows only the active family's grapes.
+const howitworks = [
+  { id: 'refine-loop', icon: 'bubble', label: 'Refine loop', title: 'The refine loop', pasting: 'Mail',
+    desc: 'Dictate a rough draft, then reshape it by voice — as many passes as you like.',
+    steps: [
+      { label: 'Step 1 · You dictate', before: "so um can we push the sync to thursday and i'll send the deck", after: "Can we push the sync to Thursday? I'll send the deck." },
+      { label: 'Step 2 · Refine by voice', instruction: '“make it a polite email to Sam”', after: "Hi Sam — could we move our sync to <span class=\"mk\">Thursday</span>? I'll send the deck ahead of time." },
+      { label: 'Step 3 · Refine again', instruction: '“offer Friday as a backup”', after: "Hi Sam — could we move our sync to Thursday, or <span class=\"mk\">Friday</span> if that's easier? I'll send the deck ahead." },
+      { label: 'Step 4 · One tap to finish', presets: ['Concise', 'Formal', 'Bulletize'], after: 'Tap a preset to restyle in one more pass — or just Accept.' },
+    ] },
+  { id: 'hiw-reference', icon: 'window', label: 'Reference', title: 'Reference windows', desc: 'Point at a window so the model has your context.' },
+  { id: 'hiw-voice', icon: 'wave', label: 'Voice', title: 'Voice enrollment', desc: 'Teach a term in your own voice; tell it apart by sound.' },
+  { id: 'hiw-neverlose', icon: 'sparkle', label: 'Never lose', title: 'Never lose a dictation', desc: 'Your last dictation is held in memory — re-run it with R.' },
+  { id: 'hiw-paste', icon: 'link', label: 'Paste', title: 'Pastes where you land', desc: 'The focused app is captured at hotkey-down.' },
+];
+// howitworks[i] renders at POS[hiwPos[i]] — the refine loop takes the big center orb.
+const hiwPos = [2, 0, 1, 3, 4];
+
 const all = [...cleanup, ...refine];
 
 // No-JS baseline: the default active family + the grape that JS would auto-select on
@@ -86,7 +109,7 @@ const defaultGrape = bunch[defaultGrapeIndex];
 const DEFAULT_SELECTED_ID = defaultGrape.id;
 ---
 
-<div id="explorer" class="relative mt-12 grid grid-cols-1 items-center gap-x-12 gap-y-10 lg:grid-cols-[300px_minmax(0,1fr)]">
+<div id="explorer" data-tab={DEFAULT_GROUP} class="relative mt-12 grid grid-cols-1 items-center gap-x-12 gap-y-10 lg:grid-cols-[300px_minmax(0,1fr)]">
   <svg class="flow-lines" viewBox="0 0 464 190" preserveAspectRatio="none" aria-hidden="true">
     <defs>
       <linearGradient id="flowLav" x1="0" y1="0" x2="1" y2="0">
@@ -169,6 +192,10 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
         <span class="group-tab-title">Refine &amp; Shape</span>
         <span class="group-tab-copy">Make it right for the moment.</span>
       </button>
+      <button type="button" role="tab" id="ftab-howitworks" aria-controls="explorer-bunch" data-tab="howitworks" aria-selected={DEFAULT_GROUP === 'howitworks' ? 'true' : 'false'} tabindex={DEFAULT_GROUP === 'howitworks' ? 0 : -1} class="group-tab">
+        <span class="group-tab-title">How it works</span>
+        <span class="group-tab-copy">The whole flow, feature by feature.</span>
+      </button>
     </div>
 
     <div class="bunch" id="explorer-bunch" role="tabpanel" aria-labelledby={DEFAULT_GROUP === 'cleanup' ? 'ftab-cleanup' : 'ftab-refine'}>
@@ -183,6 +210,23 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
                   aria-hidden={active ? 'false' : 'true'}
                   tabindex={active ? 0 : -1} disabled={!active}
                   style={`left:${POS[i].l}px;top:${POS[i].t}px;z-index:${POS[i].z};--scale:${POS[i].s}`}>
+            <span class="grape-orb">
+              <svg class="g-ic" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" set:html={emboss(g.icon)} />
+              <span class="g-lb">{g.label}</span>
+            </span>
+          </button>
+        );
+      })}
+      {/* SPIKE: How-it-works overlay grapes — hidden unless the third tab is active (CSS). */}
+      {howitworks.map((g, i) => {
+        const p = POS[hiwPos[i]];
+        return (
+          <button type="button" class="grape" data-id={g.id} data-group="howitworks"
+                  data-name={g.title} data-desc={g.desc} data-tone={p.tone}
+                  data-active="false" data-selected="false"
+                  aria-label={g.title} aria-pressed="false" aria-hidden="true"
+                  tabindex={-1} disabled
+                  style={`left:${p.l}px;top:${p.t}px;z-index:${p.z};--scale:${p.s}`}>
             <span class="grape-orb">
               <svg class="g-ic" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" set:html={emboss(g.icon)} />
               <span class="g-lb">{g.label}</span>
@@ -223,6 +267,46 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
         </div>
       </div>
     ))}
+
+    {/* SPIKE: the refine-loop grape opens a bounded stepper walkthrough */}
+    <div class="demo-card demo-stepper" data-panel="refine-loop" hidden>
+      <div class="flex items-center justify-between gap-3">
+        <div class="flex items-center gap-2.5">
+          <span class="demo-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4" set:html={icons['bubble']} /></span>
+          <h3 class="text-[15px] font-semibold text-white">The refine loop</h3>
+        </div>
+        <span class="chip chip-byo">Your provider</span>
+      </div>
+      {howitworks[0].steps.map((s, i) => (
+        <div class="stepper-step" data-step={i} hidden={i !== 0}>
+          <p class="ba-label">{s.label}</p>
+          {s.before && (<><p class="ba-before">{s.before}</p><p class="ba-arrow" aria-hidden="true">↓</p></>)}
+          {s.instruction && (<p class="refine-instr">{s.instruction}</p>)}
+          {s.presets && (<div class="mt-3 flex flex-wrap gap-2">{s.presets.map((p, j) => (<span class={`preset-chip ${j === 0 ? 'preset-on' : ''}`}>{p}</span>))}</div>)}
+          <p class="ba-after mt-2" set:html={s.after} />
+        </div>
+      ))}
+      <div class="stepper-foot">
+        <button type="button" class="stepper-btn stepper-prev" aria-label="Previous step">‹</button>
+        <span class="stepper-dots" aria-hidden="true">
+          {howitworks[0].steps.map((s, i) => (<span class="stepper-dot" data-dot={i}></span>))}
+        </span>
+        <button type="button" class="stepper-btn stepper-next" aria-label="Next step">›</button>
+      </div>
+    </div>
+
+    {/* SPIKE: inert placeholders for the other how-it-works grapes */}
+    {howitworks.slice(1).map((g) => (
+      <div class="demo-card" data-panel={g.id} hidden>
+        <div class="flex items-center gap-2.5">
+          <span class="demo-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4" set:html={icons[g.icon]} /></span>
+          <h3 class="text-[15px] font-semibold text-white">{g.title}</h3>
+        </div>
+        <p class="mt-4 text-[13px] leading-relaxed" style="color: rgba(255,255,255,.62);">{g.desc}</p>
+        <p class="mt-5 text-xs" style="color: rgba(255,255,255,.38);">Full walkthrough coming — this is a spike with one wired grape (the refine loop).</p>
+      </div>
+    ))}
+
     <p class="mt-4 text-xs text-[color:var(--color-text-subtle)]">Lit grapes are the active family — click one to swap the demo.</p>
   </div>
 </div>
@@ -230,9 +314,9 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
 <style>
   .group-tabs {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr 1fr 1fr;
     gap: 0;
-    max-width: 22rem;
+    max-width: 34rem;
     border-bottom: 1px solid color-mix(in srgb, var(--color-grape-300) 24%, var(--color-border));
   }
   .group-tab {
@@ -557,6 +641,25 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
   .foot-actions { display:flex; align-items:center; gap:.5rem; font-size:.68rem; color: rgba(255,255,255,.5); }
   .foot-actions b { border-radius:.4rem; background: var(--color-accent); padding:.18rem .6rem; color:#fff; font-weight:600; }
 
+  /* SPIKE: three-family visibility. Only the active family's grapes occupy the
+     bunch — the how-it-works overlay grapes reuse the same positions, so we hide
+     whichever family isn't active. Cleanup/Refine keep their existing
+     receded-inactive look between themselves; the how-it-works grapes only appear
+     on their own tab. */
+  #explorer[data-tab="howitworks"] .grape:not([data-group="howitworks"]) { display: none; }
+  #explorer:not([data-tab="howitworks"]) .grape[data-group="howitworks"] { display: none; }
+
+  /* SPIKE: refine-loop stepper panel. Reuses .demo-card chrome; adds a step
+     footer with prev/next + dots. */
+  .stepper-step .ba-after { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:.82rem; line-height:1.5; color:#f1f5f9; }
+  .stepper-foot { margin-top:1.1rem; display:flex; align-items:center; justify-content:space-between; gap:.75rem; border-top:1px solid rgba(255,255,255,.1); padding-top:.8rem; }
+  .stepper-btn { display:inline-flex; height:1.6rem; width:1.6rem; align-items:center; justify-content:center; border-radius:.45rem; border:1px solid rgba(255,255,255,.16); background:rgba(255,255,255,.05); color:rgba(255,255,255,.75); font-size:1rem; line-height:1; cursor:pointer; }
+  .stepper-btn:disabled { opacity:.3; cursor:default; }
+  .stepper-btn:not(:disabled):hover { background:rgba(255,255,255,.12); color:#fff; }
+  .stepper-dots { display:inline-flex; gap:.4rem; }
+  .stepper-dot { height:.4rem; width:.4rem; border-radius:9999px; background:rgba(255,255,255,.22); transition: background .18s ease, width .18s ease; }
+  .stepper-dot[data-on="true"] { width:1rem; background: var(--color-accent-hover); }
+
   /* Mobile (< lg): the flow lines are already hidden, so drop the two-column
      grid and stack simply — the interactive bunch on top, the demo card below.
      Cap everything to the viewport and let the monospace before/after wrap so
@@ -589,6 +692,7 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
     const grapes = Array.from(root.querySelectorAll('.grape'));
     const panels = Array.from(root.querySelectorAll('[data-panel]'));
     const preview = root.querySelector('[data-preview]');
+    let resetStepper = () => {};  // SPIKE: reassigned below if the stepper panel exists
 
     const showPreview = (g) => { if (preview) preview.innerHTML = '<b>' + g.dataset.name + '</b> — ' + g.dataset.desc; };
     const pulseFlow = () => {
@@ -603,6 +707,7 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
         x.setAttribute('aria-pressed', sel ? 'true' : 'false');
       });
       panels.forEach((p) => { p.hidden = p.getAttribute('data-panel') !== g.dataset.id; });
+      if (g.dataset.id === 'refine-loop') resetStepper();
       showPreview(g);
       pulseFlow();
     };
@@ -619,6 +724,7 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
         g.disabled = !active;
         g.setAttribute('aria-hidden', active ? 'false' : 'true');
       });
+      root.dataset.tab = group;  // SPIKE: drives which family's grapes show (CSS)
       const panel = root.querySelector('#explorer-bunch');
       if (panel) panel.setAttribute('aria-labelledby', 'ftab-' + group);
       const first = grapes.find((g) => g.dataset.group === group && g.dataset.tone === 'center') || grapes.find((g) => g.dataset.group === group);
@@ -651,6 +757,26 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
       const sel = grapes.find((g) => g.getAttribute('data-selected') === 'true');
       if (sel) showPreview(sel);
     });
+
+    // SPIKE: refine-loop stepper (bounded walkthrough)
+    const stepper = root.querySelector('.demo-stepper');
+    if (stepper) {
+      const steps = Array.from(stepper.querySelectorAll('.stepper-step'));
+      const dots = Array.from(stepper.querySelectorAll('.stepper-dot'));
+      const prevBtn = stepper.querySelector('.stepper-prev');
+      const nextBtn = stepper.querySelector('.stepper-next');
+      let si = 0;
+      const renderStep = () => {
+        steps.forEach((s, i) => { s.hidden = i !== si; });
+        dots.forEach((d, i) => d.setAttribute('data-on', i === si ? 'true' : 'false'));
+        if (prevBtn) prevBtn.disabled = si === 0;
+        if (nextBtn) nextBtn.disabled = si === steps.length - 1;
+      };
+      if (prevBtn) prevBtn.addEventListener('click', () => { if (si > 0) { si--; renderStep(); pulseFlow(); } });
+      if (nextBtn) nextBtn.addEventListener('click', () => { if (si < steps.length - 1) { si++; renderStep(); pulseFlow(); } });
+      resetStepper = () => { si = 0; renderStep(); };
+      renderStep();
+    }
 
     setTab('cleanup');
   })();
