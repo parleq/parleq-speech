@@ -4321,6 +4321,16 @@ public final class AppState {
             // actually accepted, not the original pre-switch run.
             self?.lastLLMLatencyMs = outcome.llmLatencyMs
             self?.applyResult(outcome.text, cleanupFailureMessage: outcome.failureMessage, reauthable: outcome.reauthable)
+            // A model-switch re-clean is reachable from an Instant/Raw dictation
+            // via the image-conflict row's "Switch to <vision model>" action
+            // (independent of the header model picker, which is hidden for
+            // Instant/Raw). On SUCCESS the text is now from the picked cloud
+            // model → clear any ⚡ Instant / Raw badge to Polished. Success-gated:
+            // on fallback the displayed text is unchanged, so its badge stays
+            // truthful (left untouched).
+            if outcome.usedLLMOutput {
+                self?.overlay.model.cleanupMode = .polished
+            }
             if outcome.usedLLMOutput, asRefineRerun {
                 // A refine re-run supersedes styled provenance exactly
                 // like a voice refine does in the main pipeline: the
