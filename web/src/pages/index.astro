@@ -199,6 +199,84 @@ const base = `${import.meta.env.BASE_URL}`.replace(/\/$/, '');
     </section>
   </div>
 
+  <!-- Trust band: "your machine, your rules." Homes the audit orphans that
+       aren't per-utterance transforms (so they aren't grapes): on-device ASR
+       (audio never leaves), provider breadth + no-server trust, never-lose-a-
+       dictation (small overlay mockup), and compliance-by-default (→ /enterprise).
+       ACCURACY: no blanket "everything is local" — AUDIO never leaves, but
+       cleanup TEXT may go to the cloud provider the user brings. -->
+  <section data-reveal class="border-t border-[color:var(--color-border-subtle)]" style="background: color-mix(in srgb, var(--color-grape) 3%, var(--color-bg));">
+    <div class="mx-auto max-w-5xl px-6 py-20 sm:py-24">
+      <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-grape)]">
+        Privacy &amp; control
+      </p>
+      <h2 class="mt-4 font-display text-3xl leading-[1.1] font-medium tracking-tight sm:text-4xl">
+        Your machine, your rules.
+      </h2>
+      <p class="mt-6 max-w-2xl text-lg leading-relaxed text-[color:var(--color-text-muted)]">
+        Speech recognition runs on your Mac, and your audio never leaves it. Cleanup runs on-device too — or through your own cloud account, if you bring one. Keavi runs no server and is never in the data path.
+      </p>
+
+      <div class="mt-12 grid items-start gap-x-12 gap-y-12 lg:grid-cols-2">
+        <!-- Left: trust points -->
+        <ul class="space-y-8">
+          <li class="flex gap-4">
+            <span aria-hidden="true" class="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[color:var(--color-border-subtle)] bg-[color:var(--color-surface)] text-[color:var(--color-grape)]">
+              <svg viewBox="0 0 24 24" class="h-[18px] w-[18px]" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0 0 12 0"/><path d="M12 17v4M9 21h6"/></svg>
+            </span>
+            <div>
+              <h3 class="text-[15px] font-semibold tracking-tight text-[color:var(--color-text)]">Your audio never leaves your Mac.</h3>
+              <p class="mt-1.5 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">Parakeet speech recognition runs on the Apple Neural Engine. Audio lives in memory for the length of a dictation — never written to disk, never sent anywhere.</p>
+            </div>
+          </li>
+          <li class="flex gap-4">
+            <span aria-hidden="true" class="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[color:var(--color-border-subtle)] bg-[color:var(--color-surface)] text-[color:var(--color-grape)]">
+              <svg viewBox="0 0 24 24" class="h-[18px] w-[18px]" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="7" width="10" height="10" rx="1.5"/><path d="M10 4v3M14 4v3M10 17v3M14 17v3M4 10h3M4 14h3M17 10h3M17 14h3"/></svg>
+            </span>
+            <div>
+              <h3 class="text-[15px] font-semibold tracking-tight text-[color:var(--color-text)]">Bring your own AI — or none.</h3>
+              <p class="mt-1.5 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">Cleanup runs on-device, or through your own <strong class="font-medium text-[color:var(--color-text)]">Gemini, OpenAI, Bedrock, Vertex, or Azure</strong> account. Your keys, your data path — Parleq just talks to the endpoint you configured.</p>
+            </div>
+          </li>
+          <li class="flex gap-4">
+            <span aria-hidden="true" class="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[color:var(--color-border-subtle)] bg-[color:var(--color-surface)] text-[color:var(--color-grape)]">
+              <svg viewBox="0 0 24 24" class="h-[18px] w-[18px]" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 5 6v5c0 4.2 2.9 7.8 7 9 4.1-1.2 7-4.8 7-9V6l-7-3Z"/><path d="m9 12 2 2 4-4"/></svg>
+            </span>
+            <div>
+              <h3 class="text-[15px] font-semibold tracking-tight text-[color:var(--color-text)]">Compliance-friendly by default.</h3>
+              <p class="mt-1.5 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">Audio stays in memory, logs are metrics-only, secrets live in the Keychain, and dictation fails closed when you sign out. <a href={`${base}/enterprise/`} class="font-medium text-[color:var(--color-accent-hover)] underline-offset-4 hover:underline">More for IT teams →</a></p>
+            </div>
+          </li>
+        </ul>
+
+        <!-- Right: "never lose a dictation" overlay mockup -->
+        <div class="justify-self-center lg:justify-self-end lg:mt-2">
+          <div class="w-full max-w-sm rounded-2xl border p-5 shadow-[0_22px_60px_-34px_rgba(20,7,32,.55)]" style="background: linear-gradient(180deg, #1c2128, #171c22); border-color: rgba(255,255,255,.1);">
+            <div class="flex items-center gap-3">
+              <span aria-hidden="true" class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" style="background: color-mix(in srgb, var(--color-accent) 22%, transparent); color: #fcd9a3;">
+                <svg viewBox="0 0 24 24" class="h-[18px] w-[18px]" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m2 2 20 20"/><path d="M9 9v3a3 3 0 0 0 5 2.2"/><path d="M15 9.3V5a3 3 0 0 0-5.7-1.3"/><path d="M6 11a6 6 0 0 0 9 5.2"/><path d="M12 17v4M9 21h6"/></svg>
+              </span>
+              <div>
+                <p class="text-sm font-semibold text-white">Mic went quiet mid-sentence</p>
+                <p class="text-xs" style="color: rgba(255,255,255,.55);">Parleq kept what you said.</p>
+              </div>
+            </div>
+            <div class="mt-4 flex items-center gap-2.5 border-t pt-3.5" style="border-color: rgba(255,255,255,.1);">
+              <span class="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold text-white" style="background: var(--color-accent-hover);">
+                <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v4h4"/></svg>
+                Re-run
+              </span>
+              <span class="text-xs" style="color: rgba(255,255,255,.42);">press <kbd class="rounded border px-1 font-mono" style="border-color: rgba(255,255,255,.2);">R</kbd></span>
+            </div>
+          </div>
+          <p class="mt-4 max-w-sm text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">
+            <strong class="font-semibold text-[color:var(--color-text)]">Never lose a dictation.</strong> If your mic drops or your input device switches mid-sentence, Parleq keeps your words instead of silently losing them — re-run with a tap.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- Built for the enterprise. The OIDC-federation story for org
        buyers: one sign-in for everyone, audit attribution, no Parleq
        servers in the path. A DARK GRAPE band (from-[#23103a] to-[#140622])
