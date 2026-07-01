@@ -182,41 +182,59 @@ struct ParleqAppView: View {
     /// to 2 columns, which is what fits small / low-res viewports.
     private var sidebar: some View {
         List(selection: selectionBinding) {
-            Label(ParleqAppSection.recent.title, systemImage: ParleqAppSection.recent.systemImage)
-                .tag(ParleqAppSelection.recent)
-            Label(ParleqAppSection.stats.title, systemImage: ParleqAppSection.stats.systemImage)
-                .tag(ParleqAppSelection.stats)
-            Label(ParleqAppSection.learned.title, systemImage: ParleqAppSection.learned.systemImage)
-                .tag(ParleqAppSelection.learned)
-            Label("Usage", systemImage: "dollarsign.circle")
-                .tag(ParleqAppSelection.usage)
-            DisclosureGroup(isExpanded: $settingsExpanded) {
-                // Usage is promoted to a top-level row (above), so drop
-                // it from the Settings sub-list to avoid duplication.
-                // Company Account only appears for enterprise users (an
-                // OIDC issuer configured or a provider in an OIDC auth
-                // mode) — zero-config users never see it.
-                ForEach(SettingsView.SettingsSection.allCases.filter {
-                    $0 != .usage
-                        && ($0 != .companyAccount || settingsModel.companyAccountVisible)
-                }) { pane in
-                    Label(pane.label, systemImage: pane.icon)
-                        .tag(ParleqAppSelection.settings(pane))
-                }
-            } label: {
-                // Make the whole Settings row toggle the group, not
-                // just the disclosure chevron — clicking the small
-                // chevron directly is fiddly. contentShape makes the
-                // full row width hit-testable; the chevron still works
-                // on its own too.
-                Label(ParleqAppSection.settings.title, systemImage: ParleqAppSection.settings.systemImage)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        withAnimation { settingsExpanded.toggle() }
-                    }
+            // Content you USE — grouped under static (non-collapsible) section
+            // headers so the frequently-visited tools read as first-class, not
+            // buried under config. Only the "Settings" group below collapses.
+            Section("Dictation") {
+                Label(ParleqAppSection.recent.title, systemImage: ParleqAppSection.recent.systemImage)
+                    .tag(ParleqAppSelection.recent)
+                Label(ParleqAppSection.stats.title, systemImage: ParleqAppSection.stats.systemImage)
+                    .tag(ParleqAppSelection.stats)
             }
-            Label(ParleqAppSection.about.title, systemImage: ParleqAppSection.about.systemImage)
-                .tag(ParleqAppSelection.about)
+            Section("Customize") {
+                // Dictionary + Presets are tools the user edits repeatedly, so
+                // they're promoted OUT of the Settings disclosure to top level.
+                // They still render via the .settings(pane) selection + detail
+                // switch — only their sidebar placement changed.
+                Label(SettingsView.SettingsSection.dictionary.label,
+                      systemImage: SettingsView.SettingsSection.dictionary.icon)
+                    .tag(ParleqAppSelection.settings(.dictionary))
+                Label(SettingsView.SettingsSection.presets.label,
+                      systemImage: SettingsView.SettingsSection.presets.icon)
+                    .tag(ParleqAppSelection.settings(.presets))
+                Label(ParleqAppSection.learned.title, systemImage: ParleqAppSection.learned.systemImage)
+                    .tag(ParleqAppSelection.learned)
+            }
+            // Config + About — an unlabeled trailing group. Only this Settings
+            // disclosure collapses; the headers above are static.
+            Section {
+                DisclosureGroup(isExpanded: $settingsExpanded) {
+                    // Usage folds into Stats now (no standalone row); Dictionary
+                    // and Presets are promoted to Customize above — all excluded
+                    // here. Company Account only appears for enterprise users (an
+                    // OIDC issuer configured or a provider in an OIDC auth mode).
+                    ForEach(SettingsView.SettingsSection.allCases.filter {
+                        $0 != .usage && $0 != .dictionary && $0 != .presets
+                            && ($0 != .companyAccount || settingsModel.companyAccountVisible)
+                    }) { pane in
+                        Label(pane.label, systemImage: pane.icon)
+                            .tag(ParleqAppSelection.settings(pane))
+                    }
+                } label: {
+                    // Make the whole Settings row toggle the group, not
+                    // just the disclosure chevron — clicking the small
+                    // chevron directly is fiddly. contentShape makes the
+                    // full row width hit-testable; the chevron still works
+                    // on its own too.
+                    Label(ParleqAppSection.settings.title, systemImage: ParleqAppSection.settings.systemImage)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            withAnimation { settingsExpanded.toggle() }
+                        }
+                }
+                Label(ParleqAppSection.about.title, systemImage: ParleqAppSection.about.systemImage)
+                    .tag(ParleqAppSelection.about)
+            }
         }
         .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 300)
         .listStyle(.sidebar)
@@ -280,7 +298,9 @@ struct ParleqAppView: View {
     /// rates) with today + this-week summaries and 7-day
     /// sparklines. PR 5 (#220).
     private var statsSection: some View {
-        StatsView(history: TranscriptHistory.shared)
+        // settingsModel drives the folded-in "Usage & cost" disclosure (Usage is
+        // no longer a standalone screen).
+        StatsView(history: TranscriptHistory.shared, settingsModel: settingsModel)
     }
 
     /// Learned — pending suggestions (Accept/Dismiss) + auto-applied

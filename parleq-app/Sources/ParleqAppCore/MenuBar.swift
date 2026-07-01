@@ -212,6 +212,21 @@ public final class MenuBar: NSObject {
         settingsItem.target = self
         settingsItem.toolTip = "Tip: hold your dictation hotkey and tap P to open Parleq from anywhere."
 
+        // Direct jumps to the two most-edited surfaces — the Dictionary and
+        // Presets are tools users touch often, so give them menu-bar shortcuts
+        // instead of Show Parleq → sidebar. (They open the app shell straight to
+        // that pane; no Settings-disclosure spelunking.)
+        let dictionaryItem = NSMenuItem(
+            title: "Dictionary…",
+            action: #selector(presentDictionary),
+            keyEquivalent: "")
+        dictionaryItem.target = self
+        let presetsItem = NSMenuItem(
+            title: "Presets…",
+            action: #selector(presentPresets),
+            keyEquivalent: "")
+        presetsItem.target = self
+
         let runSetupItem = NSMenuItem(
             title: "Run Setup…",
             action: #selector(runSetup),
@@ -279,6 +294,8 @@ public final class MenuBar: NSObject {
         menu.addItem(hotkeyItem)
         menu.addItem(.separator())
         menu.addItem(settingsItem)
+        menu.addItem(dictionaryItem)
+        menu.addItem(presetsItem)
         menu.addItem(microphoneMenuItem)
         menu.addItem(recoverLastDictationMenuItem)
         menu.addItem(.separator())
@@ -290,6 +307,14 @@ public final class MenuBar: NSObject {
         statusItem.menu = menu
 
         applyIcon(active: false)
+    }
+
+    @objc private func presentDictionary() {
+        ParleqAppWindowController.shared.show(settingsPane: .dictionary)
+    }
+
+    @objc private func presentPresets() {
+        ParleqAppWindowController.shared.show(settingsPane: .presets)
     }
 
     @objc private func presentSettings() {

@@ -33,7 +33,12 @@ import SwiftUI
 @MainActor
 struct StatsView: View {
     @ObservedObject var history: TranscriptHistory
+    @ObservedObject var settingsModel: SettingsModel
     @State private var usage: UsageAggregate = .empty
+    /// Collapsed by default; the user expands it to see the full
+    /// usage ledger (same content as Settings → Usage) without
+    /// navigating away from the Stats pane.
+    @State private var usageExpanded = false
     /// Stored (not computed) so the publisher is created ONCE per view
     /// identity. A computed property would mint a fresh
     /// Timer.publish().autoconnect() on every body re-render, and
@@ -87,6 +92,19 @@ struct StatsView: View {
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: 640)
                     .padding(.top, 8)
+
+                // Usage ledger detail — collapsed by default so the
+                // Stats pane stays focused on the session metrics
+                // above. Expanding triggers a fresh ledger read so
+                // the numbers are current at the moment of reveal.
+                DisclosureGroup("Usage & cost", isExpanded: $usageExpanded) {
+                    UsageLedgerContent(model: settingsModel)
+                        .padding(.top, 8)
+                }
+                .onChange(of: usageExpanded) { _, expanded in
+                    if expanded { settingsModel.refreshUsage() }
+                }
+                .padding(.top, 4)
             }
             .padding(20)
             .frame(maxWidth: .infinity, alignment: .leading)

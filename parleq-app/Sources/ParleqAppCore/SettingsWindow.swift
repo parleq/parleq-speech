@@ -1624,21 +1624,6 @@ struct SettingsView: View {
         }
     }
 
-    /// Human-readable line about where the cost numbers in the
-    /// Usage section came from. Shows "refreshed 3h ago" when
-    /// LiteLLM data is current, falls back to the bundled-defaults
-    /// message when we've never successfully fetched. Recomputed
-    /// each time the Settings window appears.
-    private var pricingFreshnessLine: String {
-        guard let last = PricingCache.shared.lastRefresh else {
-            return "Costs use bundled fallback rates (live pricing not yet fetched)."
-        }
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .full
-        let ago = formatter.localizedString(for: last, relativeTo: Date())
-        return "Costs use LiteLLM live pricing, refreshed \(ago)."
-    }
-
     // MARK: - Per-section detail views
 
     @ViewBuilder
@@ -3369,37 +3354,7 @@ struct SettingsView: View {
 
     @ViewBuilder
     private var usageSection: some View {
-        SettingsCard {
-            VStack(alignment: .leading, spacing: 8) {
-                UsageRow(label: "Today",      bucket: model.usage.today)
-                UsageRow(label: "This Month", bucket: model.usage.thisMonth)
-                UsageRow(label: "All Time",   bucket: model.usage.allTime)
-            }
-        }
-        if !model.usage.byModel.isEmpty {
-            SettingsCard {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("By model (all time)")
-                        .font(.callout.weight(.medium))
-                    ForEach(model.usage.byModel) { breakdown in
-                        UsageRow(
-                            label: breakdown.displayName,
-                            bucket: breakdown.bucket,
-                            labelWidth: 200
-                        )
-                    }
-                }
-            }
-        }
-        SettingsCard {
-            HStack(spacing: 12) {
-                Button("Refresh") { model.refreshUsage() }
-                Button("Clear History") { model.clearUsage() }
-                    .foregroundColor(.red)
-                Spacer()
-            }
-            SettingsCaption("Ledger lives at ~/.parleq/usage.jsonl. \(pricingFreshnessLine) Tiered context-length pricing isn't modeled yet — verify against the provider's pricing page if amounts feel off.")
-        }
+        UsageLedgerContent(model: model)
     }
 
     @ViewBuilder
@@ -4290,6 +4245,66 @@ struct DictionaryTermEditView: View {
             })
     }
     #endif
+}
+
+/// Reusable SwiftUI view that renders the full Usage ledger section
+/// content — summary rows, per-model breakdown, Refresh/Clear
+/// buttons, and pricing-freshness caption. Extracted from
+/// `SettingsView.usageSection` so `StatsView` can embed the same
+/// content in a collapsed-by-default disclosure group without
+/// duplicating logic.
+@MainActor
+struct UsageLedgerContent: View {
+    @ObservedObject var model: SettingsModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SettingsCard {
+                VStack(alignment: .leading, spacing: 8) {
+                    UsageRow(label: "Today",      bucket: model.usage.today)
+                    UsageRow(label: "This Month", bucket: model.usage.thisMonth)
+                    UsageRow(label: "All Time",   bucket: model.usage.allTime)
+                }
+            }
+            if !model.usage.byModel.isEmpty {
+                SettingsCard {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("By model (all time)")
+                            .font(.callout.weight(.medium))
+                        ForEach(model.usage.byModel) { breakdown in
+                            UsageRow(
+                                label: breakdown.displayName,
+                                bucket: breakdown.bucket,
+                                labelWidth: 200
+                            )
+                        }
+                    }
+                }
+            }
+            SettingsCard {
+                HStack(spacing: 12) {
+                    Button("Refresh") { model.refreshUsage() }
+                    Button("Clear History") { model.clearUsage() }
+                        .foregroundColor(.red)
+                    Spacer()
+                }
+                SettingsCaption("Ledger lives at ~/.parleq/usage.jsonl. \(pricingFreshnessLine) Tiered context-length pricing isn't modeled yet — verify against the provider's pricing page if amounts feel off.")
+            }
+        }
+    }
+
+    /// Human-readable line about where the cost numbers came from.
+    /// Shows "refreshed 3h ago" when LiteLLM data is current, falls
+    /// back to the bundled-defaults message when never fetched.
+    private var pricingFreshnessLine: String {
+        guard let last = PricingCache.shared.lastRefresh else {
+            return "Costs use bundled fallback rates (live pricing not yet fetched)."
+        }
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .full
+        let ago = formatter.localizedString(for: last, relativeTo: Date())
+        return "Costs use LiteLLM live pricing, refreshed \(ago)."
+    }
 }
 
 /// One row in the Usage section: "Today: 12 calls · 4.2k in / 0.8k
