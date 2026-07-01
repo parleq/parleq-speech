@@ -1,6 +1,6 @@
 # Homepage redesign — the vineyard, the vine, the clusters, the grapes
 
-**Status:** Design (locked direction) — **review-reconciled 2026-06-30** (two-agent + RoboRev pass; see §12); pending maintainer review
+**Status:** Design (locked direction) — review-reconciled + **prototype-settled 2026-06-30** (two-agent + RoboRev + ChatGPT + interactive prototype; visual design settled, see §14). Next step: promotion into `index.astro` (implementation plan).
 **Date:** 2026-06-30
 **Branch:** `web/redesign-concord` (worktree `../parleq-worktrees/web-redesign`)
 **Scope this round:** the **homepage** (`web/src/pages/index.astro`) only. Inner pages may adopt the metaphor in a later round.
@@ -68,7 +68,7 @@ The **Cleanup** cluster is built on Concord (by Keavi) — the on-device determi
 
 The metaphor is powerful precisely because we hold it back. These are non-negotiable and become review checkpoints:
 
-1. **No literal farm.** No cartoon gatekeepers, no leaves/tendrils/sun/rolling-hills illustration. The vineyard lives in **language + restrained visual containment** (a fence line, a framed boundary, the existing dark-grape ground) — never an illustrated scene. **Grapes are flat, circular UI buttons** (deep-grape fill, subtle radial highlight, soft rim light, a simple stroke icon, a short label, a clear selected/focus state) — **not** photoreal 3-D fruit, water droplets, vines, leaves, or tendrils. *(The B/C prototype renders with realistic grapes + leaves are explicitly rejected; borrow their composition, not their texture.)*
+1. **No literal farm *scene*.** No cartoon gatekeepers, no leaves/tendrils/vine-stem/sun/rolling-hills illustration, no wine. The vineyard lives in **language + restrained visual containment** (a fence line, a framed boundary, the dark-grape ground) — never an illustrated scene. **UPDATED 2026-06-30 (maintainer decision, prototype-settled — supersedes the earlier "flat UI buttons" rule):** the grapes themselves are rendered as **realistic dark grape orbs** — deep-grape radial shading with depth, the icon **and** label debossed/engraved *inside* each orb, a single bright-violet **glowing** selected grape, inactive grapes receding as plain dark bunch-body. This photoreal grape treatment is the chosen look (see §14). The restraint that still holds: no foliage, stems, scenery, or wine — the metaphor is carried by the *bunch* + the *boundary* + language, not a farm illustration.
 2. **The metaphor is a lens, not a renaming.** Real feature labels stay literal: "Per-app cleanup," not "the targeting grape." Headlines may lean poetic; **UI controls, feature names, and nav stay plain.**
 3. **Curate, don't enumerate.** Show abundance and let people explore; never render every grape inline.
 4. **Two flagship *interactive* clusters** (Cleanup + Refine). "Built for teams" is the **third cluster on the vine conceptually** but is **non-interactive** on the homepage — a teaser band that links out, not an explorable bunch. (Three families in §2's table; two interactive — keep these consistent.)
@@ -130,7 +130,9 @@ Curated, not exhaustive. Enterprise-only capabilities leave the consumer cluster
 
 ## 6. The grape explorer (interaction)
 
-> **Updated 2026-06-30 after the ChatGPT visual-prototyping round (see §13).** The default desktop interaction is now a **split-stage explorer (persistent cluster + in-place demo panel)**, *not* a modal. This is both better UX (the bunch stays visible; exploration is continuous) and a major build de-risk: it's a **tabs/tabpanel** pattern we can model on the existing `DocTabs`, so **no focus-trapping dialog, no `inert`, no backdrop is needed on desktop.** Supersedes the modal-default + staging language recorded in §12.
+> **⚠️ SUPERSEDED by §14 (interactive prototype, 2026-06-30).** The interaction below evolved through the prototype into a **single shared cluster with group tabs that light up a family in place** (not a split-stage two-panel tabs layout). §14 is the authoritative interaction description; the sub-sections here are retained for the demo-content, accuracy-chip, and a11y-intent details they still carry.
+>
+> *(Prior note, kept for history:) the ChatGPT round moved us to a persistent cluster + in-place demo panel modeled on `DocTabs` — the prototype then merged the two families into one bunch.*
 
 The captivating centerpiece. **Two layers, deliberately:**
 
@@ -299,4 +301,49 @@ A prototype pack (3 mockups + design notes) came back from a ChatGPT visual-prot
 
 ---
 
-*End of design. Implementation proceeds via the writing-plans skill after spec review.*
+## 14. Settled explorer design (interactive prototype, 2026-06-30) + tracked inventory
+
+The explorer was prototyped to convergence in `web/src/pages/prototype.astro` (throwaway sandbox; **delete pre-PR**). Backups of key iterations are in the session scratch dir. This is the authoritative interaction/visual description; it supersedes §6's split-stage model.
+
+### 14.1 The settled design
+- **One shared realistic grape bunch** (~9 dark photoreal orbs, plump 1-2-3-2-1 arrangement). **Both families live in the same cluster, interleaved.**
+- **Editorial group tabs** above the bunch: `Cleanup / Make it correct.` and `Refine & Shape / Make it right for the moment.` — title + one-line copy + vertical divider + active-tab underline (not pill tabs).
+- **Tab lights up a family in place:** the active tab's grapes reveal their **embossed icon + engraved label inside the orb** and become selectable; the inactive family's grapes recede as **plain dark bunch-body** (no content). No separate "ghost" group.
+- **Single glowing focal:** exactly one grape glows bright violet at a time — the **selected** grape. On load, the family's **center/hero** grape is default-selected. (Do **not** re-introduce a second permanent glow.)
+- **Hover a lit grape** → name tooltip + a name/description preview line (only one tooltip shows at a time).
+- **Click a lit grape** → swaps the **demo card** on the right (Parleq floating-overlay motif: before→after, per-grape status chip, Pasting-to, Copy/Cancel/Accept).
+- **Flow lines** (Codex's design, kept): mostly **lavender** strands with **orange concentrated in the center**, curving from the bunch and converging into the demo card; glow derives from the lines themselves over the dark card (no separate white radial bloom). A white-hot pulse runs the strands on selection.
+- **Per-grape status chip stays accuracy-critical** (§6.3): on-device grapes show `On-device`; refine/provider grapes show `Your provider`. **Never a section-wide blanket privacy claim.**
+
+### 14.2 Deferred to the real build (NOT prototyped — do in `index.astro`)
+- **Accessibility:** replace the prototype's ad-hoc JS with proper **WAI-ARIA tabs** (group tabs = `tablist`; grapes = a second control set), full keyboard nav, focus-visible, and `aria` state; model on `DocTabs`.
+- **No-JS fallback:** the explorer must degrade gracefully (content present, at-a-glance readable) with JS off.
+- **Reduced motion:** gate the flow-line pulse + grape transitions on `prefers-reduced-motion`.
+- **Mobile:** desktop-only in the prototype. Needs the tabs + inline-accordion treatment (§6.2); flow lines hidden/simplified below `md`.
+- **Page integration:** hero above, card-on-purple transition, `FloatingNav`, and the rest of the §4 skeleton (vineyard / for-teams / get-Parleq).
+- **Content accuracy at integration:** reconcile grape labels (the prototype shows "Jargon" — our roster label is **"Your words"**); confirm the §5 roster; **gate/omit the per-app-cleanup grape** per §7; draw all copy from the copy deck, not the prototype's placeholder strings.
+
+### 14.3 Full tracked inventory (carry into the plan — nothing dropped)
+**Applied/settled:** metaphor system (§2) · homepage skeleton (§4) · roster (§5) · explorer design (§14.1) · accuracy constraints (§9) · review-reconciliation fixes (§12) · ChatGPT fold-ins (§13) · single-focal + editorial-tabs + Codex flow lines.
+
+**Still-open recommendations from this round (do NOT lose):**
+- **Homepage content thesis (early analysis):** "too much content" → delegate depth + progressive disclosure; "shorter" = default-scroll not HTML bytes; wedge carried in text ("a bunch beats one grape").
+- **(Rec C) Cross-page consistency & accuracy sweep** — terminology drift across inner pages; extend the `verify-page.mjs` forbidden/required-string gate beyond the homepage. *Not yet done.*
+- **(Rec D) Per-page SEO** — distinct meta descriptions/titles per page; the reserved social-proof slot. *Not yet done.*
+- **Open questions (§11):** hero subhead final wording; final grape roster; what's dropped from the homepage entirely; how literal the vineyard visual gets; the grape-content table deliverable; opening-a-grape instrumentation (GoatCounter); whether the hero live-demo stays.
+
+**Three maintainer judgment calls (need a decision — §12):**
+1. **"Never a recording"** appears in *live* copy (homepage + copy-deck) and is an overclaim given the enrollment-audio store — recommend fixing on the live site too.
+2. **White-on-amber CTA contrast (3.19:1, below AA)** — fold the fix into this round? (Brand call.)
+3. **Wine connotation** — cheap cold-reader test.
+
+**Release gates / process (from memory):**
+- **Per-app cleanup is config-model-only / not runtime-wired** (§7) — market present-tense **only if** runtime-complete at merge; else omit/future-tense the per-app grape.
+- **Merge the redesign worktree with `../parleq-worktrees/per-target-cleanup`** before release (ship together).
+- **Posit promotion-timing hold** — don't launch big promotion until it lands.
+- **Hold at the approval gate** — do not push / open a PR until the maintainer approves.
+- **Pre-PR cleanup:** delete `prototype.astro`; Lighthouse/perf + SEO continuity pass; adversarial + balanced review.
+
+---
+
+*End of design. Implementation proceeds via the writing-plans skill (the promotion plan) after spec review.*
