@@ -164,7 +164,12 @@ final class SettingsModel: ObservableObject {
     /// Editable copy of Config.transformPresets.
     @Published var transformPresets: [TransformPreset]
     /// Editable copy of Config.presetAppDefaults (bundleID → preset id).
+    /// The SINGLE source of truth for per-app presets (never `AppBehavior.presetID`).
     @Published var presetAppDefaults: [String: String]
+    /// Editable copy of Config.appBehaviors (bundleID → per-app MODE override).
+    /// Mode-only; presets live in `presetAppDefaults`. Empty entries just mean
+    /// "inherit the curated/Polished default". The App-behavior editor binds this.
+    @Published var appBehaviors: [String: AppBehavior]
 
     /// Lowercased terms present in the dictionary when this model last
     /// loaded from disk. Used by `save()` to tell a learned term that was
@@ -474,6 +479,7 @@ final class SettingsModel: ObservableObject {
             uniquingKeysWith: { first, _ in first })
         self.transformPresets = config.transformPresets
         self.presetAppDefaults = config.presetAppDefaults
+        self.appBehaviors = config.appBehaviors
         self.geminiKeyIsSet = KeychainStore.hasGeminiAPIKey
         self.contextModel = config.contextModel
         self.refineModel = config.refineModel
@@ -606,6 +612,7 @@ final class SettingsModel: ObservableObject {
             uniquingKeysWith: { first, _ in first })
         self.transformPresets = config.transformPresets
         self.presetAppDefaults = config.presetAppDefaults
+        self.appBehaviors = config.appBehaviors
         self.geminiKeyIsSet = KeychainStore.hasGeminiAPIKey
         self.contextModel = config.contextModel
         self.refineModel = config.refineModel
@@ -783,6 +790,11 @@ final class SettingsModel: ObservableObject {
         if presetAppDefaults != published {
             presetAppDefaults = published
         }
+        // Per-app MODE overrides (App-behavior editor). Mode-only — no preset
+        // coupling, so nothing to prune against transformPresets. Persist the
+        // editor's copy verbatim. (Config.save serializes app_behaviors as
+        // mode-only and dual-writes the legacy preset_app_defaults key.)
+        c.appBehaviors = appBehaviors
         // Context tier: nil when context == cleanup so the resolver
         // short-circuits cleanly (nil means "same as cleanup" in Config).
         let contextId = ModelIdentifier(provider: contextProvider, model: contextModelName.trimmingCharacters(in: .whitespaces))
