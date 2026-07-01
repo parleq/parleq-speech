@@ -116,7 +116,16 @@ let package = Package(
         // the pre-regression baseline). Drop this fork and return to a pinned
         // upstream FluidAudio once a tagged upstream release exposes encoder
         // features. See parleq-fluidaudio-0.14.5-pin / the voice-enrollment plan.
-        .package(url: "https://github.com/jonyoder/FluidAudio.git", exact: "0.15.4-encoder.1"),
+        //
+        // 0.15.4-encoder.2 (07d617f2 = encoder.1 + rescue only) adds an
+        // always-on "tail-chunk rescue" on the decode path: on quiet, long-form
+        // dictation the final ASR window could decode all-blank and silently
+        // drop the last few words — the rescue recovers that final window.
+        // Reported upstream as FluidInference/FluidAudio#747. The encoder graph
+        // is UNCHANGED (rescue is decode-path only), so voiceprints stay valid
+        // and spotterRescueEnabled stays false (that's the unrelated CTC vocab
+        // knob, not this tail rescue).
+        .package(url: "https://github.com/jonyoder/FluidAudio.git", exact: "0.15.4-encoder.2"),
         // Sparkle — auto-update framework. Checks an EdDSA-signed
         // appcast.xml on parleq.app for newer releases and runs the
         // user-prompted download/install/relaunch flow. Used by

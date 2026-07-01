@@ -42,9 +42,13 @@ final class VoiceprintCoordinatorTests: XCTestCase {
 
     func test_loadPersisted_happy_path_does_not_rewrite() {
         let c = VoiceprintCoordinator()
-        // The legacy 0.29.0 stamp ("0.15.4-encoder.1" == fluidAudioVersion) is in
-        // legacyCompatibleStamps, so the template is kept without re-stamping.
-        let v = BundledASREngine.fluidAudioVersion  // "0.15.4-encoder.1"
+        // A template stamped with a legacy-compatible stamp is kept without
+        // re-stamping. Use the ACTUAL legacy stamp (the 0.29.0-era value in
+        // legacyCompatibleStamps), NOT BundledASREngine.fluidAudioVersion — those
+        // two diverged once fluidAudioVersion bumped past 0.15.4-encoder.1 (the
+        // flywheel stamp moves with FluidAudio bumps; the voiceprint legacy set
+        // is frozen because the encoder graph is unchanged).
+        let v = BundledASREngine.legacyCompatibleStamps.first!  // "0.15.4-encoder.1"
         let stub = StubPersistence(.success([tmpl("Keavi", version: v)]))
         c.persistence = stub
         c.loadPersisted()
