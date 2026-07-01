@@ -2249,7 +2249,12 @@ private struct OverlayContent: View {
                     sendToEnabled: model.referenceWindowsEnabled,
                     pasteTarget: model.pasteTarget,
                     conflict: headerBadgeState.conflict,
-                    visionFallbackOption: firstConfiguredVisionModel(in: headerBadgeState.pickerEntries),
+                    // Only the configured, instance-backed models — the "Switch
+                    // to <model>" button re-cleans immediately, so a catalog
+                    // entry would fall back to a different model than claimed
+                    // (same rule as the engine-badge picker).
+                    visionFallbackOption: firstConfiguredVisionModel(
+                        in: Array(headerBadgeState.pickerEntries.prefix(headerBadgeState.configuredCount))),
                     onCopy: onCopy,
                     onCancel: onCancel,
                     onAccept: onAccept,
