@@ -5,12 +5,10 @@
 // recede as plain dark grapes. Only the selected grape glows. Ported verbatim from the
 // settled prototype (src/pages/prototype.astro) — do not restyle without updating both.
 const icons: Record<string, string> = {
-  type:   '<path d="M4 7V5h16v2"/><path d="M12 5v14"/><path d="M9 19h6"/>',
   hash:   '<path d="M9 3 7 21M17 3l-2 18M4 8h16M3 16h16"/>',
   book:   '<path d="M4 5a2 2 0 0 1 2-2h12v16H6a2 2 0 0 0-2 2zM6 17h12"/>',
   wave:   '<path d="M4 10v4M8 6v12M12 9v6M16 5v14M20 10v4"/>',
   link:   '<path d="M9.5 14.5 14.5 9.5M8 12l-2 2a3 3 0 0 0 4.2 4.2l2-2M16 12l2-2a3 3 0 0 0-4.2-4.2l-2 2"/>',
-  chips:  '<rect x="7" y="7" width="10" height="10" rx="1.5"/><path d="M10 4v3M14 4v3M10 17v3M14 17v3M4 10h3M4 14h3M17 10h3M17 14h3"/>',
   bubble: '<path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.5 8.6 8.6 0 0 1-3.9-.9L3 21l1.9-5.6A8.4 8.4 0 0 1 12.5 3 8.4 8.4 0 0 1 21 11.5Z"/>',
   sliders:'<path d="M4 7h9M17 7h3M4 12h3M11 12h9M4 17h6M14 17h6"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="12" cy="17" r="2"/>',
   window: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/><path d="M6.5 6.5h.01M9 6.5h.01"/>',
@@ -69,7 +67,7 @@ const bunch = [
   { ...refine[1], group: 'refine' },
   { ...refine[2], group: 'refine' },
   { ...cleanup[3], group: 'cleanup' },
-  { ...cleanup[2], label: 'Sound-alikes', group: 'cleanup' },
+  { ...cleanup[2], group: 'cleanup' },
   { ...cleanup[4], group: 'cleanup' },
   { ...refine[3], group: 'refine' },
 ];
@@ -163,17 +161,17 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
   <!-- LEFT: group tabs + one realistic bunch + preview -->
   <div class="relative z-10">
     <div role="tablist" aria-label="Capability family" class="group-tabs">
-      <button type="button" role="tab" data-tab="cleanup" aria-selected={DEFAULT_GROUP === 'cleanup' ? 'true' : 'false'} tabindex={DEFAULT_GROUP === 'cleanup' ? 0 : -1} class="group-tab">
+      <button type="button" role="tab" id="ftab-cleanup" aria-controls="explorer-bunch" data-tab="cleanup" aria-selected={DEFAULT_GROUP === 'cleanup' ? 'true' : 'false'} tabindex={DEFAULT_GROUP === 'cleanup' ? 0 : -1} class="group-tab">
         <span class="group-tab-title">Cleanup</span>
         <span class="group-tab-copy">Make it correct.</span>
       </button>
-      <button type="button" role="tab" data-tab="refine" aria-selected={DEFAULT_GROUP === 'refine' ? 'true' : 'false'} tabindex={DEFAULT_GROUP === 'refine' ? 0 : -1} class="group-tab">
+      <button type="button" role="tab" id="ftab-refine" aria-controls="explorer-bunch" data-tab="refine" aria-selected={DEFAULT_GROUP === 'refine' ? 'true' : 'false'} tabindex={DEFAULT_GROUP === 'refine' ? 0 : -1} class="group-tab">
         <span class="group-tab-title">Refine &amp; Shape</span>
         <span class="group-tab-copy">Make it right for the moment.</span>
       </button>
     </div>
 
-    <div class="bunch">
+    <div class="bunch" id="explorer-bunch" role="tabpanel" aria-labelledby={DEFAULT_GROUP === 'cleanup' ? 'ftab-cleanup' : 'ftab-refine'}>
       {bunch.map((g, i) => {
         const active = g.group === DEFAULT_GROUP;
         const selected = g.id === DEFAULT_SELECTED_ID;
@@ -194,7 +192,7 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
       })}
     </div>
 
-    <p class="bunch-preview" data-preview set:html={`<b>${defaultGrape.title}</b> — ${defaultGrape.desc}`} />
+    <p class="bunch-preview" data-preview aria-live="polite" set:html={`<b>${defaultGrape.title}</b> — ${defaultGrape.desc}`} />
   </div>
 
   <!-- RIGHT: demo panel -->
@@ -621,6 +619,8 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
         g.disabled = !active;
         g.setAttribute('aria-hidden', active ? 'false' : 'true');
       });
+      const panel = root.querySelector('#explorer-bunch');
+      if (panel) panel.setAttribute('aria-labelledby', 'ftab-' + group);
       const first = grapes.find((g) => g.dataset.group === group && g.dataset.tone === 'center') || grapes.find((g) => g.dataset.group === group);
       if (first) selectGrape(first);
     };
@@ -646,7 +646,8 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
       g.addEventListener('mouseenter', () => { if (g.dataset.active === 'true') showPreview(g); });
       g.addEventListener('focus', () => { if (g.dataset.active === 'true') showPreview(g); });
     });
-    root.querySelector('.bunch').addEventListener('mouseleave', () => {
+    const bunchEl = root.querySelector('.bunch');
+    if (bunchEl) bunchEl.addEventListener('mouseleave', () => {
       const sel = grapes.find((g) => g.getAttribute('data-selected') === 'true');
       if (sel) showPreview(sel);
     });

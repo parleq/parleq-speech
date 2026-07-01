@@ -110,85 +110,7 @@ body {
   letter-spacing: -0.02em;
 }
 
-/* Sound-bar hero motif. Five vertical bars that idle-pulse, the
-   same visual language as the in-app capture overlay. The phase
-   offsets give the wave a left-to-right travel without needing JS. */
-.wave-bar {
-  display: inline-block;
-  width: 6px;
-  height: 56px;
-  margin: 0 3px;
-  background: var(--color-wave);
-  border-radius: 3px;
-  transform-origin: center;
-  animation: wave 1.4s ease-in-out infinite;
-}
-.wave-bar:nth-child(1) { animation-delay: 0s; }
-.wave-bar:nth-child(2) { animation-delay: 0.1s; }
-.wave-bar:nth-child(3) { animation-delay: 0.2s; }
-.wave-bar:nth-child(4) { animation-delay: 0.3s; }
-.wave-bar:nth-child(5) { animation-delay: 0.4s; }
 
-@keyframes wave {
-  0%, 100% { transform: scaleY(0.25); opacity: 0.85; }
-  50%      { transform: scaleY(1.0);  opacity: 1.0;  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .wave-bar { animation: none; transform: scaleY(0.6); }
-}
-
-/* Hero live cleanup demo. A raw spoken transcript types out in muted
-   monospace, then morphs into the cleaned sentence in the site text
-   color. The JS owns the word-by-word build; CSS owns the two visual
-   states (raw vs. cleaned), the per-word collapse of filler words, and
-   the typing caret. Everything here is purely decorative — the region
-   is aria-hidden and the loop only runs when motion is allowed. */
-
-/* Each word is its own inline element so fillers can collapse
-   independently. The width/opacity transition is what makes the
-   fillers look like they "dissolve" rather than snap away. */
-.hero-demo-word {
-  display: inline-block;
-  white-space: pre;            /* keep the trailing space per word */
-  max-width: 12ch;             /* generous cap; no real word exceeds it */
-  opacity: 1;
-  transition:
-    opacity 0.45s ease,
-    max-width 0.45s ease;
-}
-/* Filler words on cleanup: fade to nothing and pinch their width to 0
-   so the surrounding words slide together. overflow:hidden keeps the
-   collapsing glyphs from spilling during the transition. */
-.hero-demo-word.is-dropped {
-  max-width: 0;
-  opacity: 0;
-  overflow: hidden;
-}
-
-/* Raw (dictation) phase: muted monospace, as if mid-utterance. */
-.hero-demo-raw {
-  font-family: var(--font-mono);
-  color: var(--color-text-subtle);
-}
-/* Cleaned phase: settle into the site's body text color. */
-.hero-demo-cleaned {
-  color: var(--color-text);
-}
-
-/* The one token the cleanup changed (a percent, a name, a dictionary term,
-   a period), emphasized in the cleaned line so the eye lands on what Parleq
-   actually did. Accent color + weight + a soft highlighter tint; the
-   color-mix tint degrades gracefully to plain accent text where unsupported. */
-.hero-demo-mark {
-  /* Darker accent for the TEXT (WCAG AA ≥4.5:1 on the tint over warm white);
-     the lighter accent stays as the highlighter background tint only. */
-  color: var(--color-accent-hover);
-  font-weight: 600;
-  border-radius: 3px;
-  padding: 0 0.15em;
-  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
-}
 
 /* Solid brand CTA (the Download buttons). Fills with the DARKER accent so the
    white label clears WCAG AA — #b45309 on white is 5.02:1, vs the base
@@ -200,8 +122,8 @@ body {
 
 /* On-device "grape zone". Applied to a block or page that features on-device
    cleanup, it re-points the accent variables to Concord grape — so every
-   descendant that reads --color-accent (section kickers, .hero-demo-mark
-   highlights, accent links) themes to grape automatically — and lays a very
+   descendant that reads --color-accent (section kickers, accent links)
+   themes to grape automatically — and lays a very
    faint grape wash so the zone reads as set-apart without a hard edge. */
 .zone-grape {
   --color-accent: var(--color-grape);
@@ -284,35 +206,6 @@ body {
   color: var(--color-grape-200);
 }
 
-/* Whole-line crossfade used when swapping examples and on the final
-   hold→clear. Kept short so the loop feels calm, not flashy. Carries
-   both opacity and color so the combined `.hero-demo-cleaned
-   .hero-demo-fade` class still animates the color shift (a later
-   single-property `transition` would otherwise override it). */
-.hero-demo-fade {
-  transition:
-    opacity 0.5s ease,
-    color 0.45s ease;
-}
-
-/* Typing caret: a slim blinking bar appended during the dictation
-   phase only. Gated behind no-preference so reduced-motion visitors
-   never see it (the loop itself is also disabled for them in JS). */
-@media (prefers-reduced-motion: no-preference) {
-  .hero-demo-caret {
-    display: inline-block;
-    width: 2px;
-    height: 1.05em;
-    margin-left: 1px;
-    vertical-align: text-bottom;
-    background: var(--color-text-subtle);
-    animation: hero-demo-blink 1s step-end infinite;
-  }
-  @keyframes hero-demo-blink {
-    0%, 100% { opacity: 1; }
-    50%      { opacity: 0; }
-  }
-}
 
 /* Reveal-on-scroll. The .reveal class is applied by JS only when the
    user hasn't asked for reduced motion — content is fully visible by
