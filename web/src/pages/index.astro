@@ -124,7 +124,7 @@ const base = `${import.meta.env.BASE_URL}`.replace(/\/$/, '');
           />
           <TransformCard
             variant="engine"
-            items={["Punctuation","Numbers","Voiceprints","Dictionary"]}
+            items={["Questions","Numbers","Voiceprints","Dictionary"]}
             credit="built on Concord (by Keavi)"
           />
           <TransformCard
@@ -171,7 +171,7 @@ const base = `${import.meta.env.BASE_URL}`.replace(/\/$/, '');
            only today). App-defaults card; Instant = on-device (green), Polished = the
            provider you set (grape). No destination-routing implication — Parleq applies
            the cleanup you set per app; the private routing vision stays private. -->
-      <section class="perapp mt-28 grid items-center gap-x-12 gap-y-8 lg:grid-cols-[320px_minmax(0,1fr)]">
+      <section class="perapp mt-28 grid grid-cols-1 items-center gap-x-12 gap-y-8 lg:grid-cols-[320px_minmax(0,1fr)]">
         <div>
           <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">Per-app cleanup</p>
           <h2 class="mt-3 font-display text-3xl font-medium tracking-tight sm:text-4xl">The right cleanup for every app.</h2>
@@ -217,7 +217,7 @@ const base = `${import.meta.env.BASE_URL}`.replace(/\/$/, '');
         Speech recognition runs on your Mac, and your audio never leaves it. Cleanup runs on-device too — or through your own cloud account, if you bring one. Keavi runs no server and is never in the data path.
       </p>
 
-      <div class="mt-12 grid items-start gap-x-12 gap-y-12 lg:grid-cols-2">
+      <div class="mt-12 grid grid-cols-1 items-start gap-x-12 gap-y-12 lg:grid-cols-2">
         <!-- Left: trust points -->
         <ul class="space-y-8">
           <li class="flex gap-4">
