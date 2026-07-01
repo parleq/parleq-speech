@@ -92,7 +92,10 @@ enum ParleqAppSelection: Hashable {
     /// selecting them must NOT auto-expand the Settings disclosure.
     var isSettingsDisclosurePane: Bool {
         if case .settings(let pane) = self {
-            return pane != .dictionary && pane != .presets
+            // Mirror the sidebar's disclosure filter: Dictionary/Presets are
+            // promoted to Customize, and Usage is folded into Stats — none of
+            // them live in the Settings disclosure, so they must not expand it.
+            return pane != .dictionary && pane != .presets && pane != .usage
         }
         return false
     }

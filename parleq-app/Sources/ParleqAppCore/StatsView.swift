@@ -101,9 +101,14 @@ struct StatsView: View {
                         .padding(.top, 8)
                 } label: {
                     // Make the whole row toggle the group, not just the chevron
-                    // (clicking the small chevron directly is fiddly). contentShape
-                    // makes the full width hit-testable; the chevron still works.
+                    // (clicking the small chevron directly is fiddly). The label
+                    // must FILL the row width first — unlike the sidebar Settings
+                    // disclosure (a List row that expands on its own), this one is
+                    // in a VStack, so an intrinsic-width Text would only be tappable
+                    // over the glyphs. frame(maxWidth:.infinity) + contentShape makes
+                    // the whole line hit-testable; the chevron still works.
                     Text("Usage & cost")
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .contentShape(Rectangle())
                         .onTapGesture {
                             withAnimation { usageExpanded.toggle() }
