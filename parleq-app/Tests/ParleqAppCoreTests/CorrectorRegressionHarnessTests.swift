@@ -45,6 +45,20 @@ final class CorrectorRegressionHarnessTests: XCTestCase {
     /// Non-term intents: the cleaned output must NOT contain ANY testDict term.
     private static let nonTermIntents: Set<String> = ["fruit", "bird", "control"]
 
+    /// Phrase intents: recovered iff the cleaned output contains the phrase
+    /// (case-insensitive). Pins Concord 0.4.0's to/two/too homophone stage on its
+    /// flagship clips ("delegate two subagents…" must come out "delegate to …").
+    private static let intentPhrase: [String: String] = [
+        "homophone-two-to": "delegate to",
+    ]
+
+    /// Must-keep intents: over-fired iff the cleaned output LOST the phrase
+    /// (case-insensitive). Pins that legitimate counts survive the homophone stage
+    /// ("needing two researchers…", "two questions" must keep their "two").
+    private static let intentMustKeep: [String: String] = [
+        "homophone-control": " two ",
+    ]
+
     // MARK: - Skip guards (mirror VoiceprintSelfTestHarnessTests)
 
     private static var modelsCached: Bool {
@@ -215,6 +229,17 @@ final class CorrectorRegressionHarnessTests: XCTestCase {
                 outcome = CorrectorMetrics.Outcome(intent: row.intent,
                                                     recovered: cleaned.contains(targetTerm),
                                                     overFired: false)
+            } else if let phrase = Self.intentPhrase[row.intent] {
+                // Phrase intent: recovered iff the phrase appears (homophone-stage pin).
+                outcome = CorrectorMetrics.Outcome(intent: row.intent,
+                                                    recovered: cleaned.lowercased().contains(phrase),
+                                                    overFired: false)
+            } else if let keep = Self.intentMustKeep[row.intent] {
+                // Must-keep intent: over-fired iff the phrase was LOST (a legit "two"
+                // corrupted by the homophone stage would drop it).
+                outcome = CorrectorMetrics.Outcome(intent: row.intent,
+                                                    recovered: false,
+                                                    overFired: !cleaned.lowercased().contains(keep))
             } else {
                 // Non-term intent: over-fired iff the cleaned text contains ANY testDict term.
                 let overFired = Self.testDict.contains { cleaned.contains($0.term) }
