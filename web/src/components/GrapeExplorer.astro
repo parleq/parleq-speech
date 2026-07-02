@@ -102,7 +102,7 @@ const howitworks = [
     ] },
   { id: 'hiw-voice', icon: 'wave', label: 'Voice', title: 'Voice enrollment', desc: 'Teach a term in your own voice; tell it apart by sound.' },
   { id: 'hiw-recover', icon: 'rotate', label: 'Recover', title: 'Never lose a dictation', interactive: true, desc: 'Your last dictation is held in memory — re-run it with R.' },
-  { id: 'hiw-ai', icon: 'sparkle', label: 'Your AI', title: 'The AI you bring', desc: 'On-device, your own cloud, or none — you choose the engine.' },
+  { id: 'hiw-ai', icon: 'sparkle', label: 'Your AI', title: 'The AI you bring', interactive: true, desc: 'On-device, your own cloud, or none — you choose the engine.' },
   { id: 'hiw-quick', icon: 'bolt', label: 'Quick', title: 'Quick & continuous', desc: 'Double-tap to dictate with no overlay, or go hands-free.' },
   { id: 'hiw-blank-a', blank: true },
   { id: 'hiw-blank-b', blank: true },
@@ -532,6 +532,33 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
       <p class="rw-footnote">In Parleq your last dictation's audio is held in memory — tap R to re-run it, no re-speaking.</p>
     </div>
 
+    {/* SPIKE: INTERACTIVE "The AI you bring" (data-panel="hiw-ai"). A segmented
+        picker — On-device / Your cloud / None — updates the result + where-note. */}
+    <div data-panel="hiw-ai" class="ai-demo" hidden>
+      <div class="demo-card rw-card">
+        <div class="flex items-center justify-between gap-3">
+          <div class="flex items-center gap-2.5">
+            <span class="demo-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4" set:html={icons['sparkle']} /></span>
+            <h3 class="text-[15px] font-semibold text-white">The AI you bring</h3>
+          </div>
+          <span class="chip chip-on" data-ai-chip>On-device</span>
+        </div>
+        <div class="ai-seg" role="group" aria-label="Choose the cleanup engine">
+          <button type="button" class="ai-opt is-on" data-ai-opt="local">On-device</button>
+          <button type="button" class="ai-opt" data-ai-opt="cloud">Your cloud</button>
+          <button type="button" class="ai-opt" data-ai-opt="none">None</button>
+        </div>
+        <p class="ba-label mt-4">You said</p>
+        <p class="ba-before">can you send me the deck before the sync</p>
+        <p class="ba-arrow" aria-hidden="true">↓</p>
+        <p class="ba-label" data-ai-reslabel>Cleaned · on-device</p>
+        <p class="ba-after" data-ai-result>Could you send me the deck before the sync?</p>
+        <p class="ai-where" data-ai-where>Runs on your Mac — audio and text never leave the device.</p>
+      </div>
+      <p class="rw-coach" data-ai-coach aria-live="polite">Same dictation — you choose the engine that cleans it.</p>
+      <p class="rw-footnote">Every provider is your own account; Parleq runs no server in the path.</p>
+    </div>
+
   </div>
 
   {/* SPIKE: the anchored breakout window-picker — pops OVER the explorer (dimmed
@@ -930,7 +957,8 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
   .demo-stack:has(.stepper-wrap:not([hidden])) .demo-backplate,
   .demo-stack:has(.rw-demo:not([hidden])) .demo-backplate,
   .demo-stack:has(.wf-demo:not([hidden])) .demo-backplate,
-  .demo-stack:has(.rc-demo:not([hidden])) .demo-backplate { display: none; }
+  .demo-stack:has(.rc-demo:not([hidden])) .demo-backplate,
+  .demo-stack:has(.ai-demo:not([hidden])) .demo-backplate { display: none; }
 
   /* BUGFIX: walkthrough cards hide the backplate, so the demo-card's transparent
      left strip (a stacked-card flourish that normally reveals the backplate) would
@@ -1017,6 +1045,13 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
   /* SPIKE: recovery demo — the "lost" notice + its warning glyph. */
   .rc-lost { margin-top:.4rem; display:flex; align-items:flex-start; gap:.5rem; font-size:.85rem; line-height:1.45; color: rgba(255,255,255,.62); }
   .rc-warn { flex-shrink:0; display:inline-flex; align-items:center; justify-content:center; height:1.15rem; width:1.15rem; border-radius:9999px; background: color-mix(in srgb, var(--color-accent) 24%, transparent); color:#fcd9a3; font-size:.72rem; font-weight:700; }
+
+  /* SPIKE: "The AI you bring" — segmented engine picker + where-it-runs note. */
+  .ai-seg { margin-top:1rem; display:inline-flex; gap:.25rem; padding:.2rem; border-radius:.7rem; border:1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.04); }
+  .ai-opt { border-radius:.5rem; border:1px solid transparent; background:none; padding:.32rem .7rem; font-size:.76rem; font-weight:600; color: rgba(255,255,255,.6); cursor:pointer; transition: color .14s ease, background-color .14s ease, border-color .14s ease; }
+  .ai-opt:hover { color: rgba(255,255,255,.9); }
+  .ai-opt.is-on { color:#fff; background: color-mix(in srgb, var(--color-grape-400) 34%, transparent); border-color: color-mix(in srgb, var(--color-grape-300) 45%, transparent); }
+  .ai-where { margin-top:.7rem; font-size:.73rem; line-height:1.45; color: rgba(216,185,251,.66); }
   .rw-utterance { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
   .rw-caret { display:inline-block; width:2px; height:1em; margin-left:1px; vertical-align:text-bottom; background:rgba(255,255,255,.6); animation: rw-blink 1s step-end infinite; }
   .rw-mic { margin-top:1.1rem; display:inline-flex; align-items:center; gap:.5rem; border-radius:9999px; border:1px solid color-mix(in srgb, var(--color-accent) 70%, transparent); background: var(--color-accent-hover); padding:.5rem .9rem; font-size:.85rem; font-weight:600; color:#fff; cursor:pointer; animation: rw-pulse 1.9s ease-in-out infinite; }
@@ -1377,6 +1412,34 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
       rcCancel = () => rcancel();
       stepperResets['hiw-recover'] = () => { rcancel(); rstage = 0; rrender(); };
       rrender();
+    }
+
+    // SPIKE: "The AI you bring" — segmented engine picker updates the result inline.
+    const ai = root.querySelector('.ai-demo');
+    if (ai) {
+      const aiOpts = Array.from(ai.querySelectorAll('[data-ai-opt]'));
+      const aiChip = ai.querySelector('[data-ai-chip]');
+      const aiResLabel = ai.querySelector('[data-ai-reslabel]');
+      const aiResult = ai.querySelector('[data-ai-result]');
+      const aiWhere = ai.querySelector('[data-ai-where]');
+      const aiCoach = ai.querySelector('[data-ai-coach]');
+      const AI = {
+        local: { chip: ['On-device', 'chip-on'], label: 'Cleaned · on-device', result: 'Could you send me the deck before the sync?', where: 'Runs on your Mac — audio and text never leave the device.', coach: 'On-device cleanup: fully private, nothing leaves your Mac.' },
+        cloud: { chip: ['Your provider', 'chip-byo'], label: 'Cleaned · your cloud', result: 'Could you send me the deck before our sync? Thanks!', where: 'Uses the AI you bring — your own Gemini, OpenAI, Bedrock, Vertex, or Azure key.', coach: 'Your cloud: the provider and account are yours; Parleq brokers nothing.' },
+        none: { chip: ['Raw', 'chip-byo'], label: 'Raw · no cleanup', result: 'can you send me the deck before the sync', where: 'Skip cleanup entirely — paste exactly what you said.', coach: 'None: no cleanup at all — your raw words, pasted as-is.' },
+      };
+      const pickAI = (key) => {
+        const d = AI[key]; if (!d) return;
+        aiOpts.forEach((b) => b.classList.toggle('is-on', b.getAttribute('data-ai-opt') === key));
+        if (aiChip) { aiChip.textContent = d.chip[0]; aiChip.className = 'chip ' + d.chip[1]; }
+        if (aiResLabel) aiResLabel.textContent = d.label;
+        if (aiResult) aiResult.textContent = d.result;
+        if (aiWhere) aiWhere.textContent = d.where;
+        if (aiCoach) aiCoach.textContent = d.coach;
+      };
+      aiOpts.forEach((b) => b.addEventListener('click', () => pickAI(b.getAttribute('data-ai-opt'))));
+      stepperResets['hiw-ai'] = () => pickAI('local');
+      pickAI('local');
     }
 
     setTab('cleanup');
