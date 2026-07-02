@@ -44,8 +44,11 @@ const pages = htmlFiles(distDir);
 for (const file of pages) {
   const html = readFileSync(file, 'utf8');
   const rel = file.slice(distDir.length + 1);
+  // Case-insensitive so an overclaim is caught in any casing (e.g. "Never a recording"
+  // vs the configured "never a recording"), not just the exact literal.
+  const htmlLower = html.toLowerCase();
   for (const s of FORBIDDEN) {
-    if (html.includes(s)) { console.error(`FORBIDDEN present in ${rel}: "${s}"`); fail++; }
+    if (htmlLower.includes(s.toLowerCase())) { console.error(`FORBIDDEN present in ${rel}: "${s}"`); fail++; }
   }
   // Decorative flow/cluster SVGs must be aria-hidden, wherever they appear.
   const decorative = [...html.matchAll(/<svg[^>]*class="[^"]*(?:concord-flow|grape-cluster)[^"]*"[^>]*>/g)];
