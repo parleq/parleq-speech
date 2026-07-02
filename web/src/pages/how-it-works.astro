@@ -117,90 +117,92 @@ const gestures = [
   title="The details — how Parleq works"
   description="The technical detail behind Parleq: the capture → transcribe → clean up → paste pipeline, the keyboard gestures, and exactly what's written to disk versus held in memory."
 >
-  <FloatingNav active="how-it-works" />
+  <FloatingNav active="how-it-works" spacer={false} />
 
   <!-- Hero: colored dark-grape panel (matches the homepage/enterprise hero). Frames the
        page as the TECHNICAL deep-dive; the nav pill floats over the grape, not a gap. -->
   <section class="mx-auto max-w-[1700px] px-0 py-0 sm:px-5 sm:py-5">
     <div
-      class="relative overflow-hidden rounded-none px-5 pb-28 pt-28 sm:rounded-[28px] sm:px-10 sm:pt-32"
+      class="relative overflow-hidden rounded-none px-5 pb-28 pt-28 sm:rounded-[28px] sm:px-10 sm:pt-36"
       style="background:
                radial-gradient(58% 74% at 70% 42%, color-mix(in srgb, var(--color-grape-600) 45%, transparent), transparent 68%),
                linear-gradient(180deg, #23103a 0%, #140622 100%);
              box-shadow: 0 30px 80px -30px rgba(20,7,32,.7);"
     >
-      <div class="mx-auto max-w-3xl text-[color:var(--color-grape-200)]">
-        <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">
-          How it works
-        </p>
-        <h1 class="mt-4 font-display text-4xl leading-[1.05] font-medium tracking-tight text-white sm:text-5xl md:text-6xl">
-          The details, stage by stage.
-        </h1>
-        <p class="mt-6 max-w-2xl text-lg leading-relaxed text-[color:var(--color-grape-200)] sm:text-xl">
-          Holding the hotkey runs four stages in sequence — capture, transcribe, clean up, paste. Speech recognition happens entirely on your Mac; the only step that can reach the network is cleanup, and only if you point it at a cloud provider. Below: each stage in depth, the keyboard gestures, and exactly what's written to disk versus held in memory.
-        </p>
-        <p class="mt-6 text-sm">
-          <a href="#gestures" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Just want the keyboard gestures? Jump to the cheat sheet →</a>
-        </p>
+      <div class="mx-auto grid max-w-5xl items-center gap-10 lg:grid-cols-[1.35fr_1fr] lg:gap-14">
+        <div class="text-[color:var(--color-grape-200)]">
+          <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">
+            How it works
+          </p>
+          <h1 class="mt-4 font-display text-4xl leading-[1.05] font-medium tracking-tight text-white sm:text-5xl md:text-6xl">
+            The details, stage by stage.
+          </h1>
+          <p class="mt-6 text-lg leading-relaxed text-[color:var(--color-grape-200)] sm:text-xl">
+            How a dictation goes from keypress to pasted text — capture, transcribe, clean up, paste. Speech recognition stays on your Mac; only cleanup can reach the network, and only if you choose a cloud provider.
+          </p>
+          <p class="mt-6 text-sm">
+            <a href="#gestures" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Just want the keyboard gestures? Jump to the cheat sheet →</a>
+          </p>
+        </div>
+
+        <!-- Guided-tour fork: the interactive explorer on the homepage, for visitors who
+             want the tour rather than the mechanics. In the hero so the choice is up front. -->
+        <a
+          href="/#explore"
+          class="group block rounded-2xl border border-[color:var(--color-grape-300)]/20 bg-white/[0.04] p-6 transition duration-300 hover:border-[color:var(--color-grape-300)]/45 hover:bg-white/[0.07]"
+        >
+          <div class="flex items-center gap-4">
+            <svg class="h-20 w-16 shrink-0 transition-transform duration-300 group-hover:-translate-y-1" viewBox="0 0 112 152" fill="none" aria-hidden="true">
+              <defs>
+                <radialGradient id="hwGrapeLite" cx="36%" cy="28%" r="80%">
+                  <stop offset="0%" stop-color="#d3b3ef" />
+                  <stop offset="52%" stop-color="#9a5fc9" />
+                  <stop offset="100%" stop-color="#5b2a86" />
+                </radialGradient>
+              </defs>
+              <path d="M56 6c2 6 1 11 3 17" stroke="#8a6a3a" stroke-width="2.4" stroke-linecap="round" />
+              <path d="M58 12c5-8 17-10 23-6-3 8-12 12-21 11" fill="#5f9d4c" opacity="0.9" />
+              <g stroke="#2a1046" stroke-opacity="0.4" stroke-width="1">
+                <circle cx="38" cy="34" r="14" fill="url(#hwGrapeLite)" />
+                <circle cx="64" cy="30" r="15" fill="url(#hwGrapeLite)" />
+                <circle cx="89" cy="35" r="13" fill="url(#hwGrapeLite)" />
+                <circle cx="27" cy="56" r="13" fill="url(#hwGrapeLite)" />
+                <circle cx="52" cy="54" r="15" fill="url(#hwGrapeLite)" />
+                <circle cx="77" cy="55" r="14" fill="url(#hwGrapeLite)" />
+                <circle cx="99" cy="59" r="11" fill="url(#hwGrapeLite)" />
+                <circle cx="40" cy="76" r="14" fill="url(#hwGrapeLite)" />
+                <circle cx="66" cy="76" r="15" fill="url(#hwGrapeLite)" />
+                <circle cx="90" cy="79" r="12" fill="url(#hwGrapeLite)" />
+                <circle cx="53" cy="97" r="14" fill="url(#hwGrapeLite)" />
+                <circle cx="78" cy="97" r="13" fill="url(#hwGrapeLite)" />
+                <circle cx="64" cy="117" r="14" fill="url(#hwGrapeLite)" />
+                <circle cx="57" cy="137" r="12" fill="url(#hwGrapeLite)" />
+              </g>
+              <g fill="#f0e2ff" opacity="0.55">
+                <circle cx="34" cy="30" r="3" />
+                <circle cx="60" cy="26" r="3.2" />
+                <circle cx="48" cy="50" r="3" />
+                <circle cx="62" cy="72" r="3.2" />
+                <circle cx="60" cy="113" r="2.8" />
+              </g>
+            </svg>
+            <div>
+              <p class="text-xs font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">Every capability</p>
+              <p class="mt-1 font-display text-xl font-medium leading-tight text-white">Prefer a guided tour?</p>
+            </div>
+          </div>
+          <p class="mt-4 text-sm leading-relaxed text-[color:var(--color-grape-200)]">Every feature — cleanup, refine &amp; shape, the whole flow — is an interactive demo you drive on the homepage.</p>
+          <span class="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-[color:var(--color-accent)] underline-offset-4 group-hover:underline">Open the explorer →</span>
+        </a>
       </div>
     </div>
   </section>
 
   <!-- Content panel: a white card superimposed on the grape hero (rounded top, bordered
-       bottom, shadow onto the grape). Leads with the interactive-explorer teaser, then the
-       technical pipeline. Supplementary sections (gestures, privacy) follow below it. -->
+       bottom, shadow onto the grape). Opens straight into the technical pipeline;
+       supplementary sections (gestures, privacy) follow below it. -->
   <div class="mx-auto max-w-[1700px] px-0 sm:px-5">
-    <div class="relative z-10 -mt-14 border-b border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-2 pb-6 pt-14 shadow-[0_18px_70px_-16px_rgba(8,3,18,.5)] sm:-mt-16 sm:rounded-t-[28px] sm:px-8 sm:pt-16">
-
-      <!-- Every capability → the interactive explorer on the homepage. For visitors who
-           want the guided tour rather than the mechanics. -->
-      <div data-reveal class="mx-auto max-w-4xl px-4">
-        <a
-          href="/#explore"
-          class="group grid items-center gap-6 rounded-3xl border border-[color:var(--color-border)] bg-[color:var(--color-section-tint)] p-6 transition duration-300 hover:border-[color:var(--color-grape)] hover:shadow-[0_24px_60px_-30px_rgba(67,32,95,0.5)] sm:grid-cols-[auto_1fr] sm:gap-9 sm:p-8"
-        >
-          <svg class="mx-auto h-28 w-24 shrink-0 transition-transform duration-300 group-hover:-translate-y-1 sm:mx-0" viewBox="0 0 112 152" fill="none" aria-hidden="true">
-            <defs>
-              <radialGradient id="hwGrape" cx="36%" cy="28%" r="80%">
-                <stop offset="0%" stop-color="#8a4fbf" />
-                <stop offset="52%" stop-color="#4a1f78" />
-                <stop offset="100%" stop-color="#280f45" />
-              </radialGradient>
-            </defs>
-            <path d="M56 6c2 6 1 11 3 17" stroke="#6b4a2a" stroke-width="2.4" stroke-linecap="round" />
-            <path d="M58 12c5-8 17-10 23-6-3 8-12 12-21 11" fill="#4f7d3c" opacity="0.9" />
-            <g stroke="#1e0b36" stroke-opacity="0.45" stroke-width="1">
-              <circle cx="38" cy="34" r="14" fill="url(#hwGrape)" />
-              <circle cx="64" cy="30" r="15" fill="url(#hwGrape)" />
-              <circle cx="89" cy="35" r="13" fill="url(#hwGrape)" />
-              <circle cx="27" cy="56" r="13" fill="url(#hwGrape)" />
-              <circle cx="52" cy="54" r="15" fill="url(#hwGrape)" />
-              <circle cx="77" cy="55" r="14" fill="url(#hwGrape)" />
-              <circle cx="99" cy="59" r="11" fill="url(#hwGrape)" />
-              <circle cx="40" cy="76" r="14" fill="url(#hwGrape)" />
-              <circle cx="66" cy="76" r="15" fill="url(#hwGrape)" />
-              <circle cx="90" cy="79" r="12" fill="url(#hwGrape)" />
-              <circle cx="53" cy="97" r="14" fill="url(#hwGrape)" />
-              <circle cx="78" cy="97" r="13" fill="url(#hwGrape)" />
-              <circle cx="64" cy="117" r="14" fill="url(#hwGrape)" />
-              <circle cx="57" cy="137" r="12" fill="url(#hwGrape)" />
-            </g>
-            <g fill="#c9a6e8" opacity="0.5">
-              <circle cx="34" cy="30" r="3" />
-              <circle cx="60" cy="26" r="3.2" />
-              <circle cx="48" cy="50" r="3" />
-              <circle cx="62" cy="72" r="3.2" />
-              <circle cx="60" cy="113" r="2.8" />
-            </g>
-          </svg>
-          <div class="text-center sm:text-left">
-            <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">Every capability</p>
-            <h2 class="mt-2 font-display text-2xl font-medium tracking-tight sm:text-3xl">Prefer a guided tour?</h2>
-            <p class="mt-3 leading-relaxed text-[color:var(--color-text-muted)]">Every feature — cleanup, refine &amp; shape, the whole flow — is an interactive demo you drive on the homepage. This page is the technical detail behind them.</p>
-            <span class="mt-4 inline-flex items-center gap-1.5 font-medium text-[color:var(--color-accent)] underline-offset-4 group-hover:underline">Open the explorer →</span>
-          </div>
-        </a>
-      </div>
+    <div class="relative z-10 -mt-14 border-b border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-2 pb-6 pt-2 shadow-[0_18px_70px_-16px_rgba(8,3,18,.5)] sm:-mt-16 sm:rounded-t-[28px] sm:px-8 sm:pt-4">
 
   <!-- Pipeline stepper. The example-flow strip (Audio → Transcript →
        Cleaned → Pasted) is now the STAGE NAVIGATION: each box is a
@@ -217,7 +219,7 @@ const gestures = [
        visitor keeps the full stacked page. A11y: plain
        buttons-with-aria-current pattern (matching the homepage
        carousel), not the APG tabs pattern. -->
-  <section data-reveal class="mx-auto max-w-4xl px-6 pb-4 pt-16">
+  <section data-reveal class="mx-auto max-w-4xl px-6 pb-4 pt-10">
     <div
       id="pipeline-stepper"
       class="rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6 sm:p-8"
