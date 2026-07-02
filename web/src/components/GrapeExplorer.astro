@@ -889,7 +889,9 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
 
   /* Fixed height (fits the longest 2-line preview) so hovering a grape — which
      swaps this description — never reflows the column and jogs the demo card. */
-  .bunch-preview { margin-top: 1.6rem; max-width: 19rem; font-size: .82rem; line-height: 1.45; color: var(--color-text-muted); height: 3.5em; overflow: hidden; }
+  /* Fixed height (reserved for the longest ~3-line description) so switching grapes
+     never reflows the column — but tall enough that Fuller cleanup / Per-app aren't clipped. */
+  .bunch-preview { margin-top: 1.6rem; max-width: 19rem; font-size: .82rem; line-height: 1.45; color: var(--color-text-muted); height: 4.5em; overflow: hidden; }
   .bunch-preview b { color: var(--color-text); font-weight: 600; }
 
   /* demo panel */
