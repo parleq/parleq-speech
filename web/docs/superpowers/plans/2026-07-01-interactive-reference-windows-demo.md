@@ -54,3 +54,26 @@ The pager: `‹ Back` · 4 dots · `Next ›` (filled grape). Next steps the mac
 3. **Two fidelities in one tab** (interactive RW vs static refine loop) temporarily — acceptable for the spike; note it in the report.
 4. **Focus-steal** — only focus affordances on user-initiated stage entry, with `preventScroll`.
 5. **Hold-vs-click mic fidelity** — support both; activation plays the sim.
+
+---
+
+## Reconciliation (post two-reviewer pass, 2026-07-01)
+
+**Focus model — the biggest change (adversarial #1/#6/#7).** The original "auto-focus the stage affordance on entry" is REMOVED — it broke keyboard pager-repeat, was a focus-teleport unique to this grape, and blurred-to-body at S3. New rules:
+- No global Space listener; no auto-focus on grape-selection or pager-driven advance.
+- Affordances are prominent **clickable** buttons (primary path); keyboard users Tab to them; Enter/Space activate natively.
+- Focus follows the user ONLY when a **gesture** (clicking an in-demo affordance) advances a stage → move focus to the next affordance. **Pager (Back/Next)-driven advances leave focus on the pager button**, so keyboard pager-repeat stays intact.
+- At S3, Next is disabled AND focus moves to the **Replay** affordance — never blur-to-body.
+- Drop the "bare Space works from anywhere" promise (scroll-hijack / fragile scoping). Coachmark still says "tap Space," and the on-screen Space affordance is the clickable/focusable control. (Flag for maintainer: scoped bare-Space can be added later if wanted.)
+
+**Timer safety (adversarial #2/#11, constructive #4).** One `cancelAnim()` clears all pending timers; called at the start of every `render(stage)`, Replay, reset, and on any grape (de)selection. Skip-the-typewriter: a click/Next/gesture during a typing reveal completes it instantly, then advances. `Next` auto-completes a gesture **instantly** (no multi-second op); the animated version plays only on the real gesture; reduced-motion → always instant.
+
+**Class collision (adversarial #3/#4).** The bespoke panel uses `.rw-demo` (NOT `.stepper-wrap`), so the generic stepper loop skips it; it registers its own `stepperResets['hiw-reference']`. The backplate `:has()` selector is updated to match both `.stepper-wrap` and `.rw-demo`.
+
+**Accuracy (adversarial #5/#15/#16).** S0 is framed as mid-dictation; the coachmark explicitly says "while holding your hotkey, tap Space" so it never teaches that bare Space attaches. Dimmed Slack/Notes get a one-line "other apps work too — this demo follows Calendar" nudge on click (not silent). The compact inline picker is a conscious simplification of the real screen-relative panel (noted).
+
+**Causality + payoff — what makes it land (constructive #1/#2/#3).** When Calendar is picked, a tiny **calendar-content peek** ("Thu 2:00pm — open") attaches, correlating with the highlighted "Thursday at 2pm" in the S3 result. S3 reuses **`pulseFlow()`** as the "context lands" beat. S0 gets a brief **pre-roll** of ambient dictation before the Space coachmark (instant under reduced-motion).
+
+**Dropped / noted.** No-JS server-render (adversarial #8) — DROPPED: the whole how-it-works tab is JS-gated (pre-existing), so a no-JS visitor never reaches this panel; not worth spike effort (known limitation). Two architectures coexisting (adversarial #9) — accepted for the spike. Mock Accept (adversarial #10) — S3 uses a clear "↺ Replay"; the mock Accept is styled non-interactive. OverlayMockup reuse (adversarial #12) — bespoke for now (matches the explorer's existing demo-card overlay); reconcile when templatizing. Instrumentation + microcopy polish (constructive #7/#8) — deferred.
+
+**Verification add.** Mobile (390/500px) screenshots per stage (adversarial #17). New pulse/typing keyframes gated in the reduced-motion media block AND via a JS `matchMedia` check (adversarial #18).
