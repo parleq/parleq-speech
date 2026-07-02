@@ -336,6 +336,21 @@ final class SettingsModel: ObservableObject {
     /// `config.refineModel` is nil.
     @Published var refineModelName: String
 
+    // MARK: - Reframe v2: cleanup / refinement TYPE + shared Polished provider
+
+    /// The global default CLEANUP type (Raw / Instant / Polished). The segmented
+    /// picker in Settings drives this; `save()` derives `llmProvider`
+    /// (none / concord / the Polished provider) from it.
+    @Published var cleanupType: TargetMode
+    /// The GLOBAL refinement type (Raw / Instant / Polished). Polished interprets
+    /// commands via the shared Polished provider; Instant/Raw append.
+    @Published var refinementType: TargetMode
+    /// The ONE shared Polished provider (cloud/local) used by whichever of
+    /// cleanup/refinement is Polished. Empty when neither is Polished.
+    @Published var polishedProvider: String
+    /// Model paired with `polishedProvider`.
+    @Published var polishedModelName: String
+
     // MARK: - On-device (local) cleanup tier
 
     /// Model residency policy for the local cleanup provider.
@@ -494,6 +509,15 @@ final class SettingsModel: ObservableObject {
         self.contextModelName = config.contextModel?.model ?? config.llmModel
         self.refineProvider = config.refineModel?.provider ?? config.llmProvider
         self.refineModelName = config.refineModel?.model ?? config.llmModel
+        // Reframe v2 — the type pickers + shared Polished provider. When no
+        // Polished provider is configured yet, default to a sensible cloud
+        // provider so switching a picker to Polished has a value to show.
+        self.cleanupType = config.cleanupType
+        self.refinementType = config.refinementType
+        let pp = config.polishedProvider
+            ?? (Config.isGenerativeProvider(config.llmProvider) ? config.llmProvider : "gemini")
+        self.polishedProvider = pp
+        self.polishedModelName = config.polishedModel ?? ModelCatalog.defaultModel(forProvider: pp)
         self.localResidency = config.localResidency
         self.localAllowUnsupportedRAM = config.localAllowUnsupportedRAM
         // Feature toggles (Phase 5).
@@ -628,6 +652,15 @@ final class SettingsModel: ObservableObject {
         self.contextModelName = config.contextModel?.model ?? config.llmModel
         self.refineProvider = config.refineModel?.provider ?? config.llmProvider
         self.refineModelName = config.refineModel?.model ?? config.llmModel
+        // Reframe v2 — the type pickers + shared Polished provider. When no
+        // Polished provider is configured yet, default to a sensible cloud
+        // provider so switching a picker to Polished has a value to show.
+        self.cleanupType = config.cleanupType
+        self.refinementType = config.refinementType
+        let pp = config.polishedProvider
+            ?? (Config.isGenerativeProvider(config.llmProvider) ? config.llmProvider : "gemini")
+        self.polishedProvider = pp
+        self.polishedModelName = config.polishedModel ?? ModelCatalog.defaultModel(forProvider: pp)
         self.localResidency = config.localResidency
         self.localAllowUnsupportedRAM = config.localAllowUnsupportedRAM
         // Feature toggles (Phase 5).
@@ -744,10 +777,22 @@ final class SettingsModel: ObservableObject {
         c.audioInputDeviceUID = audioInputDeviceUID.trimmingCharacters(in: .whitespacesAndNewlines)
         c.trailingSpace = trailingSpace
         c.noTrailingSpaceAppBundleIDs = Self.parseBundleIDs(noTrailingSpaceAppsText)
-        // Persist tier fields — these are the canonical source of truth
-        // for cleanup provider/model; llmModel/llmProvider stay in sync.
-        c.llmProvider = cleanupProvider
-        c.llmModel = cleanupModelName.trimmingCharacters(in: .whitespaces)
+        // Reframe v2: derive the on-disk cleanup config from the cleanup TYPE.
+        //   Raw → "none" · Instant → "concord" · Polished → the shared provider.
+        // Keep the `cleanupProvider`/`cleanupModelName` mirrors in sync so the
+        // credentials section + any legacy reader stay consistent.
+        let derivedCleanupProvider: String
+        let derivedCleanupModel: String
+        switch cleanupType {
+        case .raw:      derivedCleanupProvider = "none";    derivedCleanupModel = ""
+        case .instant:  derivedCleanupProvider = "concord"; derivedCleanupModel = ""
+        case .polished: derivedCleanupProvider = polishedProvider
+                        derivedCleanupModel = polishedModelName.trimmingCharacters(in: .whitespaces)
+        }
+        cleanupProvider = derivedCleanupProvider
+        cleanupModelName = derivedCleanupModel
+        c.llmProvider = derivedCleanupProvider
+        c.llmModel = derivedCleanupModel
         // Keep the legacy mirrors in sync so other code paths that read
         // llmModel/llmProvider directly stay consistent.
         llmProvider = cleanupProvider
@@ -808,13 +853,26 @@ final class SettingsModel: ObservableObject {
         let resolvedContextModel: ModelIdentifier? = (contextId == cleanupId) ? nil : contextId
         c.contextModel = resolvedContextModel
         contextModel = resolvedContextModel
-        // Refine tier: nil when refine == cleanup (= "same as cleanup",
-        // resolver falls back to context then cleanup). Same shape as the
-        // context tier above.
-        let refineId = ModelIdentifier(provider: refineProvider, model: refineModelName.trimmingCharacters(in: .whitespaces))
-        let resolvedRefineModel: ModelIdentifier? = (refineId == cleanupId) ? nil : refineId
+        // Reframe v2: the global refinement TYPE + its Polished provider.
+        //   Polished → the shared Polished provider (nil when it equals the
+        //   cleanup provider, so the resolver treats it as "same as cleanup").
+        //   Instant/Raw → no provider (append-only), so refineModel is nil.
+        c.refinementType = refinementType
+        let resolvedRefineModel: ModelIdentifier?
+        if refinementType == .polished {
+            let refineId = ModelIdentifier(
+                provider: polishedProvider,
+                model: polishedModelName.trimmingCharacters(in: .whitespaces))
+            resolvedRefineModel = (refineId == cleanupId) ? nil : refineId
+        } else {
+            resolvedRefineModel = nil
+        }
         c.refineModel = resolvedRefineModel
         refineModel = resolvedRefineModel
+        // Keep the refine-tier mirrors aligned with the shared provider so any
+        // legacy reader (credentials, MDM pickers) stays consistent.
+        refineProvider = (refinementType == .polished) ? polishedProvider : "none"
+        refineModelName = polishedModelName
         // On-device cleanup tier residency policy.
         c.localResidency = localResidency
         // Feature toggles (Phase 5). Managed keys are already excluded
@@ -1846,15 +1904,20 @@ struct SettingsView: View {
         tierConfiguration
 
         // ── On-device model card (only when provider == "local") ─────────
-        if model.cleanupProvider == "local", let store = model.localModelStore {
+        if model.polishedProvider == "local",
+           (model.cleanupType == .polished || model.refinementType == .polished),
+           let store = model.localModelStore {
             LocalOnDeviceCard(store: store, model: model)
         }
 
         // ── Provider Credentials (hidden when both tiers are local/none — no cloud creds)
-        let cleanupNeedsCredentials = (model.cleanupProvider != "local" && model.cleanupProvider != "none")
-        let contextNeedsCredentials = (model.contextProvider != "local" && model.contextProvider != "none")
-        let refineNeedsCredentials = (model.refineProvider != "local" && model.refineProvider != "none")
-        if cleanupNeedsCredentials || contextNeedsCredentials || refineNeedsCredentials {
+        // Only a generative CLOUD provider needs credentials — the shared
+        // Polished provider (when used and not "local") and the Context tier.
+        // Concord / none / local carry no cloud credentials.
+        let polishedNeedsCredentials = (model.cleanupType == .polished || model.refinementType == .polished)
+            && Config.isGenerativeProvider(model.polishedProvider) && model.polishedProvider != "local"
+        let contextNeedsCredentials = Config.isGenerativeProvider(model.contextProvider) && model.contextProvider != "local"
+        if polishedNeedsCredentials || contextNeedsCredentials {
             HStack(alignment: .center) {
                 VStack { Divider() }
                 Text("Provider Credentials")
@@ -1882,124 +1945,130 @@ struct SettingsView: View {
 
         return SettingsCard {
             VStack(alignment: .leading, spacing: 18) {
-                // CLEANUP TIER
+                // CLEANUP TYPE (Raw / Instant / Polished)
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Cleanup")
                         .font(.system(size: 13, weight: .semibold))
-                    Text("The provider for everyday dictation cleanup. Also handles refinement and reference context unless you choose separate providers below.")
+                    Text("How every dictation is cleaned by default. Set per-app exceptions in Presets.")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
-                    // .top alignment so the Provider and Model labels +
-                    // pickers stay vertically aligned regardless of which
-                    // column has a "Managed by your organization." caption
-                    // below it (captions inflate VStack height; without
-                    // .top the shorter column gets centered upward).
-                    HStack(alignment: .top, spacing: 12) {
-                        tierProviderPicker(
-                            selection: Binding(
-                                get: { model.cleanupProvider },
-                                set: { newVal in
-                                    guard newVal != model.cleanupProvider else { return }
-                                    model.cleanupProvider = newVal
-                                    let available = modelsAvailable(forProvider: newVal)
-                                    if !available.contains(model.cleanupModelName) {
-                                        model.cleanupModelName = available.first ?? ""
-                                    }
-                                    model.save()
-                                    // Re-evaluate the on-device restart-to-activate
-                                    // menu-bar item (its observer only fires on model
-                                    // state changes, not provider changes).
-                                    NotificationCenter.default.post(
-                                        name: .parleqCleanupProviderChanged, object: nil)
-                                }
-                            ),
-                            label: "Provider",
-                            pinnedKey: "cleanupProvider",
-                            allowlistKey: "cleanupAllowedProviders",
-                            allowedValues: cleanupAllowedProviders,
-                            modelAllowlist: cleanupAllowedModels,
-                            // On sub-12 GB machines the on-device cleanup tier is
-                            // not selectable (mirrors the Setup Wizard) unless the
-                            // config-file override is set. Only the cleanup tier
-                            // offers "local"; the context tier never does.
-                            gateLocalUnsupported: true
-                        )
-                        // "concord", "local" and "none" have no cloud model to pick.
-                        if model.cleanupProvider != "concord" && model.cleanupProvider != "local" && model.cleanupProvider != "none" {
-                            tierModelPicker(
-                                forProvider: model.cleanupProvider,
-                                selection: Binding(
-                                    get: { model.cleanupModelName },
-                                    set: { newVal in
-                                        guard newVal != model.cleanupModelName else { return }
-                                        model.cleanupModelName = newVal
-                                        model.save()
-                                    }
-                                ),
-                                label: "Model",
-                                pinnedKey: "cleanupModel",
-                                allowlistKey: "cleanupAllowedModels",
-                                allowedModels: cleanupAllowedModels
-                            )
+                    HStack(spacing: 6) {
+                        Picker("Cleanup type", selection: Binding(
+                            get: { model.cleanupType },
+                            set: { newVal in
+                                guard newVal != model.cleanupType else { return }
+                                model.cleanupType = newVal
+                                model.save()
+                                NotificationCenter.default.post(
+                                    name: .parleqCleanupProviderChanged, object: nil)
+                            }
+                        )) {
+                            Text("Raw").tag(TargetMode.raw)
+                            Text("Instant").tag(TargetMode.instant)
+                            Text("Polished").tag(TargetMode.polished)
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        .frame(maxWidth: 320)
+                        // MDM: a pinned cleanup provider locks the type.
+                        .disabled(model.managedKeys.contains("cleanupProvider"))
+                        if model.managedKeys.contains("cleanupProvider") {
+                            ManagedIndicator(isManaged: true)
                         }
                     }
+                    Text(cleanupTypeHint(model.cleanupType))
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
                 }
 
                 Divider()
 
-                // REFINE TIER
+                // REFINEMENT TYPE (Raw / Instant / Polished)
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Refinement")
                         .font(.system(size: 13, weight: .semibold))
-                    // When cleanup is the on-device Concord ("Lightweight")
-                    // tier, refinement CANNOT inherit it — Concord is a
-                    // deterministic corrector that can't follow instructions
-                    // or apply a style. Surface that directly and prompt for a
-                    // refine-capable provider instead of implying "same as
-                    // cleanup". (The runtime also guards this: a refine that
-                    // resolves to Concord shows a hint rather than no-op'ing.)
-                    Text(model.cleanupProvider == "concord"
-                        ? "Lightweight cleanup is on-device only and can't refine text. Choose a provider here to enable voice-refine, the quick chips, and per-app styling — pick \"On-device (no cloud)\" to keep it fully local, or a cloud provider."
-                        : "Used for voice-refine, the quick-refinement chips, and per-app styled cleanup. Set a separate provider here to keep first-pass cleanup on the on-device tier while these run in the cloud.")
+                    Text("How a follow-up voice command (\u{201C}make this more formal\u{201D}) is handled.")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
-                    HStack(alignment: .top, spacing: 12) {
-                        tierProviderPicker(
-                            selection: Binding(
-                                get: { model.refineProvider },
-                                set: { newVal in
-                                    guard newVal != model.refineProvider else { return }
-                                    model.refineProvider = newVal
-                                    let available = modelsAvailable(forProvider: newVal)
-                                    if !available.contains(model.refineModelName) {
-                                        model.refineModelName = available.first ?? ""
-                                    }
-                                    model.save()
-                                }
-                            ),
-                            label: "Provider",
-                            pinnedKey: "refineProvider",
-                            // Concord is a cleanup-only corrector — it can't
-                            // perform refine/style ops (it no-ops them), so it
-                            // must not appear as a refine-tier choice.
-                            excludeProviders: ["concord"]
-                        )
-                        // "local" and "none" have no cloud model to pick —
-                        // same guard as the cleanup tier above.
-                        if model.refineProvider != "local" && model.refineProvider != "none" {
-                            tierModelPicker(
-                                forProvider: model.refineProvider,
+                    HStack(spacing: 6) {
+                        Picker("Refinement type", selection: Binding(
+                            get: { model.refinementType },
+                            set: { newVal in
+                                guard newVal != model.refinementType else { return }
+                                model.refinementType = newVal
+                                model.save()
+                            }
+                        )) {
+                            Text("Raw").tag(TargetMode.raw)
+                            Text("Instant").tag(TargetMode.instant)
+                            Text("Polished").tag(TargetMode.polished)
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        .frame(maxWidth: 320)
+                        .disabled(model.managedKeys.contains("refineProvider"))
+                        if model.managedKeys.contains("refineProvider") {
+                            ManagedIndicator(isManaged: true)
+                        }
+                    }
+                    Text(refinementTypeHint(model.refinementType))
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                }
+
+                // SHARED POLISHED PROVIDER — only when either uses Polished.
+                if model.cleanupType == .polished || model.refinementType == .polished {
+                    Divider()
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Polished provider")
+                            .font(.system(size: 13, weight: .semibold))
+                        Text("The one cloud or on-device service used for Polished cleanup and refinement.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                        HStack(alignment: .top, spacing: 12) {
+                            tierProviderPicker(
                                 selection: Binding(
-                                    get: { model.refineModelName },
+                                    get: { model.polishedProvider },
                                     set: { newVal in
-                                        guard newVal != model.refineModelName else { return }
-                                        model.refineModelName = newVal
+                                        guard newVal != model.polishedProvider else { return }
+                                        model.polishedProvider = newVal
+                                        let available = modelsAvailable(forProvider: newVal)
+                                        if !available.contains(model.polishedModelName) {
+                                            model.polishedModelName = available.first ?? ""
+                                        }
                                         model.save()
+                                        NotificationCenter.default.post(
+                                            name: .parleqCleanupProviderChanged, object: nil)
                                     }
                                 ),
-                                label: "Model",
-                                pinnedKey: "refineModel"
+                                label: "Provider",
+                                pinnedKey: "cleanupProvider",
+                                allowlistKey: "cleanupAllowedProviders",
+                                allowedValues: cleanupAllowedProviders,
+                                modelAllowlist: cleanupAllowedModels,
+                                gateLocalUnsupported: true,
+                                // The Polished provider is a generative service —
+                                // never the on-device corrector or the off switch.
+                                excludeProviders: ["concord", "none"]
                             )
+                            // "local" has no cloud model to pick.
+                            if model.polishedProvider != "local" {
+                                tierModelPicker(
+                                    forProvider: model.polishedProvider,
+                                    selection: Binding(
+                                        get: { model.polishedModelName },
+                                        set: { newVal in
+                                            guard newVal != model.polishedModelName else { return }
+                                            model.polishedModelName = newVal
+                                            model.save()
+                                        }
+                                    ),
+                                    label: "Model",
+                                    pinnedKey: "cleanupModel",
+                                    allowlistKey: "cleanupAllowedModels",
+                                    allowedModels: cleanupAllowedModels
+                                )
+                            }
                         }
                     }
                 }
@@ -2058,6 +2127,24 @@ struct SettingsView: View {
                     }
                 }
             }
+        }
+    }
+
+    /// One-line description under the Cleanup type segmented picker.
+    private func cleanupTypeHint(_ type: TargetMode) -> String {
+        switch type {
+        case .raw:      return "Paste exactly as transcribed — no cleanup."
+        case .instant:  return "Fast on-device tidy-up (deterministic, no network)."
+        case .polished: return "Smart rewriting via your Polished provider."
+        }
+    }
+
+    /// One-line description under the Refinement type segmented picker.
+    private func refinementTypeHint(_ type: TargetMode) -> String {
+        switch type {
+        case .raw:      return "Append what you say, exactly as spoken."
+        case .instant:  return "Clean what you say on-device, then append it."
+        case .polished: return "Carry out the command (real rewriting) via your Polished provider."
         }
     }
 
@@ -2522,22 +2609,25 @@ struct SettingsView: View {
     /// Returns nil for inactive providers.
     private func activeBadge(for provider: String) -> String? {
         var roles: [String] = []
-        if model.cleanupProvider == provider { roles.append("Cleanup") }
+        if model.cleanupType == .polished && model.polishedProvider == provider { roles.append("Cleanup") }
+        if model.refinementType == .polished && model.polishedProvider == provider { roles.append("Refinement") }
         if model.contextProvider == provider { roles.append("Context") }
-        if model.refineProvider == provider { roles.append("Refinement") }
         guard !roles.isEmpty else { return nil }
         return "Used for " + roles.joined(separator: " + ")
     }
 
-    /// The set of provider IDs currently selected for at least one
-    /// tier. "none" (skip-cleanup) and "local" (on-device, no cloud
-    /// credentials) are not credential providers and are excluded.
+    /// The set of provider IDs currently needing credentials: the shared
+    /// Polished provider (when either cleanup or refinement is Polished) and
+    /// the Context provider. "none"/"local"/"concord" carry no cloud
+    /// credentials and are excluded.
     private var activeProviderSet: Set<String> {
         var set: Set<String> = []
-        let skip: Set<String> = ["none", "local"]
-        if !skip.contains(model.cleanupProvider) { set.insert(model.cleanupProvider) }
+        let skip: Set<String> = ["none", "local", "concord"]
+        if model.cleanupType == .polished || model.refinementType == .polished,
+           !skip.contains(model.polishedProvider) {
+            set.insert(model.polishedProvider)
+        }
         if !skip.contains(model.contextProvider) { set.insert(model.contextProvider) }
-        if !skip.contains(model.refineProvider) { set.insert(model.refineProvider) }
         return set
     }
 
