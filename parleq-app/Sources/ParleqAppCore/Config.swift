@@ -2871,10 +2871,12 @@ extension Config {
     /// True iff `provider` is a generative provider that can serve as the
     /// Polished tier. Open-world by design: anything that is not the on-device
     /// deterministic Concord tier ("concord") or the cleanup-off sentinel
-    /// ("none") — and is non-empty — is a Polished provider. This matches
-    /// `providerCanRefine` by construction (refine == Polished now), so a new
-    /// cloud provider added elsewhere in the app needs no change here and can
-    /// never silently derive to "no Polished provider".
+    /// ("none") — and is non-empty — is a Polished provider. Open-world like
+    /// `providerCanRefine` (refine == Polished now), and equivalent to it for
+    /// every valid, non-empty provider value; it additionally rejects the
+    /// empty string (which is never a real stored provider). Kept open-world
+    /// so a new cloud provider added elsewhere in the app needs no change here
+    /// and can never silently derive to "no Polished provider".
     public static func isGenerativeProvider(_ provider: String) -> Bool {
         !provider.isEmpty && provider != "concord" && provider != "none"
     }

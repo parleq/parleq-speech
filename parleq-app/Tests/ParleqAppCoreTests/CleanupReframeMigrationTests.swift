@@ -158,6 +158,21 @@ final class CleanupReframeMigrationTests: XCTestCase {
         XCTAssertEqual(refine.provider, "none", "refine must not leak to cloud when none")
     }
 
+    // MARK: - isGenerativeProvider predicate (open-world)
+
+    func test_isGenerativeProvider_true_for_cloud_and_local_and_unknown() {
+        for p in ["gemini", "vertex", "bedrock", "bedrock-bearer", "azure",
+                  "openai", "local", "some-future-provider"] {
+            XCTAssertTrue(Config.isGenerativeProvider(p), "\(p) should be generative")
+        }
+    }
+
+    func test_isGenerativeProvider_false_for_level_sentinels_and_empty() {
+        XCTAssertFalse(Config.isGenerativeProvider("concord"))
+        XCTAssertFalse(Config.isGenerativeProvider("none"))
+        XCTAssertFalse(Config.isGenerativeProvider(""))
+    }
+
     // MARK: - MDM pin translation (simulated, as ManagedConfigTests does)
 
     func test_mdm_pinned_concord_maps_to_no_polished_provider() {
