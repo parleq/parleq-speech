@@ -454,3 +454,97 @@
   - **Maintainer walkthrough** (spec "Eval / validation", steps 1–7): both harvest directions, healing, delete-all wipe, toggle-off.
 - [ ] **Step 5: Commit** — `docs(voiceprint): disclose correction-time negative harvest (Settings copy + SECURITY_REVIEW §5.4)`.
 - [ ] **Step 6: HOLD at the approval gate.** Version bump + CHANGELOG ride the release PR per the house workflow; do not push without explicit maintainer approval.
+
+---
+
+# Maintainer walkthrough (manual, real audio)
+
+All 9 tasks are implemented and committed on `feature/voiceprint-negative-harvest`.
+Machine-checkable gates already run green (public + Concord builds, 964 Concord tests,
+corrector regression harness). The steps below are the judgment-call half: real
+dictation, both harvest directions, healing, and the deletion/kill-switch paths.
+
+**Build + launch** (the assistant normally drives this):
+
+```bash
+cd parleq-app && scripts/make-app.sh --debug --traits Concord
+pkill -x ParleqApp; open parleq-app/build/Parleq.app
+```
+
+Watch the log in a second terminal: `tail -f ~/.parleq/app.log | grep -E "voiceprint|concord"`.
+
+## A. Setup: a one-class (weak) voiceprint
+
+1. Settings → Dictionary: add (or reuse) the term **Claude** with alias **cloud**
+   (biasing: ASR + LLM).
+2. Open the term's edit sheet → **voice enrollment** → record the positive carrier
+   clips, but **skip the confusable step** (answer "Not confusable"). Save.
+   - Verify: `~/.parleq/voiceprints.enc` exists; log shows the enrollment; the
+     template is **one-class** (no negatives yet).
+3. Confirm the new consent copy on the wizard intro card mentions correction-time
+   refinement ("…refines that term's voiceprint using the corrected word's sound…").
+
+## B. Trigger (a): substitution-direction harvest via ⌥digit undo
+
+4. Dictate: *"the cloud provider bills monthly"* — repeat until the one-class gate
+   over-fires (overlay shows **Claude** highlighted as a numbered correction where
+   you said *cloud*).
+5. Press **⌥<n>** (the correction's number) to undo it.
+   - Expect log: `[voiceprint] harvest: negative attached for 'Claude' (ring 1/8)`
+     — count-only; the word "cloud" must NOT appear in the log line.
+   - Expect `~/.parleq/harvested-negatives.enc` to appear
+     (`ls -l ~/.parleq/harvested-negatives.enc` → mode `-rw-------`, binary
+     ciphertext: `strings ~/.parleq/harvested-negatives.enc | grep -i cloud` → nothing).
+6. Dictate the same sentence again → expect **no substitution** this time (the
+   contrastive gate vetoes; `[concord]` log shows the dictionary edit considered/rejected).
+
+## C. Trigger (b): validation-direction harvest via E-edit
+
+7. Dictate a sentence where biasing makes the ASR emit **Claude** for a spoken
+   *cloud* (vocabulary boosting active — e.g. *"store it in the cloud bucket"*;
+   pre-harvest this survived cleanup as "Claude").
+8. In review press **E**, change **Claude** → **cloud**, press **⌘⏎**.
+   - Expect a second harvest log (`ring 2/8` if same label).
+9. Dictate again → expect the **validate-revert** to fire: overlay shows
+   Claude→cloud as a numbered correction (the emitted term was auto-reverted).
+
+## D. Healing (undo of a wrong revert)
+
+10. When a validate-revert fires on an occurrence you actually MEANT as "Claude",
+    press **⌥<n>** to undo the revert (restoring "Claude").
+    - Expect log: `[voiceprint] harvest: healed 'Claude' (ring k/8)`.
+    - Next dictation keeps the emitted term (the poisoned newest sample is gone).
+
+## E. Kill-switch + deletion
+
+11. Settings → Dictionary → toggle **"Refine voiceprints from corrections"** OFF.
+    - Confirm the sheet offers "Turn off and clear refinements" / "Turn off, keep
+      refinements". Choose **clear** → `harvested-negatives.enc` disappears and
+      the log shows `[voiceprint] harvest: cleared all harvested negatives (…)`.
+    - With the toggle off, repeat step 5: NO harvest log, no file re-created.
+12. Toggle back ON, harvest once (step 5), then Settings → **Delete all
+    voiceprints** → confirm BOTH `voiceprints.enc` and `harvested-negatives.enc`
+    are gone.
+13. (Optional, MDM) `defaults write /Library/Managed\ Preferences/com.parleq.app
+    voiceprintHarvestEnabled -string "banana"` style malformed value → audit view
+    shows "false (fail-closed…)" and harvesting stays off.
+
+## Where to see things
+
+- **Count-only logs:** `~/.parleq/app.log`, lines prefixed `[voiceprint] harvest:` —
+  term name + ring counts only; confusable labels and embeddings never appear.
+- **Encrypted store:** `~/.parleq/harvested-negatives.enc` (0600, AES-256-GCM under
+  the same device-only Keychain key as `voiceprints.enc`). Deletion paths: per-term
+  Remove voiceprint, Delete all voiceprints, the toggle-off "clear refinements" offer.
+- **Settings surface:** Settings → Dictionary, below the clip-storage toggle.
+
+## Verified by the implementing assistant (machine-checkable half)
+
+- `swift build` + `swift test` (public, no trait): green, 808 tests, zero behavior change.
+- `swift build --traits Concord` + full suite: green, 964 tests (56 new across
+  HarvestedNegatives / HarvestConfig / VoiceprintHarvestCoordinator /
+  HarvestSpanLocator / EditDiff + updated pins).
+- `CorrectorRegressionHarnessTests` + `VoiceprintSelfTestHarnessTests` (real models +
+  flywheel audio): result recorded in the final task report.
+- Compliance sweep: harvest log lines count-only; nothing harvest-related
+  `Codable`-reachable from the flywheel record or usage ledger.
