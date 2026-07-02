@@ -101,7 +101,7 @@ const howitworks = [
       { label: 'Step 4 · One tap to finish', presets: ['Concise', 'Formal', 'Bulletize'], after: 'Tap a preset to restyle in one more pass — or just Accept.' },
     ] },
   { id: 'hiw-voice', icon: 'wave', label: 'Voice', title: 'Voice enrollment', desc: 'Teach a term in your own voice; tell it apart by sound.' },
-  { id: 'hiw-recover', icon: 'rotate', label: 'Recover', title: 'Never lose a dictation', desc: 'Your last dictation is held in memory — re-run it with R.' },
+  { id: 'hiw-recover', icon: 'rotate', label: 'Recover', title: 'Never lose a dictation', interactive: true, desc: 'Your last dictation is held in memory — re-run it with R.' },
   { id: 'hiw-ai', icon: 'sparkle', label: 'Your AI', title: 'The AI you bring', desc: 'On-device, your own cloud, or none — you choose the engine.' },
   { id: 'hiw-quick', icon: 'bolt', label: 'Quick', title: 'Quick & continuous', desc: 'Double-tap to dictate with no overlay, or go hands-free.' },
   { id: 'hiw-blank-a', blank: true },
@@ -137,6 +137,9 @@ const wfRaw = 'so we shipped the update to kiwi and it was eight point nine mill
 const wfClean = 'So we shipped the update to <span class="mk" data-corr="0" data-fixed="Keavi" data-raw="kiwi">Keavi</span> — <span class="mk" data-corr="1" data-fixed="8.9 million" data-raw="eight point nine million">8.9 million</span> rows.';
 const wfFinal = 'So we shipped the update to <span class="mk">Keavi</span> — <span class="mk">8.9 million</span> rows.';
 const wfCorr = [{ n: '1', label: 'Keavi' }, { n: '2', label: '8.9 million' }];
+
+// Recovery ("never lose a dictation") demo — the recovered text (server-rendered).
+const rcText = 'Following up on the <span class="mk">Q3 review</span> — can we lock the roadmap by <span class="mk">Friday</span> and share it with the team?';
 
 // No-JS baseline: the default active family + the grape that JS would auto-select on
 // load (prefers the "center"-toned grape of that family). Server-rendered so the
@@ -484,6 +487,49 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
         <span class="pager-status">Step <b class="pager-cur" data-wf-cur>1</b> of 4</span>
       </div>
       <p class="rw-footnote">In Parleq this is one press-speak-release. Here, tap the controls to step through.</p>
+    </div>
+
+    {/* SPIKE: INTERACTIVE Recovery demo (data-panel="hiw-recover"). A dictation is
+        lost → tap R → it re-runs from the audio still held in memory. 3 stages. */}
+    <div data-panel="hiw-recover" class="rc-demo" hidden>
+      <div class="demo-card rw-card">
+        <div class="flex items-center justify-between gap-3">
+          <div class="flex items-center gap-2.5">
+            <span class="demo-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4" set:html={icons['rotate']} /></span>
+            <h3 class="text-[15px] font-semibold text-white">Never lose a dictation</h3>
+          </div>
+          <span class="chip chip-on">Held in memory</span>
+        </div>
+
+        {/* S0 — lost */}
+        <div class="rw-stage" data-rcstage="0">
+          <p class="rc-lost"><span class="rc-warn" aria-hidden="true">!</span> That dictation didn't land — the window closed before it pasted.</p>
+          <button type="button" class="rw-mic" data-rc-recover><kbd class="rw-keycap">R</kbd> Recover last dictation</button>
+        </div>
+
+        {/* S1 — recovering */}
+        <div class="rw-stage" data-rcstage="1" hidden>
+          <p class="wf-status" data-rc-status><span class="rw-mic-dot" aria-hidden="true"></span> Re-running from memory…</p>
+        </div>
+
+        {/* S2 — recovered */}
+        <div class="rw-stage" data-rcstage="2" hidden>
+          <p class="ba-label mt-3">Recovered</p>
+          <p class="ba-after" set:html={rcText}></p>
+          <div class="demo-foot">
+            <span class="foot-paste">Pasted to Mail</span>
+            <span class="foot-actions"><span>Copy</span><span>Cancel</span><b aria-hidden="true">Accept</b></span>
+          </div>
+          <button type="button" class="rw-replay" data-rc-replay>↺ Replay</button>
+        </div>
+      </div>
+
+      <p class="rw-coach" data-rc-coach aria-live="polite">Closed it too soon? Your last dictation is still in memory — tap <b>R</b>.</p>
+      <div class="rw-steps" role="group" aria-label="Recovery walkthrough progress">
+        <span class="pager-dots" aria-hidden="true"><span class="stepper-dot"></span><span class="stepper-dot"></span><span class="stepper-dot"></span></span>
+        <span class="pager-status">Step <b class="pager-cur" data-rc-cur>1</b> of 3</span>
+      </div>
+      <p class="rw-footnote">In Parleq your last dictation's audio is held in memory — tap R to re-run it, no re-speaking.</p>
     </div>
 
   </div>
@@ -880,7 +926,8 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
      dark backplate so the pager/coachmark read on the light section bg. */
   .demo-stack:has(.stepper-wrap:not([hidden])) .demo-backplate,
   .demo-stack:has(.rw-demo:not([hidden])) .demo-backplate,
-  .demo-stack:has(.wf-demo:not([hidden])) .demo-backplate { display: none; }
+  .demo-stack:has(.wf-demo:not([hidden])) .demo-backplate,
+  .demo-stack:has(.rc-demo:not([hidden])) .demo-backplate { display: none; }
 
   /* BUGFIX: walkthrough cards hide the backplate, so the demo-card's transparent
      left strip (a stacked-card flourish that normally reveals the backplate) would
@@ -963,6 +1010,10 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
   .wf-kbd { display:inline-flex; align-items:center; gap:.3rem; border:none; background:none; padding:0; font:inherit; color: rgba(255,255,255,.75); cursor:pointer; }
   .wf-kbd:hover { color:#fff; }
   .ba-after.wf-editing { outline:1px solid color-mix(in srgb, var(--color-accent) 60%, transparent); border-radius:.4rem; padding:.3rem .45rem; background: rgba(255,255,255,.03); }
+
+  /* SPIKE: recovery demo — the "lost" notice + its warning glyph. */
+  .rc-lost { margin-top:.4rem; display:flex; align-items:flex-start; gap:.5rem; font-size:.85rem; line-height:1.45; color: rgba(255,255,255,.62); }
+  .rc-warn { flex-shrink:0; display:inline-flex; align-items:center; justify-content:center; height:1.15rem; width:1.15rem; border-radius:9999px; background: color-mix(in srgb, var(--color-accent) 24%, transparent); color:#fcd9a3; font-size:.72rem; font-weight:700; }
   .rw-utterance { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
   .rw-caret { display:inline-block; width:2px; height:1em; margin-left:1px; vertical-align:text-bottom; background:rgba(255,255,255,.6); animation: rw-blink 1s step-end infinite; }
   .rw-mic { margin-top:1.1rem; display:inline-flex; align-items:center; gap:.5rem; border-radius:9999px; border:1px solid color-mix(in srgb, var(--color-accent) 70%, transparent); background: var(--color-accent-hover); padding:.5rem .9rem; font-size:.85rem; font-weight:600; color:#fff; cursor:pointer; animation: rw-pulse 1.9s ease-in-out infinite; }
@@ -1014,6 +1065,7 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
     const stepperResets = {};  // SPIKE: panelId -> reset-to-step-1 fn (populated below)
     let rwCancel = () => {};   // SPIKE: cancels the RW demo's in-flight animation (set below)
     let wfCancel = () => {};   // SPIKE: cancels the whole-flow demo's in-flight animation (set below)
+    let rcCancel = () => {};   // SPIKE: cancels the recovery demo's in-flight animation (set below)
 
     const showPreview = (g) => { if (preview) preview.innerHTML = '<b>' + g.dataset.name + '</b> — ' + g.dataset.desc; };
     const pulseFlow = () => {
@@ -1024,6 +1076,7 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
     const selectGrape = (g) => {
       rwCancel();  // SPIKE: stop any RW-demo animation when the selection changes
       wfCancel();  // SPIKE: stop any whole-flow-demo animation when the selection changes
+      rcCancel();  // SPIKE: stop any recovery-demo animation when the selection changes
       grapes.forEach((x) => {
         const sel = x === g;
         x.setAttribute('data-selected', sel ? 'true' : 'false');
@@ -1280,6 +1333,47 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
       wfCancel = () => { wcancel(); stopEdit(); };
       stepperResets['hiw-flow'] = wreset;
       wrender();
+    }
+
+    // SPIKE: recovery demo — a lost dictation re-runs from memory on R.
+    const rc = root.querySelector('.rc-demo');
+    if (rc) {
+      const rstages = Array.from(rc.querySelectorAll('.rw-stage'));
+      const rdots = Array.from(rc.querySelectorAll('.rw-steps .stepper-dot'));
+      const rcur = rc.querySelector('[data-rc-cur]');
+      const rcoach = rc.querySelector('[data-rc-coach]');
+      const recoverBtn = rc.querySelector('[data-rc-recover]');
+      const rreplay = rc.querySelector('[data-rc-replay]');
+      const rreduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const RCOACH = [
+        'Closed it too soon? Your last dictation is still in memory — tap R.',
+        'Re-running ASR + cleanup on the held audio — no re-speaking.',
+        'Back, exactly as you said it.',
+      ];
+      let rstage = 0, rtimer = null;
+      const rcancel = () => { if (rtimer) { clearTimeout(rtimer); rtimer = null; } };
+      const rrender = () => {
+        rcancel();
+        rstages.forEach((s) => { s.hidden = Number(s.dataset.rcstage) !== rstage; });
+        rdots.forEach((d, i) => d.setAttribute('data-on', i === rstage ? 'true' : 'false'));
+        if (rcur) rcur.textContent = String(rstage + 1);
+        if (rcoach) rcoach.innerHTML = RCOACH[rstage];
+      };
+      const rgo = (n) => { rstage = Math.max(0, Math.min(2, n)); rrender(); };
+      const recover = () => {
+        rgo(1);
+        if (rreduce) { rgo(2); return; }
+        rtimer = setTimeout(() => { rtimer = null; rgo(2); }, 900);
+      };
+      if (recoverBtn) recoverBtn.addEventListener('click', recover);
+      if (rreplay) rreplay.addEventListener('click', () => rgo(0));
+      // "R" recovers while the demo's lost stage is on-screen.
+      document.addEventListener('keydown', (e) => {
+        if ((e.key === 'r' || e.key === 'R') && rstage === 0 && !rc.hidden) { e.preventDefault(); recover(); }
+      });
+      rcCancel = () => rcancel();
+      stepperResets['hiw-recover'] = () => { rcancel(); rstage = 0; rrender(); };
+      rrender();
     }
 
     setTab('cleanup');
