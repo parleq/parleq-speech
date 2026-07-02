@@ -2015,6 +2015,10 @@ public final class AppState {
         guard phase == .awaitingAccept, !overlay.model.editing else { return false }
         let spans = overlay.model.correctionSpans
         guard let span = spans.first(where: { $0.number == number }) else { return false }
+        // Snapshot the PRE-mutation overlay state for the harvest ordinal math
+        // (the revert below rewrites currentText and re-maps the spans).
+        let preText = currentText
+        let preSpans = spans
         // Revert against the CURRENT text (currentText == model.text in review).
         let reverted = CorrectionHighlight.revert(text: currentText, span: span)
         guard reverted != currentText else { return false }
@@ -2050,7 +2054,23 @@ public final class AppState {
         switch span.stage {
         case .dictionary, .acousticDictionary, .sayAsPhrase:
             let term = span.replacement
-            if voiceprint != nil, !(voiceprint?.hasVoiceprint(term) ?? false) {
+            if let vp = voiceprint, span.stage == .dictionary, vp.hasVoiceprint(span.original) {
+                // (a′) HEALING: the undone span has the INVERTED shape — the term is
+                // on the ORIGINAL side, meaning the acoustic gate validate-REVERTED
+                // term → confusable and the user just restored the term. The newest
+                // harvested negative for (term: original, label: replacement) was
+                // wrong; remove it (or detach the label) via the same one-keystroke
+                // gesture that exposed it.
+                vp.healHarvestedNegative(termID: span.original,
+                                         label: HarvestSpanLocator.core(span.replacement))
+            } else if let vp = voiceprint, span.stage == .dictionary, vp.hasVoiceprint(term) {
+                // (a) HARVEST: the user undid a dictionary over-fire on an ENROLLED
+                // term — the heard word (span.original) is a real in-context
+                // confusable. Pool its audio-span embedding from the retained
+                // review acoustics and attach it as a negative prototype.
+                harvestNegativeFromUndo(span: span, preText: preText, preSpans: preSpans)
+            } else if voiceprint != nil, !(voiceprint?.hasVoiceprint(term) ?? false) {
+                // Unenrolled term: nudge toward voice enrollment (unchanged).
                 VoiceEnrollNudge.shared.suggest(term: term, confusedWith: span.original)
             }
         default:
@@ -2076,6 +2096,38 @@ public final class AppState {
             // first-occurrence matching and could revert the wrong span.
             wordRange: span.wordRange
         )
+    }
+
+    /// User-declared aliases for a dictionary term (fresh read, same source the
+    /// per-utterance dictionary uses) — the alias bypass for the harvest's
+    /// phonetic gate.
+    private func dictionaryAliases(forTerm term: String) -> [String] {
+        let t = term.lowercased()
+        return Config.load().config.customDictionary
+            .first { $0.term.lowercased() == t }?.aliases ?? []
+    }
+
+    /// Trigger (a): harvest a negative from a per-correction undo of a
+    /// dictionary over-fire on an enrolled term. Zero-junk: every ambiguity
+    /// (kill-switch off, no retained acoustics, ordinal guard mismatch,
+    /// un-poolable span) skips silently — a skipped harvest costs a future
+    /// correction; a mislocated one poisons a template.
+    private func harvestNegativeFromUndo(span: CorrectionSpan, preText: String,
+                                         preSpans: [CorrectionSpan]) {
+        let cfg = Config.load().config
+        guard cfg.voiceprintHarvestEnabled else { return }
+        guard let matchCount = groupMatchCount(for: span.original) else { return }
+        let allSpans = preSpans.map { (number: $0.number, original: $0.original) }
+        guard let ordinal = HarvestSpanLocator.rawOrdinalForUndo(
+            shownText: preText, spanRange: span.range, original: span.original,
+            allSpans: allSpans, spanNumber: span.number, groupMatchCount: matchCount)
+        else { return }                                    // consistency guard: skip silently
+        guard let hit = harvestEmbedding(word: span.original, rawOrdinal: ordinal) else { return }
+        voiceprint?.harvestNegative(termID: span.replacement,
+                                    label: HarvestSpanLocator.core(span.original),
+                                    embedding: hit.embedding,
+                                    aliases: dictionaryAliases(forTerm: span.replacement),
+                                    harvestEnabled: cfg.voiceprintHarvestEnabled)
     }
     #endif
 
