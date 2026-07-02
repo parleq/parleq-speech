@@ -2810,12 +2810,13 @@ extension Config {
     ///      (`contextModel`) wins; references are the most capability-
     ///      sensitive turns and trump refine.
     ///   3. refine      — REFINE-shaped turns (`isRefine`: hotkey
-    ///      voice-refine, quick chips, styled per-app-preset cleanup)
-    ///      route to the Refine tier (`refineModel`), falling back to
-    ///      the Context tier, then Cleanup. This lets the feature work
-    ///      when the user has configured EITHER a refine OR a context
-    ///      cloud tier — important when cleanup is the on-device Concord
-    ///      tier (which can't perform refine/style ops).
+    ///      voice-refine, quick chips, styled per-app-preset cleanup) are
+    ///      powered by the SAME Polished provider as cleanup (the reframe
+    ///      collapsed the separate Refine tier into Polished). They resolve
+    ///      to the cleanup identifier; when that provider can't refine
+    ///      (on-device Concord, or none) the runtime applies the append-only
+    ///      fallback (`AppState.streamCleanupOrRefine`) rather than routing to
+    ///      a different tier.
     ///   4. cleanup     — plain first-pass cleanup.
     /// nil tier values fall through to the next rung, so a user who sets
     /// nothing beyond cleanup gets unchanged single-provider behavior.
@@ -2826,31 +2827,25 @@ extension Config {
     ) -> ModelIdentifier {
         if let override { return override }
         let cleanupId = ModelIdentifier(provider: llmProvider, model: llmModel)
-        // Cleanup disabled ("none") is a GLOBAL off switch. The Context
-        // and Refine tiers are sub-features of cleanup, so when the user
-        // has opted out of cleanup entirely, neither reference-aware nor
-        // refine turns must route to a (possibly still-configured) other
-        // tier — otherwise "skip cleanup, paste raw" would silently keep
-        // sending the transcript (and reference content) to that provider.
-        // Returning the cleanup identifier makes the call path resolve
-        // to the nil cleanup provider and paste the raw ASR transcript.
+        // Cleanup disabled ("none") is a GLOBAL off switch. The Context tier
+        // is a sub-feature of cleanup, so when the user has opted out of
+        // cleanup entirely, reference-aware turns must NOT route to a
+        // (possibly still-configured) context tier — otherwise "skip cleanup,
+        // paste raw" would silently keep sending the transcript (and reference
+        // content) to that provider. Returning the cleanup identifier makes
+        // the call path resolve to the nil cleanup provider and paste raw.
         if llmProvider == "none" {
             return cleanupId
         }
-        // References win over refine: a reference-aware turn routes to the
-        // context tier even if it's also refine-shaped.
+        // References win: a reference-aware turn routes to the context tier
+        // even if it's also refine-shaped (references are the most
+        // capability-sensitive turns). Context stays a separate provider.
         if hasReferences, let context = contextModel { return context }
-        // Refine-shaped turns: refine → context → cleanup fallback chain.
-        // The cleanup rung is a genuine fallback only when the cleanup
-        // provider can actually refine. When cleanup is the on-device Concord
-        // ("Lightweight") tier — which can't follow refine instructions — and
-        // no refine/context tier is configured, there is no refine-capable
-        // target; we still return cleanupId (the type demands an identifier),
-        // but the call path (AppState.streamCleanupOrRefine) detects the
-        // non-refining provider and surfaces guidance instead of no-op'ing.
-        if isRefine {
-            return refineModel ?? contextModel ?? cleanupId
-        }
+        // Everything else — plain cleanup AND refine — is powered by the
+        // Polished provider (== cleanup). `isRefine` no longer selects a
+        // different model; it changes only prompt shape downstream. When the
+        // Polished provider is Concord/none (can't refine), the runtime's
+        // append-only fallback handles the refine turn.
         return cleanupId
     }
 

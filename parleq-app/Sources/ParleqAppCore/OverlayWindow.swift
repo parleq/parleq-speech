@@ -666,7 +666,8 @@ public final class OverlayWindow {
         downloadProgress: ASRDownloadProgress? = nil,
         microphoneName: String? = nil,
         cleanupFailureMessage: String? = nil,
-        cleanupFailureReauthable: Bool = false
+        cleanupFailureReauthable: Bool = false,
+        appendMode: Bool = false
     ) {
         model.update(
             state: state,
@@ -674,7 +675,8 @@ public final class OverlayWindow {
             downloadProgress: downloadProgress,
             microphoneName: microphoneName,
             cleanupFailureMessage: cleanupFailureMessage,
-            cleanupFailureReauthable: cleanupFailureReauthable
+            cleanupFailureReauthable: cleanupFailureReauthable,
+            appendMode: appendMode
         )
         // Deferred-shrink settle point: a shrink that was held back
         // during the streaming states (see resizePanelToHeight) is
@@ -1287,6 +1289,12 @@ public final class OverlayModel: ObservableObject {
     /// `.awaitingAccept` like `cleanupFailureMessage`.
     @Published var cleanupFailureReauthable: Bool = false
 
+    /// True for an append-only refine result (a refine turn with no Polished
+    /// provider): the spoken words were appended, not interpreted. Drives a
+    /// subtle, non-error "append mode" note in `.awaitingAccept`. Gated to
+    /// `.awaitingAccept` like `cleanupFailureMessage`; never an error.
+    @Published var appendModeActive: Bool = false
+
     /// Re-auth interaction state for the signed-out notice. Only
     /// meaningful while `cleanupFailureReauthable` is true. Reset to
     /// `.signedOut` whenever a fresh failure message is applied.
@@ -1475,7 +1483,8 @@ public final class OverlayModel: ObservableObject {
         downloadProgress: ASRDownloadProgress? = nil,
         microphoneName: String? = nil,
         cleanupFailureMessage: String? = nil,
-        cleanupFailureReauthable: Bool = false
+        cleanupFailureReauthable: Bool = false,
+        appendMode: Bool = false
     ) {
         self.state = state
         self.text = text
@@ -1520,6 +1529,9 @@ public final class OverlayModel: ObservableObject {
         let reauthableNow = (state == .awaitingAccept) ? cleanupFailureReauthable : false
         self.cleanupFailureReauthable = reauthableNow
         if reauthableNow { self.reauthState = .signedOut }
+        // Append-mode note follows the same .awaitingAccept gating; cleared
+        // elsewhere so it doesn't follow a later interpreted result.
+        self.appendModeActive = (state == .awaitingAccept) ? appendMode : false
         // Every full update ends a provisional display: raw-first shows
         // set the flag explicitly AFTER calling update (see
         // OverlayWindow.showProvisionalCleaning); the first streamed
@@ -3392,6 +3404,21 @@ private struct OverlayContent: View {
                                     .fixedSize(horizontal: false, vertical: true)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                             }
+                        }
+                    } else if model.appendModeActive {
+                        // Append-only refine: no Polished provider to interpret
+                        // the instruction, so the spoken words were appended
+                        // verbatim. A subtle, non-error note (no amber icon).
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: "text.append")
+                                .foregroundColor(.secondary)
+                                .font(.system(size: 12))
+                                .padding(.top, 2)
+                            Text("Appended — add a Polished provider in Settings to refine.")
+                                .font(.system(size: 12))
+                                .foregroundColor(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
                 }
