@@ -119,29 +119,27 @@ const gestures = [
 >
   <FloatingNav active="how-it-works" spacer={false} />
 
-  <!-- Hero: colored dark-grape panel (matches the homepage/enterprise hero). Frames the
-       page as the TECHNICAL deep-dive; the nav pill floats over the grape, not a gap. -->
+  <!-- Hero: LIGHT-lavender "utility / reference" hero (docs family), NOT the deep-grape
+       marquee — the deep hero is reserved for the homepage so it stands out. Dark text +
+       grape accent (amber fails AA on the light-purple ground). Nav pill floats over it. -->
   <section class="mx-auto max-w-[1700px] px-0 py-0 sm:px-5 sm:py-5">
     <div
       class="relative overflow-hidden rounded-none px-5 pb-28 pt-28 sm:rounded-[28px] sm:px-10 sm:pt-36"
-      style="background:
-               radial-gradient(58% 74% at 70% 42%, color-mix(in srgb, var(--color-grape-600) 45%, transparent), transparent 68%),
-               linear-gradient(180deg, #23103a 0%, #140622 100%);
-             box-shadow: 0 30px 80px -30px rgba(20,7,32,.7);"
+      style="background: linear-gradient(180deg, var(--color-hero-light-top) 0%, var(--color-hero-light-bottom) 100%);"
     >
       <div class="mx-auto grid max-w-5xl items-center gap-10 lg:grid-cols-[1.35fr_1fr] lg:gap-14">
-        <div class="text-[color:var(--color-grape-200)]">
-          <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">
+        <div>
+          <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-grape)]">
             How it works
           </p>
-          <h1 class="mt-4 font-display text-4xl leading-[1.05] font-medium tracking-tight text-white sm:text-5xl md:text-6xl">
+          <h1 class="mt-4 font-display text-4xl leading-[1.05] font-medium tracking-tight sm:text-5xl md:text-6xl">
             The details, stage by stage.
           </h1>
-          <p class="mt-6 text-lg leading-relaxed text-[color:var(--color-grape-200)] sm:text-xl">
+          <p class="mt-6 text-lg leading-relaxed text-[color:var(--color-text-muted)] sm:text-xl">
             How a dictation goes from keypress to pasted text — capture, transcribe, clean up, paste. Speech recognition stays on your Mac; only cleanup can reach the network, and only if you choose a cloud provider.
           </p>
           <p class="mt-6 text-sm">
-            <a href="#gestures" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Just want the keyboard gestures? Jump to the cheat sheet →</a>
+            <a href="#gestures" class="font-medium text-[color:var(--color-grape)] underline-offset-4 hover:underline">Just want the keyboard gestures? Jump to the cheat sheet →</a>
           </p>
         </div>
 
@@ -149,15 +147,15 @@ const gestures = [
              want the tour rather than the mechanics. In the hero so the choice is up front. -->
         <a
           href="/#explore"
-          class="group block rounded-2xl border border-[color:var(--color-grape-300)]/20 bg-white/[0.04] p-6 transition duration-300 hover:border-[color:var(--color-grape-300)]/45 hover:bg-white/[0.07]"
+          class="group block rounded-2xl border border-[color:var(--color-grape-200)]/60 bg-[color:var(--color-surface)] p-6 shadow-[0_10px_30px_-18px_rgba(67,32,95,0.35)] transition duration-300 hover:border-[color:var(--color-grape)] hover:shadow-[0_22px_50px_-24px_rgba(67,32,95,0.45)]"
         >
           <div class="flex items-center gap-4">
             <svg class="h-20 w-16 shrink-0 transition-transform duration-300 group-hover:-translate-y-1" viewBox="0 0 112 152" fill="none" aria-hidden="true">
               <defs>
                 <radialGradient id="hwGrapeLite" cx="36%" cy="28%" r="80%">
-                  <stop offset="0%" stop-color="#d3b3ef" />
-                  <stop offset="52%" stop-color="#9a5fc9" />
-                  <stop offset="100%" stop-color="#5b2a86" />
+                  <stop offset="0%" stop-color="#9a5fc9" />
+                  <stop offset="52%" stop-color="#5b2a86" />
+                  <stop offset="100%" stop-color="#331652" />
                 </radialGradient>
               </defs>
               <path d="M56 6c2 6 1 11 3 17" stroke="#8a6a3a" stroke-width="2.4" stroke-linecap="round" />
@@ -187,12 +185,12 @@ const gestures = [
               </g>
             </svg>
             <div>
-              <p class="text-xs font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">Every capability</p>
-              <p class="mt-1 font-display text-xl font-medium leading-tight text-white">Prefer a guided tour?</p>
+              <p class="text-xs font-medium uppercase tracking-[0.16em] text-[color:var(--color-grape)]">Every capability</p>
+              <p class="mt-1 font-display text-xl font-medium leading-tight text-[color:var(--color-text)]">Prefer a guided tour?</p>
             </div>
           </div>
-          <p class="mt-4 text-sm leading-relaxed text-[color:var(--color-grape-200)]">Every feature — cleanup, refine &amp; shape, the whole flow — is an interactive demo you drive on the homepage.</p>
-          <span class="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-[color:var(--color-accent)] underline-offset-4 group-hover:underline">Open the explorer →</span>
+          <p class="mt-4 text-sm leading-relaxed text-[color:var(--color-text-muted)]">Every feature — cleanup, refine &amp; shape, the whole flow — is an interactive demo you drive on the homepage.</p>
+          <span class="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-[color:var(--color-grape)] underline-offset-4 group-hover:underline">Open the explorer →</span>
         </a>
       </div>
     </div>
@@ -202,7 +200,7 @@ const gestures = [
        bottom, shadow onto the grape). Opens straight into the technical pipeline;
        supplementary sections (gestures, privacy) follow below it. -->
   <div class="mx-auto max-w-[1700px] px-0 sm:px-5">
-    <div class="relative z-10 -mt-14 border-b border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-2 pb-6 pt-2 shadow-[0_18px_70px_-16px_rgba(8,3,18,.5)] sm:-mt-16 sm:rounded-t-[28px] sm:px-8 sm:pt-4">
+    <div class="relative z-10 -mt-14 border border-[color:var(--color-grape-200)]/50 bg-[color:var(--color-surface)] px-2 pb-6 pt-2 shadow-[0_18px_50px_-18px_rgba(67,32,95,.35)] sm:-mt-16 sm:rounded-t-[28px] sm:px-8 sm:pt-4">
 
   <!-- Pipeline stepper. The example-flow strip (Audio → Transcript →
        Cleaned → Pasted) is now the STAGE NAVIGATION: each box is a
