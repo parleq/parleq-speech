@@ -89,9 +89,22 @@ final class HarvestedNegativesTests: XCTestCase {
     func test_isEmpty_reflects_rings() {
         XCTAssertTrue(HarvestedNegatives().isEmpty)
         XCTAssertFalse(sample().isEmpty)
-        // A term key present but with an empty label map still counts as non-empty content?
-        // Convention: isEmpty is true only when there are no rings at all.
         XCTAssertTrue(HarvestedNegatives(rings: [:]).isEmpty)
+        // A ghost term key (empty label map) counts as EMPTY, so save()'s
+        // empty ⇒ deleteAll contract holds even if a removal leaves the outer
+        // key behind (RoboRev-7490).
+        XCTAssertTrue(HarvestedNegatives(rings: ["Claude": [:]]).isEmpty)
+    }
+
+    func test_save_ghost_term_key_deletes_file() throws {
+        // rings: ["Claude": [:]] is vacuous content — saving it must remove the
+        // file exactly like saving HarvestedNegatives() (RoboRev-7490).
+        let url = tempURL(); defer { try? FileManager.default.removeItem(at: url) }
+        let s = store(url)
+        try s.save(sample())
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
+        try s.save(HarvestedNegatives(rings: ["Claude": [:]]))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
     }
 
     func test_policy_constants() {

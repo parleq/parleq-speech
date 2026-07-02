@@ -53,8 +53,12 @@ public struct HarvestedNegatives: Codable, Sendable, Equatable {
         self.rings = rings
     }
 
-    /// True when there are no rings at all.
-    public var isEmpty: Bool { rings.isEmpty }
+    /// True when there is no ring content at all. A term key whose label map is
+    /// empty (a "ghost" key left by removals) counts as empty too, so
+    /// `save(_:)`'s empty ⇒ deleteAll contract can't be defeated by a vacuous
+    /// outer key. Mutation sites should still prune empty inner maps; this
+    /// makes the store fail safe if one slips through.
+    public var isEmpty: Bool { rings.values.allSatisfy(\.isEmpty) }
 }
 
 /// Bounded-ring + diff policy constants (single source of truth for the harvest paths).
