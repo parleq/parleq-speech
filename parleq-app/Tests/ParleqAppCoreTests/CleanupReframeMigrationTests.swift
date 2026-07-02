@@ -177,6 +177,16 @@ final class CleanupReframeMigrationTests: XCTestCase {
         XCTAssertEqual(c.behaviorForApp("com.apple.Terminal").mode, .instant)
     }
 
+    func test_concord_refine_routes_to_shared_polished_provider() {
+        // The maintainer's path: a refine / re-clean for a concord-cleanup user
+        // resolves to their shared Polished provider (vertex), not concord.
+        var c = config(provider: "concord")
+        c.refineModel = ModelIdentifier(provider: "vertex", model: "gemini-2.5-flash")
+        let r = c.modelForInvocation(hasReferences: false, isRefine: true)
+        XCTAssertEqual(r.provider, "vertex")
+        XCTAssertEqual(r.model, "gemini-2.5-flash")
+    }
+
     func test_none_never_routes_to_cloud_even_with_refine_and_isRefine() {
         // Pin the invariant for the none + refineModel + isRefine case.
         var c = config(provider: "none")

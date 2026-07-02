@@ -103,23 +103,6 @@ public final class AppState {
         }
     }
 
-    /// The EFFECTIVE cleanup mode for a FRESH turn after Polished-provider
-    /// degradation. When the resolved behavior is Polished but no Polished
-    /// provider is configured (concord/none global), Polished-mode cleanup
-    /// degrades to Instant — it cleans on-device (Concord), never a cloud call
-    /// it can't make. Instant/Raw pass through unchanged. Refine turns are NOT
-    /// routed through here: they degrade to the append-only fallback instead
-    /// (see `streamCleanupOrRefine`), so callers apply this only when
-    /// `!asRefine`. Pure, so the degradation is unit-testable and provably
-    /// consistent with the engine badge.
-    nonisolated static func effectiveCleanupMode(
-        behaviorMode: TargetMode,
-        hasPolishedProvider: Bool
-    ) -> TargetMode {
-        if behaviorMode == .polished, !hasPolishedProvider { return .instant }
-        return behaviorMode
-    }
-
     /// Join spoken words onto prior text for an append-only refine — the
     /// fallback when a refine turn has no Polished (refine-capable) provider.
     /// The instruction can't be interpreted, so the raw spoken words are
@@ -185,6 +168,17 @@ public final class AppState {
     /// The enrolled-voiceprint over-fire gate is installed on this instance by
     /// `installVoiceprintEnforcement()` so Instant-when-cloud keeps the veto.
     private let instantLLM: (any LLMProvider)?
+
+    /// The instance backing the shared **Polished** provider (`Config.
+    /// polishedProvider`): the cleanup provider (`llm`) when cleanup is
+    /// generative, otherwise the refinement provider (`refineLLM`). Used for
+    /// Polished cleanup (per-app override) AND Polished refinement — the two
+    /// share one cloud/local service. nil when no Polished provider is
+    /// configured (both cleanup and refinement are on-device/off).
+    private func polishedProviderInstance(_ config: Config) -> (any LLMProvider)? {
+        Config.isGenerativeProvider(config.llmProvider) ? llm : refineLLM
+    }
+
     /// Enterprise OIDC federation handles. All optional and nil for
     /// non-enterprise users. The session is retained for the Company
     /// Account UI (Task 8); the two exchange caches are pre-warmed at
@@ -3327,79 +3321,73 @@ public final class AppState {
                 // already-shown text and always uses the refine tier (below),
                 // exactly as before. `behaviorForApp` order: user override →
                 // curated default → Polished (today's default).
-                let behaviorMode: TargetMode = asRefine
-                    ? .polished
-                    : loadedConfig.behaviorForApp(targetBundleID).mode
-                // Reframe: fresh-turn Polished→Instant degradation. A Polished
-                // app with NO Polished provider configured (concord/none
-                // global) cleans on-device (Instant), never a cloud call it
-                // can't make. Refine turns are handled by the append-only
-                // fallback downstream, so they are NOT degraded here.
-                // EXCEPTION: a reference-aware turn routes to the Context tier
-                // (a SEPARATE provider), so it must NOT be degraded even
-                // without a Polished provider — the Context provider services
-                // it (concord+context is a supported combo). For a "none" user
-                // the downstream short-circuit still keeps references off the
-                // cloud, so skipping degradation here is safe.
-                let routesToContext = loadedConfig.referenceWindowsEnabled
-                    && !(self?.overlay.model.references.isEmpty ?? true)
-                    && loadedConfig.contextModel != nil
-                let effectiveMode: TargetMode = (asRefine || routesToContext)
-                    ? behaviorMode
-                    : AppState.effectiveCleanupMode(
-                        behaviorMode: behaviorMode,
-                        hasPolishedProvider: loadedConfig.hasPolishedProvider)
-                // Per-app default preset: only meaningful for Polished, and
-                // only on fresh cleanup turns (refine text is already styled;
-                // Instant/Raw carry no style). Keyed on the EFFECTIVE mode —
-                // when Polished has degraded to Instant there's no provider to
-                // apply a STYLE, so none is folded. Hoisted ABOVE provider
-                // resolution because a preset routes to the refine (cloud)
-                // path, same as an explicit refine.
-                // (Re-used below for the cleanup call's `transform` argument.)
-                let defaultPreset: TransformPreset? =
-                    (!asRefine && effectiveMode == .polished)
-                    ? loadedConfig.presetForApp(targetBundleID)
-                    : nil
-                // Resolve which provider to use for this dictation, keyed on
-                // the target mode:
-                //   • Instant → FORCE the standing on-device Concord instance
-                //     regardless of the global provider. nil in a no-Concord
-                //     build → fall to RAW paste (NOT Polished): routing
-                //     terminal/editor dictation through a rewriting cloud LLM
-                //     would be the opposite of Instant's intent.
-                //   • Raw → no cleanup (nil provider → paste raw ASR).
-                //   • Polished (and every refine turn) → today's path,
-                //     UNCHANGED: override > references > refine > cleanup,
-                //     honoring the in-overlay ModelPicker; isRefine true for an
-                //     explicit refine OR a styled (preset) cleanup.
+                // Reframe v2 routing — three orthogonal settings:
+                //   • References (any turn) → the SEPARATE Context provider wins.
+                //   • Fresh cleanup → per-app cleanup MODE (Instant/Polished/Raw),
+                //     where Polished uses the shared Polished provider.
+                //   • Refine turn → the GLOBAL refinement TYPE: Polished = real
+                //     command via the Polished provider; Instant = append the new
+                //     dictation cleaned on-device; Raw = append verbatim.
                 let hasInstant = self?.instantLLM != nil
+                let refsActive = loadedConfig.referenceWindowsEnabled
+                    && !(self?.overlay.model.references.isEmpty ?? true)
+                let routesToContext = refsActive && loadedConfig.contextModel != nil
+
                 let resolvedLLM: (any LLMProvider)?
-                switch effectiveMode {
-                case .instant where !asRefine:
-                    // Force the standing on-device Concord instance; nil in a
-                    // no-Concord build → paste raw ASR (NOT Polished). Also the
-                    // degraded-Polished target when no Polished provider exists.
-                    resolvedLLM = self?.instantLLM
-                    if !hasInstant {
-                        self?.log("[mode] instant: Concord unavailable in this build — pasting raw ASR")
+                let effectiveMode: TargetMode
+                var refineBehavior: RefinementBehavior = .interpret
+                var defaultPreset: TransformPreset? = nil
+
+                if routesToContext {
+                    // References win (fresh or refine): route to the Context tier.
+                    // For a "none" user modelForInvocation still short-circuits,
+                    // keeping reference content off the cloud.
+                    resolvedLLM = self?.llmForInvocation(hasReferences: true, isRefine: asRefine)
+                    effectiveMode = .polished
+                } else if asRefine {
+                    switch loadedConfig.refinementType {
+                    case .polished:
+                        resolvedLLM = self?.polishedProviderInstance(loadedConfig)
+                        effectiveMode = .polished
+                        refineBehavior = .interpret
+                    case .instant:
+                        // Append the new dictation, cleaned on-device. No Concord
+                        // in this build → append verbatim.
+                        resolvedLLM = self?.instantLLM
+                        effectiveMode = .instant
+                        refineBehavior = hasInstant ? .appendCleaned : .appendVerbatim
+                    case .raw:
+                        resolvedLLM = nil
+                        effectiveMode = .raw
+                        refineBehavior = .appendVerbatim
                     }
-                case .raw where !asRefine:
-                    resolvedLLM = nil  // paste raw ASR, no cleanup
-                default:
-                    // Polished (and every refine turn) → the Polished provider.
-                    // When no Polished provider is configured, a refine turn's
-                    // resolvedLLM is Concord/nil and streamCleanupOrRefine
-                    // applies the append-only fallback.
-                    resolvedLLM = self?.llmForInvocation(
-                        isRefine: asRefine || (defaultPreset != nil)
-                    )
+                } else {
+                    // Fresh cleanup by per-app mode.
+                    switch loadedConfig.behaviorForApp(targetBundleID).mode {
+                    case .instant:
+                        resolvedLLM = self?.instantLLM
+                        effectiveMode = hasInstant ? .instant : .raw
+                    case .raw:
+                        resolvedLLM = nil
+                        effectiveMode = .raw
+                    case .polished:
+                        // Shared Polished provider; defensively degrade to Instant
+                        // (then Raw) if none is configured.
+                        if let p = self?.polishedProviderInstance(loadedConfig) {
+                            resolvedLLM = p
+                            effectiveMode = .polished
+                            defaultPreset = loadedConfig.presetForApp(targetBundleID)
+                        } else {
+                            resolvedLLM = self?.instantLLM
+                            effectiveMode = hasInstant ? .instant : .raw
+                        }
+                    }
                 }
-                // Engine badge for the header. Derived (pure helper) so the
-                // no-Concord Instant→Raw fallback is guaranteed to match the
-                // provider routing above, and the degraded-Polished case reads
-                // ⚡ Instant. A refine turn resolves to Polished, which clears
-                // an Instant badge when the user refines an Instant result.
+                if effectiveMode == .raw, !hasInstant, !asRefine,
+                   loadedConfig.behaviorForApp(targetBundleID).mode != .raw {
+                    self?.log("[mode] Concord unavailable in this build — pasting raw ASR")
+                }
+                // Engine badge for the header.
                 self?.overlay.model.cleanupMode = AppState.engineBadge(
                     for: effectiveMode, hasInstantProvider: hasInstant)
                 // When imageReferenceEnabled is false, downgrade any
@@ -3461,6 +3449,7 @@ public final class AppState {
                     // Spoken refine turns here carry the user's own words
                     // (asrResult.text), so append-only applies when asRefine.
                     appendOnlyEligible: asRefine,
+                    refineBehavior: refineBehavior,
                     targetBundleID: targetBundleID,
                     customDictionary: dictionary,
                     references: effectiveRefs,
@@ -4994,6 +4983,21 @@ func chainedRefineShouldRender(
 /// `CleanupOutcome.failureMessage` carries a user-facing recovery
 /// hint when the failure is one a user can act on (auth expired,
 /// API key rejected, network down).
+/// How a refine turn is handled (reframe v2), chosen from the GLOBAL
+/// `Config.refinementType`:
+///   - `.interpret`      — Polished: send prior text + instruction to the
+///                         Polished provider for a real rewrite.
+///   - `.appendCleaned`  — Instant: clean the new dictation on-device (Concord)
+///                         and append it to the prior text.
+///   - `.appendVerbatim` — Raw: append the new dictation to the prior text
+///                         exactly as spoken.
+/// Ignored on fresh (non-refine) cleanup turns.
+enum RefinementBehavior {
+    case interpret
+    case appendCleaned
+    case appendVerbatim
+}
+
 @MainActor
 private func streamCleanupOrRefine(
     llm: (any LLMProvider)?,
@@ -5009,6 +5013,12 @@ private func streamCleanupOrRefine(
     // chips) must NOT append their instruction text into the document — they
     // keep the prior text + show a notice. Default false is the safe choice.
     appendOnlyEligible: Bool = false,
+    // How to handle a refine turn (reframe v2): `.interpret` = real refine via
+    // the provider; `.appendCleaned` = clean the new dictation on-device and
+    // append it; `.appendVerbatim` = append the new dictation as spoken.
+    // Ignored on fresh (non-refine) turns. Default `.interpret` preserves the
+    // real-refine behavior for the re-clean/preset call sites.
+    refineBehavior: RefinementBehavior = .interpret,
     targetBundleID: String? = nil,
     customDictionary: [DictionaryEntry] = [],
     references: [Reference] = [],
@@ -5034,39 +5044,54 @@ private func streamCleanupOrRefine(
     shouldRenderToOverlay: @escaping @MainActor @Sendable () -> Bool = { true }
 ) async -> CleanupOutcome {
     let fallback = asRefine ? priorText : rawTranscript
-    // Reframe: a refine turn with NO Polished (refine-capable) provider —
-    // cleanup is on-device Concord ("concord") or off (llm == nil). The
-    // instruction can't be interpreted. Two sub-cases:
-    //   • SPOKEN voice-refine (`appendOnlyEligible`): the user dictated words,
-    //     so APPEND them to the prior text (speech is never lost) and flag
-    //     "append mode". `rawTranscript` here is the user's own speech.
-    //   • Canned transform (preset chip / style): `rawTranscript` is an
-    //     INSTRUCTION string, not speech — appending it would paste the
-    //     instruction into the document. Keep the prior text and surface a
-    //     one-turn notice instead.
-    // Configuring a Polished provider (Settings → Cleanup) enables both.
+    // Reframe v2: dispatch a refine turn on its behavior.
     if asRefine {
-        let refineCapable: Bool = {
-            guard let llm else { return false }
-            return Config.providerCanRefine(llm.providerName)
-        }()
-        if !refineCapable {
-            if appendOnlyEligible {
-                let appended = AppState.appendSpokenText(rawTranscript, to: priorText)
-                if useOverlay, shouldRenderToOverlay() {
-                    overlay.show(state: .cleaning, text: appended)
+        switch refineBehavior {
+        case .appendVerbatim:
+            // Raw refinement: append the new dictation exactly as spoken.
+            let appended = AppState.appendSpokenText(rawTranscript, to: priorText)
+            if useOverlay, shouldRenderToOverlay() {
+                overlay.show(state: .cleaning, text: appended)
+            }
+            return CleanupOutcome(text: appended, failureMessage: nil, appendMode: true)
+        case .appendCleaned:
+            // Instant refinement: run the provider (Concord) as a CLEANUP of the
+            // new dictation, then append to prior (handled via
+            // `appendCleanedToPrior` + `promptAsRefine == false` below).
+            break
+        case .interpret:
+            // Real (Polished) refine. When the provider can't refine — the
+            // defensive no-Polished case (Concord/none) — a SPOKEN voice-refine
+            // appends the words (speech is never lost); a canned transform
+            // (preset chip) keeps the prior text and surfaces a notice rather
+            // than pasting its instruction into the document.
+            let refineCapable: Bool = {
+                guard let llm else { return false }
+                return Config.providerCanRefine(llm.providerName)
+            }()
+            if !refineCapable {
+                if appendOnlyEligible {
+                    let appended = AppState.appendSpokenText(rawTranscript, to: priorText)
+                    if useOverlay, shouldRenderToOverlay() {
+                        overlay.show(state: .cleaning, text: appended)
+                    }
+                    return CleanupOutcome(text: appended, failureMessage: nil, appendMode: true)
+                } else {
+                    if useOverlay, shouldRenderToOverlay() {
+                        overlay.show(state: .cleaning, text: fallback)
+                    }
+                    return CleanupOutcome(
+                        text: fallback,
+                        failureMessage: "Add a Polished provider in Settings → Cleanup to apply styles and refinements.")
                 }
-                return CleanupOutcome(text: appended, failureMessage: nil, appendMode: true)
-            } else {
-                if useOverlay, shouldRenderToOverlay() {
-                    overlay.show(state: .cleaning, text: fallback)
-                }
-                return CleanupOutcome(
-                    text: fallback,
-                    failureMessage: "Add a Polished provider in Settings → Cleanup to apply styles and refinements.")
             }
         }
     }
+    // Instant refinement runs the provider as a fresh CLEANUP of the new
+    // dictation (not a refine), then appends the cleaned result to prior text.
+    let appendCleanedToPrior = asRefine && refineBehavior == .appendCleaned
+    // Only a real (Polished) refine uses the refine prompt shape.
+    let promptAsRefine = asRefine && refineBehavior == .interpret
     guard let llm = llm else {
         // No LLM provider configured at launch (e.g., the user
         // selected provider=none, or every provider's init failed).
@@ -5112,7 +5137,7 @@ private func streamCleanupOrRefine(
         // Reference-aware turns use the reference-specific transform
         // wording — the plain transformHint references "the cleanup
         // rules above", which don't exist in this system prompt.
-        let transformAddendum = asRefine ? "" : SystemPrompts.referenceTransformHint(transform)
+        let transformAddendum = promptAsRefine ? "" : SystemPrompts.referenceTransformHint(transform)
         var refSystem = PromptBuilder.referenceAwareSystem
         if !dictHint.isEmpty { refSystem += "\n\n" + dictHint }
         if !transformAddendum.isEmpty { refSystem += "\n\n" + transformAddendum }
@@ -5122,7 +5147,7 @@ private func streamCleanupOrRefine(
             destination: pasteDestinationLabel,
             instruction: rawTranscript
         )
-        if asRefine, !priorText.isEmpty {
+        if promptAsRefine, !priorText.isEmpty {
             // Append prior-text annotation to the text part so the LLM
             // knows what it's refining. Image parts stay unchanged.
             var newParts = firstTurn.parts.dropLast().map { $0 }
@@ -5136,7 +5161,7 @@ private func streamCleanupOrRefine(
             firstTurn = LLMMessage(role: "user", parts: newParts)
         }
         messages = [firstTurn]
-    } else if asRefine {
+    } else if promptAsRefine {
         systemPrompt = SystemPrompts.refine
         messages = [LLMMessage(role: "user", content: "Current text:\n\(priorText)\n\nEdit instruction:\n\(rawTranscript)")]
     } else {
@@ -5309,6 +5334,15 @@ private func streamCleanupOrRefine(
                 overlay.show(state: .cleaning, text: fallback)
             }
             return CleanupOutcome(text: fallback, failureMessage: nil, llmLatencyMs: latencyBox.value)
+        }
+        if appendCleanedToPrior {
+            // Instant refinement: the provider cleaned the new dictation; append
+            // the cleaned result to the prior text (never rewriting it).
+            let appended = AppState.appendSpokenText(final, to: priorText)
+            if useOverlay, !Task.isCancelled, shouldRenderToOverlay() {
+                overlay.show(state: .cleaning, text: appended)
+            }
+            return CleanupOutcome(text: appended, failureMessage: nil, llmLatencyMs: latencyBox.value, usedLLMOutput: true, appendMode: true)
         }
         return CleanupOutcome(text: final, failureMessage: nil, llmLatencyMs: latencyBox.value, usedLLMOutput: true)
     } catch {

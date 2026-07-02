@@ -2913,12 +2913,15 @@ extension Config {
         // even if it's also refine-shaped (references are the most
         // capability-sensitive turns). Context stays a separate provider.
         if hasReferences, let context = contextModel { return context }
-        // Everything else — plain cleanup AND refine — is powered by the
-        // Polished provider (== cleanup). `isRefine` no longer selects a
-        // different model; it changes only prompt shape downstream. When the
-        // Polished provider is Concord/none (can't refine), the runtime's
-        // append-only fallback handles the refine turn.
-        return cleanupId
+        // Everything else — a Polished cleanup re-clean or a Polished refine —
+        // is powered by the shared Polished provider (`llmProvider` when cleanup
+        // is generative, else the refinement provider `refineModel`). This lets
+        // a concord-cleanup user's refine / re-clean reach their cloud
+        // refinement provider. Falls back to the cleanup id when no Polished
+        // provider is configured (Concord/none) — the runtime then applies the
+        // append-only fallback. `isRefine` no longer selects a different model;
+        // it changes only prompt shape downstream.
+        return polishedIdentifier ?? cleanupId
     }
 
     /// Whether a provider can perform a refine / style-transform turn — an
