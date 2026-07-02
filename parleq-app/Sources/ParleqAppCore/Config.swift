@@ -611,17 +611,27 @@ public struct Config: Sendable {
         let trimmed = bundleID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return AppBehavior(mode: cleanupType) }
         // Mode: explicit override → curated default → global cleanup type.
-        // When cleanup is globally OFF ("none" → cleanupType == .raw) curated
-        // defaults are skipped: a user who opted out of cleanup keeps Raw
-        // everywhere and is never silently upgraded to on-device Instant. Only
-        // an explicit per-app override lifts them out of Raw.
+        //   • "none" (cleanupType == .raw): curated defaults are skipped
+        //     entirely — a user who opted out of cleanup keeps Raw everywhere;
+        //     only an explicit override lifts them out.
+        //   • A curated `.polished` upgrade is applied ONLY when the user's
+        //     CLEANUP is itself Polished (cleanupType == .polished). Otherwise
+        //     it falls back to the user's cleanup type. This is load-bearing:
+        //     a concord (Instant) cleanup user who configured a cloud provider
+        //     for REFINEMENT has a non-nil `polishedProvider`, so without this
+        //     guard curated comms/email/browser apps would route their CLEANUP
+        //     to the refinement provider — cloud — even though the user chose
+        //     on-device cleanup. Curated `.instant` always applies (on-device
+        //     is always available); explicit overrides are always honored.
         let mode: TargetMode
         if let override = appBehaviors[trimmed]?.mode {
             mode = override
         } else if cleanupType == .raw {
             mode = .raw
+        } else if let curated = CuratedAppDefaults.mode(for: trimmed) {
+            mode = (curated == .polished && cleanupType != .polished) ? cleanupType : curated
         } else {
-            mode = CuratedAppDefaults.mode(for: trimmed) ?? cleanupType
+            mode = cleanupType
         }
         // Preset is sourced from presetForApp — the single source of truth
         // (`presetAppDefaults`) plus the MDM gate — so the two maps can never

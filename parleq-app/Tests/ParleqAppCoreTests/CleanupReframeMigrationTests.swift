@@ -152,6 +152,38 @@ final class CleanupReframeMigrationTests: XCTestCase {
         XCTAssertEqual(c.behaviorForApp("com.example.app").mode, .polished)
     }
 
+    func test_curated_polished_not_applied_when_cleanup_is_instant() {
+        // The maintainer's shape: concord cleanup (Instant) + vertex refine.
+        // polishedProvider is now non-nil (vertex, for refinement) — but that
+        // must NOT auto-route curated comms/email apps' CLEANUP to the cloud.
+        // Curated .polished apps fall back to the user's cleanup type (Instant).
+        var c = config(provider: "concord")
+        c.refineModel = ModelIdentifier(provider: "vertex", model: "gemini-2.5-flash")
+        XCTAssertTrue(c.hasPolishedProvider, "vertex is the refinement provider")
+        XCTAssertEqual(c.behaviorForApp("com.tinyspeck.slackmacgap").mode, .instant)
+        XCTAssertEqual(c.behaviorForApp("com.apple.mail").mode, .instant)
+        // A curated .instant app is still Instant.
+        XCTAssertEqual(c.behaviorForApp("com.apple.Terminal").mode, .instant)
+        // An EXPLICIT polished override IS honored (routes to vertex).
+        c.appBehaviors = ["com.apple.iWork.Pages": AppBehavior(mode: .polished)]
+        XCTAssertEqual(c.behaviorForApp("com.apple.iWork.Pages").mode, .polished)
+    }
+
+    func test_curated_polished_applied_when_cleanup_is_polished() {
+        // A cloud-cleanup user still gets the curated demo: comms → Polished,
+        // terminals → Instant.
+        let c = config(provider: "gemini", model: "gemini-2.5-flash")
+        XCTAssertEqual(c.behaviorForApp("com.tinyspeck.slackmacgap").mode, .polished)
+        XCTAssertEqual(c.behaviorForApp("com.apple.Terminal").mode, .instant)
+    }
+
+    func test_none_never_routes_to_cloud_even_with_refine_and_isRefine() {
+        // Pin the invariant for the none + refineModel + isRefine case.
+        var c = config(provider: "none")
+        c.refineModel = ModelIdentifier(provider: "vertex", model: "gemini-2.5-flash")
+        XCTAssertEqual(c.modelForInvocation(hasReferences: false, isRefine: true).provider, "none")
+    }
+
     // MARK: - Downgrade safety: on-disk cleanup/refine strings unchanged
 
     func test_maintainer_shape_round_trips_for_downgrade() throws {
