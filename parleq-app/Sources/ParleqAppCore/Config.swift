@@ -604,13 +604,22 @@ public struct Config: Sendable {
     /// `appBehaviors` override). Suggestions stay off until the user accepts
     /// them in the App-behavior editor.
     public func behaviorForApp(_ bundleID: String?) -> AppBehavior {
-        guard let bundleID else { return AppBehavior(mode: .polished) }
+        guard let bundleID else { return AppBehavior(mode: cleanupDefaultLevel) }
         let trimmed = bundleID.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return AppBehavior(mode: .polished) }
-        // Mode: explicit override → curated default → today's default.
-        let mode = appBehaviors[trimmed]?.mode
-            ?? CuratedAppDefaults.mode(for: trimmed)
-            ?? .polished
+        guard !trimmed.isEmpty else { return AppBehavior(mode: cleanupDefaultLevel) }
+        // Mode: explicit override → curated default → global default level.
+        // When cleanup is globally OFF ("none" → cleanupDefaultLevel == .raw)
+        // curated defaults are skipped: a user who opted out of cleanup keeps
+        // Raw everywhere and is never silently upgraded to on-device Instant.
+        // Only an explicit per-app override lifts them out of Raw.
+        let mode: TargetMode
+        if let override = appBehaviors[trimmed]?.mode {
+            mode = override
+        } else if cleanupDefaultLevel == .raw {
+            mode = .raw
+        } else {
+            mode = CuratedAppDefaults.mode(for: trimmed) ?? cleanupDefaultLevel
+        }
         // Preset is sourced from presetForApp — the single source of truth
         // (`presetAppDefaults`) plus the MDM gate — so the two maps can never
         // drift. Only Polished carries a preset; suggested tones are never
@@ -2850,5 +2859,51 @@ extension Config {
     /// that would no-op it.
     public static func providerCanRefine(_ provider: String) -> Bool {
         provider != "concord" && provider != "none"
+    }
+}
+
+// MARK: - Cleanup provider/level reframe (two-layer model)
+
+extension Config {
+    /// The generative (instruction-following LLM) providers that can power the
+    /// "Polished" tier. Excludes the on-device deterministic Concord tier
+    /// ("concord") and the cleanup-off sentinel ("none"): in the two-layer
+    /// model those two legacy `llm.provider` values are LEVEL states, not
+    /// Polished providers.
+    public static let generativeProviders: Set<String> =
+        ["gemini", "vertex", "bedrock", "bedrock-bearer", "azure", "openai", "local"]
+
+    /// True iff `provider` is a generative provider that can serve as the
+    /// Polished tier. Mirrors `providerCanRefine` (refine == Polished now).
+    public static func isGenerativeProvider(_ provider: String) -> Bool {
+        generativeProviders.contains(provider)
+    }
+
+    /// The configured Polished provider, or `nil` when cleanup is the
+    /// on-device Concord tier ("concord") or off ("none"). Derived from the
+    /// legacy `llmProvider` so the on-disk format — and downgrade to an older
+    /// build — is unchanged: "concord"/"none" stay serialized verbatim.
+    public var polishedProvider: String? {
+        Config.isGenerativeProvider(llmProvider) ? llmProvider : nil
+    }
+
+    /// The Polished model, or `nil` when no Polished provider is configured.
+    public var polishedModel: String? {
+        polishedProvider == nil ? nil : llmModel
+    }
+
+    /// Whether a generative Polished provider is configured. When false,
+    /// Polished-mode cleanup degrades to Instant and refinement becomes
+    /// append-only (see routing).
+    public var hasPolishedProvider: Bool { polishedProvider != nil }
+
+    /// Global default cleanup LEVEL for paste targets without an explicit
+    /// (`appBehaviors`) or curated override. Derived from the legacy
+    /// `llmProvider`: the cleanup-off sentinel ("none") means Raw everywhere
+    /// — preserving the "send nothing to any cloud" guarantee — while every
+    /// other value defaults to Polished. (For "concord", Polished degrades to
+    /// Instant at routing, keeping concord-everywhere behavior.)
+    public var cleanupDefaultLevel: TargetMode {
+        llmProvider == "none" ? .raw : .polished
     }
 }
