@@ -872,7 +872,7 @@ final class SettingsModel: ObservableObject {
         // Keep the refine-tier mirrors aligned with the shared provider so any
         // legacy reader (credentials, MDM pickers) stays consistent.
         refineProvider = (refinementType == .polished) ? polishedProvider : "none"
-        refineModelName = polishedModelName
+        refineModelName = (refinementType == .polished) ? polishedModelName : ""
         // On-device cleanup tier residency policy.
         c.localResidency = localResidency
         // Feature toggles (Phase 5). Managed keys are already excluded
