@@ -4122,6 +4122,16 @@ public final class AppState {
             task.cancel()
         }
         pendingCaptureTasks.removeAll()
+        #if Concord
+        // Every caller of this reset is a terminal / idle-returning exit
+        // (accept/cancel teardown, recover restart, ASR-empty, pipeline
+        // failure, and the pre-pipeline bails: recorder-stop failure,
+        // short-utterance, dead-input/silence). The retained review
+        // acoustics must not outlive the review window on ANY of them
+        // (RoboRev-7510 — the pre-pipeline bails previously leaked the
+        // ~0.8 MB features past the overlay hide).
+        clearReviewAcoustics()
+        #endif
         // #83: a finished/cancelled session is never still continuously recording.
         continuousRecording = false
         stopTapAwaitingKeyUp = false

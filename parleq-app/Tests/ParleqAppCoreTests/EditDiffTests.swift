@@ -14,12 +14,33 @@ final class EditDiffTests: XCTestCase {
     }
 
     func test_two_replacements_ok() {
-        let r = EditDiff.singleWordReplacements(before: "Claude likes the clawed one",
-                                                after: "cloud likes the Claude one")
+        let r = EditDiff.singleWordReplacements(before: "use Claude and Parlek here",
+                                                after: "use cloud and Parleq here")
         XCTAssertEqual(r, [
-            EditDiff.WordReplacement(before: "Claude", after: "cloud", wordIndex: 0),
-            EditDiff.WordReplacement(before: "clawed", after: "Claude", wordIndex: 3),
+            EditDiff.WordReplacement(before: "Claude", after: "cloud", wordIndex: 1),
+            EditDiff.WordReplacement(before: "Parlek", after: "Parleq", wordIndex: 3),
         ])
+    }
+
+    func test_confusable_swap_returns_nil() {
+        // A swap of two confusable words is a REORDER, not a mishear correction —
+        // its (Claude → cloud) pair carries TRUE term audio and would poison the
+        // voiceprint (RoboRev-7508).
+        XCTAssertNil(EditDiff.singleWordReplacements(before: "Claude cloud",
+                                                     after: "cloud Claude"))
+    }
+
+    func test_changed_after_matching_changed_before_elsewhere_returns_nil() {
+        // One legit-looking pair + one pair whose after re-uses a changed before
+        // word — smells like a move; the whole edit is rejected (zero-junk).
+        XCTAssertNil(EditDiff.singleWordReplacements(before: "Claude likes the clawed one",
+                                                     after: "cloud likes the Claude one"))
+    }
+
+    func test_case_only_change_returns_nil() {
+        // Core-identical before/after (case fix) is a self-edit, never a harvest.
+        XCTAssertNil(EditDiff.singleWordReplacements(before: "use Claude here",
+                                                     after: "use claude here"))
     }
 
     func test_three_replacements_at_cap_ok() {
@@ -44,14 +65,11 @@ final class EditDiffTests: XCTestCase {
                                                      after: "use here"))
     }
 
-    func test_reorder_reports_positionwise_mismatches() {
-        // A pure reorder shows up as position-wise mismatches; over the cap ⇒ nil.
-        // "b a c d e" vs "a b c d e": 2 mismatches — under the cap, but each pair
-        // is a (before, after) replacement that downstream validation (voiceprint
-        // presence + phonetic gate) will reject. The DIFF stays mechanical.
-        let r = EditDiff.singleWordReplacements(before: "b a c d e",
-                                                after: "a b c d e")
-        XCTAssertEqual(r?.count, 2)
+    func test_adjacent_reorder_returns_nil() {
+        // A pure reorder swaps changed words position-wise — the reorder guard
+        // rejects the whole edit (RoboRev-7508).
+        XCTAssertNil(EditDiff.singleWordReplacements(before: "b a c d e",
+                                                     after: "a b c d e"))
     }
 
     func test_identical_strings_empty() {

@@ -23,6 +23,14 @@ enum EditDiff {
     /// nil unless the edit is ≤ `HarvestPolicy.maxEditReplacements` pure
     /// position-wise word replacements (equal word counts). `[]` when the texts
     /// split to identical word sequences (whitespace-only change).
+    ///
+    /// Reorder guard (RoboRev-7508): when any changed AFTER word core-matches any
+    /// changed BEFORE word, the edit looks like a moved/swapped word rather than
+    /// a mishear correction — e.g. "Claude cloud" → "cloud Claude" would otherwise
+    /// yield a (Claude → cloud) pair whose audio is the TRUE term, and the
+    /// downstream phonetic gate passes for confusables, poisoning the voiceprint.
+    /// The whole edit returns nil (zero-junk; a case-only self-edit also lands
+    /// here, which the coordinator's self-label guard would reject anyway).
     static func singleWordReplacements(before: String, after: String) -> [WordReplacement]? {
         let beforeWords = before.split(whereSeparator: { $0.isWhitespace })
         let afterWords = after.split(whereSeparator: { $0.isWhitespace })
@@ -31,6 +39,10 @@ enum EditDiff {
         for (i, (b, a)) in zip(beforeWords, afterWords).enumerated() where b != a {
             replacements.append(WordReplacement(before: String(b), after: String(a), wordIndex: i))
             if replacements.count > HarvestPolicy.maxEditReplacements { return nil }
+        }
+        let changedBeforeCores = Set(replacements.map { HarvestSpanLocator.core($0.before) })
+        for r in replacements where changedBeforeCores.contains(HarvestSpanLocator.core(r.after)) {
+            return nil   // moved/swapped word (or self-edit) — never harvestable
         }
         return replacements
     }
