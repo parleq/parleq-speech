@@ -185,10 +185,13 @@ struct PresetsSettingsView: View {
 
                 // Informational: flag when the app sits at Parleq's curated
                 // smart default for its category (e.g. a terminal at Instant).
+                // Reworded from a bare "Parleq default" (which read as a cryptic
+                // label) to make it obvious this is a recommendation you can override.
                 if let curated = curatedDefault, effective == curated {
-                    Text("Parleq default")
+                    Text("✓ Parleq's recommendation")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .help("Parleq's suggested mode for this kind of app. Change the mode above to override it.")
                 }
             }
 
