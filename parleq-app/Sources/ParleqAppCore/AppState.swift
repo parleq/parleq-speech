@@ -2069,23 +2069,30 @@ public final class AppState {
         switch span.stage {
         case .dictionary, .acousticDictionary, .sayAsPhrase:
             let term = span.replacement
-            if let vp = voiceprint, span.stage == .dictionary, vp.hasVoiceprint(span.original) {
-                // (a′) HEALING: the undone span has the INVERTED shape — the term is
-                // on the ORIGINAL side, meaning the acoustic gate validate-REVERTED
-                // term → confusable and the user just restored the term. The newest
-                // harvested negative for (term: original, label: replacement) was
-                // wrong; remove it (or detach the label) via the same one-keystroke
-                // gesture that exposed it.
+            if let vp = voiceprint, span.stage == .dictionary, span.isValidateRevert,
+               vp.hasVoiceprint(span.original) {
+                // (a′) HEALING: PROVENANCE-confirmed — this span was produced by
+                // the acoustic gate's validation revert (term → confusable) and
+                // the user just restored the term. The newest harvested negative
+                // for (term: original, label: replacement) was wrong; remove it
+                // (or detach the label) via the same one-keystroke gesture that
+                // exposed it. Routing on span.isValidateRevert (not on which
+                // side has a voiceprint) keeps a normal over-fire between TWO
+                // enrolled terms on the harvest path (RoboRev-7511).
                 vp.healHarvestedNegative(termID: span.original,
                                          label: HarvestSpanLocator.core(span.replacement))
-            } else if let vp = voiceprint, span.stage == .dictionary, vp.hasVoiceprint(term) {
+            } else if let vp = voiceprint, span.stage == .dictionary,
+                      !span.isValidateRevert, vp.hasVoiceprint(term) {
                 // (a) HARVEST: the user undid a dictionary over-fire on an ENROLLED
                 // term — the heard word (span.original) is a real in-context
                 // confusable. Pool its audio-span embedding from the retained
                 // review acoustics and attach it as a negative prototype.
                 harvestNegativeFromUndo(span: span, preText: preText, preSpans: preSpans)
-            } else if voiceprint != nil, !(voiceprint?.hasVoiceprint(term) ?? false) {
+            } else if voiceprint != nil, !span.isValidateRevert,
+                      !(voiceprint?.hasVoiceprint(term) ?? false) {
                 // Unenrolled term: nudge toward voice enrollment (unchanged).
+                // A validate-revert never nudges — its replacement is the
+                // confusable word, not a term worth enrolling.
                 VoiceEnrollNudge.shared.suggest(term: term, confusedWith: span.original)
             }
         default:
@@ -2109,7 +2116,10 @@ public final class AppState {
             // still picks the right occurrence when the replacement string
             // appears more than once. Without this the edit would fall back to
             // first-occurrence matching and could revert the wrong span.
-            wordRange: span.wordRange
+            wordRange: span.wordRange,
+            // Preserve the provenance so heal-vs-harvest routing survives a
+            // re-map (RoboRev-7511).
+            reason: span.reason
         )
     }
 

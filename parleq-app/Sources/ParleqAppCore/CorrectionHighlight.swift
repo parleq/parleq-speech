@@ -41,6 +41,16 @@ struct CorrectionSpan: Equatable {
     /// without it a ranged dictionary/say-as edit falls back to first-occurrence
     /// matching and could re-attach to the wrong duplicate occurrence.
     let wordRange: Range<Int>?
+    /// Concord's per-edit reason string (e.g. "acoustic-validate revert").
+    /// Carried so undo can distinguish a gate REVERT (heal the harvested
+    /// negative) from a normal substitution (harvest a new negative) by
+    /// PROVENANCE — shape inference alone misroutes when both the heard word
+    /// and the term happen to be enrolled (RoboRev-7511).
+    let reason: String?
+
+    /// True iff this span was produced by the acoustic gate's validation
+    /// revert (the string Concord stamps on that edit — see spec fact 5).
+    var isValidateRevert: Bool { reason == "acoustic-validate revert" }
 }
 
 enum CorrectionHighlight {
@@ -119,7 +129,8 @@ enum CorrectionHighlight {
                 original: item.edit.original,
                 replacement: item.edit.replacement,
                 stage: item.edit.stage,
-                wordRange: item.edit.wordRange
+                wordRange: item.edit.wordRange,
+                reason: item.edit.reason
             )
         }
     }
