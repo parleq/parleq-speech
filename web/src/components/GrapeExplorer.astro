@@ -92,14 +92,8 @@ const howitworks = [
     desc: 'Press, speak, paste clean — the core loop, end to end.' },
   { id: 'hiw-reference', icon: 'window', label: 'Reference', title: 'Reference windows', interactive: true,
     desc: 'Point at a window so the model has your context.' },
-  { id: 'refine-loop', icon: 'bubble', label: 'Refine loop', title: 'The refine loop', pasting: 'Mail',
-    desc: 'Dictate a draft, then reshape it by voice.',
-    steps: [
-      { label: 'Step 1 · You dictate', before: "so um can we push the sync to thursday and i'll send the deck", after: "Can we push the sync to Thursday? I'll send the deck." },
-      { label: 'Step 2 · Refine by voice', instruction: '“make it a polite email to Sam”', after: "Hi Sam — could we move our sync to <span class=\"mk\">Thursday</span>? I'll send the deck ahead of time." },
-      { label: 'Step 3 · Refine again', instruction: '“offer Friday as a backup”', after: "Hi Sam — could we move our sync to Thursday, or <span class=\"mk\">Friday</span> if that's easier? I'll send the deck ahead." },
-      { label: 'Step 4 · One tap to finish', presets: ['Concise', 'Formal', 'Bulletize'], after: 'Tap a preset to restyle in one more pass — or just Accept.' },
-    ] },
+  { id: 'refine-loop', icon: 'bubble', label: 'Refine loop', title: 'The refine loop', interactive: true,
+    desc: 'Dictate a draft, then reshape it by voice.' },
   { id: 'hiw-voice', icon: 'wave', label: 'Voice', title: 'Voice enrollment', interactive: true, desc: 'Teach a term in your own voice; tell it apart by sound.' },
   { id: 'hiw-recover', icon: 'rotate', label: 'Recover', title: 'Never lose a dictation', interactive: true, desc: 'Your last dictation is held in memory — re-run it with R.' },
   { id: 'hiw-ai', icon: 'sparkle', label: 'Your AI', title: 'The AI you bring', interactive: true, desc: 'On-device, your own cloud, or none — you choose the engine.' },
@@ -628,6 +622,65 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
       <p class="rw-footnote">Parleq stores a voiceprint — your acoustics, not audio or a transcript — encrypted on your Mac.</p>
     </div>
 
+    {/* SPIKE: INTERACTIVE refine loop (data-panel="refine-loop"). Dictate a draft, then
+        reshape it by voice, turn by turn, and finish with a preset. 4 stages. */}
+    <div data-panel="refine-loop" class="rl-demo" hidden>
+      <div class="demo-card rw-card">
+        <div class="flex items-center justify-between gap-3">
+          <div class="flex items-center gap-2.5">
+            <span class="demo-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4" set:html={icons['bubble']} /></span>
+            <h3 class="text-[15px] font-semibold text-white">The refine loop</h3>
+          </div>
+          <span class="chip chip-byo">Your provider</span>
+        </div>
+
+        {/* S0 — draft */}
+        <div class="rw-stage" data-rlstage="0">
+          <p class="ba-label mt-3">You dictated</p>
+          <p class="ba-before">so um can we push the sync to thursday and i'll send the deck</p>
+          <p class="ba-arrow" aria-hidden="true">↓</p>
+          <p class="ba-label">Draft</p>
+          <p class="ba-after">Can we push the sync to Thursday? I'll send the deck.</p>
+          <button type="button" class="rw-mic" data-rl-next="1"><span class="rw-mic-dot" aria-hidden="true"></span> Refine by voice</button>
+        </div>
+
+        {/* S1 — refine 1 */}
+        <div class="rw-stage" data-rlstage="1" hidden>
+          <p class="refine-instr">“make it a polite email to Sam”</p>
+          <p class="ba-label mt-3">Rewritten</p>
+          <p class="ba-after" set:html={"Hi Sam — could we move our sync to <span class=\"mk\">Thursday</span>? I'll send the deck ahead of time."}></p>
+          <button type="button" class="rw-mic" data-rl-next="2"><span class="rw-mic-dot" aria-hidden="true"></span> Refine again</button>
+        </div>
+
+        {/* S2 — refine 2 */}
+        <div class="rw-stage" data-rlstage="2" hidden>
+          <p class="refine-instr">“offer Friday as a backup”</p>
+          <p class="ba-label mt-3">Rewritten</p>
+          <p class="ba-after" set:html={"Hi Sam — could we move our sync to Thursday, or <span class=\"mk\">Friday</span> if that's easier? I'll send the deck ahead."}></p>
+          <button type="button" class="rw-mic" data-rl-next="3">Finish ▸</button>
+        </div>
+
+        {/* S3 — finish with a preset */}
+        <div class="rw-stage" data-rlstage="3" hidden>
+          <p class="ba-label mt-3">One tap to finish</p>
+          <div class="mt-2 flex flex-wrap gap-2"><span class="preset-chip preset-on">Concise</span><span class="preset-chip">Formal</span><span class="preset-chip">Bulletize</span></div>
+          <p class="rl-hint">Tap a preset to restyle in one more pass — or just Accept.</p>
+          <div class="demo-foot">
+            <span class="foot-paste">Styling · Mail</span>
+            <span class="foot-actions"><span>Copy</span><span>Cancel</span><b aria-hidden="true">Accept</b></span>
+          </div>
+          <button type="button" class="rw-replay" data-rl-replay>↺ Replay</button>
+        </div>
+      </div>
+
+      <p class="rw-coach" data-rl-coach aria-live="polite">You dictated a draft. Reshape it by voice — tap to refine.</p>
+      <div class="rw-steps" role="group" aria-label="Refine loop walkthrough progress">
+        <span class="pager-dots" aria-hidden="true"><span class="stepper-dot"></span><span class="stepper-dot"></span><span class="stepper-dot"></span><span class="stepper-dot"></span></span>
+        <span class="pager-status">Step <b class="pager-cur" data-rl-cur>1</b> of 4</span>
+      </div>
+      <p class="rw-footnote">Each hotkey press treats your speech as an edit instruction — voice undo/redo.</p>
+    </div>
+
   </div>
 
   {/* SPIKE: the anchored breakout window-picker — pops OVER the explorer (dimmed
@@ -1031,7 +1084,8 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
   .demo-stack:has(.rc-demo:not([hidden])) .demo-backplate,
   .demo-stack:has(.ai-demo:not([hidden])) .demo-backplate,
   .demo-stack:has(.qk-demo:not([hidden])) .demo-backplate,
-  .demo-stack:has(.vo-demo:not([hidden])) .demo-backplate { display: none; }
+  .demo-stack:has(.vo-demo:not([hidden])) .demo-backplate,
+  .demo-stack:has(.rl-demo:not([hidden])) .demo-backplate { display: none; }
 
   /* BUGFIX: walkthrough cards hide the backplate, so the demo-card's transparent
      left strip (a stacked-card flourish that normally reveals the backplate) would
@@ -1136,6 +1190,9 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
   .vo-term { border-radius:.4rem; background: color-mix(in srgb, var(--color-grape-400) 40%, transparent); color:#e9d5ff; padding:.1rem .5rem; font-weight:700; }
   .vo-vs { font-size:.74rem; color: rgba(255,255,255,.42); }
   .vo-read { margin-top:.9rem; border-left:2px solid color-mix(in srgb, var(--color-grape-300) 45%, transparent); padding-left:.7rem; font-size:.85rem; line-height:1.5; color: rgba(255,255,255,.8); }
+
+  /* SPIKE: refine loop — the "or just Accept" hint under the preset chips. */
+  .rl-hint { margin-top:.75rem; font-size:.73rem; color: rgba(255,255,255,.5); }
   .rw-utterance { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
   .rw-caret { display:inline-block; width:2px; height:1em; margin-left:1px; vertical-align:text-bottom; background:rgba(255,255,255,.6); animation: rw-blink 1s step-end infinite; }
   .rw-mic { margin-top:1.1rem; display:inline-flex; align-items:center; gap:.5rem; border-radius:9999px; border:1px solid color-mix(in srgb, var(--color-accent) 70%, transparent); background: var(--color-accent-hover); padding:.5rem .9rem; font-size:.85rem; font-weight:600; color:#fff; cursor:pointer; animation: rw-pulse 1.9s ease-in-out infinite; }
@@ -1612,6 +1669,35 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
       voCancel = () => vcancel();
       stepperResets['hiw-voice'] = () => { vcancel(); if (vstatus) vstatus.innerHTML = '<span class="rw-mic-dot" aria-hidden="true"></span> Listening…'; vstage = 0; vrender(); };
       vrender();
+    }
+
+    // SPIKE: refine loop — gesture-driven turn-by-turn voice refinement (no Back/Next).
+    const rl = root.querySelector('.rl-demo');
+    if (rl) {
+      const rlstages = Array.from(rl.querySelectorAll('.rw-stage'));
+      const rldots = Array.from(rl.querySelectorAll('.rw-steps .stepper-dot'));
+      const rlcur = rl.querySelector('[data-rl-cur]');
+      const rlcoach = rl.querySelector('[data-rl-coach]');
+      const rlNextBtns = Array.from(rl.querySelectorAll('[data-rl-next]'));
+      const rlReplay = rl.querySelector('[data-rl-replay]');
+      const RLCOACH = [
+        'You dictated a draft. Reshape it by voice — tap to refine.',
+        'Say the change out loud — it rewrites in place, keeping the rest.',
+        'Each turn edits the last result — no starting over.',
+        'One tap to restyle with a preset — or just Accept.',
+      ];
+      let rlstage = 0;
+      const rlrender = () => {
+        rlstages.forEach((s) => { s.hidden = Number(s.dataset.rlstage) !== rlstage; });
+        rldots.forEach((d, i) => d.setAttribute('data-on', i === rlstage ? 'true' : 'false'));
+        if (rlcur) rlcur.textContent = String(rlstage + 1);
+        if (rlcoach) rlcoach.textContent = RLCOACH[rlstage];
+      };
+      const rlgo = (n) => { rlstage = Math.max(0, Math.min(3, n)); rlrender(); };
+      rlNextBtns.forEach((b) => b.addEventListener('click', () => rlgo(Number(b.getAttribute('data-rl-next')))));
+      if (rlReplay) rlReplay.addEventListener('click', () => rlgo(0));
+      stepperResets['refine-loop'] = () => { rlstage = 0; rlrender(); };
+      rlrender();
     }
 
     setTab('cleanup');
