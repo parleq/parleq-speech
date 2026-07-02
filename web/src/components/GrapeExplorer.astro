@@ -321,53 +321,8 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
       </div>
     ))}
 
-    {/* SPIKE: how-it-works grapes. Those with steps get a dark "example" card PLUS a
-       clearly-separate light pager below it, so the stepper reads as a control the
-       visitor drives — not part of the mocked overlay. Others are inert placeholders.
-       The `interactive` grape (Reference Windows) renders the bespoke .rw-demo below. */}
-    {howitworks.filter((g) => !g.interactive && !g.blank).map((g) => (
-      g.steps ? (
-        <div data-panel={g.id} class="stepper-wrap" hidden>
-          <div class="demo-card demo-stepper">
-            <div class="flex items-center justify-between gap-3">
-              <div class="flex items-center gap-2.5">
-                <span class="demo-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4" set:html={icons[g.icon]} /></span>
-                <h3 class="text-[15px] font-semibold text-white">{g.title}</h3>
-              </div>
-              <span class="chip chip-byo">Your provider</span>
-            </div>
-            {g.steps.map((s, i) => (
-              <div class="stepper-step" data-step={i} hidden={i !== 0}>
-                <p class="ba-label">{s.label}</p>
-                {s.note && (<p class="step-note">{s.note}</p>)}
-                {s.attachment && (<div class="attach"><span class="attach-dot" aria-hidden="true"></span>{s.attachment}</div>)}
-                {s.before && (<><p class="ba-before mt-3">{s.before}</p><p class="ba-arrow" aria-hidden="true">↓</p></>)}
-                {s.instruction && (<p class="refine-instr">{s.instruction}</p>)}
-                {s.presets && (<div class="mt-3 flex flex-wrap gap-2">{s.presets.map((p, j) => (<span class={`preset-chip ${j === 0 ? 'preset-on' : ''}`}>{p}</span>))}</div>)}
-                {s.after && (<p class="ba-after mt-2" set:html={s.after} />)}
-              </div>
-            ))}
-          </div>
-          <div class="stepper-pager" role="group" aria-label={`${g.title} walkthrough`}>
-            <button type="button" class="pager-btn pager-prev">‹ Back</button>
-            <span class="pager-mid">
-              <span class="pager-dots" aria-hidden="true">{g.steps.map((s, i) => (<span class="stepper-dot"></span>))}</span>
-              <span class="pager-status">Step <b class="pager-cur">1</b> of {g.steps.length}</span>
-            </span>
-            <button type="button" class="pager-btn pager-next">Next ›</button>
-          </div>
-        </div>
-      ) : (
-        <div class="demo-card" data-panel={g.id} hidden>
-          <div class="flex items-center gap-2.5">
-            <span class="demo-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4" set:html={icons[g.icon]} /></span>
-            <h3 class="text-[15px] font-semibold text-white">{g.title}</h3>
-          </div>
-          <p class="mt-4 text-[13px] leading-relaxed" style="color: rgba(255,255,255,.62);">{g.desc}</p>
-          <p class="mt-5 text-xs" style="color: rgba(255,255,255,.38);">Interactive demo coming soon.</p>
-        </div>
-      )
-    ))}
+    {/* Every how-it-works grape is an interactive bespoke panel (below); blanks are
+       inert cluster filler. The old generic stepper/placeholder scaffolding is gone. */}
 
     {/* SPIKE: INTERACTIVE Reference Windows demo (data-panel="hiw-reference"). A guided
        4-stage flow the visitor drives; the pager is the fallback + a11y path. See
@@ -1058,27 +1013,14 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
   #explorer[data-tab="howitworks"] .grape:not([data-group="howitworks"]) { display: none; }
   #explorer:not([data-tab="howitworks"]) .grape[data-group="howitworks"] { display: none; }
 
-  /* SPIKE: walkthrough panels. The dark card is the "example" (mock overlay); the
-     pager sits BELOW it on the light section bg so it clearly reads as a control the
-     visitor drives — filled "Next" button, step counter, dots. */
-  .stepper-step .ba-after { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:.82rem; line-height:1.5; color:#f1f5f9; }
-  .stepper-step .step-note { margin-top:.55rem; font-size:.82rem; line-height:1.5; color: rgba(255,255,255,.7); }
-  .stepper-pager { margin-top:1rem; display:flex; align-items:center; justify-content:space-between; gap:.75rem; }
-  .pager-mid { display:flex; flex-direction:column; align-items:center; gap:.4rem; }
+  /* Step indicator for the interactive walkthroughs: dots + "Step N of M" (in .rw-steps). */
   .pager-dots { display:inline-flex; gap:.4rem; }
   .stepper-dot { height:.42rem; width:.42rem; border-radius:9999px; background: color-mix(in srgb, var(--color-grape) 22%, var(--color-border)); transition: background .18s ease, width .18s ease; }
   .stepper-dot[data-on="true"] { width:1.1rem; background: var(--color-grape); }
   .pager-status { font-size:.72rem; letter-spacing:.02em; color: var(--color-text-subtle); }
   .pager-status b { color: var(--color-text-muted); font-weight:700; }
-  .pager-btn { display:inline-flex; align-items:center; gap:.25rem; border-radius:9999px; padding:.4rem .9rem; font-size:.8rem; font-weight:600; cursor:pointer; transition: background .15s ease, border-color .15s ease, color .15s ease, opacity .15s ease; }
-  .pager-prev { border:1px solid var(--color-border); background: var(--color-surface); color: var(--color-text-muted); }
-  .pager-prev:not(:disabled):hover { border-color: var(--color-grape); color: var(--color-grape); }
-  .pager-next { border:1px solid var(--color-grape); background: var(--color-grape); color:#fff; }
-  .pager-next:not(:disabled):hover { background: var(--color-grape-strong); border-color: var(--color-grape-strong); }
-  .pager-btn:disabled { opacity:.35; cursor:default; }
-  /* When a walkthrough (stepper OR the interactive RW demo) is showing, drop the
-     dark backplate so the pager/coachmark read on the light section bg. */
-  .demo-stack:has(.stepper-wrap:not([hidden])) .demo-backplate,
+  /* When an interactive demo is showing, drop the dark backplate so the
+     coachmark + step indicator read on the light section bg. */
   .demo-stack:has(.rw-demo:not([hidden])) .demo-backplate,
   .demo-stack:has(.wf-demo:not([hidden])) .demo-backplate,
   .demo-stack:has(.rc-demo:not([hidden])) .demo-backplate,
@@ -1090,7 +1032,7 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
   /* BUGFIX: walkthrough cards hide the backplate, so the demo-card's transparent
      left strip (a stacked-card flourish that normally reveals the backplate) would
      instead expose the flow-line SVG. Give walkthrough cards a SOLID background. */
-  .demo-stepper, .rw-card { background: #1c2128; }
+  .rw-card { background: #1c2128; }
   /* Walkthrough panels are a taller stack (card + coachmark + step indicator), and
      the interactive demo's card GROWS between stages (short at "attach", tall at the
      result). With the grid's default items-center, a tall stage made the demo column
@@ -1316,29 +1258,6 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
     if (bunchEl) bunchEl.addEventListener('mouseleave', () => {
       const sel = grapes.find((g) => g.getAttribute('data-selected') === 'true');
       if (sel) showPreview(sel);
-    });
-
-    // SPIKE: wire each walkthrough pager (one per how-it-works grape with steps).
-    // Each keeps independent step state; selectGrape resets the clicked grape's.
-    root.querySelectorAll('.stepper-wrap').forEach((wrap) => {
-      const id = wrap.getAttribute('data-panel');
-      const steps = Array.from(wrap.querySelectorAll('.stepper-step'));
-      const dots = Array.from(wrap.querySelectorAll('.stepper-dot'));
-      const cur = wrap.querySelector('.pager-cur');
-      const prevBtn = wrap.querySelector('.pager-prev');
-      const nextBtn = wrap.querySelector('.pager-next');
-      let si = 0;
-      const renderStep = () => {
-        steps.forEach((s, i) => { s.hidden = i !== si; });
-        dots.forEach((d, i) => d.setAttribute('data-on', i === si ? 'true' : 'false'));
-        if (cur) cur.textContent = String(si + 1);
-        if (prevBtn) prevBtn.disabled = si === 0;
-        if (nextBtn) nextBtn.disabled = si === steps.length - 1;
-      };
-      if (prevBtn) prevBtn.addEventListener('click', () => { if (si > 0) { si--; renderStep(); pulseFlow(); } });
-      if (nextBtn) nextBtn.addEventListener('click', () => { if (si < steps.length - 1) { si++; renderStep(); pulseFlow(); } });
-      if (id) stepperResets[id] = () => { si = 0; renderStep(); };
-      renderStep();
     });
 
     // SPIKE: interactive Reference Windows demo — a 4-stage guided state machine.
