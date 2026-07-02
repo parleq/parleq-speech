@@ -239,6 +239,10 @@ final class SettingsModel: ObservableObject {
     /// enrollment audio clips are retained on-device for future
     /// re-derivation. Managed-aware: disabled in UI when MDM-pinned.
     @Published var voiceprintClipStorageEnabled: Bool
+    /// Mirror of Config.voiceprintHarvestEnabled. Controls correction-time
+    /// voiceprint refinement (negative harvest on undo / E-edit of an
+    /// enrolled term). Managed-aware: disabled in UI when MDM-pinned.
+    @Published var voiceprintHarvestEnabled: Bool
     /// Set of Config keys currently managed by MDM. Rows for managed
     /// keys render as `.disabled(true)` with the ManagedIndicator badge.
     @Published var managedKeys: Set<String>
@@ -534,6 +538,7 @@ final class SettingsModel: ObservableObject {
         self.learnedCorrectionsMaxEntries = config.learnedCorrectionsMaxEntries
         self.learnedCorrectionsRetentionHours = config.learnedCorrectionsRetentionHours
         self.voiceprintClipStorageEnabled = config.voiceprintClipStorageEnabled
+        self.voiceprintHarvestEnabled = config.voiceprintHarvestEnabled
         self.managedKeys = config.managedKeys
         self.oidcIssuer = config.oidcIssuer
         self.oidcClientID = config.oidcClientID
@@ -677,6 +682,7 @@ final class SettingsModel: ObservableObject {
         self.learnedCorrectionsMaxEntries = config.learnedCorrectionsMaxEntries
         self.learnedCorrectionsRetentionHours = config.learnedCorrectionsRetentionHours
         self.voiceprintClipStorageEnabled = config.voiceprintClipStorageEnabled
+        self.voiceprintHarvestEnabled = config.voiceprintHarvestEnabled
         self.managedKeys = config.managedKeys
         self.oidcIssuer = config.oidcIssuer
         self.oidcClientID = config.oidcClientID
@@ -946,6 +952,7 @@ final class SettingsModel: ObservableObject {
         c.learnedCorrectionsMaxEntries = learnedCorrectionsMaxEntries
         c.learnedCorrectionsRetentionHours = learnedCorrectionsRetentionHours
         c.voiceprintClipStorageEnabled = voiceprintClipStorageEnabled
+        c.voiceprintHarvestEnabled = voiceprintHarvestEnabled
         // Enterprise OIDC self-configuration. When MDM-pinned these
         // fields are non-editable in the UI; Config.save() additionally
         // preserves the pinned on-disk value for any key in managedKeys,
@@ -1395,6 +1402,7 @@ struct SettingsView: View {
     @State private var editingDictionaryTarget: DictionaryEditTarget?
     #if Concord
     @State private var showDeleteVoiceprintsConfirm = false
+    @State private var showDisableHarvestConfirm = false
     @State private var showDeleteClipsConfirm = false
     /// Dismiss flag for the Dictionary-section intro banner (@AppStorage so the
     /// section re-renders when dismissed; shares the key with VoiceEnrollBanner).
@@ -3231,6 +3239,25 @@ struct SettingsView: View {
                         .disabled(model.managedKeys.contains("voiceprintClipStorageEnabled"))
                     }
                     SettingsCaption("Keeps your enrollment recordings encrypted on this device so voiceprints can be automatically re-derived when the speech model updates — without re-recording. Turn off to store only the derived voiceprint.")
+
+                    // Correction-time refinement toggle — managed-aware (fail-closed
+                    // MDM key). Turning off offers to also clear refinements learned
+                    // so far (restores each voiceprint to its enrollment state).
+                    HStack {
+                        Toggle("Refine voiceprints from corrections", isOn: Binding(
+                            get: { model.voiceprintHarvestEnabled },
+                            set: { newValue in
+                                if newValue {
+                                    model.voiceprintHarvestEnabled = true
+                                    model.save()
+                                } else {
+                                    showDisableHarvestConfirm = true
+                                }
+                            }
+                        ))
+                        .disabled(model.managedKeys.contains("voiceprintHarvestEnabled"))
+                    }
+                    SettingsCaption("When you undo a correction on an enrolled term, Parleq refines that term's voiceprint using the corrected word's sound — stored as an encrypted embedding, never audio; deleted with the voiceprint.")
                 }
                 #endif
 
@@ -3264,6 +3291,20 @@ struct SettingsView: View {
             Button("Keep clips and cancel", role: .cancel) { }
         } message: {
             Text("Turning off clip storage deletes the enrollment audio saved on this device. Your voiceprints are kept — only the recordings used to derive them will be removed.")
+        }
+        .confirmationDialog("Turn off voiceprint refinement?", isPresented: $showDisableHarvestConfirm) {
+            Button("Turn off and clear refinements", role: .destructive) {
+                model.voiceprintHarvestEnabled = false
+                model.save()
+                model.voiceprintServices?.coordinator.clearAllHarvests()
+            }
+            Button("Turn off, keep refinements") {
+                model.voiceprintHarvestEnabled = false
+                model.save()
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Corrections will stop refining your voiceprints. You can also clear the refinements learned so far — each voiceprint returns to its enrollment state.")
         }
         #endif
     }

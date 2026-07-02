@@ -119,6 +119,10 @@ public struct VoiceprintEnrollmentView: View {
             so your voiceprint can be automatically re-derived if the speech model updates — without \
             re-recording. You can turn clip storage off in Settings → Dictionary.
 
+            When you undo a correction on an enrolled term, Parleq also refines that term's \
+            voiceprint using the corrected word's sound — stored as an encrypted embedding, never \
+            audio, and deleted with the voiceprint. You can turn this off in Settings → Dictionary.
+
             This is biometric data: on-device, opt-in, and deletable anytime.
             """)
             .foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
