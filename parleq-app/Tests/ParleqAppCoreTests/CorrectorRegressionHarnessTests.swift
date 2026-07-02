@@ -52,11 +52,13 @@ final class CorrectorRegressionHarnessTests: XCTestCase {
         "homophone-two-to": "delegate to",
     ]
 
-    /// Must-keep intents: over-fired iff the cleaned output LOST the phrase
-    /// (case-insensitive). Pins that legitimate counts survive the homophone stage
-    /// ("needing two researchers…", "two questions" must keep their "two").
+    /// Must-keep intents: over-fired iff the cleaned output LOST the word, matched on
+    /// WORD BOUNDARIES (case-insensitive regex) so a control clip whose "two" lands
+    /// before punctuation or at end-of-string ("there are two.") still counts as kept.
+    /// Pins that legitimate counts survive the homophone stage ("needing two
+    /// researchers…", "two questions").
     private static let intentMustKeep: [String: String] = [
-        "homophone-control": " two ",
+        "homophone-control": "\\btwo\\b",
     ]
 
     // MARK: - Skip guards (mirror VoiceprintSelfTestHarnessTests)
@@ -235,11 +237,13 @@ final class CorrectorRegressionHarnessTests: XCTestCase {
                                                     recovered: cleaned.lowercased().contains(phrase),
                                                     overFired: false)
             } else if let keep = Self.intentMustKeep[row.intent] {
-                // Must-keep intent: over-fired iff the phrase was LOST (a legit "two"
-                // corrupted by the homophone stage would drop it).
+                // Must-keep intent: over-fired iff the word was LOST (a legit "two"
+                // corrupted by the homophone stage would drop it). Word-boundary regex.
+                let kept = cleaned.range(of: keep,
+                                         options: [.regularExpression, .caseInsensitive]) != nil
                 outcome = CorrectorMetrics.Outcome(intent: row.intent,
                                                     recovered: false,
-                                                    overFired: !cleaned.lowercased().contains(keep))
+                                                    overFired: !kept)
             } else {
                 // Non-term intent: over-fired iff the cleaned text contains ANY testDict term.
                 let overFired = Self.testDict.contains { cleaned.contains($0.term) }
