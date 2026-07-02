@@ -94,6 +94,10 @@ public enum HarvestRejection: Equatable, Sendable {
     case unusableEmbedding
     /// Multi-word or non-alphabetic label (v1 harvests single words only).
     case multiWordLabel
+    /// The label normalizes to the term itself (e.g. a case-only edit
+    /// "Claude" → "claude") — attaching the term's own audio as a negative
+    /// would poison the voiceprint into rejecting true matches.
+    case selfLabel
     /// The `voiceprintHarvestEnabled` kill-switch is off.
     case disabled
     /// Heal requested but no harvested ring exists for (termID, label).

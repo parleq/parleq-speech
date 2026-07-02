@@ -229,6 +229,22 @@ final class VoiceprintHarvestCoordinatorTests: XCTestCase {
                        .rejected(.multiWordLabel))
     }
 
+    func test_self_label_rejected() {
+        // A case-only correction ("Claude" → "claude") must NEVER harvest: the
+        // label normalizes to the term itself, and attaching the term's own audio
+        // as a negative would poison the gate into rejecting true matches
+        // (RoboRev-7505).
+        let (c, vpSpy, hSpy) = makeCoordinator(templates: [template()])
+        XCTAssertEqual(c.harvestNegative(termID: "Claude", label: "claude",
+                                         embedding: e1, harvestEnabled: true),
+                       .rejected(.selfLabel))
+        XCTAssertEqual(c.harvestNegative(termID: "Claude", label: "CLAUDE",
+                                         embedding: e1, harvestEnabled: true),
+                       .rejected(.selfLabel))
+        XCTAssertEqual(vpSpy.saved.count, 0)
+        XCTAssertEqual(hSpy.saved.count, 0)
+    }
+
     func test_disabled_rejects_without_any_persistence_call() {
         let (c, vpSpy, hSpy) = makeCoordinator(templates: [template()])
         let outcome = c.harvestNegative(termID: "Claude", label: "cloud",

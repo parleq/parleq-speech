@@ -646,6 +646,15 @@ public final class VoiceprintCoordinator: ObservableObject {
         guard !label.isEmpty, !label.contains(" "), label.allSatisfy({ $0.isLetter }) else {
             return .rejected(.multiWordLabel)
         }
+        // Self-label guard (RoboRev-7505): a label that normalizes to the term
+        // itself (case-only / punctuation-only correction) would pass the
+        // DoubleMetaphone gate trivially and attach the TERM's own audio as a
+        // negative — poisoning the voiceprint into rejecting true matches.
+        // Same letters-only lowercase normalization as the gate's slot key.
+        guard label.lowercased().filter({ $0.isLetter })
+                != termID.lowercased().filter({ $0.isLetter }) else {
+            return .rejected(.selfLabel)
+        }
         guard Self.isUsableEmbedding(embedding, dim: template.dim) else {
             return .rejected(.unusableEmbedding)
         }
