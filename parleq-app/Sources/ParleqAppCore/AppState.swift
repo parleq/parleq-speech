@@ -4374,6 +4374,11 @@ public final class AppState {
                 // the retained ASR transcript), so append-only applies on the
                 // refine re-run; a preset re-run is asRefineRerun == false.
                 appendOnlyEligible: asRefineRerun && refineWasSpoken,
+                // refineBehavior defaults to .interpret: a re-run is always a
+                // Polished operation (a model switch picks a cloud/local model;
+                // a reauth retry re-runs a cloud call), so it interprets — never
+                // an Instant/Raw append. The model picker is hidden for
+                // Instant/Raw badges, so an append-type re-run can't arise.
                 targetBundleID: targetBundleID,
                 customDictionary: dictionary,
                 references: effectiveRefs,
@@ -4687,6 +4692,11 @@ public final class AppState {
                 // the retained ASR transcript), so append-only applies on the
                 // refine re-run; a preset re-run is asRefineRerun == false.
                 appendOnlyEligible: asRefineRerun && refineWasSpoken,
+                // refineBehavior defaults to .interpret: a re-run is always a
+                // Polished operation (a model switch picks a cloud/local model;
+                // a reauth retry re-runs a cloud call), so it interprets — never
+                // an Instant/Raw append. The model picker is hidden for
+                // Instant/Raw badges, so an append-type re-run can't arise.
                 targetBundleID: targetBundleID,
                 customDictionary: dictionary,
                 references: effectiveRefs,
@@ -5267,11 +5277,17 @@ private func streamCleanupOrRefine(
         // + isRefine; on a refine turn it returns priorText unchanged and never runs
         // cleanup on the instruction scaffolding. Set once before the attempt loop —
         // Concord is instant and never retries, so the consume-and-clear is safe.
+        //
+        // Use `promptAsRefine` (a real interpret-refine), NOT `asRefine`: an
+        // Instant refinement (`.appendCleaned`) runs Concord as a fresh CLEANUP
+        // of the new dictation, then appends the result. Passing isRefine:true
+        // there would make Concord skip cleanup and return priorText, which
+        // `appendCleanedToPrior` would then duplicate.
         #if Concord
         if let concord = llm as? ConcordCleanupProvider {
             concord.setUtteranceContext(diagnostics: asrDiagnostics)
             concord.setUtteranceDictionary(customDictionary)
-            concord.setUtteranceCall(transcript: rawTranscript, isRefine: asRefine, priorText: priorText)
+            concord.setUtteranceCall(transcript: rawTranscript, isRefine: promptAsRefine, priorText: priorText)
             let enrolled = Set(enrolledTermIDs.map { $0.lowercased() })
             concord.setUtterancePolicies(CorrectionPolicyClassifier.classify(customDictionary, enrolled: enrolled))
         }
