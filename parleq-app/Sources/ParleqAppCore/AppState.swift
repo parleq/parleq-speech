@@ -169,14 +169,26 @@ public final class AppState {
     /// `installVoiceprintEnforcement()` so Instant-when-cloud keeps the veto.
     private let instantLLM: (any LLMProvider)?
 
-    /// The instance backing the shared **Polished** provider (`Config.
-    /// polishedProvider`): the cleanup provider (`llm`) when cleanup is
-    /// generative, otherwise the refinement provider (`refineLLM`). Used for
-    /// Polished cleanup (per-app override) AND Polished refinement — the two
-    /// share one cloud/local service. nil when no Polished provider is
-    /// configured (both cleanup and refinement are on-device/off).
+    /// The live instance backing the shared **Polished** provider
+    /// (`Config.polishedProvider`) — used for Polished cleanup (per-app
+    /// override) AND Polished refinement, which share one cloud/local service.
+    ///
+    /// Matched by (provider, model) IDENTITY against the launch-built instances
+    /// (`llm`/`refineLLM`/`contextLLM`) rather than by which config field holds
+    /// it. That lets a Cleanup/Refinement TYPE switch route to the correct
+    /// already-running engine WITHOUT a restart (e.g. flipping cleanup
+    /// Instant→Polished routes to the live refine/context Vertex instance).
+    /// `nil` when no live instance matches — the caller degrades to Instant and
+    /// Settings shows a restart prompt to build the newly-chosen provider.
     private func polishedProviderInstance(_ config: Config) -> (any LLMProvider)? {
-        Config.isGenerativeProvider(config.llmProvider) ? llm : refineLLM
+        guard let pp = config.polishedProvider else { return nil }
+        let pm = config.polishedModel ?? ""
+        for candidate in [llm, refineLLM, contextLLM] {
+            guard let c = candidate, c.providerName == pp else { continue }
+            // Cloud instances match provider + model; `local` has no model id.
+            if pp == "local" || c.model == pm { return c }
+        }
+        return nil
     }
 
     /// Enterprise OIDC federation handles. All optional and nil for

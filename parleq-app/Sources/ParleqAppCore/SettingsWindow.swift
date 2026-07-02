@@ -708,14 +708,46 @@ final class SettingsModel: ObservableObject {
     /// contextModel switch wouldn't take effect (it'd silently fall
     /// back to llm or hit the wrong baked-in model). The user gets
     /// the same restart prompt cleanup-tier changes already trigger.
+    /// Whether the pending cleanup/refinement/context edit needs a generative
+    /// provider INSTANCE that main.swift did not build at launch. A Cleanup or
+    /// Refinement TYPE switch that only re-points to an already-running engine
+    /// (e.g. Instant→Polished when the Polished provider is already live as the
+    /// refine/context instance) needs NO restart. Only introducing a
+    /// provider+model the runtime hasn't constructed does. concord/none are
+    /// always available and never trigger a rebuild.
+    private var cloudInstanceRestartNeeded: Bool {
+        var launch: [ModelIdentifier] = [
+            ModelIdentifier(provider: initialLlmProvider, model: initialLlmModel)
+        ]
+        if let r = initialRefineModel { launch.append(r) }
+        if let c = initialContextModel { launch.append(c) }
+        func needsBuild(_ id: ModelIdentifier) -> Bool {
+            // `local` matches on provider alone (no model id); everything else
+            // matches provider + model.
+            let live = launch.contains { $0.provider == id.provider && (id.provider == "local" || $0.model == id.model) }
+            return Config.isGenerativeProvider(id.provider) && !live
+        }
+        if cleanupType == .polished || refinementType == .polished {
+            let polishedId = ModelIdentifier(
+                provider: polishedProvider,
+                model: polishedModelName.trimmingCharacters(in: .whitespaces))
+            if needsBuild(polishedId) { return true }
+        }
+        let ctxId = ModelIdentifier(
+            provider: contextProvider,
+            model: contextModelName.trimmingCharacters(in: .whitespaces))
+        if needsBuild(ctxId) { return true }
+        return false
+    }
+
     var requiresRestart: Bool {
         hotkeyBinding != initialHotkeyBinding
-            || llmModel != initialLlmModel
             || continueOtherAudio != initialContinueOtherAudio
             || asrEndpoint != initialAsrEndpoint
-            || llmProvider != initialLlmProvider
-            || contextModel != initialContextModel
-            || refineModel != initialRefineModel
+            // Cleanup / refinement / context: a restart is needed only when the
+            // edit introduces a generative provider+model the runtime hasn't
+            // built — NOT for a mere type switch to an already-running engine.
+            || cloudInstanceRestartNeeded
             || awsRegion != initialAwsRegion
             || awsProfile != initialAwsProfile
             || awsAuthMode != initialAwsAuthMode
