@@ -785,14 +785,18 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
      left strip (a stacked-card flourish that normally reveals the backplate) would
      instead expose the flow-line SVG. Give walkthrough cards a SOLID background. */
   .demo-stepper, .rw-card { background: #1c2128; }
-  /* Walkthrough panels are a taller stack (card + coachmark + step indicator), so
-     with items-center the card's top rides up level with the tab underline and reads
-     as "joined" to it. On this tab, top-align the demo column and drop it a fixed
-     amount so the card clears the tabs with a clean gap (consistent across the
-     how-it-works panels regardless of stack height). Flow lines shift up to still
-     terminate INTO the card. */
+  /* Walkthrough panels are a taller stack (card + coachmark + step indicator), and
+     the interactive demo's card GROWS between stages (short at "attach", tall at the
+     result). With the grid's default items-center, a tall stage made the demo column
+     the tallest grid item, so the row grew and the LEFT column re-centered downward —
+     pushing the tabs down (widening the gap under the paragraph), dragging them onto
+     the card top again, and floating the fixed-offset flow lines above the grapes.
+     Fix: pin BOTH columns to the top on this tab so the card grows DOWNWARD only —
+     the tabs, grapes, and flow lines never move, and the card clears the tabs by a
+     fixed 7.5rem regardless of which stage is showing. */
   @media (min-width: 1024px) {
-    #explorer[data-tab="howitworks"] .demo-stack { align-self: start; margin-top: 7.5rem; }
+    #explorer[data-tab="howitworks"] { align-items: start; }
+    #explorer[data-tab="howitworks"] .demo-stack { margin-top: 7.5rem; }
   }
   #explorer[data-tab="howitworks"] .flow-lines { top: 96px; }
 
