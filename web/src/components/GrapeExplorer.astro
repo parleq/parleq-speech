@@ -86,13 +86,8 @@ const howitworks = [
       { label: 'Step 3 · Refine again', instruction: '“offer Friday as a backup”', after: "Hi Sam — could we move our sync to Thursday, or <span class=\"mk\">Friday</span> if that's easier? I'll send the deck ahead." },
       { label: 'Step 4 · One tap to finish', presets: ['Concise', 'Formal', 'Bulletize'], after: 'Tap a preset to restyle in one more pass — or just Accept.' },
     ] },
-  { id: 'hiw-reference', icon: 'window', label: 'Reference', title: 'Reference windows', pasting: 'Mail',
-    desc: 'Point at a window so the model has your context.',
-    steps: [
-      { label: 'Step 1 · Point at a window', note: 'Hold the hotkey and tap Space — a picker opens. Choose the window you want as context.', attachment: 'Pick a window…' },
-      { label: 'Step 2 · It rides along', note: "That window's content attaches to your next dictation — as text, or an image for a vision model.", attachment: 'Calendar — window attached' },
-      { label: 'Step 3 · Dictate with context', attachment: 'Calendar — window attached', before: 'does thursday work for the check in', after: 'Looks like <span class="mk">Thursday at 2pm</span> is open — does that work for the check-in?' },
-    ] },
+  { id: 'hiw-reference', icon: 'window', label: 'Reference', title: 'Reference windows', interactive: true,
+    desc: 'Point at a window so the model has your context.' },
   { id: 'hiw-voice', icon: 'wave', label: 'Voice', title: 'Voice enrollment', desc: 'Teach a term in your own voice; tell it apart by sound.' },
   { id: 'hiw-neverlose', icon: 'sparkle', label: 'Never lose', title: 'Never lose a dictation', desc: 'Your last dictation is held in memory — re-run it with R.' },
   { id: 'hiw-paste', icon: 'link', label: 'Paste', title: 'Pastes where you land', desc: 'The focused app is captured at hotkey-down.' },
@@ -276,8 +271,9 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
 
     {/* SPIKE: how-it-works grapes. Those with steps get a dark "example" card PLUS a
        clearly-separate light pager below it, so the stepper reads as a control the
-       visitor drives — not part of the mocked overlay. Others are inert placeholders. */}
-    {howitworks.map((g) => (
+       visitor drives — not part of the mocked overlay. Others are inert placeholders.
+       The `interactive` grape (Reference Windows) renders the bespoke .rw-demo below. */}
+    {howitworks.filter((g) => !g.interactive).map((g) => (
       g.steps ? (
         <div data-panel={g.id} class="stepper-wrap" hidden>
           <div class="demo-card demo-stepper">
@@ -320,6 +316,73 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
         </div>
       )
     ))}
+
+    {/* SPIKE: INTERACTIVE Reference Windows demo (data-panel="hiw-reference"). A guided
+       4-stage flow the visitor drives; the pager is the fallback + a11y path. See
+       docs/superpowers/plans/2026-07-01-interactive-reference-windows-demo.md. */}
+    <div data-panel="hiw-reference" class="rw-demo" hidden>
+      <div class="demo-card rw-card">
+        <div class="flex items-center justify-between gap-3">
+          <div class="flex items-center gap-2.5">
+            <span class="demo-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4" set:html={icons['window']} /></span>
+            <h3 class="text-[15px] font-semibold text-white">Reference windows</h3>
+          </div>
+          <span class="chip chip-byo">Your provider</span>
+        </div>
+
+        {/* Stage 0 — attach */}
+        <div class="rw-stage" data-rwstage="0">
+          <p class="rw-listening"><span class="rw-mic-dot" aria-hidden="true"></span> Dictating in Mail…</p>
+          <button type="button" class="rw-space" data-rw-space><kbd class="rw-keycap">Space</kbd> attach a window</button>
+        </div>
+
+        {/* Stage 1 — pick */}
+        <div class="rw-stage" data-rwstage="1" hidden>
+          <p class="ba-label">Pick a window</p>
+          <ul class="rw-picker">
+            <li><button type="button" class="rw-win rw-win-go" data-rw-pick="calendar"><span class="rw-win-ic" aria-hidden="true">📅</span><span class="rw-win-name">Calendar</span><span class="rw-win-hint">Parleq reads what's on it</span></button></li>
+            <li><button type="button" class="rw-win rw-win-dim" data-rw-pick="slack"><span class="rw-win-ic" aria-hidden="true">💬</span><span class="rw-win-name">Slack</span></button></li>
+            <li><button type="button" class="rw-win rw-win-dim" data-rw-pick="notes"><span class="rw-win-ic" aria-hidden="true">📝</span><span class="rw-win-name">Notes</span></button></li>
+          </ul>
+          <p class="rw-nudge" data-rw-nudge hidden>Other apps work too — this demo follows Calendar.</p>
+        </div>
+
+        {/* Stage 2 — dictate with context */}
+        <div class="rw-stage" data-rwstage="2" hidden>
+          <div class="attach rw-attach"><span class="attach-dot" aria-hidden="true"></span>Calendar — window attached</div>
+          <div class="rw-peek" aria-label="Calendar contents"><span class="rw-peek-row">Thu 2:00pm — open</span><span class="rw-peek-row">Fri — Team sync</span></div>
+          <p class="ba-label mt-3">Your dictation</p>
+          <p class="ba-before"><span class="rw-utterance" data-rw-utterance></span><span class="rw-caret" data-rw-caret aria-hidden="true"></span></p>
+          <button type="button" class="rw-mic" data-rw-mic><span class="rw-mic-dot" aria-hidden="true"></span> Hold to talk</button>
+        </div>
+
+        {/* Stage 3 — result */}
+        <div class="rw-stage" data-rwstage="3" hidden>
+          <div class="attach rw-attach"><span class="attach-dot" aria-hidden="true"></span>Calendar — window attached</div>
+          <div class="rw-peek" aria-label="Calendar contents"><span class="rw-peek-row">Thu 2:00pm — open</span><span class="rw-peek-row">Fri — Team sync</span></div>
+          <p class="ba-label mt-3">Before</p>
+          <p class="ba-before">does thursday work for the check in</p>
+          <p class="ba-arrow" aria-hidden="true">↓</p>
+          <p class="ba-label">After</p>
+          <p class="ba-after" data-rw-after set:html={'Looks like <span class="mk">Thursday at 2pm</span> is open — does that work for the check-in?'} />
+          <div class="demo-foot">
+            <span class="foot-paste">Pasting to Mail</span>
+            <span class="foot-actions"><span>Copy</span><span>Cancel</span><b aria-hidden="true">Accept</b></span>
+          </div>
+          <button type="button" class="rw-replay" data-rw-replay>↺ Replay</button>
+        </div>
+      </div>
+
+      <p class="rw-coach" data-rw-coach aria-live="polite">You're dictating in Mail — tap <b>Space</b> (while holding your hotkey) to attach a window for context.</p>
+      <div class="stepper-pager rw-pager" role="group" aria-label="Reference windows walkthrough">
+        <button type="button" class="pager-btn pager-prev" data-rw-back>‹ Back</button>
+        <span class="pager-mid">
+          <span class="pager-dots" aria-hidden="true"><span class="stepper-dot"></span><span class="stepper-dot"></span><span class="stepper-dot"></span><span class="stepper-dot"></span></span>
+          <span class="pager-status">Step <b class="pager-cur" data-rw-cur>1</b> of 4</span>
+        </span>
+        <button type="button" class="pager-btn pager-next" data-rw-next>Next ›</button>
+      </div>
+    </div>
 
     <p class="mt-4 text-xs text-[color:var(--color-text-subtle)]">Lit grapes are the active family — click one to swap the demo.</p>
   </div>
@@ -682,9 +745,43 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
   .pager-next { border:1px solid var(--color-grape); background: var(--color-grape); color:#fff; }
   .pager-next:not(:disabled):hover { background: var(--color-grape-strong); border-color: var(--color-grape-strong); }
   .pager-btn:disabled { opacity:.35; cursor:default; }
-  /* When a walkthrough is showing, drop the dark backplate so the pager reads on
-     the light section bg (the card keeps its own dark background). */
-  .demo-stack:has(.stepper-wrap:not([hidden])) .demo-backplate { display: none; }
+  /* When a walkthrough (stepper OR the interactive RW demo) is showing, drop the
+     dark backplate so the pager/coachmark read on the light section bg. */
+  .demo-stack:has(.stepper-wrap:not([hidden])) .demo-backplate,
+  .demo-stack:has(.rw-demo:not([hidden])) .demo-backplate { display: none; }
+
+  /* SPIKE: interactive Reference Windows demo. The dark .rw-card is the "example";
+     the coachmark + pager sit below it on the light section bg. */
+  .rw-card { min-height: 14rem; }
+  .rw-stage { margin-top: 1rem; }
+  .rw-listening { display:flex; align-items:center; gap:.5rem; font-size:.82rem; color: rgba(255,255,255,.55); }
+  .rw-mic-dot { height:.5rem; width:.5rem; border-radius:9999px; background:#f87171; box-shadow:0 0 0 0 rgba(248,113,113,.5); animation: rw-rec 1.4s ease-in-out infinite; }
+  .rw-space { margin-top:1.1rem; display:inline-flex; align-items:center; gap:.5rem; border-radius:.6rem; border:1px solid rgba(216,185,251,.28); background:rgba(255,255,255,.05); padding:.5rem .8rem; font-size:.85rem; color:rgba(255,255,255,.85); cursor:pointer; animation: rw-pulse 1.9s ease-in-out infinite; }
+  .rw-space:hover { background:rgba(255,255,255,.1); }
+  .rw-keycap { border-radius:.35rem; border:1px solid rgba(255,255,255,.28); border-bottom-width:2px; background:rgba(255,255,255,.1); padding:.05rem .5rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:.72rem; color:#fff; }
+  .rw-picker { margin-top:.7rem; display:flex; flex-direction:column; gap:.4rem; }
+  .rw-win { display:flex; align-items:center; gap:.6rem; width:100%; border-radius:.55rem; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.04); padding:.5rem .7rem; text-align:left; color:rgba(255,255,255,.85); font-size:.85rem; cursor:pointer; }
+  .rw-win-ic { font-size:1rem; }
+  .rw-win-name { font-weight:600; }
+  .rw-win-hint { margin-left:auto; font-size:.7rem; color:rgba(255,255,255,.45); }
+  .rw-win-go { border-color: color-mix(in srgb, var(--color-grape-300) 55%, transparent); background: color-mix(in srgb, var(--color-grape-400) 18%, transparent); animation: rw-pulse 1.9s ease-in-out infinite; }
+  .rw-win-go:hover { background: color-mix(in srgb, var(--color-grape-400) 30%, transparent); }
+  .rw-win-dim { opacity:.5; }
+  .rw-win-dim:hover { opacity:.7; }
+  .rw-nudge { margin-top:.6rem; font-size:.72rem; color:#fcd9a3; }
+  .rw-peek { margin-top:.5rem; display:flex; flex-direction:column; gap:.15rem; border-left:2px solid color-mix(in srgb, var(--color-grape-300) 45%, transparent); padding-left:.6rem; }
+  .rw-peek-row { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:.72rem; color:rgba(233,213,255,.85); }
+  .rw-utterance { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .rw-caret { display:inline-block; width:2px; height:1em; margin-left:1px; vertical-align:text-bottom; background:rgba(255,255,255,.6); animation: rw-blink 1s step-end infinite; }
+  .rw-mic { margin-top:1.1rem; display:inline-flex; align-items:center; gap:.5rem; border-radius:9999px; border:1px solid color-mix(in srgb, var(--color-accent) 70%, transparent); background: var(--color-accent-hover); padding:.5rem .9rem; font-size:.85rem; font-weight:600; color:#fff; cursor:pointer; animation: rw-pulse 1.9s ease-in-out infinite; }
+  .rw-mic[data-recording="true"] { background:#b91c1c; border-color:#b91c1c; animation:none; }
+  .rw-replay { margin-top:1rem; display:inline-flex; align-items:center; gap:.35rem; border-radius:9999px; border:1px solid rgba(255,255,255,.2); background:rgba(255,255,255,.05); padding:.35rem .8rem; font-size:.78rem; font-weight:600; color:rgba(255,255,255,.8); cursor:pointer; }
+  .rw-replay:hover { background:rgba(255,255,255,.12); color:#fff; }
+  .rw-coach { margin-top:.9rem; text-align:center; font-size:.82rem; line-height:1.45; color: var(--color-text-muted); min-height:2.6em; }
+  .rw-coach b { color: var(--color-text); font-weight:600; }
+  @keyframes rw-pulse { 0%,100% { box-shadow:0 0 0 0 rgba(216,185,251,0); } 50% { box-shadow:0 0 0 4px rgba(216,185,251,.16); } }
+  @keyframes rw-rec { 0%,100% { box-shadow:0 0 0 0 rgba(248,113,113,.5); } 50% { box-shadow:0 0 0 4px rgba(248,113,113,0); } }
+  @keyframes rw-blink { 0%,100% { opacity:1; } 50% { opacity:0; } }
 
   /* Mobile (< lg): the flow lines are already hidden, so drop the two-column
      grid and stack simply — the interactive bunch on top, the demo card below.
@@ -707,6 +804,7 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
     .grape-orb, .g-ic, .g-lb { transition: none; }
     .group-tab-title, .group-tab-copy, .group-tab::after { transition: none; }
     #explorer.is-pulsing .flow-runners path { animation: none; }
+    .rw-space, .rw-win-go, .rw-mic, .rw-mic-dot, .rw-caret { animation: none !important; }
   }
 </style>
 
@@ -719,6 +817,7 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
     const panels = Array.from(root.querySelectorAll('[data-panel]'));
     const preview = root.querySelector('[data-preview]');
     const stepperResets = {};  // SPIKE: panelId -> reset-to-step-1 fn (populated below)
+    let rwCancel = () => {};   // SPIKE: cancels the RW demo's in-flight animation (set below)
 
     const showPreview = (g) => { if (preview) preview.innerHTML = '<b>' + g.dataset.name + '</b> — ' + g.dataset.desc; };
     const pulseFlow = () => {
@@ -727,6 +826,7 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
       root.classList.add('is-pulsing');
     };
     const selectGrape = (g) => {
+      rwCancel();  // SPIKE: stop any RW-demo animation when the selection changes
       grapes.forEach((x) => {
         const sel = x === g;
         x.setAttribute('data-selected', sel ? 'true' : 'false');
@@ -806,6 +906,84 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
       if (id) stepperResets[id] = () => { si = 0; renderStep(); };
       renderStep();
     });
+
+    // SPIKE: interactive Reference Windows demo — a 4-stage guided state machine.
+    // Focus follows only GESTURE-driven advances (never on grape-select or pager
+    // advance, so keyboard pager-repeat stays intact); all timers cancel on any
+    // stage exit / grape switch; Next auto-completes instantly.
+    const rw = root.querySelector('.rw-demo');
+    if (rw) {
+      const stages = Array.from(rw.querySelectorAll('.rw-stage'));
+      const dots = Array.from(rw.querySelectorAll('.rw-pager .stepper-dot'));
+      const cur = rw.querySelector('[data-rw-cur]');
+      const coach = rw.querySelector('[data-rw-coach]');
+      const backBtn = rw.querySelector('[data-rw-back]');
+      const nextBtn = rw.querySelector('[data-rw-next]');
+      const spaceBtn = rw.querySelector('[data-rw-space]');
+      const micBtn = rw.querySelector('[data-rw-mic]');
+      const replayBtn = rw.querySelector('[data-rw-replay]');
+      const utteranceEl = rw.querySelector('[data-rw-utterance]');
+      const nudgeEl = rw.querySelector('[data-rw-nudge]');
+      const pickCalendar = rw.querySelector('[data-rw-pick="calendar"]');
+      const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const UTTERANCE = 'does thursday work for the check in';
+      const COACH = [
+        "You're dictating in Mail — tap <b>Space</b> (while holding your hotkey) to attach a window for context.",
+        'Pick the window Parleq should read — try <b>Calendar</b>.',
+        'Now say your question — <b>hold to talk</b>.',
+        "Parleq read your <b>Calendar</b> to answer accurately. That's Reference Windows.",
+      ];
+      let stage = 0, typing = null, recTimer = null;
+      const cancel = () => {
+        if (typing) { clearInterval(typing); typing = null; }
+        if (recTimer) { clearTimeout(recTimer); recTimer = null; }
+        if (micBtn) micBtn.removeAttribute('data-recording');
+      };
+      rwCancel = cancel;
+      const render = (viaGesture) => {
+        cancel();
+        stages.forEach((s) => { s.hidden = Number(s.dataset.rwstage) !== stage; });
+        dots.forEach((d, i) => d.setAttribute('data-on', i === stage ? 'true' : 'false'));
+        if (cur) cur.textContent = String(stage + 1);
+        if (coach) coach.innerHTML = COACH[stage];
+        if (backBtn) backBtn.disabled = stage === 0;
+        if (nextBtn) nextBtn.disabled = stage === 3;
+        if (nudgeEl) nudgeEl.hidden = true;
+        if (utteranceEl) utteranceEl.textContent = '';
+        if (viaGesture) {
+          const t = stage === 0 ? spaceBtn : stage === 1 ? pickCalendar : stage === 2 ? micBtn : replayBtn;
+          if (t) t.focus({ preventScroll: true });
+        }
+        if (stage === 3) pulseFlow();
+      };
+      const go = (n, viaGesture) => { stage = Math.max(0, Math.min(3, n)); render(viaGesture); };
+      if (spaceBtn) spaceBtn.addEventListener('click', () => go(1, true));
+      rw.querySelectorAll('[data-rw-pick]').forEach((b) => {
+        b.addEventListener('click', () => {
+          if (b.getAttribute('data-rw-pick') === 'calendar') go(2, true);
+          else if (nudgeEl) nudgeEl.hidden = false;
+        });
+      });
+      const playMic = () => {
+        if (stage !== 2) return;
+        if (typing) { cancel(); if (utteranceEl) utteranceEl.textContent = UTTERANCE; go(3, true); return; }
+        cancel();
+        if (reduce) { if (utteranceEl) utteranceEl.textContent = UTTERANCE; go(3, true); return; }
+        if (micBtn) micBtn.setAttribute('data-recording', 'true');
+        let i = 0;
+        typing = setInterval(() => {
+          i += 1;
+          if (utteranceEl) utteranceEl.textContent = UTTERANCE.slice(0, i);
+          if (i >= UTTERANCE.length) { clearInterval(typing); typing = null; recTimer = setTimeout(() => { recTimer = null; go(3, true); }, 350); }
+        }, 34);
+      };
+      if (micBtn) micBtn.addEventListener('click', playMic);
+      if (backBtn) backBtn.addEventListener('click', () => { go(stage - 1, false); if (stage === 0 && nextBtn) nextBtn.focus({ preventScroll: true }); });
+      if (nextBtn) nextBtn.addEventListener('click', () => { go(stage + 1, false); if (stage === 3 && replayBtn) replayBtn.focus({ preventScroll: true }); });
+      if (replayBtn) replayBtn.addEventListener('click', () => go(0, true));
+      stepperResets['hiw-reference'] = () => { stage = 0; render(false); };
+      render(false);
+    }
 
     setTab('cleanup');
   })();
