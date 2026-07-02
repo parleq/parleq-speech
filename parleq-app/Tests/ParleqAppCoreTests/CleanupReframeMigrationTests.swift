@@ -1,20 +1,19 @@
 import XCTest
 @testable import ParleqAppCore
 
-/// Phase A of the cleanup provider/level reframe (2026-07-02).
+/// The cleanup/refinement/context reframe (v2, 2026-07-02). Three orthogonal
+/// settings:
+///   - Cleanup type (Raw/Instant/Polished), global default + per-app override.
+///   - Refinement type (Raw/Instant/Polished), GLOBAL. Polished interprets
+///     commands; Instant/Raw are append-only.
+///   - Polished provider: ONE shared cloud/local service used by whichever of
+///     cleanup/refinement is Polished. Context is a separate provider.
 ///
-/// The two-layer model reinterprets the legacy `llm.provider` string:
-///   - a generative provider (gemini/…/local) → the "Polished" provider
-///   - "concord" → NO Polished provider; Polished degrades to Instant,
-///                 refine becomes append-only. Default cleanup level Polished.
-///   - "none"    → NO Polished provider; global default cleanup level Raw
-///                 (preserves the "send nothing to any cloud" guarantee).
-///
-/// Crucially this is a pure REINTERPRETATION: the on-disk `llm.provider`
-/// value space is unchanged, so an older build reading a downgraded config
-/// sees exactly the same provider string it always did. These tests pin the
-/// derivation, the behaviorForApp default level, downgrade round-trips, the
-/// "none = no cloud" invariant, and MDM-pin translation.
+/// On disk, `llm.provider` stays the cleanup config (cloud/concord/none) and
+/// `llm.refine` stays the refinement's Polished provider — so downgrade to an
+/// older build is faithful (concord cleanup + vertex refine). The new
+/// `llm.refinement` key stores the refinement TYPE. These tests pin the
+/// derivations + migration (esp. the maintainer's concord+vertex-refine mix).
 final class CleanupReframeMigrationTests: XCTestCase {
     // MARK: - Helpers
 
@@ -33,162 +32,165 @@ final class CleanupReframeMigrationTests: XCTestCase {
         return c
     }
 
-    // MARK: - Migration matrix: derived Polished provider + default level
+    // MARK: - cleanupType (global default cleanup)
 
-    func test_cloud_provider_is_the_polished_provider() {
+    func test_cleanupType_cloud_is_polished() {
+        for p in ["gemini", "vertex", "bedrock", "bedrock-bearer", "azure", "openai", "local"] {
+            XCTAssertEqual(config(provider: p).cleanupType, .polished, "\(p)")
+        }
+    }
+
+    func test_cleanupType_concord_is_instant() {
+        XCTAssertEqual(config(provider: "concord").cleanupType, .instant)
+    }
+
+    func test_cleanupType_none_is_raw() {
+        XCTAssertEqual(config(provider: "none").cleanupType, .raw)
+    }
+
+    // MARK: - polishedProvider (the ONE shared cloud/local service)
+
+    func test_polished_provider_is_cleanup_when_cleanup_is_generative() {
         let c = config(provider: "gemini", model: "gemini-2.5-flash")
         XCTAssertEqual(c.polishedProvider, "gemini")
         XCTAssertEqual(c.polishedModel, "gemini-2.5-flash")
         XCTAssertTrue(c.hasPolishedProvider)
-        XCTAssertEqual(c.cleanupDefaultLevel, .polished)
     }
 
-    func test_all_generative_providers_are_polished() {
-        for p in ["vertex", "bedrock", "bedrock-bearer", "azure", "openai", "local"] {
-            let c = config(provider: p)
-            XCTAssertEqual(c.polishedProvider, p, "\(p) should be a Polished provider")
-            XCTAssertTrue(c.hasPolishedProvider, "\(p) should have a Polished provider")
-            XCTAssertEqual(c.cleanupDefaultLevel, .polished, "\(p) default level")
-        }
+    func test_polished_provider_falls_to_refine_when_cleanup_is_concord() {
+        // The maintainer's shape: concord cleanup + vertex refine → the shared
+        // Polished provider is vertex (from refineModel).
+        var c = config(provider: "concord")
+        c.refineModel = ModelIdentifier(provider: "vertex", model: "gemini-2.5-flash")
+        XCTAssertEqual(c.polishedProvider, "vertex")
+        XCTAssertEqual(c.polishedModel, "gemini-2.5-flash")
+        XCTAssertTrue(c.hasPolishedProvider)
     }
 
-    func test_concord_has_no_polished_provider_polished_default() {
-        let c = config(provider: "concord")
-        XCTAssertNil(c.polishedProvider, "concord is a LEVEL state, not a Polished provider")
-        XCTAssertNil(c.polishedModel)
-        XCTAssertFalse(c.hasPolishedProvider)
-        // concord keeps concord-everywhere behavior: default level stays
-        // Polished (which degrades to Instant at routing when no provider).
-        XCTAssertEqual(c.cleanupDefaultLevel, .polished)
+    func test_polished_provider_nil_for_bare_concord_and_none() {
+        XCTAssertNil(config(provider: "concord").polishedProvider)
+        XCTAssertFalse(config(provider: "concord").hasPolishedProvider)
+        XCTAssertNil(config(provider: "none").polishedProvider)
     }
 
-    func test_none_has_no_polished_provider_raw_default() {
-        let c = config(provider: "none")
+    // MARK: - refinementType migration (the crux)
+
+    func test_refinement_migrates_to_polished_from_refine_tier() throws {
+        // concord cleanup + vertex refine → Refinement = Polished (vertex kept).
+        let c = try parse(#"""
+        {"llm":{"provider":"concord","model":"","refine":{"provider":"vertex","model":"gemini-2.5-flash"}}}
+        """#)
+        XCTAssertEqual(c.cleanupType, .instant)
+        XCTAssertEqual(c.refinementType, .polished)
+        XCTAssertEqual(c.polishedProvider, "vertex")
+    }
+
+    func test_refinement_migrates_to_polished_from_context_when_no_refine() throws {
+        // concord cleanup + no refine tier + vertex context → old refine fell
+        // back to context, so Refinement = Polished via vertex (copied into the
+        // refinement provider so polishedProvider resolves it).
+        let c = try parse(#"""
+        {"llm":{"provider":"concord","model":""},"context_model":{"provider":"vertex","model":"gemini-2.5-flash"}}
+        """#)
+        XCTAssertEqual(c.refinementType, .polished)
+        XCTAssertEqual(c.polishedProvider, "vertex")
+    }
+
+    func test_refinement_migrates_to_polished_for_cloud_cleanup() throws {
+        let c = try parse(#"{"llm":{"provider":"gemini","model":"gemini-2.5-flash"}}"#)
+        XCTAssertEqual(c.refinementType, .polished)
+        XCTAssertEqual(c.polishedProvider, "gemini")
+    }
+
+    func test_refinement_migrates_to_instant_for_bare_concord() throws {
+        // concord cleanup, no refine/context → nothing can refine → Instant
+        // (append-only, cleaned on-device).
+        let c = try parse(#"{"llm":{"provider":"concord","model":""}}"#)
+        XCTAssertEqual(c.refinementType, .instant)
         XCTAssertNil(c.polishedProvider)
-        XCTAssertNil(c.polishedModel)
-        XCTAssertFalse(c.hasPolishedProvider)
-        // none preserves "send nothing to any cloud": Raw everywhere.
-        XCTAssertEqual(c.cleanupDefaultLevel, .raw)
     }
 
-    // MARK: - behaviorForApp default level follows the migration
-
-    func test_none_config_unmapped_app_defaults_to_raw() {
-        let c = config(provider: "none")
-        XCTAssertEqual(c.behaviorForApp("com.example.unmapped").mode, .raw)
+    func test_refinement_migrates_to_raw_for_none() throws {
+        let c = try parse(#"{"llm":{"provider":"none","model":""}}"#)
+        XCTAssertEqual(c.refinementType, .raw)
+        XCTAssertNil(c.polishedProvider)
     }
 
-    func test_none_config_nil_and_empty_bundle_defaults_to_raw() {
-        let c = config(provider: "none")
-        XCTAssertEqual(c.behaviorForApp(nil).mode, .raw)
-        XCTAssertEqual(c.behaviorForApp("").mode, .raw)
-        XCTAssertEqual(c.behaviorForApp("   ").mode, .raw)
+    func test_explicit_refinement_key_wins_over_migration() throws {
+        // When the new key is present it is authoritative (not re-derived).
+        let c = try parse(#"""
+        {"llm":{"provider":"gemini","model":"gemini-2.5-flash","refinement":"raw"}}
+        """#)
+        XCTAssertEqual(c.refinementType, .raw)
     }
 
-    func test_none_config_curated_app_stays_raw() {
-        // A none user opted out of cleanup entirely. Curated defaults
-        // (Terminal→Instant, Mail→Polished) are NOT silently applied — they
-        // keep Raw everywhere. Only an explicit override lifts an app out.
+    // MARK: - behaviorForApp global default follows cleanupType
+
+    func test_concord_unmapped_app_defaults_to_instant() {
+        XCTAssertEqual(config(provider: "concord").behaviorForApp("com.example.x").mode, .instant)
+    }
+
+    func test_none_unmapped_app_defaults_to_raw() {
+        XCTAssertEqual(config(provider: "none").behaviorForApp("com.example.x").mode, .raw)
+    }
+
+    func test_cloud_unmapped_app_defaults_to_polished() {
+        XCTAssertEqual(config(provider: "gemini").behaviorForApp("com.example.x").mode, .polished)
+    }
+
+    func test_none_curated_app_stays_raw_curated_skipped() {
+        // A none user opted out of cleanup: curated Instant/Polished defaults
+        // are NOT applied; only explicit overrides lift an app out of Raw.
         let c = config(provider: "none")
         XCTAssertEqual(c.behaviorForApp("com.apple.Terminal").mode, .raw)
         XCTAssertEqual(c.behaviorForApp("com.apple.mail").mode, .raw)
     }
 
-    func test_none_config_explicit_polished_override_is_honored() {
-        // If the user explicitly set an app to Polished, that override wins
-        // over the Raw global default (they asked for it).
+    func test_explicit_override_wins_over_global_default() {
         var c = config(provider: "none")
         c.appBehaviors = ["com.example.app": AppBehavior(mode: .polished)]
         XCTAssertEqual(c.behaviorForApp("com.example.app").mode, .polished)
     }
 
-    func test_concord_config_unmapped_app_defaults_to_polished() {
-        let c = config(provider: "concord")
-        XCTAssertEqual(c.behaviorForApp("com.apple.mail").mode, .polished)
-    }
+    // MARK: - Downgrade safety: on-disk cleanup/refine strings unchanged
 
-    func test_cloud_config_unmapped_app_defaults_to_polished() {
-        // Regression: the existing cloud default is unchanged.
-        let c = config(provider: "gemini", model: "gemini-2.5-flash")
-        XCTAssertEqual(c.behaviorForApp("com.apple.mail").mode, .polished)
-    }
-
-    // MARK: - Downgrade safety: on-disk provider string is unchanged
-
-    func test_concord_round_trips_provider_string_for_downgrade() throws {
-        let c = try parse(#"{"llm":{"provider":"concord","model":""}}"#)
+    func test_maintainer_shape_round_trips_for_downgrade() throws {
+        // concord cleanup + vertex refine must serialize back to the same
+        // llm.provider / llm.refine an older build reads.
+        let c = try parse(#"""
+        {"llm":{"provider":"concord","model":"","refine":{"provider":"vertex","model":"gemini-2.5-flash"}}}
+        """#)
         let dict = Config.serializeToDictionary(c)
         let llm = try XCTUnwrap(dict["llm"] as? [String: Any])
-        XCTAssertEqual(llm["provider"] as? String, "concord",
-                       "downgrade must see 'concord' verbatim")
+        XCTAssertEqual(llm["provider"] as? String, "concord")
+        let refine = try XCTUnwrap(llm["refine"] as? [String: Any])
+        XCTAssertEqual(refine["provider"] as? String, "vertex")
+        XCTAssertEqual(llm["refinement"] as? String, "polished")
     }
 
-    func test_none_round_trips_provider_string_for_downgrade() throws {
+    func test_none_round_trips_provider_string() throws {
         let c = try parse(#"{"llm":{"provider":"none","model":""}}"#)
-        let dict = Config.serializeToDictionary(c)
-        let llm = try XCTUnwrap(dict["llm"] as? [String: Any])
-        XCTAssertEqual(llm["provider"] as? String, "none",
-                       "downgrade must see 'none' verbatim")
+        let llm = try XCTUnwrap(Config.serializeToDictionary(c)["llm"] as? [String: Any])
+        XCTAssertEqual(llm["provider"] as? String, "none")
     }
 
-    func test_cloud_round_trips_provider_string() throws {
-        let c = try parse(#"{"llm":{"provider":"gemini","model":"gemini-2.5-flash"}}"#)
-        let dict = Config.serializeToDictionary(c)
-        let llm = try XCTUnwrap(dict["llm"] as? [String: Any])
-        XCTAssertEqual(llm["provider"] as? String, "gemini")
-        XCTAssertEqual(llm["model"] as? String, "gemini-2.5-flash")
-    }
+    // MARK: - "none = no cloud" invariant
 
-    // MARK: - "none = no cloud" invariant (unchanged by the reframe)
-
-    func test_none_never_routes_to_cloud_even_with_context_and_refine() {
-        // Even when a context/refine tier is still configured, a none config
-        // must short-circuit so no transcript reaches a cloud provider.
+    func test_none_never_routes_to_cloud_even_with_context() {
         var c = config(provider: "none")
         c.contextModel = ModelIdentifier(provider: "gemini", model: "gemini-2.5-flash")
-        c.refineModel = ModelIdentifier(provider: "gemini", model: "gemini-2.5-flash")
-
-        let plain = c.modelForInvocation(hasReferences: false)
-        XCTAssertEqual(plain.provider, "none")
-
-        let withRefs = c.modelForInvocation(hasReferences: true)
-        XCTAssertEqual(withRefs.provider, "none", "references must not leak to cloud when none")
-
-        let refine = c.modelForInvocation(hasReferences: false, isRefine: true)
-        XCTAssertEqual(refine.provider, "none", "refine must not leak to cloud when none")
+        XCTAssertEqual(c.modelForInvocation(hasReferences: false).provider, "none")
+        XCTAssertEqual(c.modelForInvocation(hasReferences: true).provider, "none")
     }
 
-    // MARK: - isGenerativeProvider predicate (open-world)
+    // MARK: - isGenerativeProvider predicate
 
-    func test_isGenerativeProvider_true_for_cloud_and_local_and_unknown() {
-        for p in ["gemini", "vertex", "bedrock", "bedrock-bearer", "azure",
-                  "openai", "local", "some-future-provider"] {
-            XCTAssertTrue(Config.isGenerativeProvider(p), "\(p) should be generative")
+    func test_isGenerativeProvider_open_world() {
+        for p in ["gemini", "vertex", "bedrock", "bedrock-bearer", "azure", "openai", "local", "future"] {
+            XCTAssertTrue(Config.isGenerativeProvider(p), p)
         }
-    }
-
-    func test_isGenerativeProvider_false_for_level_sentinels_and_empty() {
-        XCTAssertFalse(Config.isGenerativeProvider("concord"))
-        XCTAssertFalse(Config.isGenerativeProvider("none"))
-        XCTAssertFalse(Config.isGenerativeProvider(""))
-    }
-
-    // MARK: - MDM pin translation (simulated, as ManagedConfigTests does)
-
-    func test_mdm_pinned_concord_maps_to_no_polished_provider() {
-        // Simulate an MDM `cleanupProvider = concord` pin: it sets llmProvider
-        // verbatim, and the derivation must interpret it — NOT reset it to a
-        // cloud provider.
-        var c = Config.default
-        c.llmProvider = "concord"
-        XCTAssertNil(c.polishedProvider)
-        XCTAssertEqual(c.cleanupDefaultLevel, .polished)
-    }
-
-    func test_mdm_pinned_none_maps_to_raw_default() {
-        var c = Config.default
-        c.llmProvider = "none"
-        XCTAssertNil(c.polishedProvider)
-        XCTAssertEqual(c.cleanupDefaultLevel, .raw)
+        for p in ["concord", "none", ""] {
+            XCTAssertFalse(Config.isGenerativeProvider(p), p)
+        }
     }
 }

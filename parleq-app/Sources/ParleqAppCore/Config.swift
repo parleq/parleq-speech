@@ -607,21 +607,21 @@ public struct Config: Sendable {
     /// `appBehaviors` override). Suggestions stay off until the user accepts
     /// them in the App-behavior editor.
     public func behaviorForApp(_ bundleID: String?) -> AppBehavior {
-        guard let bundleID else { return AppBehavior(mode: cleanupDefaultLevel) }
+        guard let bundleID else { return AppBehavior(mode: cleanupType) }
         let trimmed = bundleID.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return AppBehavior(mode: cleanupDefaultLevel) }
-        // Mode: explicit override → curated default → global default level.
-        // When cleanup is globally OFF ("none" → cleanupDefaultLevel == .raw)
-        // curated defaults are skipped: a user who opted out of cleanup keeps
-        // Raw everywhere and is never silently upgraded to on-device Instant.
-        // Only an explicit per-app override lifts them out of Raw.
+        guard !trimmed.isEmpty else { return AppBehavior(mode: cleanupType) }
+        // Mode: explicit override → curated default → global cleanup type.
+        // When cleanup is globally OFF ("none" → cleanupType == .raw) curated
+        // defaults are skipped: a user who opted out of cleanup keeps Raw
+        // everywhere and is never silently upgraded to on-device Instant. Only
+        // an explicit per-app override lifts them out of Raw.
         let mode: TargetMode
         if let override = appBehaviors[trimmed]?.mode {
             mode = override
-        } else if cleanupDefaultLevel == .raw {
+        } else if cleanupType == .raw {
             mode = .raw
         } else {
-            mode = CuratedAppDefaults.mode(for: trimmed) ?? cleanupDefaultLevel
+            mode = CuratedAppDefaults.mode(for: trimmed) ?? cleanupType
         }
         // Preset is sourced from presetForApp — the single source of truth
         // (`presetAppDefaults`) plus the MDM gate — so the two maps can never
@@ -648,7 +648,24 @@ public struct Config: Sendable {
     /// the legacy behavior for configs that don't set it. Serialized as
     /// the top-level `llm.refine` object (`{provider, model}`), mirroring
     /// the `context_model` shape.
+    ///
+    /// Reframe (v2): reinterpreted as the REFINEMENT's Polished provider —
+    /// used when `refinementType == .polished`. It is one half of the shared
+    /// `polishedProvider` (the other being `llmProvider` when cleanup is
+    /// generative). Still serialized as `llm.refine` so an older build reads it
+    /// as its refine tier (downgrade-faithful).
     public var refineModel: ModelIdentifier?
+
+    /// GLOBAL refinement type (reframe v2): how a hotkey voice-refine / quick
+    /// chip is handled.
+    ///   - `.polished` → interpret + carry out the command via `polishedProvider`
+    ///     (real rewriting).
+    ///   - `.instant`  → append-only: the new dictation is cleaned on-device
+    ///     (Concord) and appended to the prior text.
+    ///   - `.raw`      → append-only: the new dictation is appended verbatim.
+    /// Serialized as `llm.refinement`; migrated from the legacy refine tier
+    /// when the key is absent. Not per-app in v1 (refinement is global).
+    public var refinementType: TargetMode
 
     // MARK: - Feature toggles (Phase 5 / Tier 1)
     //
@@ -882,6 +899,7 @@ public struct Config: Sendable {
         appBehaviors: [:],
         contextModel: nil,
         refineModel: nil,
+        refinementType: .polished,
         referenceWindowsEnabled: true,
         clipboardReferenceEnabled: true,
         imageReferenceEnabled: true,
@@ -1670,6 +1688,11 @@ public struct Config: Sendable {
     /// Internal so tests can call it via `@testable import`.
     static func parse(fromDictionary parsed: [String: Any]) -> Config {
         var c = Config.default
+        // Reframe v2: whether the config carried an explicit `llm.refinement`
+        // type. When absent (a pre-reframe config), we derive the refinement
+        // type from the legacy refine tier below (see the migration near the
+        // end of parse).
+        var refinementKeyPresent = false
         if let hotkey = parsed["hotkey"] as? [String: Any] {
             if let binding = hotkey["binding"] as? String {
                 c.hotkeyBinding = binding
@@ -1739,6 +1762,13 @@ public struct Config: Sendable {
                 if !tp.isEmpty && !tm.isEmpty {
                     c.refineModel = ModelIdentifier(provider: tp, model: tm)
                 }
+            }
+            // Reframe v2: the global refinement TYPE. When present it is
+            // authoritative; when absent we migrate from the legacy refine
+            // tier after all fields are parsed (see near the end of parse).
+            if let v = llm["refinement"] as? String, let t = TargetMode(rawValue: v) {
+                c.refinementType = t
+                refinementKeyPresent = true
             }
         }
         if let aws = parsed["aws"] as? [String: Any] {
@@ -2011,6 +2041,36 @@ public struct Config: Sendable {
             }
         }
         c.appBehaviors = behaviors
+
+        // Reframe v2 migration: derive the refinement TYPE from the legacy
+        // refine tier when no explicit `llm.refinement` key was present. Old
+        // refine resolution was `refineModel ?? contextModel ?? cleanup`, so
+        // the effective refine provider tells us the type:
+        //   generative → .polished (keep/adopt that provider as the refinement
+        //                Polished provider so `polishedProvider` resolves it),
+        //   "concord"  → .instant  (append-only, cleaned on-device),
+        //   "none"     → .raw      (append-only, verbatim).
+        if !refinementKeyPresent {
+            let effective = c.refineModel?.provider
+                ?? c.contextModel?.provider
+                ?? c.llmProvider
+            if effective == "none" {
+                c.refinementType = .raw
+            } else if !Config.isGenerativeProvider(effective) {
+                c.refinementType = .instant
+            } else {
+                c.refinementType = .polished
+                // When the Polished refinement provider comes from the context
+                // tier (cleanup isn't generative and no explicit refine tier),
+                // copy it into `refineModel` so `polishedProvider` resolves it.
+                if c.refineModel == nil,
+                   !Config.isGenerativeProvider(c.llmProvider),
+                   let ctx = c.contextModel,
+                   Config.isGenerativeProvider(ctx.provider) {
+                    c.refineModel = ctx
+                }
+            }
+        }
         return c
     }
 
@@ -2076,11 +2136,13 @@ public struct Config: Sendable {
         if let localDict = Self.serializeLocalSection(config) {
             llm["local"] = localDict
         }
-        // Refinement tier — emit only when set (omit-when-default). nil
-        // means "fall back to context, then cleanup" and writes no key.
+        // Refinement Polished provider — emit as `llm.refine` when set (kept
+        // for downgrade: an older build reads it as its refine tier).
         if let model = config.refineModel {
             llm["refine"] = ["provider": model.provider, "model": model.model]
         }
+        // Reframe v2: the global refinement TYPE (raw/instant/polished).
+        llm["refinement"] = config.refinementType.rawValue
         return llm
     }
 
@@ -2860,47 +2922,56 @@ extension Config {
     }
 }
 
-// MARK: - Cleanup provider/level reframe (two-layer model)
+// MARK: - Cleanup/Refinement/Context reframe (three orthogonal settings)
 
 extension Config {
-    /// True iff `provider` is a generative provider that can serve as the
-    /// Polished tier. Open-world by design: anything that is not the on-device
-    /// deterministic Concord tier ("concord") or the cleanup-off sentinel
-    /// ("none") — and is non-empty — is a Polished provider. Open-world like
-    /// `providerCanRefine` (refine == Polished now), and equivalent to it for
-    /// every valid, non-empty provider value; it additionally rejects the
-    /// empty string (which is never a real stored provider). Kept open-world
-    /// so a new cloud provider added elsewhere in the app needs no change here
-    /// and can never silently derive to "no Polished provider".
+    /// True iff `provider` is a generative (cloud/local) provider that can
+    /// serve as the Polished tier. Open-world: anything that is not the
+    /// on-device Concord tier ("concord") or the cleanup-off sentinel ("none")
+    /// — and is non-empty — is a Polished provider. A new cloud provider added
+    /// elsewhere needs no change here.
     public static func isGenerativeProvider(_ provider: String) -> Bool {
         !provider.isEmpty && provider != "concord" && provider != "none"
     }
 
-    /// The configured Polished provider, or `nil` when cleanup is the
-    /// on-device Concord tier ("concord") or off ("none"). Derived from the
-    /// legacy `llmProvider` so the on-disk format — and downgrade to an older
-    /// build — is unchanged: "concord"/"none" stay serialized verbatim.
+    /// The global default CLEANUP type (per-app overridable via `appBehaviors`):
+    /// the cleanup behavior for a target without an explicit or curated
+    /// override. Derived from the legacy `llmProvider` (the cleanup config):
+    ///   - "none"            → `.raw`     (no cleanup; send nothing to any cloud)
+    ///   - "concord" / other → `.instant` (on-device Concord)
+    ///   - a generative provider → `.polished` (cloud/local)
+    public var cleanupType: TargetMode {
+        if llmProvider == "none" { return .raw }
+        if !Config.isGenerativeProvider(llmProvider) { return .instant }
+        return .polished
+    }
+
+    /// The ONE shared Polished provider — the cloud/local service used by
+    /// whichever of cleanup/refinement is set to Polished. It is the cleanup
+    /// provider (`llmProvider`) when that is generative; otherwise the
+    /// refinement provider (`refineModel`) when THAT is generative; else nil.
+    /// (E.g. the maintainer's concord-cleanup + vertex-refine → "vertex".)
     public var polishedProvider: String? {
-        Config.isGenerativeProvider(llmProvider) ? llmProvider : nil
+        if Config.isGenerativeProvider(llmProvider) { return llmProvider }
+        if let rm = refineModel, Config.isGenerativeProvider(rm.provider) { return rm.provider }
+        return nil
     }
 
-    /// The Polished model, or `nil` when no Polished provider is configured.
+    /// The model paired with `polishedProvider` (nil when none is configured).
     public var polishedModel: String? {
-        polishedProvider == nil ? nil : llmModel
+        if Config.isGenerativeProvider(llmProvider) { return llmModel }
+        if let rm = refineModel, Config.isGenerativeProvider(rm.provider) { return rm.model }
+        return nil
     }
 
-    /// Whether a generative Polished provider is configured. When false,
-    /// Polished-mode cleanup degrades to Instant and refinement becomes
-    /// append-only (see routing).
+    /// Whether a shared Polished provider is configured. When false, a
+    /// Polished-resolved cleanup falls back to Instant (defensive) and Polished
+    /// refinement falls back to append-only.
     public var hasPolishedProvider: Bool { polishedProvider != nil }
 
-    /// Global default cleanup LEVEL for paste targets without an explicit
-    /// (`appBehaviors`) or curated override. Derived from the legacy
-    /// `llmProvider`: the cleanup-off sentinel ("none") means Raw everywhere
-    /// — preserving the "send nothing to any cloud" guarantee — while every
-    /// other value defaults to Polished. (For "concord", Polished degrades to
-    /// Instant at routing, keeping concord-everywhere behavior.)
-    public var cleanupDefaultLevel: TargetMode {
-        llmProvider == "none" ? .raw : .polished
+    /// The Polished provider + model as a `ModelIdentifier`, or nil.
+    public var polishedIdentifier: ModelIdentifier? {
+        guard let p = polishedProvider, let m = polishedModel else { return nil }
+        return ModelIdentifier(provider: p, model: m)
     }
 }
