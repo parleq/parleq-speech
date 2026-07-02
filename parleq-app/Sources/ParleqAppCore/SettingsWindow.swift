@@ -739,10 +739,15 @@ final class SettingsModel: ObservableObject {
                 model: polishedModelName.trimmingCharacters(in: .whitespaces))
             if needsBuild(polishedId) { return true }
         }
-        let ctxId = ModelIdentifier(
-            provider: contextProvider,
-            model: contextModelName.trimmingCharacters(in: .whitespaces))
-        if needsBuild(ctxId) { return true }
+        // The Context tier is inactive when cleanup is Raw ("none"): main.swift
+        // skips contextLLM and modelForInvocation short-circuits, so an unused
+        // generative contextModel must not trip the restart prompt.
+        if cleanupType != .raw {
+            let ctxId = ModelIdentifier(
+                provider: contextProvider,
+                model: contextModelName.trimmingCharacters(in: .whitespaces))
+            if needsBuild(ctxId) { return true }
+        }
         return false
     }
 
