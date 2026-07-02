@@ -14,6 +14,8 @@ const icons: Record<string, string> = {
   window: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/><path d="M6.5 6.5h.01M9 6.5h.01"/>',
   question:'<path d="M9.2 9a2.8 2.8 0 1 1 3.8 2.6c-.9.4-1.5 1.2-1.5 2.1"/><path d="M12 17h.01"/>',
   sparkle: '<path d="M12 3v5M12 16v5M3 12h5M16 12h5"/><path d="m6.8 6.8 2.1 2.1M15.1 15.1l2.1 2.1M17.2 6.8l-2.1 2.1M8.9 15.1l-2.1 2.1"/>',
+  calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9.5h18M8 3v4M16 3v4"/>',
+  notes:  '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/>',
 };
 // debossed icon — stamped into the grape skin (dark recess on top, light highlight just below)
 const emboss = (name: string) =>
@@ -96,23 +98,20 @@ const howitworks = [
 const hiwPos = [2, 0, 1, 3, 4];
 
 // SPIKE: the three windows a visitor can attach in the interactive Reference
-// Windows demo — each drives its own alternate flow (attach chip, context peek,
-// utterance, and result). `mock` is the mini app-window content shown in the
-// breakout picker (the attached window shows only as a chip in the demo card,
-// matching the real app — no window-content summary).
+// Windows demo — each drives its own alternate flow (attach chip, utterance,
+// result). The picker shows each as a clean app tile (line-art glyph + name +
+// one-line context), matching the app's dark surface — the attached window then
+// shows only as a chip in the demo card, matching the real app.
 const rwWindows = [
-  { id: 'calendar', app: 'Calendar', emoji: '📅', chip: 'Calendar — window attached',
+  { id: 'calendar', app: 'Calendar', icon: 'calendar', sub: 'This week', chip: 'Calendar — window attached',
     utterance: 'does thursday work for the check in',
-    after: 'Looks like <span class="mk">Thursday at 2pm</span> is open — does that work for the check-in?',
-    mock: '<div class="rw-mk-cal"><div class="rw-mk-row"><b>1pm</b><span class="rw-mk-busy">Standup</span></div><div class="rw-mk-row"><b>2pm</b><span class="rw-mk-free">open</span></div><div class="rw-mk-row"><b>3pm</b><span class="rw-mk-busy">1:1 · Sam</span></div></div>' },
-  { id: 'slack', app: 'Slack', emoji: '💬', chip: 'Slack · #deploys — attached',
+    after: 'Looks like <span class="mk">Thursday at 2pm</span> is open — does that work for the check-in?' },
+  { id: 'slack', app: 'Slack', icon: 'bubble', sub: '#deploys', chip: 'Slack · #deploys — attached',
     utterance: 'reply that i will take a look',
-    after: "I'll take a look at the <span class=\"mk\">post-4pm deploy logs</span> and follow up shortly.",
-    mock: '<div class="rw-mk-slk"><p class="rw-mk-ch"># deploys</p><p class="rw-mk-msg"><b>rob</b>&nbsp; logs look off after the 4pm deploy?</p><p class="rw-mk-msg rw-mk-dim"><b>you</b>&nbsp; typing…</p></div>' },
-  { id: 'notes', app: 'Notes', emoji: '📝', chip: 'Notes · Q3 plan — attached',
+    after: "I'll take a look at the <span class=\"mk\">post-4pm deploy logs</span> and follow up shortly." },
+  { id: 'notes', app: 'Notes', icon: 'notes', sub: 'Q3 plan', chip: 'Notes · Q3 plan — attached',
     utterance: 'turn my notes into next steps',
-    after: 'Next steps: <span class="mk">hire two engineers, revisit the pricing tiers, and target a mid-August launch.</span>',
-    mock: '<div class="rw-mk-nts"><p class="rw-mk-nt-t">Q3 plan</p><ul><li>Hiring — 2 eng</li><li>Pricing — revisit tiers</li><li>Launch — mid-Aug</li></ul></div>' },
+    after: 'Next steps: <span class="mk">hire two engineers, revisit the pricing tiers, and target a mid-August launch.</span>' },
 ];
 
 const all = [...cleanup, ...refine];
@@ -402,14 +401,14 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
   <div class="rw-picker-overlay" data-rw-overlay hidden>
     <div class="rw-picker-backdrop" data-rw-cancel aria-hidden="true"></div>
     <div class="rw-picker-panel" role="dialog" aria-modal="true" aria-label="Choose a window to attach">
-      <p class="rw-picker-title">Choose a window to bring in as context</p>
+      <p class="rw-picker-title">Choose a window for context</p>
       <div class="rw-picker-grid">
         {rwWindows.map((w) => (
           <button type="button" class="rw-appwin" data-rw-appwin={w.id}
                   aria-label={`Attach ${w.app}`}
                   data-chip={w.chip} data-utterance={w.utterance} data-after={w.after}>
-            <div class="rw-appwin-bar"><span class="rw-appwin-dots" aria-hidden="true"></span><span class="rw-appwin-name">{w.emoji} {w.app}</span></div>
-            <div class="rw-appwin-body" set:html={w.mock} />
+            <span class="rw-appwin-ic"><svg class="rw-appwin-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" set:html={icons[w.icon]} /></span>
+            <span class="rw-appwin-meta"><span class="rw-appwin-name">{w.app}</span><span class="rw-appwin-sub">{w.sub}</span></span>
           </button>
         ))}
       </div>
@@ -808,32 +807,24 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
   .rw-keycap { border-radius:.35rem; border:1px solid rgba(255,255,255,.28); border-bottom-width:2px; background:rgba(255,255,255,.1); padding:.05rem .5rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:.72rem; color:#fff; }
   .rw-footnote { margin-top:.5rem; text-align:center; font-size:.68rem; color: var(--color-text-subtle); }
 
-  /* Anchored breakout window-picker — pops OVER the whole explorer (both columns),
-     dimmed backdrop, a panel wider than the demo card. Feels like the app surfacing. */
+  /* Anchored breakout window-picker — surfaces OVER the explorer on the same dark
+     product surface as the overlay card (not a white sheet), so it reads as the
+     app popping up rather than a foreign panel. Subtle dimmed backdrop; clean
+     app tiles (glyph + name + one-line context), no emoji, no fake title bars. */
   .rw-picker-overlay { position:absolute; inset:-1.5rem; z-index:50; display:flex; align-items:center; justify-content:center; padding:1rem; }
   .rw-picker-backdrop { position:absolute; inset:0; background: color-mix(in srgb, var(--color-grape-950) 14%, transparent); backdrop-filter: blur(1px); }
-  .rw-picker-panel { position:relative; z-index:1; width:100%; max-width:40rem; border-radius:1rem; border:1px solid var(--color-border); background: var(--color-surface); box-shadow: 0 40px 90px -30px rgba(20,7,32,.55); padding:1.4rem; animation: rw-pop .22s cubic-bezier(.22,.72,.2,1.2) both; }
-  .rw-picker-title { text-align:center; font-size:.95rem; font-weight:600; color: var(--color-text); }
-  .rw-picker-grid { margin-top:1rem; display:grid; grid-template-columns: repeat(3, 1fr); gap:.75rem; }
-  .rw-appwin { display:flex; flex-direction:column; overflow:hidden; border-radius:.65rem; border:1px solid var(--color-border); background: var(--color-bg); text-align:left; cursor:pointer; transition: transform .14s ease, box-shadow .14s ease, border-color .14s ease; }
-  .rw-appwin:hover, .rw-appwin:focus-visible { transform: translateY(-3px); border-color: var(--color-grape); box-shadow: 0 16px 30px -18px rgba(67,32,95,.5); outline:none; }
-  .rw-appwin-bar { display:flex; align-items:center; gap:.5rem; border-bottom:1px solid var(--color-border-subtle); background: color-mix(in srgb, var(--color-grape) 4%, var(--color-surface)); padding:.4rem .6rem; }
-  .rw-appwin-dots { position:relative; height:.5rem; width:.5rem; border-radius:9999px; background:#ff5f57; box-shadow:.75rem 0 0 #febc2e, 1.5rem 0 0 #28c840; }
-  .rw-appwin-name { margin-left:1.6rem; font-size:.72rem; font-weight:600; color: var(--color-text-muted); }
-  .rw-appwin-body { min-height:5.5rem; padding:.6rem .7rem; font-size:.68rem; color: var(--color-text-muted); }
-  .rw-mk-cal { display:flex; flex-direction:column; gap:.28rem; }
-  .rw-mk-row { display:flex; justify-content:space-between; gap:.5rem; }
-  .rw-mk-row b { color: var(--color-text-subtle); font-weight:600; }
-  .rw-mk-busy { color: var(--color-text); }
-  .rw-mk-free { color:#047857; font-weight:600; }
-  .rw-mk-slk .rw-mk-ch { font-weight:700; color: var(--color-text); }
-  .rw-mk-slk .rw-mk-msg { margin-top:.3rem; line-height:1.4; }
-  .rw-mk-slk .rw-mk-msg b { color: var(--color-grape); }
-  .rw-mk-dim { opacity:.5; }
-  .rw-mk-nts .rw-mk-nt-t { font-weight:700; color: var(--color-text); }
-  .rw-mk-nts ul { margin:.3rem 0 0; padding-left:.9rem; list-style: disc; line-height:1.55; }
-  .rw-picker-cancel { margin:1rem auto 0; display:block; border-radius:9999px; border:1px solid var(--color-border); background: var(--color-surface); padding:.35rem 1rem; font-size:.78rem; font-weight:600; color: var(--color-text-muted); cursor:pointer; }
-  .rw-picker-cancel:hover { border-color: var(--color-text-muted); color: var(--color-text); }
+  .rw-picker-panel { position:relative; z-index:1; width:100%; max-width:32rem; border-radius:1rem; border:1px solid rgba(216,185,251,.16); background: linear-gradient(180deg, #20262e, #171c22); box-shadow: 0 40px 90px -32px rgba(10,4,20,.72); padding:1.3rem; animation: rw-pop .22s cubic-bezier(.22,.72,.2,1.2) both; }
+  .rw-picker-title { text-align:center; font-size:.86rem; font-weight:600; letter-spacing:.01em; color: rgba(255,255,255,.9); }
+  .rw-picker-grid { margin-top:1.1rem; display:grid; grid-template-columns: repeat(3, 1fr); gap:.6rem; }
+  .rw-appwin { display:flex; flex-direction:column; align-items:flex-start; gap:.6rem; border-radius:.7rem; border:1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.03); padding:.85rem .85rem 1rem; text-align:left; cursor:pointer; transition: transform .14s ease, border-color .14s ease, background-color .14s ease; }
+  .rw-appwin:hover, .rw-appwin:focus-visible { transform: translateY(-2px); border-color: color-mix(in srgb, var(--color-grape-300) 55%, transparent); background: color-mix(in srgb, var(--color-grape-400) 14%, transparent); outline:none; }
+  .rw-appwin-ic { display:inline-flex; height:2.1rem; width:2.1rem; align-items:center; justify-content:center; border-radius:.6rem; background: color-mix(in srgb, var(--color-grape-400) 30%, transparent); color: var(--color-grape-100); }
+  .rw-appwin-glyph { width:1.15rem; height:1.15rem; }
+  .rw-appwin-meta { display:flex; flex-direction:column; gap:.1rem; }
+  .rw-appwin-name { font-size:.82rem; font-weight:600; color: rgba(255,255,255,.92); }
+  .rw-appwin-sub { font-size:.7rem; color: rgba(216,185,251,.62); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .rw-picker-cancel { margin:1.1rem auto 0; display:block; border-radius:9999px; border:1px solid rgba(255,255,255,.16); background: transparent; padding:.35rem 1rem; font-size:.76rem; font-weight:600; color: rgba(255,255,255,.62); cursor:pointer; transition: color .14s ease, border-color .14s ease; }
+  .rw-picker-cancel:hover { border-color: rgba(255,255,255,.4); color: rgba(255,255,255,.9); }
   @keyframes rw-pop { from { opacity:0; transform: scale(.94); } to { opacity:1; transform: scale(1); } }
   .rw-steps { margin-top:1rem; display:flex; align-items:center; justify-content:center; gap:.6rem; }
   .rw-utterance { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
