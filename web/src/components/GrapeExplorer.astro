@@ -549,10 +549,10 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
           <button type="button" class="ai-opt" data-ai-opt="none">None</button>
         </div>
         <p class="ba-label mt-4">You said</p>
-        <p class="ba-before">can you send me the deck before the sync</p>
+        <p class="ba-before">um can you send me the q3 deck before the sync uh actually before the standup</p>
         <p class="ba-arrow" aria-hidden="true">↓</p>
         <p class="ba-label" data-ai-reslabel>Cleaned · on-device</p>
-        <p class="ba-after" data-ai-result>Could you send me the deck before the sync?</p>
+        <p class="ba-after" data-ai-result set:html={'Can you send me the <span class="mk">Q3</span> deck before the sync? Actually, before the standup.'}></p>
         <p class="ai-where" data-ai-where>Runs on your Mac — audio and text never leave the device.</p>
       </div>
       <p class="rw-coach" data-ai-coach aria-live="polite">Same dictation — you choose the engine that cleans it.</p>
@@ -1456,16 +1456,16 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
       const aiWhere = ai.querySelector('[data-ai-where]');
       const aiCoach = ai.querySelector('[data-ai-coach]');
       const AI = {
-        local: { chip: ['On-device', 'chip-on'], label: 'Cleaned · on-device', result: 'Could you send me the deck before the sync?', where: 'Runs on your Mac — audio and text never leave the device.', coach: 'On-device cleanup: fully private, nothing leaves your Mac.' },
-        cloud: { chip: ['Your provider', 'chip-byo'], label: 'Cleaned · your cloud', result: 'Could you send me the deck before our sync? Thanks!', where: 'Uses the AI you bring — your own Gemini, OpenAI, Bedrock, Vertex, or Azure key.', coach: 'Your cloud: the provider and account are yours; Parleq brokers nothing.' },
-        none: { chip: ['Raw', 'chip-byo'], label: 'Raw · no cleanup', result: 'can you send me the deck before the sync', where: 'Skip cleanup entirely — paste exactly what you said.', coach: 'None: no cleanup at all — your raw words, pasted as-is.' },
+        local: { chip: ['On-device', 'chip-on'], label: 'Cleaned · on-device', result: 'Can you send me the <span class="mk">Q3</span> deck before the sync? Actually, before the standup.', where: 'Runs on your Mac — audio and text never leave the device.', coach: 'On-device: fillers gone, capitalized, punctuated — fast and fully private.' },
+        cloud: { chip: ['Your provider', 'chip-byo'], label: 'Cleaned · your cloud', result: 'Could you send me the <span class="mk">Q3</span> deck <span class="mk">before the standup</span>?', where: 'Uses the AI you bring — your own Gemini, OpenAI, Bedrock, Vertex, or Azure key.', coach: 'Your cloud: a larger model resolves the self-correction — “actually, before the standup” wins.' },
+        none: { chip: ['Raw', 'chip-byo'], label: 'Raw · no cleanup', result: 'um can you send me the q3 deck before the sync uh actually before the standup', where: 'Skip cleanup entirely — paste exactly what you said.', coach: 'None: no cleanup at all — your raw words, pasted exactly as spoken.' },
       };
       const pickAI = (key) => {
         const d = AI[key]; if (!d) return;
         aiOpts.forEach((b) => b.classList.toggle('is-on', b.getAttribute('data-ai-opt') === key));
         if (aiChip) { aiChip.textContent = d.chip[0]; aiChip.className = 'chip ' + d.chip[1]; }
         if (aiResLabel) aiResLabel.textContent = d.label;
-        if (aiResult) aiResult.textContent = d.result;
+        if (aiResult) aiResult.innerHTML = d.result;
         if (aiWhere) aiWhere.textContent = d.where;
         if (aiCoach) aiCoach.textContent = d.coach;
       };
