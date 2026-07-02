@@ -1940,6 +1940,13 @@ public final class AppState {
         let edited = overlay.model.editableText
         overlay.model.editing = false
         if edited != editPreEditText {
+            // Snapshot the spans BEFORE the remap below: their String.Index
+            // ranges index into editPreEditText, which is exactly what the
+            // harvest ordinal math needs (comparing indices across different
+            // strings is undefined — RoboRev-7484).
+            #if Concord
+            let preEditSpans = overlay.model.correctionSpans
+            #endif
             currentText = edited
             overlay.model.text = edited
             // A manual edit rewrites the text — the corrector-highlight spans'
@@ -1954,6 +1961,14 @@ public final class AppState {
             )
             #endif
             recordInPlaceEdit(before: editPreEditText, after: edited)
+            // Trigger (b): an E-edit replacing an emitted enrolled term with a
+            // common word is the bootstrap for the biggest measured over-fire
+            // direction (biasing made the ASR emit the term verbatim — no span
+            // exists to undo, so this edit is the only correction surface).
+            #if Concord
+            harvestNegativesFromEdit(before: editPreEditText, after: edited,
+                                     spans: preEditSpans)
+            #endif
         }
         log("in-place edit: \(accept ? "commit+accept" : "save")")
         if accept {
@@ -2128,6 +2143,44 @@ public final class AppState {
                                     embedding: hit.embedding,
                                     aliases: dictionaryAliases(forTerm: span.replacement),
                                     harvestEnabled: cfg.voiceprintHarvestEnabled)
+    }
+
+    /// Trigger (b): harvest negatives from an E-edit that replaced an emitted
+    /// enrolled term with a common word. `spans` MUST be the PRE-remap spans
+    /// (ranges indexing into `before` — RoboRev-7484). Conservative on every
+    /// axis: only ≤3 pure position-wise word replacements qualify (EditDiff),
+    /// the edited occurrence must not itself be a substituted-in span (its
+    /// audio is the heard confusable — trigger (a) covers it via undo), and
+    /// the ordinal consistency guard skips on any count mismatch.
+    private func harvestNegativesFromEdit(before: String, after: String,
+                                          spans: [CorrectionSpan]) {
+        let cfg = Config.load().config
+        guard cfg.voiceprintHarvestEnabled, let vp = voiceprint else { return }
+        guard reviewDiagnostics != nil else { return }
+        guard let replacements = EditDiff.singleWordReplacements(before: before, after: after),
+              !replacements.isEmpty else { return }
+        for r in replacements {
+            let termCore = HarvestSpanLocator.core(r.before)
+            guard !termCore.isEmpty,
+                  let termID = vp.enrolledTermIDs.first(where: { $0.lowercased() == termCore })
+            else { continue }
+            // Occurrences that were substituted IN by the dictionary stage were
+            // not ASR-emitted; their span starts (into `before`) are subtracted
+            // by the ordinal math, and an edit ON one of them returns nil.
+            let subs = spans.filter { HarvestSpanLocator.core($0.replacement) == termCore }
+            guard let matchCount = groupMatchCount(for: r.before) else { continue }
+            guard let ordinal = HarvestSpanLocator.rawOrdinalForEdit(
+                beforeText: before, wordIndex: r.wordIndex, term: r.before,
+                substitutionSpanStarts: subs.map { $0.range.lowerBound },
+                substitutionSpanTotal: subs.count, groupMatchCount: matchCount)
+            else { continue }                              // consistency guard: skip silently
+            guard let hit = harvestEmbedding(word: r.before, rawOrdinal: ordinal) else { continue }
+            vp.harvestNegative(termID: termID,
+                               label: HarvestSpanLocator.core(r.after),
+                               embedding: hit.embedding,
+                               aliases: dictionaryAliases(forTerm: termID),
+                               harvestEnabled: cfg.voiceprintHarvestEnabled)
+        }
     }
     #endif
 
