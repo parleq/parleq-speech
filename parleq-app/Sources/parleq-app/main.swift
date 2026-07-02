@@ -1496,6 +1496,11 @@ struct ParleqApp {
                         // Enrollment-audio persistence: raw WAV clips for future
                         // re-derivation across encoder changes. Set before loadPersisted.
                         coordinator.audioPersistence = EnrollmentAudioStore()
+                        // Harvested-negatives persistence: correction-harvested
+                        // negative-prototype rings (embeddings only, same shared
+                        // device key). Set BEFORE loadPersisted so the rings load
+                        // with the templates.
+                        coordinator.harvestPersistence = EncryptedHarvestStore()
                         // SI-2: the clip-storage kill-switch erase now fires
                         // UNCONDITIONALLY at the top of this MainActor block (7034),
                         // covering every launch path (custom endpoint / load failure),

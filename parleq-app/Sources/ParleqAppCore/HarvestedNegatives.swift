@@ -72,6 +72,34 @@ public enum HarvestPolicy {
     public static let maxEditReplacements = 3
 }
 
+/// Outcome of a `VoiceprintCoordinator.harvestNegative` / `healHarvestedNegative` call.
+/// Every rejection is REPORTED (never a silent no-op) so callers/tests can distinguish
+/// "attached" from the zero-junk skips.
+public enum HarvestOutcome: Equatable, Sendable {
+    case attached(ringCount: Int)
+    case healed(ringCount: Int)
+    case rejected(HarvestRejection)
+}
+
+/// Why a harvest/heal was refused. Zero-junk posture: any ambiguity resolves to a
+/// rejection, never a best-effort attach.
+public enum HarvestRejection: Equatable, Sendable {
+    /// The term has no enrolled voiceprint to attach to.
+    case noTemplate
+    /// The label does not sound like the term (DoubleMetaphone primary mismatch)
+    /// and is neither an alias nor an existing negative label.
+    case phoneticMismatch
+    /// Empty / non-finite / wrong-dimension embedding (would be a silent
+    /// `withNegative` no-op masquerading as success).
+    case unusableEmbedding
+    /// Multi-word or non-alphabetic label (v1 harvests single words only).
+    case multiWordLabel
+    /// The `voiceprintHarvestEnabled` kill-switch is off.
+    case disabled
+    /// Heal requested but no harvested ring exists for (termID, label).
+    case nothingToHeal
+}
+
 /// Persistence seam for the harvested-negatives store (mirrors `VoiceprintPersistence`).
 /// An in-memory conformer is used in tests; `EncryptedHarvestStore` is the app backend.
 public protocol HarvestedNegativePersistence: Sendable {
