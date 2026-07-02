@@ -430,6 +430,14 @@ public final class AppState {
     /// re-runs the refine instead (same instruction, same prior text,
     /// new model).
     private var lastTurnWasRefine: Bool = false
+    /// Whether the most recent refine turn's input (`lastRawTranscript`) was
+    /// the user's SPOKEN words (voice-refine) rather than a canned transform
+    /// instruction (preset chip). Tracked separately from `lastTurnWasRefine`
+    /// — a preset tap also sets `lastTurnWasRefine = true` but stores the
+    /// preset PROMPT — so a re-run can gate the append-only fallback: only a
+    /// spoken refine may append its input; a preset re-run must not append its
+    /// instruction text into the document.
+    private var lastRefineWasSpoken: Bool = false
     /// The prior text the most recent refine turn operated on — what a
     /// model-switch refine re-run feeds as priorText.
     private var lastRefinePriorText: String = ""
@@ -2661,6 +2669,7 @@ public final class AppState {
         currentText = ""
         lastRawTranscript = ""
         lastTurnWasRefine = false
+        lastRefineWasSpoken = false
         lastRefinePriorText = ""
         appliedPreset = nil
         intendedDefaultPreset = nil
@@ -3283,6 +3292,9 @@ public final class AppState {
                 // Task #41: remember the SHAPE of this turn so a model
                 // switch can re-run the same thing with the new model.
                 self?.lastTurnWasRefine = asRefine
+                // This input is the user's SPOKEN words (asrResult.text), so a
+                // refine here is append-only-eligible on re-run.
+                self?.lastRefineWasSpoken = asRefine
                 self?.lastRefinePriorText = asRefine ? priorText : ""
                 // Flywheel: on a fresh, ARMED capture, open a contribution
                 // accumulator for this dictation carrying the exact utterance
@@ -3859,6 +3871,7 @@ public final class AppState {
         currentText = ""
         lastRawTranscript = ""
         lastTurnWasRefine = false
+        lastRefineWasSpoken = false
         lastRefinePriorText = ""
         appliedPreset = nil
         intendedDefaultPreset = nil
@@ -4307,6 +4320,10 @@ public final class AppState {
         // the same SHAPE the user last ran: a refine re-runs as a
         // refine (same instruction, same prior text) on the new model.
         let asRefineRerun = lastTurnWasRefine
+        // Append-only on re-run only when the last refine input was SPOKEN
+        // (voice-refine), never a canned preset prompt (which also sets
+        // lastTurnWasRefine). Captured on the MainActor before the Task.
+        let refineWasSpoken = lastRefineWasSpoken
         let refinePriorText = lastRefinePriorText
         let targetBundleID = pasteTarget?.bundleID
         let recleanConfig = Config.load().config
@@ -4367,7 +4384,7 @@ public final class AppState {
                 // Faithful re-run of a SPOKEN voice-refine (rawTranscript is
                 // the retained ASR transcript), so append-only applies on the
                 // refine re-run; a preset re-run is asRefineRerun == false.
-                appendOnlyEligible: asRefineRerun,
+                appendOnlyEligible: asRefineRerun && refineWasSpoken,
                 targetBundleID: targetBundleID,
                 customDictionary: dictionary,
                 references: effectiveRefs,
@@ -4536,6 +4553,9 @@ public final class AppState {
                 // preset refine on the new model, not a stale prior turn.
                 self.lastRawTranscript = preset.prompt
                 self.lastTurnWasRefine = true
+                // A preset prompt is a CANNED instruction, not the user's
+                // speech — a re-run must NOT append it into the document.
+                self.lastRefineWasSpoken = false
                 self.lastRefinePriorText = current
                 // Bridge 2: record the successful MANUAL preset use (metadata
                 // only — id/name/bundle/timestamp, no dictation text) so the
@@ -4625,6 +4645,10 @@ public final class AppState {
         // Task #41: after a refine turn lastRawTranscript holds the
         // refine INSTRUCTION — re-run the same SHAPE the user last ran.
         let asRefineRerun = lastTurnWasRefine
+        // Append-only on re-run only when the last refine input was SPOKEN
+        // (voice-refine), never a canned preset prompt (which also sets
+        // lastTurnWasRefine). Captured on the MainActor before the Task.
+        let refineWasSpoken = lastRefineWasSpoken
         let refinePriorText = lastRefinePriorText
         let targetBundleID = pasteTarget?.bundleID
         let recleanConfig = Config.load().config
@@ -4673,7 +4697,7 @@ public final class AppState {
                 // Faithful re-run of a SPOKEN voice-refine (rawTranscript is
                 // the retained ASR transcript), so append-only applies on the
                 // refine re-run; a preset re-run is asRefineRerun == false.
-                appendOnlyEligible: asRefineRerun,
+                appendOnlyEligible: asRefineRerun && refineWasSpoken,
                 targetBundleID: targetBundleID,
                 customDictionary: dictionary,
                 references: effectiveRefs,
@@ -4741,6 +4765,7 @@ public final class AppState {
         // The undo replay is a fresh-cleanup shape — a model switch
         // after it must re-clean, not re-refine (task #41).
         lastTurnWasRefine = false
+        lastRefineWasSpoken = false
         lastRefinePriorText = ""
         appliedPreset = nil
         intendedDefaultPreset = nil
