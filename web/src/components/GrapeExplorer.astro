@@ -95,6 +95,28 @@ const howitworks = [
 // howitworks[i] renders at POS[hiwPos[i]] — the refine loop takes the big center orb.
 const hiwPos = [2, 0, 1, 3, 4];
 
+// SPIKE: the three windows a visitor can attach in the interactive Reference
+// Windows demo — each drives its own alternate flow (attach chip, context peek,
+// utterance, and result). `mock` is the mini app-window content shown in the
+// breakout picker; `peek` is the attached-context glimpse in the demo card.
+const rwWindows = [
+  { id: 'calendar', app: 'Calendar', emoji: '📅', chip: 'Calendar — window attached',
+    peek: ['Thu 2:00pm — open', 'Fri — Team sync'],
+    utterance: 'does thursday work for the check in',
+    after: 'Looks like <span class="mk">Thursday at 2pm</span> is open — does that work for the check-in?',
+    mock: '<div class="rw-mk-cal"><div class="rw-mk-row"><b>1pm</b><span class="rw-mk-busy">Standup</span></div><div class="rw-mk-row"><b>2pm</b><span class="rw-mk-free">open</span></div><div class="rw-mk-row"><b>3pm</b><span class="rw-mk-busy">1:1 · Sam</span></div></div>' },
+  { id: 'slack', app: 'Slack', emoji: '💬', chip: 'Slack · #deploys — attached',
+    peek: ['#deploys', '@rob: logs look off after the 4pm deploy?'],
+    utterance: 'reply that i will take a look',
+    after: "I'll take a look at the <span class=\"mk\">post-4pm deploy logs</span> and follow up shortly.",
+    mock: '<div class="rw-mk-slk"><p class="rw-mk-ch"># deploys</p><p class="rw-mk-msg"><b>rob</b>&nbsp; logs look off after the 4pm deploy?</p><p class="rw-mk-msg rw-mk-dim"><b>you</b>&nbsp; typing…</p></div>' },
+  { id: 'notes', app: 'Notes', emoji: '📝', chip: 'Notes · Q3 plan — attached',
+    peek: ['Hiring: 2 eng', 'Pricing: revisit tiers', 'Launch: mid-Aug'],
+    utterance: 'turn my notes into next steps',
+    after: 'Next steps: <span class="mk">hire two engineers, revisit the pricing tiers, and target a mid-August launch.</span>',
+    mock: '<div class="rw-mk-nts"><p class="rw-mk-nt-t">Q3 plan</p><ul><li>Hiring — 2 eng</li><li>Pricing — revisit tiers</li><li>Launch — mid-Aug</li></ul></div>' },
+];
+
 const all = [...cleanup, ...refine];
 
 // No-JS baseline: the default active family + the grape that JS would auto-select on
@@ -336,32 +358,27 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
           <button type="button" class="rw-space" data-rw-space><kbd class="rw-keycap">Space</kbd> attach a window</button>
         </div>
 
-        {/* Stage 1 — pick */}
+        {/* Stage 1 — the breakout picker (rendered as an overlay below) is open; the
+            card behind just shows a quiet "choosing" state. */}
         <div class="rw-stage" data-rwstage="1" hidden>
-          <p class="ba-label">Pick a window</p>
-          <ul class="rw-picker">
-            <li><button type="button" class="rw-win rw-win-go" data-rw-pick="calendar"><span class="rw-win-ic" aria-hidden="true">📅</span><span class="rw-win-name">Calendar</span><span class="rw-win-hint">Parleq reads what's on it</span></button></li>
-            <li><button type="button" class="rw-win rw-win-dim" data-rw-pick="slack"><span class="rw-win-ic" aria-hidden="true">💬</span><span class="rw-win-name">Slack</span></button></li>
-            <li><button type="button" class="rw-win rw-win-dim" data-rw-pick="notes"><span class="rw-win-ic" aria-hidden="true">📝</span><span class="rw-win-name">Notes</span></button></li>
-          </ul>
-          <p class="rw-nudge" data-rw-nudge hidden>Other apps work too — this demo follows Calendar.</p>
+          <p class="rw-listening"><span class="rw-mic-dot" aria-hidden="true"></span> Choosing a window…</p>
         </div>
 
-        {/* Stage 2 — dictate with context */}
+        {/* Stage 2 — dictate with context (chip/peek populated per chosen window) */}
         <div class="rw-stage" data-rwstage="2" hidden>
-          <div class="attach rw-attach"><span class="attach-dot" aria-hidden="true"></span>Calendar — window attached</div>
-          <div class="rw-peek" aria-label="Calendar contents"><span class="rw-peek-row">Thu 2:00pm — open</span><span class="rw-peek-row">Fri — Team sync</span></div>
+          <div class="attach rw-attach"><span class="attach-dot" aria-hidden="true"></span><span data-rw-chip>Calendar — window attached</span></div>
+          <div class="rw-peek" data-rw-peek aria-label="Attached window contents"><span class="rw-peek-row">Thu 2:00pm — open</span><span class="rw-peek-row">Fri — Team sync</span></div>
           <p class="ba-label mt-3">Your dictation</p>
           <p class="ba-before"><span class="rw-utterance" data-rw-utterance></span><span class="rw-caret" data-rw-caret aria-hidden="true"></span></p>
           <button type="button" class="rw-mic" data-rw-mic><span class="rw-mic-dot" aria-hidden="true"></span> Hold to talk</button>
         </div>
 
-        {/* Stage 3 — result */}
+        {/* Stage 3 — result (before/after populated per chosen window) */}
         <div class="rw-stage" data-rwstage="3" hidden>
-          <div class="attach rw-attach"><span class="attach-dot" aria-hidden="true"></span>Calendar — window attached</div>
-          <div class="rw-peek" aria-label="Calendar contents"><span class="rw-peek-row">Thu 2:00pm — open</span><span class="rw-peek-row">Fri — Team sync</span></div>
+          <div class="attach rw-attach"><span class="attach-dot" aria-hidden="true"></span><span data-rw-chip>Calendar — window attached</span></div>
+          <div class="rw-peek" data-rw-peek aria-label="Attached window contents"><span class="rw-peek-row">Thu 2:00pm — open</span><span class="rw-peek-row">Fri — Team sync</span></div>
           <p class="ba-label mt-3">Before</p>
-          <p class="ba-before">does thursday work for the check in</p>
+          <p class="ba-before" data-rw-before>does thursday work for the check in</p>
           <p class="ba-arrow" aria-hidden="true">↓</p>
           <p class="ba-label">After</p>
           <p class="ba-after" data-rw-after set:html={'Looks like <span class="mk">Thursday at 2pm</span> is open — does that work for the check-in?'} />
@@ -373,7 +390,7 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
         </div>
       </div>
 
-      <p class="rw-coach" data-rw-coach aria-live="polite">You're dictating in Mail — tap <b>Space</b> (while holding your hotkey) to attach a window for context.</p>
+      <p class="rw-coach" data-rw-coach aria-live="polite">Give the model context — tap the <b>Space</b> key in the window above.</p>
       <div class="stepper-pager rw-pager" role="group" aria-label="Reference windows walkthrough">
         <button type="button" class="pager-btn pager-prev" data-rw-back>‹ Back</button>
         <span class="pager-mid">
@@ -382,9 +399,31 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
         </span>
         <button type="button" class="pager-btn pager-next" data-rw-next>Next ›</button>
       </div>
+      <p class="rw-footnote">In Parleq you'd hold your hotkey and tap Space mid-dictation. Here, just click the controls.</p>
     </div>
 
     <p class="mt-4 text-xs text-[color:var(--color-text-subtle)]">Lit grapes are the active family — click one to swap the demo.</p>
+  </div>
+
+  {/* SPIKE: the anchored breakout window-picker — pops OVER the explorer (dimmed
+      backdrop, wider than the demo card) with realistic app-window cards. Shown
+      only during the Reference Windows demo's pick stage. */}
+  <div class="rw-picker-overlay" data-rw-overlay hidden>
+    <div class="rw-picker-backdrop" data-rw-cancel aria-hidden="true"></div>
+    <div class="rw-picker-panel" role="dialog" aria-modal="true" aria-label="Choose a window to attach">
+      <p class="rw-picker-title">Choose a window to bring in as context</p>
+      <div class="rw-picker-grid">
+        {rwWindows.map((w) => (
+          <button type="button" class="rw-appwin" data-rw-appwin={w.id}
+                  aria-label={`Attach ${w.app}`}
+                  data-chip={w.chip} data-peek={w.peek.join('|')} data-utterance={w.utterance} data-after={w.after}>
+            <div class="rw-appwin-bar"><span class="rw-appwin-dots" aria-hidden="true"></span><span class="rw-appwin-name">{w.emoji} {w.app}</span></div>
+            <div class="rw-appwin-body" set:html={w.mock} />
+          </button>
+        ))}
+      </div>
+      <button type="button" class="rw-picker-cancel" data-rw-cancel>Cancel · Esc</button>
+    </div>
   </div>
 </div>
 
@@ -770,16 +809,35 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
   .rw-space { margin-top:1.1rem; display:inline-flex; align-items:center; gap:.5rem; border-radius:.6rem; border:1px solid rgba(216,185,251,.28); background:rgba(255,255,255,.05); padding:.5rem .8rem; font-size:.85rem; color:rgba(255,255,255,.85); cursor:pointer; animation: rw-pulse 1.9s ease-in-out infinite; }
   .rw-space:hover { background:rgba(255,255,255,.1); }
   .rw-keycap { border-radius:.35rem; border:1px solid rgba(255,255,255,.28); border-bottom-width:2px; background:rgba(255,255,255,.1); padding:.05rem .5rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:.72rem; color:#fff; }
-  .rw-picker { margin-top:.7rem; display:flex; flex-direction:column; gap:.4rem; }
-  .rw-win { display:flex; align-items:center; gap:.6rem; width:100%; border-radius:.55rem; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.04); padding:.5rem .7rem; text-align:left; color:rgba(255,255,255,.85); font-size:.85rem; cursor:pointer; }
-  .rw-win-ic { font-size:1rem; }
-  .rw-win-name { font-weight:600; }
-  .rw-win-hint { margin-left:auto; font-size:.7rem; color:rgba(255,255,255,.45); }
-  .rw-win-go { border-color: color-mix(in srgb, var(--color-grape-300) 55%, transparent); background: color-mix(in srgb, var(--color-grape-400) 18%, transparent); animation: rw-pulse 1.9s ease-in-out infinite; }
-  .rw-win-go:hover { background: color-mix(in srgb, var(--color-grape-400) 30%, transparent); }
-  .rw-win-dim { opacity:.5; }
-  .rw-win-dim:hover { opacity:.7; }
-  .rw-nudge { margin-top:.6rem; font-size:.72rem; color:#fcd9a3; }
+  .rw-footnote { margin-top:.5rem; text-align:center; font-size:.68rem; color: var(--color-text-subtle); }
+
+  /* Anchored breakout window-picker — pops OVER the whole explorer (both columns),
+     dimmed backdrop, a panel wider than the demo card. Feels like the app surfacing. */
+  .rw-picker-overlay { position:absolute; inset:-1.5rem; z-index:50; display:flex; align-items:center; justify-content:center; padding:1rem; }
+  .rw-picker-backdrop { position:absolute; inset:0; background: color-mix(in srgb, var(--color-grape-950) 42%, transparent); backdrop-filter: blur(2px); }
+  .rw-picker-panel { position:relative; z-index:1; width:100%; max-width:40rem; border-radius:1rem; border:1px solid var(--color-border); background: var(--color-surface); box-shadow: 0 40px 90px -30px rgba(20,7,32,.55); padding:1.4rem; animation: rw-pop .22s cubic-bezier(.22,.72,.2,1.2) both; }
+  .rw-picker-title { text-align:center; font-size:.95rem; font-weight:600; color: var(--color-text); }
+  .rw-picker-grid { margin-top:1rem; display:grid; grid-template-columns: repeat(3, 1fr); gap:.75rem; }
+  .rw-appwin { display:flex; flex-direction:column; overflow:hidden; border-radius:.65rem; border:1px solid var(--color-border); background: var(--color-bg); text-align:left; cursor:pointer; transition: transform .14s ease, box-shadow .14s ease, border-color .14s ease; }
+  .rw-appwin:hover, .rw-appwin:focus-visible { transform: translateY(-3px); border-color: var(--color-grape); box-shadow: 0 16px 30px -18px rgba(67,32,95,.5); outline:none; }
+  .rw-appwin-bar { display:flex; align-items:center; gap:.5rem; border-bottom:1px solid var(--color-border-subtle); background: color-mix(in srgb, var(--color-grape) 4%, var(--color-surface)); padding:.4rem .6rem; }
+  .rw-appwin-dots { position:relative; height:.5rem; width:.5rem; border-radius:9999px; background:#ff5f57; box-shadow:.75rem 0 0 #febc2e, 1.5rem 0 0 #28c840; }
+  .rw-appwin-name { margin-left:1.6rem; font-size:.72rem; font-weight:600; color: var(--color-text-muted); }
+  .rw-appwin-body { min-height:5.5rem; padding:.6rem .7rem; font-size:.68rem; color: var(--color-text-muted); }
+  .rw-mk-cal { display:flex; flex-direction:column; gap:.28rem; }
+  .rw-mk-row { display:flex; justify-content:space-between; gap:.5rem; }
+  .rw-mk-row b { color: var(--color-text-subtle); font-weight:600; }
+  .rw-mk-busy { color: var(--color-text); }
+  .rw-mk-free { color:#047857; font-weight:600; }
+  .rw-mk-slk .rw-mk-ch { font-weight:700; color: var(--color-text); }
+  .rw-mk-slk .rw-mk-msg { margin-top:.3rem; line-height:1.4; }
+  .rw-mk-slk .rw-mk-msg b { color: var(--color-grape); }
+  .rw-mk-dim { opacity:.5; }
+  .rw-mk-nts .rw-mk-nt-t { font-weight:700; color: var(--color-text); }
+  .rw-mk-nts ul { margin:.3rem 0 0; padding-left:.9rem; list-style: disc; line-height:1.55; }
+  .rw-picker-cancel { margin:1rem auto 0; display:block; border-radius:9999px; border:1px solid var(--color-border); background: var(--color-surface); padding:.35rem 1rem; font-size:.78rem; font-weight:600; color: var(--color-text-muted); cursor:pointer; }
+  .rw-picker-cancel:hover { border-color: var(--color-text-muted); color: var(--color-text); }
+  @keyframes rw-pop { from { opacity:0; transform: scale(.94); } to { opacity:1; transform: scale(1); } }
   .rw-peek { margin-top:.5rem; display:flex; flex-direction:column; gap:.15rem; border-left:2px solid color-mix(in srgb, var(--color-grape-300) 45%, transparent); padding-left:.6rem; }
   .rw-peek-row { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:.72rem; color:rgba(233,213,255,.85); }
   .rw-utterance { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
@@ -809,13 +867,16 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
     .demo-card > .flex { flex-wrap: wrap; }
     .ba-before, .ba-after { overflow-wrap: anywhere; }
     .foot-paste, .foot-actions { font-size: .6rem; }
+    .rw-picker-grid { grid-template-columns: 1fr; }
+    .rw-picker-overlay { inset: 0; }
   }
 
   @media (prefers-reduced-motion: reduce) {
     .grape-orb, .g-ic, .g-lb { transition: none; }
     .group-tab-title, .group-tab-copy, .group-tab::after { transition: none; }
     #explorer.is-pulsing .flow-runners path { animation: none; }
-    .rw-space, .rw-win-go, .rw-mic, .rw-mic-dot, .rw-caret { animation: none !important; }
+    .rw-space, .rw-mic, .rw-mic-dot, .rw-caret { animation: none !important; }
+    .rw-picker-panel { animation: none !important; }
   }
 </style>
 
@@ -923,7 +984,8 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
     // advance, so keyboard pager-repeat stays intact); all timers cancel on any
     // stage exit / grape switch; Next auto-completes instantly.
     const rw = root.querySelector('.rw-demo');
-    if (rw) {
+    const overlay = root.querySelector('[data-rw-overlay]');
+    if (rw && overlay) {
       const stages = Array.from(rw.querySelectorAll('.rw-stage'));
       const dots = Array.from(rw.querySelectorAll('.rw-pager .stepper-dot'));
       const cur = rw.querySelector('[data-rw-cur]');
@@ -934,23 +996,27 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
       const micBtn = rw.querySelector('[data-rw-mic]');
       const replayBtn = rw.querySelector('[data-rw-replay]');
       const utteranceEl = rw.querySelector('[data-rw-utterance]');
-      const nudgeEl = rw.querySelector('[data-rw-nudge]');
-      const pickCalendar = rw.querySelector('[data-rw-pick="calendar"]');
+      const chipEls = Array.from(rw.querySelectorAll('[data-rw-chip]'));
+      const peekEls = Array.from(rw.querySelectorAll('[data-rw-peek]'));
+      const beforeEl = rw.querySelector('[data-rw-before]');
+      const afterEl = rw.querySelector('[data-rw-after]');
+      const appwins = Array.from(overlay.querySelectorAll('[data-rw-appwin]'));
+      const cancels = Array.from(overlay.querySelectorAll('[data-rw-cancel]'));
       const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      const UTTERANCE = 'does thursday work for the check in';
       const COACH = [
-        "You're dictating in Mail — tap <b>Space</b> (while holding your hotkey) to attach a window for context.",
-        'Pick the window Parleq should read — try <b>Calendar</b>.',
+        'Give the model context — tap the <b>Space</b> key in the window above.',
+        'Choose a window to bring in — click one, or press Esc to cancel.',
         'Now say your question — <b>hold to talk</b>.',
-        "Parleq read your <b>Calendar</b> to answer accurately. That's Reference Windows.",
+        "Parleq read that window to answer accurately. That's Reference Windows.",
       ];
       let stage = 0, typing = null, recTimer = null;
+      let utterance = 'does thursday work for the check in';
       const cancel = () => {
         if (typing) { clearInterval(typing); typing = null; }
         if (recTimer) { clearTimeout(recTimer); recTimer = null; }
         if (micBtn) micBtn.removeAttribute('data-recording');
       };
-      rwCancel = cancel;
+      rwCancel = () => { cancel(); overlay.hidden = true; };
       const render = (viaGesture) => {
         cancel();
         stages.forEach((s) => { s.hidden = Number(s.dataset.rwstage) !== stage; });
@@ -959,38 +1025,51 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
         if (coach) coach.innerHTML = COACH[stage];
         if (backBtn) backBtn.disabled = stage === 0;
         if (nextBtn) nextBtn.disabled = stage === 3;
-        if (nudgeEl) nudgeEl.hidden = true;
         if (utteranceEl) utteranceEl.textContent = '';
-        if (viaGesture) {
-          const t = stage === 0 ? spaceBtn : stage === 1 ? pickCalendar : stage === 2 ? micBtn : replayBtn;
+        overlay.hidden = stage !== 1;  // the breakout picker is open only at the pick stage
+        if (stage === 1 && appwins[0]) appwins[0].focus({ preventScroll: true });
+        else if (viaGesture) {
+          const t = stage === 0 ? spaceBtn : stage === 2 ? micBtn : replayBtn;
           if (t) t.focus({ preventScroll: true });
         }
         if (stage === 3) pulseFlow();
       };
       const go = (n, viaGesture) => { stage = Math.max(0, Math.min(3, n)); render(viaGesture); };
+      const pickWindow = (btn) => {
+        utterance = btn.getAttribute('data-utterance') || utterance;
+        const chip = btn.getAttribute('data-chip') || '';
+        const peek = (btn.getAttribute('data-peek') || '').split('|');
+        const after = btn.getAttribute('data-after') || '';
+        chipEls.forEach((el) => { el.textContent = chip; });
+        peekEls.forEach((el) => { el.innerHTML = peek.map((r) => '<span class="rw-peek-row"></span>').join(''); Array.from(el.children).forEach((c, i) => { c.textContent = peek[i]; }); });
+        if (beforeEl) beforeEl.textContent = utterance;
+        if (afterEl) afterEl.innerHTML = after;
+        go(2, true);
+      };
       if (spaceBtn) spaceBtn.addEventListener('click', () => go(1, true));
-      rw.querySelectorAll('[data-rw-pick]').forEach((b) => {
-        b.addEventListener('click', () => {
-          if (b.getAttribute('data-rw-pick') === 'calendar') go(2, true);
-          else if (nudgeEl) nudgeEl.hidden = false;
-        });
-      });
+      appwins.forEach((b) => b.addEventListener('click', () => pickWindow(b)));
+      cancels.forEach((b) => b.addEventListener('click', () => go(0, true)));
+      document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !overlay.hidden) go(0, false); });
       const playMic = () => {
         if (stage !== 2) return;
-        if (typing) { cancel(); if (utteranceEl) utteranceEl.textContent = UTTERANCE; go(3, true); return; }
+        if (typing) { cancel(); if (utteranceEl) utteranceEl.textContent = utterance; go(3, true); return; }
         cancel();
-        if (reduce) { if (utteranceEl) utteranceEl.textContent = UTTERANCE; go(3, true); return; }
+        if (reduce) { if (utteranceEl) utteranceEl.textContent = utterance; go(3, true); return; }
         if (micBtn) micBtn.setAttribute('data-recording', 'true');
         let i = 0;
         typing = setInterval(() => {
           i += 1;
-          if (utteranceEl) utteranceEl.textContent = UTTERANCE.slice(0, i);
-          if (i >= UTTERANCE.length) { clearInterval(typing); typing = null; recTimer = setTimeout(() => { recTimer = null; go(3, true); }, 350); }
+          if (utteranceEl) utteranceEl.textContent = utterance.slice(0, i);
+          if (i >= utterance.length) { clearInterval(typing); typing = null; recTimer = setTimeout(() => { recTimer = null; go(3, true); }, 350); }
         }, 34);
       };
       if (micBtn) micBtn.addEventListener('click', playMic);
       if (backBtn) backBtn.addEventListener('click', () => { go(stage - 1, false); if (stage === 0 && nextBtn) nextBtn.focus({ preventScroll: true }); });
-      if (nextBtn) nextBtn.addEventListener('click', () => { go(stage + 1, false); if (stage === 3 && replayBtn) replayBtn.focus({ preventScroll: true }); });
+      if (nextBtn) nextBtn.addEventListener('click', () => {
+        if (stage === 1) { pickWindow(appwins[0]); return; }  // Next from the picker auto-picks the first window
+        go(stage + 1, false);
+        if (stage === 3 && replayBtn) replayBtn.focus({ preventScroll: true });
+      });
       if (replayBtn) replayBtn.addEventListener('click', () => go(0, true));
       stepperResets['hiw-reference'] = () => { stage = 0; render(false); };
       render(false);
