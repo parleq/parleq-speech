@@ -58,15 +58,7 @@
 //                      // Allow local provider on < 12 GB RAM machines
 //                      // despite thrash risk. Default false.
 //                      "allow_unsupported_ram": false
-//                    },
-//                    // Refinement tier (omit when unset). Routes
-//                    // voice-refine, quick chips, and styled (per-app
-//                    // preset) cleanup to a cloud provider — used when
-//                    // cleanup is the on-device Concord tier, which
-//                    // can't perform refine/style ops. Falls back to
-//                    // context_model, then cleanup, when absent:
-//                    "refine": { "provider": "gemini",
-//                                "model": "gemini-2.5-flash" } },
+//                    } },
 //     "aws":       { "region": "us-east-2",
 //                    "profile": "work",
 //                    // Enterprise OIDC federation (omit-when-default):
