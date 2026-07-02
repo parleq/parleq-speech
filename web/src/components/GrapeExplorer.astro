@@ -2,8 +2,7 @@
 // GrapeExplorer — the interactive capability explorer (single realistic grape bunch +
 // group tabs). ALL grapes live in one dark bunch; the active tab's grapes light up with
 // EMBOSSED (debossed) icons + engraved labels and become selectable, while the rest
-// recede as plain dark grapes. Only the selected grape glows. Ported verbatim from the
-// settled prototype (src/pages/prototype.astro) — do not restyle without updating both.
+// recede as plain dark grapes. Only the selected grape glows.
 const icons: Record<string, string> = {
   hash:   '<path d="M9 3 7 21M17 3l-2 18M4 8h16M3 16h16"/>',
   book:   '<path d="M4 5a2 2 0 0 1 2-2h12v16H6a2 2 0 0 0-2 2zM6 17h12"/>',
@@ -496,9 +495,9 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
           <span class="chip chip-on" data-ai-chip>On-device</span>
         </div>
         <div class="ai-seg" role="group" aria-label="Choose the cleanup engine">
-          <button type="button" class="ai-opt is-on" data-ai-opt="local">On-device</button>
-          <button type="button" class="ai-opt" data-ai-opt="cloud">Your cloud</button>
-          <button type="button" class="ai-opt" data-ai-opt="none">None</button>
+          <button type="button" class="ai-opt is-on" data-ai-opt="local" aria-pressed="true">On-device</button>
+          <button type="button" class="ai-opt" data-ai-opt="cloud" aria-pressed="false">Your cloud</button>
+          <button type="button" class="ai-opt" data-ai-opt="none" aria-pressed="false">None</button>
         </div>
         <p class="ba-label mt-4">You said</p>
         <p class="ba-before">um can you send me the q3 deck before the sync uh actually before the standup</p>
@@ -987,6 +986,7 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
   .chip { flex-shrink:0; border-radius:.5rem; padding:.18rem .6rem; font-size:.68rem; font-weight:600; letter-spacing:.02em; }
   .chip-on  { color:#bbf7d0; background: color-mix(in srgb, #34d399 16%, transparent); border:1px solid color-mix(in srgb, #34d399 32%, transparent); }
   .chip-byo { color: rgba(255,255,255,.6); background: rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.14); }
+  .chip-raw { color: rgba(255,255,255,.45); background: rgba(255,255,255,.03); border:1px dashed rgba(255,255,255,.18); }
   .refine-instr { margin-top:.85rem; border-left:2px solid color-mix(in srgb, var(--color-accent) 60%, transparent); padding-left:.7rem; font-size:.8rem; line-height:1.5; color: rgba(255,255,255,.78); }
   .preset-chip { border-radius:9999px; border:1px solid rgba(255,255,255,.15); padding:.18rem .65rem; font-size:.66rem; font-weight:600; color: rgba(255,255,255,.6); }
   .preset-on { color:#fcd9a3; background: color-mix(in srgb, var(--color-accent) 22%, transparent); border-color: color-mix(in srgb, var(--color-accent) 80%, transparent); }
@@ -1156,6 +1156,10 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
     #explorer { display: block; }
     #explorer > .relative { max-width: 100%; }
     .bunch { margin-left: auto; margin-right: auto; }
+    /* The bunch is a fixed 286px box (absolutely-positioned grapes), which overflows
+       the content column on the narrowest phones (≤~334px). zoom shrinks the layout
+       box too (unlike transform), so the page never scrolls horizontally. */
+    @media (max-width: 360px) { .bunch { zoom: 0.86; } }
     .bunch-preview { margin-left: auto; margin-right: auto; text-align: center; max-width: 22rem; }
     .demo-stack { width: 100%; max-width: 100%; margin-top: 2rem; }
     .demo-card { max-width: 100%; }
@@ -1323,7 +1327,7 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
       if (spaceBtn) spaceBtn.addEventListener('click', () => go(1, true));
       appwins.forEach((b) => b.addEventListener('click', () => pickWindow(b)));
       cancels.forEach((b) => b.addEventListener('click', () => go(0, true)));
-      document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !overlay.hidden) go(0, false); });
+      document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !overlay.hidden) go(0, true); });  // viaGesture=true returns focus to the Space affordance
       const playMic = () => {
         if (stage !== 2) return;
         if (typing) { cancel(); if (utteranceEl) utteranceEl.textContent = utterance; go(3, true); return; }
@@ -1343,6 +1347,14 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
       render(false);
     }
 
+    // Shared guard: don't hijack single-key shortcuts (E/R) while the visitor is
+    // typing in a field (input/textarea/contenteditable, incl. the inline edit box).
+    const isTyping = () => {
+      const el = document.activeElement;
+      if (!el) return false;
+      return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable === true;
+    };
+
     // SPIKE: whole-flow spine demo — press→transcribe(on-device)→cleanup(highlight)→paste.
     const wf = root.querySelector('.wf-demo');
     if (wf) {
@@ -1358,6 +1370,7 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
       const rawEl = wf.querySelector('[data-wf-raw]');
       const caretEl = wf.querySelector('[data-wf-caret]');
       const cleanTextEl = wf.querySelector('[data-wf-clean-text]');
+      const cleanTextHTML = cleanTextEl ? cleanTextEl.innerHTML : '';  // pristine markup to restore after inline edits
       const corrBtns = Array.from(wf.querySelectorAll('[data-wf-undo]'));
       const editBtn = wf.querySelector('[data-wf-edit]');
       const wreduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -1418,7 +1431,8 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
           }, 26);
         }, 620);  // brief "transcribing on-device" beat before the raw text lands
       };
-      const showClean = () => { resetCorr(); wgo(2); };
+      const restoreClean = () => { if (cleanTextEl) cleanTextEl.innerHTML = cleanTextHTML; };
+      const showClean = () => { restoreClean(); resetCorr(); wgo(2); };
       const showPaste = () => wgo(3);
       if (talkBtn) talkBtn.addEventListener('click', playTranscribe);
       if (cleanBtn) cleanBtn.addEventListener('click', showClean);
@@ -1427,11 +1441,11 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
       if (wreplay) wreplay.addEventListener('click', () => wgo(0));
       // "E" edits while the cleanup stage is on-screen (not while already typing in it).
       document.addEventListener('keydown', (e) => {
-        if ((e.key === 'e' || e.key === 'E') && wstage === 2 && !wf.hidden && cleanTextEl && cleanTextEl.contentEditable !== 'true') {
+        if ((e.key === 'e' || e.key === 'E') && wstage === 2 && !wf.hidden && !isTyping()) {
           e.preventDefault(); startEdit();
         }
       });
-      const wreset = () => { wcancel(); stopEdit(); resetCorr(); wstage = 0; wrender(); };
+      const wreset = () => { wcancel(); stopEdit(); restoreClean(); resetCorr(); wstage = 0; wrender(); };
       wfCancel = () => { wcancel(); stopEdit(); };
       stepperResets['hiw-flow'] = wreset;
       wrender();
@@ -1471,7 +1485,7 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
       if (rreplay) rreplay.addEventListener('click', () => rgo(0));
       // "R" recovers while the demo's lost stage is on-screen.
       document.addEventListener('keydown', (e) => {
-        if ((e.key === 'r' || e.key === 'R') && rstage === 0 && !rc.hidden) { e.preventDefault(); recover(); }
+        if ((e.key === 'r' || e.key === 'R') && rstage === 0 && !rc.hidden && !isTyping()) { e.preventDefault(); recover(); }
       });
       rcCancel = () => rcancel();
       stepperResets['hiw-recover'] = () => { rcancel(); rstage = 0; rrender(); };
@@ -1490,11 +1504,11 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
       const AI = {
         local: { chip: ['On-device', 'chip-on'], label: 'Cleaned · on-device', result: 'Can you send me the <span class="mk">Q3</span> deck before the sync? Actually, before the standup.', where: 'Runs on your Mac — audio and text never leave the device.', coach: 'On-device: fillers gone, capitalized, punctuated — fast and fully private.' },
         cloud: { chip: ['Your provider', 'chip-byo'], label: 'Cleaned · your cloud', result: 'Could you send me the <span class="mk">Q3</span> deck <span class="mk">before the standup</span>?', where: 'Uses the AI you bring — your own Gemini, OpenAI, Bedrock, Vertex, or Azure key.', coach: 'Your cloud: a larger model resolves the self-correction — “actually, before the standup” wins.' },
-        none: { chip: ['Raw', 'chip-byo'], label: 'Raw · no cleanup', result: 'um can you send me the q3 deck before the sync uh actually before the standup', where: 'Skip cleanup entirely — paste exactly what you said.', coach: 'None: no cleanup at all — your raw words, pasted exactly as spoken.' },
+        none: { chip: ['Raw', 'chip-raw'], label: 'Raw · no cleanup', result: 'um can you send me the q3 deck before the sync uh actually before the standup', where: 'Skip cleanup entirely — paste exactly what you said.', coach: 'None: no cleanup at all — your raw words, pasted exactly as spoken.' },
       };
       const pickAI = (key) => {
         const d = AI[key]; if (!d) return;
-        aiOpts.forEach((b) => b.classList.toggle('is-on', b.getAttribute('data-ai-opt') === key));
+        aiOpts.forEach((b) => { const on = b.getAttribute('data-ai-opt') === key; b.classList.toggle('is-on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
         if (aiChip) { aiChip.textContent = d.chip[0]; aiChip.className = 'chip ' + d.chip[1]; }
         if (aiResLabel) aiResLabel.textContent = d.label;
         if (aiResult) aiResult.innerHTML = d.result;
