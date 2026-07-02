@@ -750,6 +750,15 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
   .demo-stack:has(.stepper-wrap:not([hidden])) .demo-backplate,
   .demo-stack:has(.rw-demo:not([hidden])) .demo-backplate { display: none; }
 
+  /* BUGFIX: walkthrough cards hide the backplate, so the demo-card's transparent
+     left strip (a stacked-card flourish that normally reveals the backplate) would
+     instead expose the flow-line SVG. Give walkthrough cards a SOLID background. */
+  .demo-stepper, .rw-card { background: #1c2128; }
+  /* BUGFIX: and hide the bunch→card flow lines on the How-it-works tab entirely —
+     with the walkthrough cards' varying height they poked out below/around the card.
+     The interactive demos are their own focus and don't need the converging lines. */
+  #explorer[data-tab="howitworks"] .flow-lines { display: none; }
+
   /* SPIKE: interactive Reference Windows demo. The dark .rw-card is the "example";
      the coachmark + pager sit below it on the light section bg. */
   .rw-card { min-height: 14rem; }
