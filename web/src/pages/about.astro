@@ -126,8 +126,16 @@ const base = `${import.meta.env.BASE_URL}`.replace(/\/$/, '');
       text-underline-offset: 4px;
     }
     .about a:hover { text-decoration: underline; }
-    /* Keep the Speek link's bespoke muted underline treatment. */
-    .about .about-body a[href*="Speek"], .about a[href*="jstruzik"] { font-weight: 500; }
+    /* Speek is a humble nod to another dev's project — keep it understated (muted dark
+       text, tight underline), not a grape accent link like the rest. Higher specificity
+       (0,2,1) than `.about a` (0,1,1) so it actually wins. */
+    .about a[href*="jstruzik"] {
+      color: var(--color-text);
+      font-weight: 500;
+      text-decoration-color: color-mix(in srgb, var(--color-text-muted) 70%, transparent);
+      text-underline-offset: 2px;
+    }
+    .about a[href*="jstruzik"]:hover { text-decoration-color: var(--color-text); }
 
     .hero-rule {
       width: 3.5rem;
