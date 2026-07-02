@@ -807,7 +807,10 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
   /* ACTIVE family: stamped content visible, selectable */
   .grape[data-active="true"] { cursor: pointer; }
   .grape[data-active="true"] .g-ic, .grape[data-active="true"] .g-lb { opacity: 1; }
-  .grape[data-id="hiw-reference"][data-active="true"] { z-index: 18 !important; }
+  /* The grape in the receded "shadow" slot sits behind the center orb; when its
+     family is active, lift it forward so it's clickable (e.g. Per-app on Refine).
+     Blanks never go active, so this never lifts a filler orb. */
+  .grape[data-tone="shadow"][data-active="true"] { z-index: 18 !important; }
   /* BLANK filler orbs (how-it-works): complete the cluster shape, never interactive.
      Styled like the receded inactive-family grapes so the silhouette matches. */
   .grape-blank { cursor: default; pointer-events: none; }
