@@ -596,8 +596,11 @@ public struct Config: Sendable {
 
     /// Resolve the cleanup behavior for a paste target. Resolution order:
     /// user override (`appBehaviors`) → curated default mode
-    /// (`CuratedAppDefaults`) → `.polished` (today's default). A `nil`/empty
-    /// bundle resolves to `.polished`.
+    /// (`CuratedAppDefaults`) → `cleanupDefaultLevel` (the global default). A
+    /// `nil`/empty bundle resolves to `cleanupDefaultLevel`. Exception: when
+    /// cleanup is globally off ("none" → `cleanupDefaultLevel == .raw`),
+    /// curated defaults are skipped so an opted-out user keeps Raw everywhere;
+    /// only an explicit `appBehaviors` override lifts an app out of Raw.
     ///
     /// Curated *suggested tones* are intentionally NOT applied here — this
     /// returns only the user's explicit preset (which can only come from an
@@ -2865,18 +2868,15 @@ extension Config {
 // MARK: - Cleanup provider/level reframe (two-layer model)
 
 extension Config {
-    /// The generative (instruction-following LLM) providers that can power the
-    /// "Polished" tier. Excludes the on-device deterministic Concord tier
-    /// ("concord") and the cleanup-off sentinel ("none"): in the two-layer
-    /// model those two legacy `llm.provider` values are LEVEL states, not
-    /// Polished providers.
-    public static let generativeProviders: Set<String> =
-        ["gemini", "vertex", "bedrock", "bedrock-bearer", "azure", "openai", "local"]
-
     /// True iff `provider` is a generative provider that can serve as the
-    /// Polished tier. Mirrors `providerCanRefine` (refine == Polished now).
+    /// Polished tier. Open-world by design: anything that is not the on-device
+    /// deterministic Concord tier ("concord") or the cleanup-off sentinel
+    /// ("none") — and is non-empty — is a Polished provider. This matches
+    /// `providerCanRefine` by construction (refine == Polished now), so a new
+    /// cloud provider added elsewhere in the app needs no change here and can
+    /// never silently derive to "no Polished provider".
     public static func isGenerativeProvider(_ provider: String) -> Bool {
-        generativeProviders.contains(provider)
+        !provider.isEmpty && provider != "concord" && provider != "none"
     }
 
     /// The configured Polished provider, or `nil` when cleanup is the

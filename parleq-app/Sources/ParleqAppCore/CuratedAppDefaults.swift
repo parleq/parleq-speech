@@ -13,7 +13,9 @@ public enum SuggestedTone: Equatable, Sendable {
 /// design spec's "Curated default map" appendix. These live in code (not
 /// config) so the feature demonstrates itself out of the box; `Config`
 /// stores only user *overrides*. Resolution order is enforced by
-/// `Config.behaviorForApp`: user override → curated default mode → Polished.
+/// `Config.behaviorForApp`: user override → curated default mode →
+/// `cleanupDefaultLevel`. When cleanup is globally off ("none" provider),
+/// curated defaults are skipped entirely and every unmapped app is Raw.
 ///
 /// `mode` is auto-applied; `suggestedTone` is only a one-tap suggestion.
 ///
