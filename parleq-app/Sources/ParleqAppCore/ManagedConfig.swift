@@ -131,6 +131,11 @@ public enum ManagedConfig {
         //   clip storage OFF, not on).
         "voiceEnrollmentEnabled",
         "voiceprintClipStorageEnabled",
+        // voiceprintHarvestEnabled: kill-switch for correction-time negative
+        //   auto-harvest (fail-CLOSED — same resolver + truth table as the
+        //   clip-storage kill-switch; a malformed forced value turns
+        //   harvesting OFF, not on).
+        "voiceprintHarvestEnabled",
     ]
 
     /// Subset of `allKeys` whose effective value is an Int.

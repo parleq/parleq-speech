@@ -510,17 +510,18 @@ final class ManagedConfigTests: XCTestCase {
 
     // MARK: - 13. ManagedConfig.allKeys — single source of truth
 
-    func test_allKeys_count_is_fortynine() {
+    func test_allKeys_count_is_fifty() {
         // Phase 1 (8) + Phase 2 (8) + Phase 3 (2) + Phase 4 (3)
         // + Phase 7 (9 incl. vertexAuthMode) + Phase 8 (2 transcript-history)
         // + Phase 9 (3 learn-from-corrections) + transform-presets (1)
         // + Enterprise OIDC federation (9 incl. redirect_uri + extra_auth_params)
         // + Refine tier (2: refineProvider, refineModel)
-        // + Phase 10 (2: voiceEnrollmentEnabled, voiceprintClipStorageEnabled) = 49.
+        // + Phase 10 (2: voiceEnrollmentEnabled, voiceprintClipStorageEnabled)
+        // + negative-harvest kill-switch (1: voiceprintHarvestEnabled) = 50.
         // If this fails, a key was added or removed — update the docs table
         // (web managed-configuration page) and this count together.
-        XCTAssertEqual(ManagedConfig.allKeys.count, 49,
-                       "ManagedConfig.allKeys must contain exactly 49 managed-eligible keys")
+        XCTAssertEqual(ManagedConfig.allKeys.count, 50,
+                       "ManagedConfig.allKeys must contain exactly 50 managed-eligible keys")
     }
 
     func test_allKeys_contains_transformPresetsEnabled() {

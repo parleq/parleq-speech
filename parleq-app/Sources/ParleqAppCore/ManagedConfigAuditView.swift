@@ -148,6 +148,19 @@ private func resolveAuditRow(key: String, config: Config, defaults: Config) -> (
         }
         let source: AuditSource = isManaged ? .managed : (config.voiceprintClipStorageEnabled != defaults.voiceprintClipStorageEnabled ? .user : .default)
         return (display, source)
+    case "voiceprintHarvestEnabled":
+        // Correction-time negative-harvest kill-switch. Default on (true).
+        // Fails CLOSED like the clip-storage key — a present-but-malformed
+        // forced value disables harvesting. Annotate managed-and-off so an
+        // IT admin sees the fail-closed policy in effect.
+        let display: String
+        if isManaged && !config.voiceprintHarvestEnabled {
+            display = "false (fail-closed: correction-time voiceprint refinement disabled by MDM)"
+        } else {
+            display = config.voiceprintHarvestEnabled ? "true" : "false"
+        }
+        let source: AuditSource = isManaged ? .managed : (config.voiceprintHarvestEnabled != defaults.voiceprintHarvestEnabled ? .user : .default)
+        return (display, source)
     case "autoUpdateEnabled":
         // autoUpdateEnabled is Sparkle-side only — read managed value directly since
         // it isn't mirrored into Config fields.
