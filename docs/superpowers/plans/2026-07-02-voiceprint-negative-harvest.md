@@ -180,10 +180,16 @@
       // withNegative pools the centroid internally — pass prototype + ring raw material.
       let material = (ring.enrollmentPrototype.map { [$0] } ?? []) + ring.embeddings
       // withNegative writes under the lowercase `key`; if enrollment had stored the same
-      // confusable under a differently-cased key, strip that stale duplicate first (rebuild
-      // via VoiceprintTemplate.init dropping the non-`key` casing) so the merged lowercase
-      // negative is authoritative and no shadow prototype survives. (RoboRev-7484 Low.)
-      let updated = template.withNegative(label: key, embeddings: material)
+      // confusable under a DIFFERENTLY-cased key (e.g. "Cloud"), that stale entry survives as a
+      // shadow negative — the gate would then see the enrollment prototype twice and skew the
+      // contrastive threshold. Strip any non-`key` casing of the same label BEFORE re-writing.
+      // (RoboRev-7484 / 7488 Low.)
+      let cleaned = template.negatives.filter { $0.key == key || $0.key.lowercased() != key }
+      let base = cleaned.count == template.negatives.count ? template
+          : VoiceprintTemplate(termID: template.termID, voiceprint: template.voiceprint,
+                               negatives: cleaned, dim: template.dim,
+                               lowQuality: template.lowQuality, modelVersion: template.modelVersion)
+      let updated = base.withNegative(label: key, embeddings: material)
       commit(updated)                                    // upsert + persist + gate re-install
       try? harvestPersistence?.save(harvested)
       FileHandle.standardError.write(
