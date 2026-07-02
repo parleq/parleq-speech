@@ -16,8 +16,17 @@
 //     "audio":     { "continue_other_audio": true },
 //     "asr":       { "mode": "default" },
 //     "llm":       { "mode": "default",
+//                    // CLEANUP config. Derives cleanupType: "none"→Raw,
+//                    // "concord"→Instant (on-device), generative→Polished.
 //                    "provider": "gemini",
 //                    "model": "gemini-2.5-flash",
+//                    // GLOBAL refinement TYPE: "raw"|"instant"|"polished".
+//                    "refinement": "polished",
+//                    // Refinement's Polished provider (used when refinement
+//                    // == "polished" and cleanup isn't itself that provider).
+//                    // With llm.provider (if generative) it forms the ONE
+//                    // shared Polished provider (Config.polishedProvider).
+//                    "refine": { "provider": "vertex", "model": "…" },
 //                    // Advanced request tuning (#55) — config-file
 //                    // only, no Settings UI, omit-when-default. All
 //                    // values clamped on load; restart required:
