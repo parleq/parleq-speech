@@ -88,7 +88,7 @@ const bunch = [
 // those tabs show for the inactive family). `interactive` grapes render a bespoke
 // panel; `steps` grapes render a stepper; blanks are inert cluster filler.
 const howitworks = [
-  { id: 'hiw-flow', icon: 'route', label: 'The flow', title: 'The whole flow',
+  { id: 'hiw-flow', icon: 'route', label: 'The flow', title: 'The whole flow', interactive: true,
     desc: 'Press, speak, paste clean — the core loop, end to end.' },
   { id: 'hiw-reference', icon: 'window', label: 'Reference', title: 'Reference windows', interactive: true,
     desc: 'Point at a window so the model has your context.' },
@@ -129,6 +129,14 @@ const rwWindows = [
 ];
 
 const all = [...cleanup, ...refine];
+
+// Whole-flow spine demo content. Server-rendered (not built at runtime) so the
+// component-scoped `.mk` highlight + `.wf-corr` chip styles actually apply — Astro
+// only attaches scope hashes to elements it renders, not to innerHTML set in JS.
+const wfRaw = 'so we shipped the update to kiwi and it was eight point nine million rows';
+const wfClean = 'So we shipped the update to <span class="mk" data-corr="0" data-fixed="Keavi" data-raw="kiwi">Keavi</span> — <span class="mk" data-corr="1" data-fixed="8.9 million" data-raw="eight point nine million">8.9 million</span> rows.';
+const wfFinal = 'So we shipped the update to <span class="mk">Keavi</span> — <span class="mk">8.9 million</span> rows.';
+const wfCorr = [{ n: '1', label: 'Keavi' }, { n: '2', label: '8.9 million' }];
 
 // No-JS baseline: the default active family + the grape that JS would auto-select on
 // load (prefers the "center"-toned grape of that family). Server-rendered so the
@@ -416,6 +424,66 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
         <span class="pager-status">Step <b class="pager-cur" data-rw-cur>1</b> of 4</span>
       </div>
       <p class="rw-footnote">In Parleq you'd hold your hotkey and tap Space mid-dictation. Here, just click the controls in the window.</p>
+    </div>
+
+    {/* SPIKE: INTERACTIVE whole-flow spine (data-panel="hiw-flow"). Press→speak→
+        transcribe on-device→cleanup with highlighted corrections (undo a number, or
+        E to edit)→paste where you land. A 4-stage state machine the visitor drives. */}
+    <div data-panel="hiw-flow" class="wf-demo" data-rawtext={wfRaw} hidden>
+      <div class="demo-card rw-card">
+        <div class="flex items-center justify-between gap-3">
+          <div class="flex items-center gap-2.5">
+            <span class="demo-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4" set:html={icons['route']} /></span>
+            <h3 class="text-[15px] font-semibold text-white">The whole flow</h3>
+          </div>
+          <span class="chip chip-on" data-wf-engine>On-device</span>
+        </div>
+
+        {/* S0 — speak */}
+        <div class="rw-stage" data-wfstage="0">
+          <p class="rw-listening"><span class="rw-mic-dot" aria-hidden="true"></span> Ready in Mail…</p>
+          <button type="button" class="rw-mic" data-wf-talk><span class="rw-mic-dot" aria-hidden="true"></span> Tap to talk</button>
+        </div>
+
+        {/* S1 — transcribe on-device */}
+        <div class="rw-stage" data-wfstage="1" hidden>
+          <p class="wf-status" data-wf-status><span class="rw-mic-dot" aria-hidden="true"></span> Transcribing on your Mac…</p>
+          <p class="ba-label mt-3">Raw</p>
+          <p class="ba-before"><span data-wf-raw></span><span class="rw-caret" data-wf-caret aria-hidden="true"></span></p>
+          <button type="button" class="rw-mic" data-wf-clean hidden>Clean it up ▸</button>
+        </div>
+
+        {/* S2 — cleanup + highlighted corrections (server-rendered so scoped styles apply) */}
+        <div class="rw-stage" data-wfstage="2" hidden>
+          <p class="ba-label mt-3">Cleaned</p>
+          <p class="ba-after" data-wf-clean-text set:html={wfClean}></p>
+          <div class="wf-corrections">
+            {wfCorr.map((c, i) => (
+              <button type="button" class="wf-corr" data-wf-undo={i} data-off="false"><b>{c.n}</b><span>{c.label}</span></button>
+            ))}
+          </div>
+          <p class="wf-hint">Click a number to undo a correction, or <button type="button" class="wf-kbd" data-wf-edit><kbd class="rw-keycap">E</kbd> edit</button>.</p>
+          <button type="button" class="rw-mic" data-wf-paste>Paste ▸</button>
+        </div>
+
+        {/* S3 — pasted where you land */}
+        <div class="rw-stage" data-wfstage="3" hidden>
+          <p class="ba-label mt-3">Pasted</p>
+          <p class="ba-after" data-wf-final set:html={wfFinal}></p>
+          <div class="demo-foot">
+            <span class="foot-paste">Pasted to Mail</span>
+            <span class="foot-actions"><span>Copy</span><span>Cancel</span><b aria-hidden="true">Accept</b></span>
+          </div>
+          <button type="button" class="rw-replay" data-wf-replay>↺ Replay</button>
+        </div>
+      </div>
+
+      <p class="rw-coach" data-wf-coach aria-live="polite">Hold your hotkey and speak — here, tap to talk.</p>
+      <div class="rw-steps" role="group" aria-label="Whole flow walkthrough progress">
+        <span class="pager-dots" aria-hidden="true"><span class="stepper-dot"></span><span class="stepper-dot"></span><span class="stepper-dot"></span><span class="stepper-dot"></span></span>
+        <span class="pager-status">Step <b class="pager-cur" data-wf-cur>1</b> of 4</span>
+      </div>
+      <p class="rw-footnote">In Parleq this is one press-speak-release. Here, tap the controls to step through.</p>
     </div>
 
   </div>
@@ -771,7 +839,10 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
   .ba-before { margin-top:.25rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:.82rem; line-height:1.5; color: rgba(255,255,255,.55); }
   .ba-arrow { margin:.4rem 0; font-size:.8rem; color: rgba(255,255,255,.3); }
   .ba-after { margin-top:.25rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:.82rem; line-height:1.5; color:#f1f5f9; }
-  .ba-after .mk { color:#e9d5ff; background: color-mix(in srgb, var(--color-grape-400) 45%, transparent); border-radius:3px; padding:0 .2em; font-weight:600; }
+  /* `:global(.mk)` — the highlighted tokens live inside set:html / runtime-injected
+     content, which Astro does NOT stamp with the scope hash; a plain scoped `.mk`
+     selector would never match them. The ancestor `.ba-after` is still scoped. */
+  .ba-after :global(.mk) { color:#e9d5ff; background: color-mix(in srgb, var(--color-grape-400) 45%, transparent); border-radius:3px; padding:0 .2em; font-weight:600; }
   .attach { margin-top:.85rem; display:inline-flex; align-items:center; gap:.4rem; border-radius:.45rem; border:1px solid color-mix(in srgb, var(--color-accent) 40%, transparent); background: color-mix(in srgb, var(--color-accent) 10%, transparent); padding:.25rem .6rem; font-size:.7rem; font-weight:500; color:#fcd9a3; }
   .attach-dot { height:.4rem; width:.4rem; border-radius:9999px; background: var(--color-accent); }
   .demo-foot { margin-top:1.1rem; display:flex; align-items:center; justify-content:space-between; gap:.75rem; border-top:1px solid rgba(255,255,255,.1); padding-top:.8rem; }
@@ -808,7 +879,8 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
   /* When a walkthrough (stepper OR the interactive RW demo) is showing, drop the
      dark backplate so the pager/coachmark read on the light section bg. */
   .demo-stack:has(.stepper-wrap:not([hidden])) .demo-backplate,
-  .demo-stack:has(.rw-demo:not([hidden])) .demo-backplate { display: none; }
+  .demo-stack:has(.rw-demo:not([hidden])) .demo-backplate,
+  .demo-stack:has(.wf-demo:not([hidden])) .demo-backplate { display: none; }
 
   /* BUGFIX: walkthrough cards hide the backplate, so the demo-card's transparent
      left strip (a stacked-card flourish that normally reveals the backplate) would
@@ -877,6 +949,20 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
     }
   }
   .rw-steps { margin-top:1rem; display:flex; align-items:center; justify-content:center; gap:.6rem; }
+
+  /* SPIKE: whole-flow spine demo — reuses .rw-card / .rw-stage / .rw-mic / .ba-*. */
+  .wf-status { display:flex; align-items:center; gap:.5rem; font-size:.82rem; color: rgba(255,255,255,.6); }
+  .wf-corrections { margin-top:.7rem; display:flex; flex-wrap:wrap; gap:.45rem; }
+  .wf-corr { display:inline-flex; align-items:center; gap:.4rem; border-radius:9999px; border:1px solid color-mix(in srgb, var(--color-grape-300) 40%, transparent); background: color-mix(in srgb, var(--color-grape-400) 16%, transparent); padding:.2rem .65rem .2rem .28rem; font-size:.72rem; color: var(--color-grape-100); cursor:pointer; transition: opacity .14s ease, border-color .14s ease; }
+  .wf-corr b { display:inline-flex; align-items:center; justify-content:center; height:1.2rem; width:1.2rem; border-radius:9999px; background: color-mix(in srgb, var(--color-grape-400) 48%, transparent); font-size:.66rem; font-weight:700; color:#fff; }
+  .wf-corr:hover { border-color: var(--color-grape-300); }
+  .wf-corr[data-off="true"] { opacity:.5; }
+  .wf-corr[data-off="true"] span, .wf-corr[data-off="true"] { text-decoration: line-through; text-decoration-color: rgba(255,255,255,.4); }
+  .ba-after :global(.mk.wf-off) { color: rgba(255,255,255,.55); background: none; text-decoration: line-through; text-decoration-color: rgba(255,255,255,.35); font-weight:400; }
+  .wf-hint { margin-top:.75rem; font-size:.72rem; color: rgba(255,255,255,.5); }
+  .wf-kbd { display:inline-flex; align-items:center; gap:.3rem; border:none; background:none; padding:0; font:inherit; color: rgba(255,255,255,.75); cursor:pointer; }
+  .wf-kbd:hover { color:#fff; }
+  .ba-after.wf-editing { outline:1px solid color-mix(in srgb, var(--color-accent) 60%, transparent); border-radius:.4rem; padding:.3rem .45rem; background: rgba(255,255,255,.03); }
   .rw-utterance { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
   .rw-caret { display:inline-block; width:2px; height:1em; margin-left:1px; vertical-align:text-bottom; background:rgba(255,255,255,.6); animation: rw-blink 1s step-end infinite; }
   .rw-mic { margin-top:1.1rem; display:inline-flex; align-items:center; gap:.5rem; border-radius:9999px; border:1px solid color-mix(in srgb, var(--color-accent) 70%, transparent); background: var(--color-accent-hover); padding:.5rem .9rem; font-size:.85rem; font-weight:600; color:#fff; cursor:pointer; animation: rw-pulse 1.9s ease-in-out infinite; }
@@ -927,6 +1013,7 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
     const preview = root.querySelector('[data-preview]');
     const stepperResets = {};  // SPIKE: panelId -> reset-to-step-1 fn (populated below)
     let rwCancel = () => {};   // SPIKE: cancels the RW demo's in-flight animation (set below)
+    let wfCancel = () => {};   // SPIKE: cancels the whole-flow demo's in-flight animation (set below)
 
     const showPreview = (g) => { if (preview) preview.innerHTML = '<b>' + g.dataset.name + '</b> — ' + g.dataset.desc; };
     const pulseFlow = () => {
@@ -936,6 +1023,7 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
     };
     const selectGrape = (g) => {
       rwCancel();  // SPIKE: stop any RW-demo animation when the selection changes
+      wfCancel();  // SPIKE: stop any whole-flow-demo animation when the selection changes
       grapes.forEach((x) => {
         const sel = x === g;
         x.setAttribute('data-selected', sel ? 'true' : 'false');
@@ -1098,6 +1186,100 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
       if (replayBtn) replayBtn.addEventListener('click', () => go(0, true));
       stepperResets['hiw-reference'] = () => { stage = 0; render(false); };
       render(false);
+    }
+
+    // SPIKE: whole-flow spine demo — press→transcribe(on-device)→cleanup(highlight)→paste.
+    const wf = root.querySelector('.wf-demo');
+    if (wf) {
+      const wstages = Array.from(wf.querySelectorAll('.rw-stage'));
+      const wdots = Array.from(wf.querySelectorAll('.rw-steps .stepper-dot'));
+      const wcur = wf.querySelector('[data-wf-cur]');
+      const wcoach = wf.querySelector('[data-wf-coach]');
+      const wengine = wf.querySelector('[data-wf-engine]');
+      const talkBtn = wf.querySelector('[data-wf-talk]');
+      const cleanBtn = wf.querySelector('[data-wf-clean]');
+      const pasteBtn = wf.querySelector('[data-wf-paste]');
+      const wreplay = wf.querySelector('[data-wf-replay]');
+      const rawEl = wf.querySelector('[data-wf-raw]');
+      const caretEl = wf.querySelector('[data-wf-caret]');
+      const cleanTextEl = wf.querySelector('[data-wf-clean-text]');
+      const corrBtns = Array.from(wf.querySelectorAll('[data-wf-undo]'));
+      const editBtn = wf.querySelector('[data-wf-edit]');
+      const wreduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const RAW = wf.dataset.rawtext || '';
+      const WCOACH = [
+        'Hold your hotkey and speak — here, tap to talk.',
+        'Parakeet transcribes on your Mac — your audio never leaves.',
+        'Cleanup fixes it; corrections are highlighted. Undo any, or edit.',
+        'Pasted into the app you were in — captured when you pressed the hotkey.',
+      ];
+      let wstage = 0, wtimer = null, wtype = null;
+      const wcancel = () => { if (wtimer) { clearTimeout(wtimer); wtimer = null; } if (wtype) { clearInterval(wtype); wtype = null; } };
+      const setEngine = () => {
+        if (!wengine) return;
+        const cloud = wstage === 2;
+        wengine.textContent = cloud ? 'Your AI' : 'On-device';
+        wengine.className = 'chip ' + (cloud ? 'chip-byo' : 'chip-on');
+      };
+      const setCorr = (b, off) => {
+        const span = cleanTextEl && cleanTextEl.querySelector('[data-corr="' + b.getAttribute('data-wf-undo') + '"]');
+        if (span) { span.textContent = off ? span.dataset.raw : span.dataset.fixed; span.classList.toggle('wf-off', off); }
+        b.setAttribute('data-off', off ? 'true' : 'false');
+      };
+      const resetCorr = () => corrBtns.forEach((b) => setCorr(b, false));
+      corrBtns.forEach((b) => b.addEventListener('click', () => setCorr(b, b.getAttribute('data-off') !== 'true')));
+      const stopEdit = () => { if (cleanTextEl) { cleanTextEl.contentEditable = 'false'; cleanTextEl.classList.remove('wf-editing'); } };
+      const startEdit = () => {
+        if (wstage !== 2 || !cleanTextEl) return;
+        cleanTextEl.contentEditable = 'true';
+        cleanTextEl.classList.add('wf-editing');
+        cleanTextEl.focus();
+      };
+      const wrender = () => {
+        wcancel();
+        wstages.forEach((s) => { s.hidden = Number(s.dataset.wfstage) !== wstage; });
+        wdots.forEach((d, i) => d.setAttribute('data-on', i === wstage ? 'true' : 'false'));
+        if (wcur) wcur.textContent = String(wstage + 1);
+        if (wcoach) wcoach.textContent = WCOACH[wstage];
+        setEngine();
+        if (cleanBtn) cleanBtn.hidden = true;
+        if (rawEl && wstage < 1) rawEl.textContent = '';
+        if (caretEl) caretEl.style.display = wstage === 1 ? '' : 'none';
+      };
+      const wgo = (n) => { stopEdit(); wstage = Math.max(0, Math.min(3, n)); wrender(); };
+      const playTranscribe = () => {
+        wgo(1);
+        const reveal = () => { if (cleanBtn) cleanBtn.hidden = false; if (caretEl) caretEl.style.display = 'none'; };
+        if (!rawEl) { reveal(); return; }
+        if (wreduce) { rawEl.textContent = RAW; reveal(); return; }
+        rawEl.textContent = '';
+        wtimer = setTimeout(() => {
+          wtimer = null;
+          let i = 0;
+          wtype = setInterval(() => {
+            i += 1;
+            rawEl.textContent = RAW.slice(0, i);
+            if (i >= RAW.length) { clearInterval(wtype); wtype = null; reveal(); }
+          }, 26);
+        }, 620);  // brief "transcribing on-device" beat before the raw text lands
+      };
+      const showClean = () => { resetCorr(); wgo(2); };
+      const showPaste = () => wgo(3);
+      if (talkBtn) talkBtn.addEventListener('click', playTranscribe);
+      if (cleanBtn) cleanBtn.addEventListener('click', showClean);
+      if (pasteBtn) pasteBtn.addEventListener('click', showPaste);
+      if (editBtn) editBtn.addEventListener('click', startEdit);
+      if (wreplay) wreplay.addEventListener('click', () => wgo(0));
+      // "E" edits while the cleanup stage is on-screen (not while already typing in it).
+      document.addEventListener('keydown', (e) => {
+        if ((e.key === 'e' || e.key === 'E') && wstage === 2 && !wf.hidden && cleanTextEl && cleanTextEl.contentEditable !== 'true') {
+          e.preventDefault(); startEdit();
+        }
+      });
+      const wreset = () => { wcancel(); stopEdit(); resetCorr(); wstage = 0; wrender(); };
+      wfCancel = () => { wcancel(); stopEdit(); };
+      stepperResets['hiw-flow'] = wreset;
+      wrender();
     }
 
     setTab('cleanup');
