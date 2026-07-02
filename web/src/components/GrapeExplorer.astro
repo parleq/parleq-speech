@@ -79,7 +79,7 @@ const bunch = [
 // untouched — CSS shows only the active family's grapes.
 const howitworks = [
   { id: 'refine-loop', icon: 'bubble', label: 'Refine loop', title: 'The refine loop', pasting: 'Mail',
-    desc: 'Dictate a rough draft, then reshape it by voice — as many passes as you like.',
+    desc: 'Dictate a draft, then reshape it by voice.',
     steps: [
       { label: 'Step 1 · You dictate', before: "so um can we push the sync to thursday and i'll send the deck", after: "Can we push the sync to Thursday? I'll send the deck." },
       { label: 'Step 2 · Refine by voice', instruction: '“make it a polite email to Sam”', after: "Hi Sam — could we move our sync to <span class=\"mk\">Thursday</span>? I'll send the deck ahead of time." },
@@ -663,7 +663,9 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
   .grape[data-selected="true"][data-active="true"] .g-ic :global(g:first-child) { stroke: #552493; stroke-opacity: .48; }
   .grape[data-selected="true"][data-active="true"] .g-ic :global(g:last-child) { stroke: #f4e8ff; stroke-opacity: .94; }
 
-  .bunch-preview { margin-top: 1.6rem; max-width: 19rem; font-size: .82rem; line-height: 1.45; color: var(--color-text-muted); min-height: 2.4em; }
+  /* Fixed height (fits the longest 2-line preview) so hovering a grape — which
+     swaps this description — never reflows the column and jogs the demo card. */
+  .bunch-preview { margin-top: 1.6rem; max-width: 19rem; font-size: .82rem; line-height: 1.45; color: var(--color-text-muted); height: 3.5em; overflow: hidden; }
   .bunch-preview b { color: var(--color-text); font-weight: 600; }
 
   /* demo panel */
@@ -754,10 +756,10 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
      left strip (a stacked-card flourish that normally reveals the backplate) would
      instead expose the flow-line SVG. Give walkthrough cards a SOLID background. */
   .demo-stepper, .rw-card { background: #1c2128; }
-  /* BUGFIX: and hide the bunch→card flow lines on the How-it-works tab entirely —
-     with the walkthrough cards' varying height they poked out below/around the card.
-     The interactive demos are their own focus and don't need the converging lines. */
-  #explorer[data-tab="howitworks"] .flow-lines { display: none; }
+  /* Walkthrough panels are a taller stack (card + coachmark + pager), so with
+     items-center the card sits higher than a plain card — shift the converging
+     flow lines up on this tab so they terminate INTO the card, not below it. */
+  #explorer[data-tab="howitworks"] .flow-lines { top: 96px; }
 
   /* SPIKE: interactive Reference Windows demo. The dark .rw-card is the "example";
      the coachmark + pager sit below it on the light section bg. */
