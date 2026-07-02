@@ -16,6 +16,10 @@ const icons: Record<string, string> = {
   sparkle: '<path d="M12 3v5M12 16v5M3 12h5M16 12h5"/><path d="m6.8 6.8 2.1 2.1M15.1 15.1l2.1 2.1M17.2 6.8l-2.1 2.1M8.9 15.1l-2.1 2.1"/>',
   calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9.5h18M8 3v4M16 3v4"/>',
   notes:  '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/>',
+  grid:   '<rect x="3.5" y="3.5" width="7" height="7" rx="1.6"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.6"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.6"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.6"/>',
+  route:  '<circle cx="5" cy="12" r="1.7"/><path d="M6.7 12H16"/><path d="m12.5 8 4 4-4 4"/>',
+  rotate: '<path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4.5V9h-4.5"/>',
+  bolt:   '<path d="M13 2 5 13.5h5.2L9 22l8-11.5h-5.2z"/>',
 };
 // debossed icon — stamped into the grape skin (dark recess on top, light highlight just below)
 const emboss = (name: string) =>
@@ -45,8 +49,8 @@ const refine = [
   { id: 'presets', icon: 'sliders', label: 'Presets', title: 'One-tap presets', pasting: 'Notes', presets: ['Concise', 'Formal', 'Bulletize'], desc: 'One-tap styles: concise, formal, bulletize.',
     before: 'we are ahead on revenue and a little behind on new accounts and we should sync this week',
     after: 'Ahead on revenue, slightly behind on new accounts — <span class="mk">let’s sync this week</span>.' },
-  { id: 'reference', icon: 'window', label: 'Reference', title: 'Reference windows', pasting: 'Mail', attachment: 'Calendar — window attached', desc: 'Point at a window so the model has context.',
-    before: 'does thursday work for the check in', after: 'Looks like <span class="mk">Thursday at 2pm</span> is open — does that work for the check-in?' },
+  { id: 'perapp', icon: 'grid', label: 'Per-app', title: 'Per-app modes', pasting: 'Mail', presets: ['Mail · Polished', 'Terminal · Instant'], desc: 'Each app gets its own cleanup — instant on-device, or your polished style.',
+    before: 'hey can you get me the q3 deck when you get a sec', after: 'Hi — could you send me the <span class="mk">Q3 deck</span> when you get a chance?' },
 ];
 
 // Prototype-A style composition: one tight cluster. Both families live in the
@@ -79,7 +83,15 @@ const bunch = [
 // stepper demo for now; the rest are visible-but-inert to feel the tab. These
 // grapes are a separate overlay (data-group="howitworks"), so Cleanup/Refine are
 // untouched — CSS shows only the active family's grapes.
+// Seven feature demos + two blank filler orbs so the cluster keeps the SAME
+// nine-orb silhouette as Cleanup/Refine (the blanks read as the receded grapes
+// those tabs show for the inactive family). `interactive` grapes render a bespoke
+// panel; `steps` grapes render a stepper; blanks are inert cluster filler.
 const howitworks = [
+  { id: 'hiw-flow', icon: 'route', label: 'The flow', title: 'The whole flow',
+    desc: 'Press, speak, paste clean — the core loop, end to end.' },
+  { id: 'hiw-reference', icon: 'window', label: 'Reference', title: 'Reference windows', interactive: true,
+    desc: 'Point at a window so the model has your context.' },
   { id: 'refine-loop', icon: 'bubble', label: 'Refine loop', title: 'The refine loop', pasting: 'Mail',
     desc: 'Dictate a draft, then reshape it by voice.',
     steps: [
@@ -88,14 +100,16 @@ const howitworks = [
       { label: 'Step 3 · Refine again', instruction: '“offer Friday as a backup”', after: "Hi Sam — could we move our sync to Thursday, or <span class=\"mk\">Friday</span> if that's easier? I'll send the deck ahead." },
       { label: 'Step 4 · One tap to finish', presets: ['Concise', 'Formal', 'Bulletize'], after: 'Tap a preset to restyle in one more pass — or just Accept.' },
     ] },
-  { id: 'hiw-reference', icon: 'window', label: 'Reference', title: 'Reference windows', interactive: true,
-    desc: 'Point at a window so the model has your context.' },
   { id: 'hiw-voice', icon: 'wave', label: 'Voice', title: 'Voice enrollment', desc: 'Teach a term in your own voice; tell it apart by sound.' },
-  { id: 'hiw-neverlose', icon: 'sparkle', label: 'Never lose', title: 'Never lose a dictation', desc: 'Your last dictation is held in memory — re-run it with R.' },
-  { id: 'hiw-paste', icon: 'link', label: 'Paste', title: 'Pastes where you land', desc: 'The focused app is captured at hotkey-down.' },
+  { id: 'hiw-recover', icon: 'rotate', label: 'Recover', title: 'Never lose a dictation', desc: 'Your last dictation is held in memory — re-run it with R.' },
+  { id: 'hiw-ai', icon: 'sparkle', label: 'Your AI', title: 'The AI you bring', desc: 'On-device, your own cloud, or none — you choose the engine.' },
+  { id: 'hiw-quick', icon: 'bolt', label: 'Quick', title: 'Quick & continuous', desc: 'Double-tap to dictate with no overlay, or go hands-free.' },
+  { id: 'hiw-blank-a', blank: true },
+  { id: 'hiw-blank-b', blank: true },
 ];
-// howitworks[i] renders at POS[hiwPos[i]] — the refine loop takes the big center orb.
-const hiwPos = [2, 0, 1, 3, 4];
+// howitworks[i] renders at POS[hiwPos[i]]. The whole-flow spine takes the big center
+// orb; the two blanks take the lower-center + behind-shadow positions.
+const hiwPos = [2, 0, 1, 3, 4, 5, 6, 7, 8];
 
 // SPIKE: the three windows a visitor can attach in the interactive Reference
 // Windows demo — each drives its own alternate flow (attach chip, utterance,
@@ -237,9 +251,20 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
           </button>
         );
       })}
-      {/* SPIKE: How-it-works overlay grapes — hidden unless the third tab is active (CSS). */}
+      {/* SPIKE: How-it-works overlay grapes — hidden unless the third tab is active (CSS).
+          Blank entries render as inert filler orbs so the cluster keeps its shape. */}
       {howitworks.map((g, i) => {
         const p = POS[hiwPos[i]];
+        if (g.blank) {
+          return (
+            <button type="button" class="grape grape-blank" data-id={g.id} data-group="howitworks"
+                    data-tone={p.tone} data-active="false" data-selected="false" data-blank="true"
+                    aria-hidden="true" tabindex={-1} disabled
+                    style={`left:${p.l}px;top:${p.t}px;z-index:${p.z};--scale:${p.s}`}>
+              <span class="grape-orb"></span>
+            </button>
+          );
+        }
         return (
           <button type="button" class="grape" data-id={g.id} data-group="howitworks"
                   data-name={g.title} data-desc={g.desc} data-tone={p.tone}
@@ -292,7 +317,7 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
        clearly-separate light pager below it, so the stepper reads as a control the
        visitor drives — not part of the mocked overlay. Others are inert placeholders.
        The `interactive` grape (Reference Windows) renders the bespoke .rw-demo below. */}
-    {howitworks.filter((g) => !g.interactive).map((g) => (
+    {howitworks.filter((g) => !g.interactive && !g.blank).map((g) => (
       g.steps ? (
         <div data-panel={g.id} class="stepper-wrap" hidden>
           <div class="demo-card demo-stepper">
@@ -331,7 +356,7 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
             <h3 class="text-[15px] font-semibold text-white">{g.title}</h3>
           </div>
           <p class="mt-4 text-[13px] leading-relaxed" style="color: rgba(255,255,255,.62);">{g.desc}</p>
-          <p class="mt-5 text-xs" style="color: rgba(255,255,255,.38);">Walkthrough coming — this spike wires the refine loop + reference windows.</p>
+          <p class="mt-5 text-xs" style="color: rgba(255,255,255,.38);">Interactive demo coming soon.</p>
         </div>
       )
     ))}
@@ -668,7 +693,11 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
   /* ACTIVE family: stamped content visible, selectable */
   .grape[data-active="true"] { cursor: pointer; }
   .grape[data-active="true"] .g-ic, .grape[data-active="true"] .g-lb { opacity: 1; }
-  .grape[data-id="reference"][data-active="true"] { z-index: 18 !important; }
+  .grape[data-id="hiw-reference"][data-active="true"] { z-index: 18 !important; }
+  /* BLANK filler orbs (how-it-works): complete the cluster shape, never interactive.
+     Styled like the receded inactive-family grapes so the silhouette matches. */
+  .grape-blank { cursor: default; pointer-events: none; }
+  .grape-blank .grape-orb { filter: brightness(.82) saturate(.84); opacity: .85; box-shadow: inset 0 2px 3px rgba(255,255,255,.07), inset 0 -14px 20px rgba(10,3,20,.62), 0 10px 18px -14px rgba(10,3,20,.65); }
   /* INACTIVE family: plain dark grapes, recede into the bunch */
   .grape[data-active="false"] .grape-orb { filter: brightness(.82) saturate(.84); opacity: .88; box-shadow: inset 0 2px 3px rgba(255,255,255,.07), inset 0 -14px 20px rgba(10,3,20,.62), 0 10px 18px -14px rgba(10,3,20,.65); }
   .grape[data-active="false"] .g-ic { filter: none; }
@@ -924,6 +953,7 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
         t.tabIndex = on ? 0 : -1;
       });
       grapes.forEach((g) => {
+        if (g.dataset.blank === 'true') return;  // filler orbs stay inert on every tab
         const active = g.dataset.group === group;
         g.dataset.active = active ? 'true' : 'false';
         g.tabIndex = active ? 0 : -1;
