@@ -716,11 +716,17 @@ final class SettingsModel: ObservableObject {
     /// provider+model the runtime hasn't constructed does. concord/none are
     /// always available and never trigger a rebuild.
     private var cloudInstanceRestartNeeded: Bool {
-        var launch: [ModelIdentifier] = [
-            ModelIdentifier(provider: initialLlmProvider, model: initialLlmModel)
-        ]
-        if let r = initialRefineModel { launch.append(r) }
-        if let c = initialContextModel { launch.append(c) }
+        // Mirror main.swift's provider-instance construction so we only treat
+        // instances that ACTUALLY got built at launch as live:
+        //   • llm  = the cleanup id (nil when provider == "none").
+        //   • contextLLM / refineLLM = built only when cleanup != "none" AND the
+        //     id is set AND differs from the cleanup id.
+        let initialCleanupId = ModelIdentifier(provider: initialLlmProvider, model: initialLlmModel)
+        var launch: [ModelIdentifier] = [initialCleanupId]
+        if initialLlmProvider != "none" {
+            if let c = initialContextModel, c != initialCleanupId { launch.append(c) }
+            if let r = initialRefineModel, r != initialCleanupId { launch.append(r) }
+        }
         func needsBuild(_ id: ModelIdentifier) -> Bool {
             // `local` matches on provider alone (no model id); everything else
             // matches provider + model.
