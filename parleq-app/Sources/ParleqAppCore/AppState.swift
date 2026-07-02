@@ -87,6 +87,61 @@ public final class AppState {
             (provider as? ConcordCleanupProvider)?.setEnrollmentGateFactory(factory)
         }
     }
+
+    // MARK: Review-window acoustics retention (correction-time negative harvest)
+
+    /// The current review utterance's diagnostics (token timings + in-memory
+    /// encoder features, ~0.8 MB), retained ONLY while the overlay is reviewable
+    /// and ONLY when a voiceprint is enrolled and harvest is enabled — so users
+    /// without voiceprints never pay the memory. Correction-time harvest pools a
+    /// single word-span embedding from this; the features never leave process
+    /// memory (no audio, no disk). Cleared at every terminal/invalidating state:
+    /// applyResult of a refine/preset/reclean turn, accept/cancel teardown
+    /// (closeAndReset), and the start of the next dictation — the same lifecycle
+    /// discipline as `pendingContribution`.
+    private var reviewDiagnostics: ASRDiagnostics?
+
+    /// Retain `diagnostics` for the review window iff harvest could use it.
+    private func retainReviewAcoustics(_ diagnostics: ASRDiagnostics?) {
+        guard let diagnostics, diagnostics.encoderFeatures != nil,
+              let vp = voiceprint, !vp.enrolledTermIDs.isEmpty,
+              Config.load().config.voiceprintHarvestEnabled else {
+            reviewDiagnostics = nil
+            return
+        }
+        reviewDiagnostics = diagnostics
+    }
+
+    private func clearReviewAcoustics() {
+        reviewDiagnostics = nil
+    }
+
+    /// Count of retained raw word-groups whose core matches `word`, WITHOUT
+    /// pooling (feeds the ordinal consistency guard cheaply — no wasted
+    /// mean-pooling probe pass). nil ⇒ no retained diagnostics.
+    private func groupMatchCount(for word: String) -> Int? {
+        guard let d = reviewDiagnostics, d.encoderFeatures != nil else { return nil }
+        let target = HarvestSpanLocator.core(word)
+        guard !target.isEmpty else { return nil }
+        return VoiceprintCoordinator.groupSpans(from: d)
+            .filter { HarvestSpanLocator.core($0.text) == target }.count
+    }
+
+    /// Locate + pool ONE word-span embedding from the retained features
+    /// (in-memory mean-pooling, microseconds). nil ⇒ skip harvest silently.
+    private func harvestEmbedding(word: String, rawOrdinal: Int) -> (embedding: [Float], matchCount: Int)? {
+        guard let d = reviewDiagnostics, let features = d.encoderFeatures else { return nil }
+        let groups = VoiceprintCoordinator.groupSpans(from: d)
+        let target = HarvestSpanLocator.core(word)
+        guard !target.isEmpty else { return nil }
+        let matchCount = groups.filter { HarvestSpanLocator.core($0.text) == target }.count
+        guard let g = HarvestSpanLocator.locate(groups: groups, word: word, rawOrdinal: rawOrdinal)
+        else { return nil }
+        guard let emb = features.pooledEmbedding(startSeconds: g.startSeconds,
+                                                 endSeconds: g.endSeconds)
+        else { return nil }
+        return (emb, matchCount)
+    }
     #endif
 
     /// The header engine badge (`overlay.model.cleanupMode`) for a FRESH cleanup
@@ -3150,6 +3205,12 @@ public final class AppState {
         // accumulator (e.g. a prior empty-ASR capture that never reached a
         // terminal). Refine turns keep the existing one to append to.
         if !asRefine { pendingContribution = nil }
+        #if Concord
+        // Both a fresh dictation AND a refine turn invalidate the retained
+        // review acoustics (the shown text will no longer map to the retained
+        // raw utterance). The fresh-cleanup completion re-retains.
+        clearReviewAcoustics()
+        #endif
         if quickMode {
             // In quick mode we don't show the overlay — the user
             // is going to get the paste directly. Acoustic cues
@@ -3544,6 +3605,12 @@ public final class AppState {
                 #if Concord
                 if !asRefine, !wasChainedCleanup {
                     self?.applyCorrectionHighlights(from: resolvedLLM, cleanedText: outcome.text)
+                    // Retain this utterance's diagnostics through the review window
+                    // so a correction (⌥digit undo / E-edit) can pool the corrected
+                    // word's audio-span embedding for a voiceprint negative harvest.
+                    // Self-gating (enrolled + harvest enabled + features present);
+                    // set AFTER applyResult (which cleared any prior retention).
+                    self?.retainReviewAcoustics(asrResultRaw.diagnostics)
                 }
                 #endif
                 if !asRefine, !wasChainedCleanup {
@@ -3691,6 +3758,12 @@ public final class AppState {
     }
 
     private func applyResult(_ text: String, cleanupFailureMessage: String? = nil, reauthable: Bool = false, appendMode: Bool = false) {
+        #if Concord
+        // Any newly-applied text invalidates the raw-utterance ↔ shown-text
+        // mapping (refine turns, preset transforms, reauth reclean all land
+        // here). The cleanup path re-retains right after this returns.
+        clearReviewAcoustics()
+        #endif
         currentText = text
         lastCleanupFailed = (cleanupFailureMessage != nil)
         // Notify the menu bar of the cleanup outcome regardless of
@@ -3905,6 +3978,9 @@ public final class AppState {
         overlay.model.cleanupMode = nil
         lastCleanupFailed = false
         pendingContribution = nil
+        #if Concord
+        clearReviewAcoustics()   // terminal state — drop the ~0.8 MB features
+        #endif
         pasteTarget = nil
         quickMode = false
         phase = .idle

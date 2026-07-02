@@ -1025,6 +1025,23 @@ public final class VoiceprintCoordinator: ObservableObject {
     /// accept/reject. A term with no voiceprint — or a span it cannot locate/pool — yields
     /// `.noOpinion`, so the engine behaves exactly as if no gate were present (the gate only ever
     /// REMOVES an over-fire it can confirm; it never introduces new harm).
+    /// Raw-ASR word-group spans with the gate's normalized text (letters-only,
+    /// lowercased) — the SHARED span source for the gate, enrollment's
+    /// localizedSpan machinery, and the correction-time harvest, so all three
+    /// resolve a word to the exact same audio span (same `wordGroups(from:)`
+    /// grouping, same normalizer that fills `SpanEmbedding.normalizedText`).
+    nonisolated static func groupSpans(from diagnostics: ASRDiagnostics) -> [HarvestSpanLocator.GroupSpan] {
+        let timings = diagnostics.tokenTimings.map {
+            TokenTiming(token: $0.token, tokenId: $0.tokenId,
+                        startTime: $0.startTime, endTime: $0.endTime, confidence: $0.confidence)
+        }
+        return VoiceprintDemo.wordGroups(from: timings).map {
+            HarvestSpanLocator.GroupSpan(text: $0.text.lowercased().filter { $0.isLetter },
+                                         startSeconds: $0.startSeconds,
+                                         endSeconds: $0.endSeconds)
+        }
+    }
+
     nonisolated static func buildGate(diagnostics: ASRDiagnostics?,
                                       store: VoiceprintStore,
                                       gate: VoiceprintGate) -> AcousticGate? {
@@ -1033,20 +1050,19 @@ public final class VoiceprintCoordinator: ObservableObject {
         guard store.count > 0 else { return nil }
         guard let diagnostics, let features = diagnostics.encoderFeatures else { return nil }
 
-        let timings = diagnostics.tokenTimings.map {
-            TokenTiming(token: $0.token, tokenId: $0.tokenId,
-                        startTime: $0.startTime, endTime: $0.endTime, confidence: $0.confidence)
-        }
-        let wordGroups = VoiceprintDemo.wordGroups(from: timings)
+        // Shared span source (see groupSpans). Texts arrive pre-normalized;
+        // concatenating normalized texts equals normalizing the concatenation
+        // (the normalizer is a per-character letter filter), so the window
+        // spans below are byte-identical to the pre-refactor construction.
+        let groups = Self.groupSpans(from: diagnostics)
         var singleWordSpans: [SpanEmbedding] = []
         var windowSpans: [SpanEmbedding] = []
 
         // Single-word spans (original behavior — preserved in full).
-        for (i, g) in wordGroups.enumerated() {
+        for (i, g) in groups.enumerated() {
             guard let emb = features.pooledEmbedding(
                 startSeconds: g.startSeconds, endSeconds: g.endSeconds) else { continue }
-            let normalized = g.text.lowercased().filter { $0.isLetter }
-            singleWordSpans.append(SpanEmbedding(normalizedText: normalized, groupIndex: i,
+            singleWordSpans.append(SpanEmbedding(normalizedText: g.text, groupIndex: i,
                                                   startSeconds: g.startSeconds, endSeconds: g.endSeconds,
                                                   embedding: emb))
         }
@@ -1056,24 +1072,22 @@ public final class VoiceprintCoordinator: ObservableObject {
         // concatenated normalizedText, e.g. "kiv", would produce spurious .contains matches).
         // `max(0, …)`: an aborted/empty dictation yields 0 word groups, making `count - 1` negative
         // and `0..<(-1)` a fatal "lowerBound <= upperBound" trap. Clamp to an empty range instead.
-        for i in 0..<max(0, wordGroups.count - 1) {
-            let first = wordGroups[i], second = wordGroups[i + 1]
+        for i in 0..<max(0, groups.count - 1) {
+            let first = groups[i], second = groups[i + 1]
             guard let emb = features.pooledEmbedding(
                 startSeconds: first.startSeconds, endSeconds: second.endSeconds) else { continue }
-            let normalized = (first.text + second.text).lowercased().filter { $0.isLetter }
-            windowSpans.append(SpanEmbedding(normalizedText: normalized, groupIndex: i,
+            windowSpans.append(SpanEmbedding(normalizedText: first.text + second.text, groupIndex: i,
                                               startSeconds: first.startSeconds, endSeconds: second.endSeconds,
                                               embedding: emb))
         }
 
         // Adjacent 3-word windows.
-        for i in 0..<max(0, wordGroups.count - 2) {   // max(0,…): same empty-dictation guard as above
-            let first = wordGroups[i], last = wordGroups[i + 2]
+        for i in 0..<max(0, groups.count - 2) {   // max(0,…): same empty-dictation guard as above
+            let first = groups[i], last = groups[i + 2]
             guard let emb = features.pooledEmbedding(
                 startSeconds: first.startSeconds, endSeconds: last.endSeconds) else { continue }
-            let normalized = (wordGroups[i].text + wordGroups[i + 1].text + wordGroups[i + 2].text)
-                .lowercased().filter { $0.isLetter }
-            windowSpans.append(SpanEmbedding(normalizedText: normalized, groupIndex: i,
+            windowSpans.append(SpanEmbedding(normalizedText: groups[i].text + groups[i + 1].text + groups[i + 2].text,
+                                              groupIndex: i,
                                               startSeconds: first.startSeconds, endSeconds: last.endSeconds,
                                               embedding: emb))
         }
