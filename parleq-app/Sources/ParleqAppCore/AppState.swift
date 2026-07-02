@@ -3323,7 +3323,16 @@ public final class AppState {
                 // global) cleans on-device (Instant), never a cloud call it
                 // can't make. Refine turns are handled by the append-only
                 // fallback downstream, so they are NOT degraded here.
-                let effectiveMode: TargetMode = asRefine
+                // EXCEPTION: a reference-aware turn routes to the Context tier
+                // (a SEPARATE provider), so it must NOT be degraded even
+                // without a Polished provider — the Context provider services
+                // it (concord+context is a supported combo). For a "none" user
+                // the downstream short-circuit still keeps references off the
+                // cloud, so skipping degradation here is safe.
+                let routesToContext = loadedConfig.referenceWindowsEnabled
+                    && !(self?.overlay.model.references.isEmpty ?? true)
+                    && loadedConfig.contextModel != nil
+                let effectiveMode: TargetMode = (asRefine || routesToContext)
                     ? behaviorMode
                     : AppState.effectiveCleanupMode(
                         behaviorMode: behaviorMode,
@@ -3437,6 +3446,9 @@ public final class AppState {
                     asRefine: asRefine,
                     rawTranscript: asrResult.text,
                     priorText: priorText,
+                    // Spoken refine turns here carry the user's own words
+                    // (asrResult.text), so append-only applies when asRefine.
+                    appendOnlyEligible: asRefine,
                     targetBundleID: targetBundleID,
                     customDictionary: dictionary,
                     references: effectiveRefs,
@@ -4352,6 +4364,10 @@ public final class AppState {
                 asRefine: asRefineRerun,
                 rawTranscript: rawTranscript,
                 priorText: refinePriorText,
+                // Faithful re-run of a SPOKEN voice-refine (rawTranscript is
+                // the retained ASR transcript), so append-only applies on the
+                // refine re-run; a preset re-run is asRefineRerun == false.
+                appendOnlyEligible: asRefineRerun,
                 targetBundleID: targetBundleID,
                 customDictionary: dictionary,
                 references: effectiveRefs,
@@ -4654,6 +4670,10 @@ public final class AppState {
                 asRefine: asRefineRerun,
                 rawTranscript: rawTranscript,
                 priorText: refinePriorText,
+                // Faithful re-run of a SPOKEN voice-refine (rawTranscript is
+                // the retained ASR transcript), so append-only applies on the
+                // refine re-run; a preset re-run is asRefineRerun == false.
+                appendOnlyEligible: asRefineRerun,
                 targetBundleID: targetBundleID,
                 customDictionary: dictionary,
                 references: effectiveRefs,
@@ -4957,6 +4977,13 @@ private func streamCleanupOrRefine(
     asRefine: Bool,
     rawTranscript: String,
     priorText: String,
+    // True ONLY when `rawTranscript` is the user's own SPOKEN words on a
+    // refine turn (hotkey voice-refine and its faithful re-runs). Gates the
+    // append-only fallback: when there is no Polished provider, spoken refines
+    // append the words (never lose speech), but canned transforms (preset
+    // chips) must NOT append their instruction text into the document — they
+    // keep the prior text + show a notice. Default false is the safe choice.
+    appendOnlyEligible: Bool = false,
     targetBundleID: String? = nil,
     customDictionary: [DictionaryEntry] = [],
     references: [Reference] = [],
@@ -4982,23 +5009,37 @@ private func streamCleanupOrRefine(
     shouldRenderToOverlay: @escaping @MainActor @Sendable () -> Bool = { true }
 ) async -> CleanupOutcome {
     let fallback = asRefine ? priorText : rawTranscript
-    // Append-only refine (reframe): a refine turn with NO Polished
-    // (refine-capable) provider — cleanup is on-device Concord ("concord") or
-    // off (llm == nil). The instruction can't be interpreted, so instead of
-    // no-op'ing we APPEND the spoken words to the prior text (speech is never
-    // lost) and flag "append mode" so the user knows it wasn't interpreted.
-    // Configuring a Polished provider (Settings → Cleanup) enables real refine.
+    // Reframe: a refine turn with NO Polished (refine-capable) provider —
+    // cleanup is on-device Concord ("concord") or off (llm == nil). The
+    // instruction can't be interpreted. Two sub-cases:
+    //   • SPOKEN voice-refine (`appendOnlyEligible`): the user dictated words,
+    //     so APPEND them to the prior text (speech is never lost) and flag
+    //     "append mode". `rawTranscript` here is the user's own speech.
+    //   • Canned transform (preset chip / style): `rawTranscript` is an
+    //     INSTRUCTION string, not speech — appending it would paste the
+    //     instruction into the document. Keep the prior text and surface a
+    //     one-turn notice instead.
+    // Configuring a Polished provider (Settings → Cleanup) enables both.
     if asRefine {
         let refineCapable: Bool = {
             guard let llm else { return false }
             return Config.providerCanRefine(llm.providerName)
         }()
         if !refineCapable {
-            let appended = AppState.appendSpokenText(rawTranscript, to: priorText)
-            if useOverlay, shouldRenderToOverlay() {
-                overlay.show(state: .cleaning, text: appended)
+            if appendOnlyEligible {
+                let appended = AppState.appendSpokenText(rawTranscript, to: priorText)
+                if useOverlay, shouldRenderToOverlay() {
+                    overlay.show(state: .cleaning, text: appended)
+                }
+                return CleanupOutcome(text: appended, failureMessage: nil, appendMode: true)
+            } else {
+                if useOverlay, shouldRenderToOverlay() {
+                    overlay.show(state: .cleaning, text: fallback)
+                }
+                return CleanupOutcome(
+                    text: fallback,
+                    failureMessage: "Add a Polished provider in Settings → Cleanup to apply styles and refinements.")
             }
-            return CleanupOutcome(text: appended, failureMessage: nil, appendMode: true)
         }
     }
     guard let llm = llm else {
