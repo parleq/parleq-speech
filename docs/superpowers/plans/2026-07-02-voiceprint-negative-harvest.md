@@ -467,7 +467,9 @@ dictation, both harvest directions, healing, and the deletion/kill-switch paths.
 **Build + launch** (the assistant normally drives this):
 
 ```bash
-cd parleq-app && scripts/make-app.sh --debug --traits Concord
+# From the repo root. The Concord trait is ON by default in make-app.sh
+# (only PARLEQ_CONCORD=0 disables it — don't; the feature is Concord-gated).
+parleq-app/scripts/make-app.sh --debug
 pkill -x ParleqApp; open parleq-app/build/Parleq.app
 ```
 
