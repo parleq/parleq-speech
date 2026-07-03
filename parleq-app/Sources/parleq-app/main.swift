@@ -304,13 +304,13 @@ struct ParleqApp {
         // reference. Both inits are @MainActor; main.swift's startup block runs
         // inside MainActor.assumeIsolated, so the synchronous read is safe.
         //
-        let localModelStore = MainActor.assumeIsolated { LocalModelStore() }
+        let localModelStore = MainActor.assumeIsolated { LocalModelStore(checkpoint: config.selectedLocalModel.checkpoint) }
         let localResidency = MainActor.assumeIsolated {
             ResidencyManager(
                 store: localModelStore,
                 policy: ResidencyPolicy.effective(
                     residency: config.localResidency,
-                    tier: RAMTier.current,
+                    tier: RAMTier.current(for: config.selectedLocalModel),
                     configMinutes: config.localIdleUnloadMinutes))
         }
 
@@ -505,17 +505,18 @@ struct ParleqApp {
                 // fail closed to raw paste rather than kicking off a multi-GB
                 // download on an unsupported machine (a config.json hand-edit or
                 // an upgrade from a build that predated the gate can reach here).
-                if RAMTier.current == .unsupported && !config.localAllowUnsupportedRAM {
+                if RAMTier.current(for: config.selectedLocalModel) == .unsupported && !config.localAllowUnsupportedRAM {
                     let gb = Int((Double(ProcessInfo.processInfo.physicalMemory) / Double(1 << 30)).rounded())
-                    logStderr("[parleq] LLM \(label): on-device requires 12 GB+ RAM (have \(gb)GB); set llm.local.allow_unsupported_ram=true to override. Falling back to no cleanup (raw paste).")
+                    let floor = Int(config.selectedLocalModel.ramFloorGB)
+                    logStderr("[parleq] LLM \(label): on-device model \(config.selectedLocalModel.displayName) requires \(floor) GB+ RAM (have \(gb)GB); set llm.local.allow_unsupported_ram=true to override. Falling back to no cleanup (raw paste).")
                     return nil
                 }
-                // id.model is ignored on the local path: the store only ever serves
-                // LocalModelDefaults.checkpoint, and a stale cloud model id left in
-                // config.llm.model would otherwise pollute logs and the UsageLedger
-                // (and hit cloud pricing tables in the Usage UI).
+                // id.model is ignored on the local path: the store serves the
+                // user-selected on-device checkpoint (config.localModel), and a
+                // stale cloud model id left in config.llm.model would otherwise
+                // pollute logs and the UsageLedger (and hit cloud pricing tables).
                 let p = LocalLLMProvider(
-                    model: LocalModelDefaults.checkpoint,
+                    model: config.selectedLocalModel.checkpoint,
                     store: localModelStore,
                     residency: localResidency)
                 logStderr("[parleq] LLM \(label) (local model=\(p.model) — on-device via MLX, no network)")
@@ -702,7 +703,7 @@ struct ParleqApp {
         // mirrors the dictation path's enabled-gating.
         if cleanupId.provider == "local" && localModelStore.state == .ready {
             let warmDictionary = config.customDictionaryEnabled ? config.customDictionary : []
-            let warmCheckpoint = LocalModelDefaults.checkpoint
+            let warmCheckpoint = config.selectedLocalModel.checkpoint
             Task(priority: .utility) {
                 await localResidency.warmCleanupPrefix(
                     checkpoint: warmCheckpoint, dictionary: warmDictionary)

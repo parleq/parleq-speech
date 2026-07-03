@@ -104,10 +104,13 @@ struct ModelBreakdown: Sendable, Identifiable {
             return "Claude Sonnet 4.5 (Bedrock)"
         case "openai.gpt-oss-120b-1:0": return "GPT-OSS 120B (Bedrock)"
         case "openai.gpt-oss-20b-1:0":  return "GPT-OSS 20B (Bedrock)"
-        // On-device model: show a user-friendly name rather than the
+        // On-device models: show the friendly catalog name rather than the
         // raw HuggingFace checkpoint string.
-        case LocalModelDefaults.checkpoint: return "On-device (Gemma 4 E4B)"
-        default: return model
+        default:
+            if let info = LocalModelCatalog.all.first(where: { $0.checkpoint == model }) {
+                return info.usageLedgerName
+            }
+            return model
         }
     }
 }
