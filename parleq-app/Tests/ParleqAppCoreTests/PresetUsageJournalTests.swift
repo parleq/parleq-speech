@@ -129,14 +129,16 @@ final class PresetUsageJournalTests: XCTestCase {
     func test_dominance_requires_min_uses() {
         let entries = usage("p1", "com.apple.mail", count: 4) // below 5
         let s = PresetUsageJournal.computeSuggestions(
-            entries: entries, configuredDefaults: [:], declined: [], existingPresetIDs: ["p1"])
+            entries: entries, configuredDefaults: [:], declined: [], existingPresetIDs: ["p1"],
+            nonPolishedApps: [])
         XCTAssertTrue(s.isEmpty, "Below the min-uses threshold → no suggestion")
     }
 
     func test_dominance_at_threshold_with_no_runner_up_suggests() {
         let entries = usage("p1", "com.apple.mail", count: 5)
         let s = PresetUsageJournal.computeSuggestions(
-            entries: entries, configuredDefaults: [:], declined: [], existingPresetIDs: ["p1"])
+            entries: entries, configuredDefaults: [:], declined: [], existingPresetIDs: ["p1"],
+            nonPolishedApps: [])
         XCTAssertEqual(s.count, 1)
         XCTAssertEqual(s.first?.presetID, "p1")
         XCTAssertEqual(s.first?.manualUses, 5)
@@ -146,12 +148,14 @@ final class PresetUsageJournalTests: XCTestCase {
         // p1=6, p2=4: 6 >= 4*2 (=8)? no → no suggestion.
         let close = usage("p1", "com.apple.mail", count: 6) + usage("p2", "com.apple.mail", count: 4)
         XCTAssertTrue(PresetUsageJournal.computeSuggestions(
-            entries: close, configuredDefaults: [:], declined: [], existingPresetIDs: ["p1", "p2"]).isEmpty,
+            entries: close, configuredDefaults: [:], declined: [], existingPresetIDs: ["p1", "p2"],
+            nonPolishedApps: []).isEmpty,
             "A near-tie (no 2x margin) must not suggest")
         // p1=8, p2=4: 8 >= 8 → suggest.
         let clear = usage("p1", "com.apple.mail", count: 8) + usage("p2", "com.apple.mail", count: 4)
         XCTAssertEqual(PresetUsageJournal.computeSuggestions(
-            entries: clear, configuredDefaults: [:], declined: [], existingPresetIDs: ["p1", "p2"]).first?.presetID,
+            entries: clear, configuredDefaults: [:], declined: [], existingPresetIDs: ["p1", "p2"],
+            nonPolishedApps: []).first?.presetID,
             "p1", "Clear 2x dominance → suggest the winner")
     }
 
@@ -160,14 +164,16 @@ final class PresetUsageJournalTests: XCTestCase {
         let entries = usage("p1", "com.apple.mail", count: 5, source: "default")
             + usage("p1", "com.apple.mail", count: 1, source: "manual")
         XCTAssertTrue(PresetUsageJournal.computeSuggestions(
-            entries: entries, configuredDefaults: [:], declined: [], existingPresetIDs: ["p1"]).isEmpty,
+            entries: entries, configuredDefaults: [:], declined: [], existingPresetIDs: ["p1"],
+            nonPolishedApps: []).isEmpty,
             "Default-styled uses must not reinforce a suggestion to set that default")
     }
 
     func test_existing_default_suppresses_suggestion() {
         let entries = usage("p1", "com.apple.mail", count: 10)
         let s = PresetUsageJournal.computeSuggestions(
-            entries: entries, configuredDefaults: ["com.apple.mail": "p2"], declined: [], existingPresetIDs: ["p1", "p2"])
+            entries: entries, configuredDefaults: ["com.apple.mail": "p2"], declined: [],
+            existingPresetIDs: ["p1", "p2"], nonPolishedApps: [])
         XCTAssertTrue(s.isEmpty, "An app that already has a configured default is settled")
     }
 
@@ -176,15 +182,39 @@ final class PresetUsageJournalTests: XCTestCase {
         let s = PresetUsageJournal.computeSuggestions(
             entries: entries, configuredDefaults: [:],
             declined: [PresetDefaultDecline(appBundleID: "com.apple.mail", presetID: "p1")],
-            existingPresetIDs: ["p1"])
+            existingPresetIDs: ["p1"], nonPolishedApps: [])
         XCTAssertTrue(s.isEmpty, "A declined / un-set (app, preset) pair must never re-suggest")
     }
 
     func test_deleted_preset_not_suggested() {
         let entries = usage("p1", "com.apple.mail", count: 10)
         let s = PresetUsageJournal.computeSuggestions(
-            entries: entries, configuredDefaults: [:], declined: [], existingPresetIDs: [])
+            entries: entries, configuredDefaults: [:], declined: [], existingPresetIDs: [],
+            nonPolishedApps: [])
         XCTAssertTrue(s.isEmpty, "A suggestion for a deleted preset must be dropped")
+    }
+
+    func test_non_polished_app_not_suggested() {
+        // com.apple.terminal is Instant (non-Polished); com.apple.mail is Polished.
+        // Both have enough manual uses to qualify under the dominance rule.
+        // Passing terminal in nonPolishedApps must suppress its suggestion while
+        // mail (not in the set) is still suggested.
+        let terminalEntries = usage("p1", "com.apple.terminal", count: 10)
+        let mailEntries = usage("p1", "com.apple.mail", count: 10)
+        let entries = terminalEntries + mailEntries
+
+        let s = PresetUsageJournal.computeSuggestions(
+            entries: entries,
+            configuredDefaults: [:],
+            declined: [],
+            existingPresetIDs: ["p1"],
+            nonPolishedApps: ["com.apple.terminal"])
+
+        XCTAssertFalse(s.contains { $0.appBundleID == "com.apple.terminal" },
+                       "A non-Polished app must not be suggested as a per-app default")
+        XCTAssertTrue(s.contains { $0.appBundleID == "com.apple.mail" },
+                      "A Polished app with dominant usage must still be suggested")
+        XCTAssertEqual(s.count, 1)
     }
 
     // MARK: - Accept writes config (pure)

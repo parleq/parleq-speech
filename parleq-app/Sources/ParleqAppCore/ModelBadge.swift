@@ -66,3 +66,55 @@ struct ModelBadge: View {
         }
     }
 }
+
+/// Header badge flagging the per-target cleanup engine when it is the *notable*
+/// kind — Instant (forced on-device, literal) or Raw (no cleanup). The engine is
+/// auto-resolved from the target app's mode (a status label, not a selector),
+/// but the badge stays CLICKABLE and opens the same model picker as `ModelBadge`
+/// — on a forced engine, picking a model means "re-clean THIS dictation with it"
+/// (→ Polished). Cloud-Polished dictations keep the plain `ModelBadge`. Matches
+/// ModelBadge's pill styling (incl. the chevron affordance) so the header reads
+/// consistently.
+struct EngineBadge: View {
+    enum Kind { case instant, raw }
+    let kind: Kind
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 4) {
+                Image(systemName: kind == .instant ? "bolt.fill" : "text.alignleft")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.secondary)
+                Text(kind == .instant ? "Instant" : "Raw")
+                    .font(.system(size: 10, weight: .medium))
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 7, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(Color.secondary.opacity(0.12))
+            )
+        }
+        .buttonStyle(.plain)
+        .help(tooltipText)
+        .accessibilityLabel(accessibilityText)
+    }
+
+    private var tooltipText: String {
+        switch kind {
+        case .instant: return "Cleaned on-device — deterministic, no rewriting. Click to re-clean with another model."
+        case .raw:     return "Pasted as transcribed — no cleanup. Click to clean with a model."
+        }
+    }
+
+    private var accessibilityText: String {
+        switch kind {
+        case .instant: return "Cleanup engine: Instant — on-device. Tap to re-clean with another model"
+        case .raw:     return "Cleanup engine: Raw — pasted as transcribed. Tap to clean with a model"
+        }
+    }
+}

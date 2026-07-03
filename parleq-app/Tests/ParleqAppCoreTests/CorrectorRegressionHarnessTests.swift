@@ -50,6 +50,17 @@ final class CorrectorRegressionHarnessTests: XCTestCase {
     /// flagship clips ("delegate two subagents…" must come out "delegate to …").
     private static let intentPhrase: [String: String] = [
         "homophone-two-to": "delegate to",
+        // Concord 0.5.0 article-agreement stage: "a <vowel-sound>" → "an <…>".
+        "article-an-issue":       "an issue",
+        "article-an-easy":        "an easy",
+        "article-an-interesting": "an interesting",
+    ]
+
+    /// Absent intents: recovered iff the phrase is GONE from the cleaned output.
+    /// Pins Concord 0.5.0's duplicate-word collapse stage — the doubled word
+    /// ("the the") must not survive.
+    private static let intentAbsent: [String: String] = [
+        "duplicate-collapse-the": "the the",
     ]
 
     /// Must-keep intents: over-fired iff the cleaned output LOST the word, matched on
@@ -59,6 +70,9 @@ final class CorrectorRegressionHarnessTests: XCTestCase {
     /// researchers…", "two questions").
     private static let intentMustKeep: [String: String] = [
         "homophone-control": "\\btwo\\b",
+        // Duplicate-collapse guard: the whitelist excludes "that that", so it
+        // must survive (a naive collapse would drop one).
+        "duplicate-keep-that": "\\bthat that\\b",
     ]
 
     // MARK: - Skip guards (mirror VoiceprintSelfTestHarnessTests)
@@ -236,6 +250,12 @@ final class CorrectorRegressionHarnessTests: XCTestCase {
                 outcome = CorrectorMetrics.Outcome(intent: row.intent,
                                                     recovered: cleaned.lowercased().contains(phrase),
                                                     overFired: false)
+            } else if let absent = Self.intentAbsent[row.intent] {
+                // Absent intent: recovered iff the doubled phrase is GONE
+                // (duplicate-collapse stage removed it).
+                outcome = CorrectorMetrics.Outcome(intent: row.intent,
+                                                    recovered: !cleaned.lowercased().contains(absent),
+                                                    overFired: false)
             } else if let keep = Self.intentMustKeep[row.intent] {
                 // Must-keep intent: over-fired iff the word was LOST (a legit "two"
                 // corrupted by the homophone stage would drop it). Word-boundary regex.
@@ -304,6 +324,22 @@ final class CorrectorRegressionHarnessTests: XCTestCase {
             print("[corrector-regression] REGRESSIONS: \(regressions.joined(separator: ", "))")
         }
         XCTAssertTrue(ok, "Corrector regression detected in intents: \(regressions.joined(separator: ", "))")
+
+        // Strict pins for the Concord 0.5.0 stages: these small, deliberately
+        // singleton recovery intents must not regress AT ALL. The global
+        // recoveryTolerance: 1 above would otherwise let a 1/1 pin silently drop
+        // to 0/1 and hide total loss of the stage. (The duplicate guard is
+        // already pinned strictly by overFireTolerance: 0.)
+        let strictRecovery: Set<String> = [
+            "article-an-issue", "article-an-easy", "article-an-interesting",
+            "duplicate-collapse-the",
+        ]
+        for intent in strictRecovery {
+            guard let base = baseline[intent] else { continue }
+            let current = tally[intent]?.recovered ?? 0
+            XCTAssertGreaterThanOrEqual(current, base.recovered,
+                "\(intent): recovery regressed \(base.recovered)→\(current) (strict pin — no tolerance)")
+        }
     }
 }
 #endif

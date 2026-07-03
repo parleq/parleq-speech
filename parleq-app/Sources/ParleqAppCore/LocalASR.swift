@@ -597,7 +597,7 @@ public enum BundledASREngine {
     public static let model = "parakeet-tdt-v3"
     // Matches the FluidAudio pin in Package.swift (the encoder-features fork tag).
     // Stamped into flywheel contribution records only (NOT voiceprint templates — see below).
-    public static let fluidAudioVersion = "0.15.4-encoder.1"
+    public static let fluidAudioVersion = "0.15.4-encoder.2"
 
     /// Stable encoder-identity string stamped into voiceprint templates (#109).
     /// This is the name of the Parakeet encoder graph/weights — it MUST be bumped

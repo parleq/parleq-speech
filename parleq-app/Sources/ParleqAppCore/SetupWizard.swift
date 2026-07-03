@@ -302,6 +302,14 @@ private final class WizardModel: ObservableObject {
 
         c.llmProvider = effectiveProvider
 
+        // Reframe v2: the refinement type follows the cleanup choice. A
+        // generative provider (cloud/local) enables Polished refinement, which
+        // SHARES that same provider — so no separate refine provider. "none"
+        // (no cleanup) appends spoken words verbatim. The Settings pane lets
+        // the user split these later (e.g. Instant cleanup + Polished refine).
+        c.refinementType = Config.isGenerativeProvider(effectiveProvider) ? .polished : .raw
+        c.refineModel = nil
+
         // Sensible default model per provider — matches Settings'
         // defaultModelByProvider table so the user gets a working
         // model id without typing one. Local path deliberately does

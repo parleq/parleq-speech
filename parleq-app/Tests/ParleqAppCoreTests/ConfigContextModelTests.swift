@@ -62,40 +62,46 @@ final class ConfigContextModelTests: XCTestCase {
         XCTAssertEqual(result, override)
     }
 
-    // MARK: - Refine tier resolution
+    // MARK: - Refine resolution (reframe: refine == Polished == cleanup)
 
-    func test_refine_uses_refine_model_when_set() {
-        let cleanup = ModelIdentifier(provider: "concord", model: "")
-        let refine  = ModelIdentifier(provider: "gemini", model: "gemini-2.5-flash")
+    func test_refine_uses_polished_cleanup_ignoring_legacy_refine_model() {
+        // Reframe: refinement is powered by the Polished provider (== cleanup).
+        // A stale legacy refineModel is ignored — refine resolves to cleanup.
+        let cleanup = ModelIdentifier(provider: "gemini", model: "gemini-2.5-flash")
+        let staleRefine = ModelIdentifier(provider: "vertex", model: "gemini-2.5-pro")
         var c = config(cleanup: cleanup, context: nil)
-        c.refineModel = refine
+        c.refineModel = staleRefine
 
         let result = c.modelForInvocation(hasReferences: false, isRefine: true)
-        XCTAssertEqual(result, refine)
+        XCTAssertEqual(result, cleanup, "refine == Polished (cleanup), not the legacy refine tier")
     }
 
-    func test_refine_falls_back_to_context_then_cleanup() {
+    func test_refine_uses_cleanup_not_context_when_no_references() {
+        // Context is references-only now; a refine WITHOUT references uses the
+        // Polished (cleanup) provider, never the context tier.
         let cleanup = ModelIdentifier(provider: "gemini", model: "gemini-2.5-flash")
         let context = ModelIdentifier(provider: "vertex", model: "gemini-2.5-pro")
-        var c = config(cleanup: cleanup, context: context)
-        c.refineModel = nil
+        let c = config(cleanup: cleanup, context: context)
 
-        // No refine model → falls back to the context tier.
-        XCTAssertEqual(c.modelForInvocation(hasReferences: false, isRefine: true), context)
-
-        // No refine OR context model → falls back to cleanup.
-        c.contextModel = nil
         XCTAssertEqual(c.modelForInvocation(hasReferences: false, isRefine: true), cleanup)
     }
 
-    func test_refine_with_concord_cleanup_and_no_refine_tier_resolves_to_cleanup_id() {
-        // Concord can't refine. With no refine/context tier configured the
-        // identifier still resolves to the (non-refining) cleanup id — the
-        // runtime guard (streamCleanupOrRefine) is what surfaces guidance
-        // rather than no-op'ing. This documents that contract.
+    func test_references_win_over_refine() {
+        // A reference-aware turn routes to the Context tier even when it is
+        // also refine-shaped (references are the most capability-sensitive).
+        let cleanup = ModelIdentifier(provider: "gemini", model: "gemini-2.5-flash")
+        let context = ModelIdentifier(provider: "vertex", model: "gemini-2.5-pro")
+        let c = config(cleanup: cleanup, context: context)
+
+        XCTAssertEqual(c.modelForInvocation(hasReferences: true, isRefine: true), context)
+    }
+
+    func test_refine_with_concord_cleanup_resolves_to_cleanup_id() {
+        // Concord can't refine. Refine resolves to the (non-refining) cleanup
+        // id; the runtime (streamCleanupOrRefine) then applies the append-only
+        // fallback rather than no-op'ing. This documents that contract.
         let cleanup = ModelIdentifier(provider: "concord", model: "")
-        var c = config(cleanup: cleanup, context: nil)
-        c.refineModel = nil
+        let c = config(cleanup: cleanup, context: nil)
 
         XCTAssertEqual(c.modelForInvocation(hasReferences: false, isRefine: true), cleanup)
     }

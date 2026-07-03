@@ -33,7 +33,11 @@ import SwiftUI
 @MainActor
 struct StatsView: View {
     @ObservedObject var history: TranscriptHistory
-    @State private var usage: UsageAggregate = .empty
+    @ObservedObject var settingsModel: SettingsModel
+    /// Collapsed by default; the user expands it to see the full
+    /// usage ledger (same content as Settings → Usage) without
+    /// navigating away from the Stats pane.
+    @State private var usageExpanded = false
     /// Stored (not computed) so the publisher is created ONCE per view
     /// identity. A computed property would mint a fresh
     /// Timer.publish().autoconnect() on every body re-render, and
@@ -87,6 +91,33 @@ struct StatsView: View {
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: 640)
                     .padding(.top, 8)
+
+                // Usage ledger detail — collapsed by default so the
+                // Stats pane stays focused on the session metrics
+                // above. Expanding triggers a fresh ledger read so
+                // the numbers are current at the moment of reveal.
+                DisclosureGroup(isExpanded: $usageExpanded) {
+                    UsageLedgerContent(model: settingsModel)
+                        .padding(.top, 8)
+                } label: {
+                    // Make the whole row toggle the group, not just the chevron
+                    // (clicking the small chevron directly is fiddly). The label
+                    // must FILL the row width first — unlike the sidebar Settings
+                    // disclosure (a List row that expands on its own), this one is
+                    // in a VStack, so an intrinsic-width Text would only be tappable
+                    // over the glyphs. frame(maxWidth:.infinity) + contentShape makes
+                    // the whole line hit-testable; the chevron still works.
+                    Text("Usage & cost")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            withAnimation { usageExpanded.toggle() }
+                        }
+                }
+                .onChange(of: usageExpanded) { _, expanded in
+                    if expanded { settingsModel.refreshUsage() }
+                }
+                .padding(.top, 4)
             }
             .padding(20)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -96,11 +127,13 @@ struct StatsView: View {
             // (a few KB) but worth doing lazily so it doesn't block
             // app launch. Re-fired on the timer below to pick up
             // post-launch changes (e.g. accepting a dictation while
-            // Stats is visible).
-            usage = UsageLedger.shared.aggregate()
+            // Stats is visible). Single source of truth: both this card
+            // and the folded-in "Usage & cost" ledger read
+            // settingsModel.usage, so a refresh/clear updates both.
+            settingsModel.refreshUsage()
         }
         .onReceive(usageReloadTimer) { _ in
-            usage = UsageLedger.shared.aggregate()
+            settingsModel.refreshUsage()
         }
     }
 
@@ -153,17 +186,17 @@ struct StatsView: View {
     private var tokensCostCard: some View {
         statsCard(title: "LLM usage") {
             HStack(alignment: .firstTextBaseline) {
-                bigNumber(formatTokens(usage.today.inputTokens + usage.today.outputTokens))
+                bigNumber(formatTokens(settingsModel.usage.today.inputTokens + settingsModel.usage.today.outputTokens))
                 Text("tokens today")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                 Spacer()
-                Text(formatCost(usage.today.costUSD))
+                Text(formatCost(settingsModel.usage.today.costUSD))
                     .font(.system(size: 14, weight: .semibold, design: .rounded))
                     .foregroundStyle(.secondary)
             }
-            footerCaption("\(formatTokens(usage.thisWeek.inputTokens + usage.thisWeek.outputTokens)) tokens · \(formatCost(usage.thisWeek.costUSD)) this week")
-            if !usage.byModel.isEmpty {
+            footerCaption("\(formatTokens(settingsModel.usage.thisWeek.inputTokens + settingsModel.usage.thisWeek.outputTokens)) tokens · \(formatCost(settingsModel.usage.thisWeek.costUSD)) this week")
+            if !settingsModel.usage.byModel.isEmpty {
                 Divider().opacity(0.4).padding(.vertical, 2)
                 // UsageLedger.byModel is currently all-time, not
                 // week-scoped. Labelling it explicitly so the
@@ -177,7 +210,7 @@ struct StatsView: View {
                     .foregroundStyle(.tertiary)
                     .textCase(.uppercase)
                     .tracking(0.4)
-                ForEach(usage.byModel.prefix(3)) { row in
+                ForEach(settingsModel.usage.byModel.prefix(3)) { row in
                     HStack {
                         Text(row.displayName)
                             .font(.system(size: 11))

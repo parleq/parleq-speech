@@ -82,7 +82,9 @@ final class WindowPickerModel: ObservableObject {
     /// Bundle IDs whose windows we never want to surface as reference
     /// candidates. System UI surfaces / background helper windows that
     /// occasionally have titles but aren't user content.
-    private static let systemBundleBlocklist: Set<String> = [
+    /// Internal (not private) so the App-behavior editor's "Add app" picker can
+    /// reuse the same system-surface exclusions instead of duplicating them.
+    static let systemBundleBlocklist: Set<String> = [
         "com.apple.Spotlight",
         "com.apple.notificationcenterui",
         "com.apple.dock",
@@ -96,7 +98,7 @@ final class WindowPickerModel: ObservableObject {
         "com.apple.systempreferences",
     ]
 
-    private static let systemBundlePrefixBlocklist: [String] = [
+    static let systemBundlePrefixBlocklist: [String] = [
         "com.apple.AppShortcuts",
         "com.apple.controlcenter",
     ]

@@ -168,15 +168,29 @@ These are non-obvious and worth flagging to anyone editing the codebase:
   "audio":      { "continue_other_audio": true, "input_device_uid": "" },
   "asr":        { "mode": "default", "endpoint": "http://127.0.0.1:8767/inference" },
   "llm":        { "mode": "default", "provider": "gemini", "model": "gemini-2.5-flash",
+                  "refine": { "provider": "vertex", "model": "gemini-2.5-flash" },
+                  "refinement": "polished",
                   "tuning": { "thinking_budget": null, "max_output_tokens": 2048,
                               "temperature": 0, "ttft_deadline_seconds": [5.5, 8.0],
                               "ttft_deadline_thinking_seconds": [25.0],
                               "request_timeout_seconds": 60 },
                   "local": { "residency": "auto", "idle_unload_minutes": null,
                              "allow_unsupported_ram": false } },
-  // provider values: "gemini" | "vertex" | "bedrock" | "azure" | "openai" | "local" | "none"
-  // "local" = on-device cleanup (MLX in-process, no network boundary on the cleanup path).
-  // "none"  = skip cleanup, paste raw ASR.
+  // CLEANUP: llm.provider = the cleanup config. Values: "gemini" | "vertex" |
+  //   "bedrock" | "azure" | "openai" | "local" | "concord" | "none". Derives
+  //   the cleanup TYPE (Config.cleanupType): "none"→Raw, "concord"→Instant
+  //   (on-device deterministic), a generative provider→Polished (cloud/local).
+  //   Per-app overrides live in app_behaviors (Instant/Polished/Raw).
+  // REFINEMENT: llm.refinement = the GLOBAL refinement TYPE ("raw"|"instant"|
+  //   "polished"). Polished carries out the command via the shared Polished
+  //   provider; Instant appends new dictation cleaned on-device; Raw appends
+  //   verbatim. llm.refine = the refinement's Polished provider (used when
+  //   refinement=="polished" and cleanup isn't itself that provider). Together
+  //   llm.provider (if generative) or llm.refine form the ONE shared Polished
+  //   provider (Config.polishedProvider) used by both Polished cleanup + refine.
+  // CONTEXT: context_model = a SEPARATE provider for reference-attached turns.
+  // "local" = on-device MLX (no network boundary on the cleanup path).
+  // "concord" = on-device Concord ("Lightweight", deterministic). "none" = raw.
   "aws":        { "region": "us-east-2", "profile": "", "auth_mode": "sso",
                   "role_arn": "", "session_duration_seconds": 3600 },
   "vertex":     { "project": "", "region": "us-central1", "auth_mode": "adc",

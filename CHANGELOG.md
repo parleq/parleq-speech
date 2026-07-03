@@ -4,6 +4,24 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.40.0] - Unreleased
+
+Per-app cleanup, a clearer cleanup model, and more on-device corrections.
+
+### Added
+
+- **Per-app cleanup behavior.** Parleq now tailors how much cleanup each app gets: terminals, code editors, and spreadsheets default to fast on-device tidy-up (no rewriting), while chat and email get fuller polished cleanup. You can override any app and suggest a per-app tone, and a one-time notice explains the new defaults on upgrade so nothing changes silently.
+- **A clearer cleanup model.** Cleanup and Refinement are now each a simple choice — Raw, Instant (on-device), or Polished (cloud/on-device model) — sharing one "Polished provider" picker. This makes combinations like "keep everyday cleanup fast and on-device, but use the cloud when I give a follow-up command" straightforward to set up. Switching these no longer requires a restart when the engine is already running.
+- **More on-device ("Lightweight") corrections.** a/an agreement is now fixed automatically ("a issue" → "an issue", "a API" → "an API"), and accidental doubled words ("the the") are collapsed — both fully on-device with no rewriting, alongside the existing to/two/too homophone correction.
+
+### Changed
+
+- **Reorganized navigation.** Dictionary and Presets are now top-level items, the Usage screen is folded into Stats as an expandable "Usage & cost" detail, and the sidebar is grouped for easier navigation.
+
+### Fixed
+
+- Fixed a rare tail-drop where the last word or two of a dictation could be lost (on-device speech-model fix).
+
 ## [0.31.0] - Unreleased
 
 Smarter on-device cleanup: homophone correction.

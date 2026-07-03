@@ -251,6 +251,8 @@ final class PresetUsageJournal: @unchecked Sendable {
     /// tests don't touch disk. Rules:
     ///   - Only MANUAL uses count (a default's own uses don't reinforce).
     ///   - Skip apps that already have a configured default (any preset).
+    ///   - Skip apps whose resolved mode is not `.polished` (a preset
+    ///     would never take effect for Instant or Raw apps).
     ///   - For an app with no default: the top preset must have
     ///     >= dominanceMinManualUses AND >= dominanceMargin x the
     ///     runner-up's manual uses.
@@ -260,7 +262,8 @@ final class PresetUsageJournal: @unchecked Sendable {
         entries: [PresetUsageEntry],
         configuredDefaults: [String: String],
         declined: Set<PresetDefaultDecline>,
-        existingPresetIDs: Set<String>
+        existingPresetIDs: Set<String>,
+        nonPolishedApps: Set<String> = []
     ) -> [PresetDefaultSuggestion] {
         // appBundleID -> presetID -> (count, latest name)
         var byApp: [String: [String: (count: Int, name: String)]] = [:]
@@ -268,6 +271,8 @@ final class PresetUsageJournal: @unchecked Sendable {
             guard let app = e.appBundleID, !app.isEmpty, !e.presetID.isEmpty else { continue }
             // An app that already has a configured default is settled.
             if configuredDefaults[app] != nil { continue }
+            // Skip apps whose mode is not Polished — a preset would never take effect there.
+            if nonPolishedApps.contains(app) { continue }
             var perPreset = byApp[app] ?? [:]
             let prior = perPreset[e.presetID]?.count ?? 0
             perPreset[e.presetID] = (prior + 1, e.presetName)
@@ -301,11 +306,17 @@ final class PresetUsageJournal: @unchecked Sendable {
     /// Live wrapper: read disk + config and compute suggestions. Off the
     /// hot path (called when the Learned view opens).
     func suggestions(config: Config) -> [PresetDefaultSuggestion] {
-        Self.computeSuggestions(
-            entries: readEntries(),
+        let entries = readEntries()
+        // Build the set of candidate bundle IDs from the journal, then filter
+        // to those whose resolved mode is not Polished (preset would never fire).
+        let candidateApps = Set(entries.compactMap { $0.appBundleID })
+        let nonPolishedApps = candidateApps.filter { config.behaviorForApp($0).mode != .polished }
+        return Self.computeSuggestions(
+            entries: entries,
             configuredDefaults: config.presetAppDefaults,
             declined: readDeclines(),
-            existingPresetIDs: Set(config.transformPresets.map { $0.id })
+            existingPresetIDs: Set(config.transformPresets.map { $0.id }),
+            nonPolishedApps: nonPolishedApps
         )
     }
 }
