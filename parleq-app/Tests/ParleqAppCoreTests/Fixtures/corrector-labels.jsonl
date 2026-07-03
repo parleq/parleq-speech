@@ -97,3 +97,15 @@
 {"audio":"audio/0FC44345-82FE-4EB9-85F3-1D8C19A429E2.wav","intent":"keavi"}
 {"audio":"audio/F4252DF8-10C2-4D7A-86EC-6C16B429DE02.wav","intent":"robo-rev"}
 {"audio":"audio/296DE6A7-014F-4AB2-B2EC-816B48F18501.wav","intent":"robo-rev"}
+{"audio": "audio/1AC5F1D3-2323-4B0E-8DA8-86EA9F518498.wav", "intent": "homophone-two-to"}
+{"audio": "audio/BB935C11-A3BF-4320-A104-1A53C13760C6.wav", "intent": "homophone-two-to"}
+{"audio": "audio/80A97614-1524-4BE8-BD71-A39D313D4BE4.wav", "intent": "homophone-two-to"}
+{"audio": "audio/6AA33D8B-70DB-441E-9768-FAD885B64F69.wav", "intent": "homophone-two-to"}
+{"audio": "audio/BA9C2573-71C0-4C0E-ABCA-35BC68B9637C.wav", "intent": "homophone-control"}
+{"audio": "audio/0B3BF232-BD17-492E-9023-AA824794DE1B.wav", "intent": "homophone-control"}
+{"audio": "audio/99AD11BA-DC85-482C-A20F-B233945B72B1.wav", "intent": "homophone-control"}
+{"audio":"audio/ECDCE746-61EC-4ABE-8C53-77A2881A91B1.wav","intent":"article-an-issue"}
+{"audio":"audio/1D7EF589-D840-44CE-B039-20DB53A8F58C.wav","intent":"article-an-easy"}
+{"audio":"audio/AEEF53D9-C7BE-46B3-8E8E-231BEFC4C274.wav","intent":"article-an-interesting"}
+{"audio":"audio/128B7A03-1C90-466F-B045-2B71A6A5CCDC.wav","intent":"duplicate-collapse-the"}
+{"audio":"audio/80BDA1E9-2739-45AC-A661-A0490B0086DC.wav","intent":"duplicate-keep-that"}

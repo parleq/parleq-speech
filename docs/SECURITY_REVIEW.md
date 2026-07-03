@@ -403,7 +403,7 @@ All network calls are HTTPS via URLSession or Soto, both using the system trust 
 |---|---|---|---|
 | Soto (`SotoBedrockRuntime`) | AWS SigV4, ConverseStream, SSO credential resolution | `"7.14.0"..<"7.15.0"` | `soto-project/soto` |
 | FluidAudio | In-process ASR (Parakeet TDT v3) + CTC custom-vocab boosting | `"0.14.5"..<"0.14.6"` | `FluidInference/FluidAudio` |
-| Concord | In-process deterministic 2nd-pass cleanup ("Lightweight (on-device)" tier) | exact `0.1.4` | `keavi-app/concord` (private; trait-gated — see below) |
+| Concord | In-process deterministic 2nd-pass cleanup ("Lightweight (on-device)" tier) | exact `0.3.7` | `keavi-app/concord` (private; trait-gated — see below) |
 | Sparkle | Auto-update framework (Ed25519-signed appcast → download → relaunch). Open-source, the de-facto standard for third-party Mac auto-updates, widely deployed across the ecosystem. | `"2.9.0"..<"2.10.0"` | `sparkle-project/Sparkle` |
 | mlx-swift | In-process MLX compute framework for the on-device cleanup tier | exact `0.31.4` | `ml-explore/mlx-swift` |
 | mlx-swift-lm | LLM inference layer (MLXLLM, MLXLMCommon) for the on-device cleanup tier | commit `b95dc78` | `ml-explore/mlx-swift-lm` |
@@ -419,7 +419,7 @@ All network calls are HTTPS via URLSession or Soto, both using the system trust 
 - **No I/O surface.** Concord is a pure, in-process, *deterministic* text→text transform over the transcript already in memory. It opens no socket, makes **no network call**, writes **nothing to disk**, and holds **no secret or credential**. It is structurally incapable of exfiltrating or persisting dictation data, and that is **verifiable** (§11, check 10: select Lightweight, dictate, observe zero outbound connections). Unlike a cloud provider it *removes* a network boundary rather than adding one; unlike the local Gemma tier it has nothing to download (it is bundled).
 - **Deterministic, not ML.** Rule-based normalization (numbers/ITN, compound de-spacing) and Double-Metaphone dictionary matching with a per-word confidence veto — no model weights, no inference, no training corpus, no nondeterminism. Behavior is bounded and predictable.
 - **Optional, off by default, absent from the open build.** Cloud cleanup is the default; Concord is an opt-in "Lightweight" tier. It is gated behind the `Concord` SwiftPM trait, so the **public open-source build does not include it at all** (the dependency is pruned from resolution — `parleq-app/Package.swift`, `THIRD_PARTY_LICENSES.md`). Fleets can pin `cleanupProvider` away from it via MDM (§9.7), or simply never select it.
-- **Same pinning hygiene** as every other dependency: exact version (`0.1.4`), reviewed bumps.
+- **Same pinning hygiene** as every other dependency: exact version (`0.3.7`), reviewed bumps.
 
 See §9.10 for the accepted-risk framing and §6 for the egress classification.
 

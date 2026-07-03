@@ -730,26 +730,41 @@ struct ParleqApp {
             return makeProvider(ctxId, "context-model enabled")
         }()
 
-        // Refine-model tier. Build a third provider only when
-        // config.refineModel is set AND differs from the cleanup model
-        // (same pattern as contextLLM). Routes hotkey voice-refine,
-        // quick chips, and styled per-app-preset cleanup to a cloud
-        // provider when the cleanup tier is the on-device Concord model,
-        // which can't perform those operations. nil → AppState's routing
-        // falls the refine tier back to contextLLM, then llm.
+        // Refine-model tier — the shared Polished provider for REFINEMENT
+        // (reframe v2). Build it whenever `config.refineModel` is set and
+        // differs from the cleanup model, INDEPENDENT of the cleanup provider:
+        // refinement is now orthogonal to cleanup, so a user can pick Raw
+        // cleanup ("none") + Polished refinement and this must instantiate the
+        // provider. (Contrast contextLLM below/above, which stays gated on
+        // cleanup != "none" — references remain a sub-feature of cleanup.)
+        // nil → AppState's routing falls refine turns back to append-only.
         let refineLLM: (any LLMProvider)? = {
-            guard config.llmProvider != "none" else { return nil }
             guard let rfnId = config.refineModel, rfnId != cleanupId else {
-                return nil   // nil → AppState falls refine turns back to context/cleanup
+                return nil
             }
-            // Reuse the already-built context provider when the refine
-            // tier points at the SAME identifier — avoids spinning up a
-            // second client (and second Keychain read) for one provider.
-            if let ctxId = config.contextModel, rfnId == ctxId {
-                return contextLLM
+            // Reuse the already-built context provider ONLY when it points at
+            // the same identifier AND was actually built (contextLLM is nil for
+            // a "none"-cleanup user) — otherwise build a fresh client.
+            if let ctxId = config.contextModel, rfnId == ctxId, let ctx = contextLLM {
+                return ctx
             }
             return makeProvider(rfnId, "refine-model enabled")
         }()
+
+        // Standing on-device Concord provider for per-app **Instant** mode.
+        // Built unconditionally (trait-gated), INDEPENDENT of the global
+        // cleanup provider, so an Instant-mode target can FORCE literal
+        // on-device cleanup even when the user's global cleanup is a cloud
+        // LLM. The instance is cheap — ConcordCleanupProvider.init just
+        // stores a default engine (no network/auth/RAM/model download). In a
+        // no-Concord (public source) build this is nil and Instant falls back
+        // to RAW paste, not Polished (see AppState's mode routing).
+        #if Concord
+        let instantLLM: (any LLMProvider)? = ConcordCleanupProvider()
+        logStderr("[parleq] Instant tier ready (standing Concord — on-device, no network)")
+        #else
+        let instantLLM: (any LLMProvider)? = nil
+        #endif
 
         let overlay = OverlayWindow()
         let stateBox = StateBox()
@@ -764,6 +779,7 @@ struct ParleqApp {
                 llm: llm,
                 contextLLM: contextLLM,
                 refineLLM: refineLLM,
+                instantLLM: instantLLM,
                 overlay: overlay,
                 autoAcceptSeconds: config.autoAcceptSeconds,
                 trailingSpaceEnabled: config.trailingSpace,
@@ -1145,9 +1161,10 @@ struct ParleqApp {
             // to re-run the flow can do so from the menu bar or
             // via Settings → "Run Setup Again".
             let accessGrantedAtLaunch = LaunchPermissions.accessibilityGranted
-            if LaunchPermissions.shouldShowWizardAtLaunch(
+            let showWizardAtLaunch = LaunchPermissions.shouldShowWizardAtLaunch(
                 wizardCompleted: config.wizardCompleted,
-                accessibilityGranted: accessGrantedAtLaunch) {
+                accessibilityGranted: accessGrantedAtLaunch)
+            if showWizardAtLaunch {
                 if !config.wizardCompleted {
                     logStderr("[parleq] wizard: launching first-run setup (config.wizardCompleted=false)")
                     wizard.show()
@@ -1156,6 +1173,25 @@ struct ParleqApp {
                     // the permissions step only (no full re-flow, no config reset).
                     logStderr("[parleq] wizard: Accessibility missing — showing permissions re-grant (#82)")
                     wizard.show(permissionsOnly: true)
+                }
+            }
+
+            // Per-app cleanup modes (per-target feature): a one-time heads-up so
+            // an EXISTING user's dictation into terminals/editors/spreadsheets
+            // doesn't silently switch to Instant without explanation. New installs
+            // (wizard not yet completed) onboard WITH the feature and are marked
+            // seen silently. When the permissions wizard is up, defer to the next
+            // launch so we don't stack two modals.
+            if !UserDefaults.standard.bool(forKey: PerAppModesNotice.seenKey) {
+                if !config.wizardCompleted {
+                    UserDefaults.standard.set(true, forKey: PerAppModesNotice.seenKey)
+                } else if !showWizardAtLaunch {
+                    // Defer to after launch settles so a synchronous modal doesn't
+                    // block the remaining app setup below.
+                    DispatchQueue.main.async {
+                        PerAppModesNotice.show()
+                        UserDefaults.standard.set(true, forKey: PerAppModesNotice.seenKey)
+                    }
                 }
             }
 

@@ -4,6 +4,42 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.40.0] - Unreleased
+
+Per-app cleanup, a clearer cleanup model, and more on-device corrections.
+
+### Added
+
+- **Per-app cleanup behavior.** Parleq now tailors how much cleanup each app gets: terminals, code editors, and spreadsheets default to fast on-device tidy-up (no rewriting), while chat and email get fuller polished cleanup. You can override any app and suggest a per-app tone, and a one-time notice explains the new defaults on upgrade so nothing changes silently.
+- **A clearer cleanup model.** Cleanup and Refinement are now each a simple choice — Raw, Instant (on-device), or Polished (cloud/on-device model) — sharing one "Polished provider" picker. This makes combinations like "keep everyday cleanup fast and on-device, but use the cloud when I give a follow-up command" straightforward to set up. Switching these no longer requires a restart when the engine is already running.
+- **More on-device ("Lightweight") corrections.** a/an agreement is now fixed automatically ("a issue" → "an issue", "a API" → "an API"), and accidental doubled words ("the the") are collapsed — both fully on-device with no rewriting, alongside the existing to/two/too homophone correction.
+
+### Changed
+
+- **Reorganized navigation.** Dictionary and Presets are now top-level items, the Usage screen is folded into Stats as an expandable "Usage & cost" detail, and the sidebar is grouped for easier navigation.
+
+### Fixed
+
+- Fixed a rare tail-drop where the last word or two of a dictation could be lost (on-device speech-model fix).
+
+## [0.31.0] - Unreleased
+
+Smarter on-device cleanup: homophone correction.
+
+### Added
+
+- The on-device ("Lightweight") cleanup tier now corrects function-word homophone errors in the to/two/too family — e.g. dictating "delegate to subagents", which the recognizer writes as "delegate two subagents", is fixed automatically. The correction is evidence-based (a bundled language-statistics table plus the recognizer's own per-word confidence) and deliberately conservative: it only fires when the surrounding words clearly support the fix, never on the word's frequency alone, and legitimate counts ("two researchers", "two questions") are left untouched. Validated end-to-end against real recorded dictations with zero false corrections.
+
+## [0.30.1] - Unreleased
+
+Fixes for spelled-out acronym correction and voice enrollment.
+
+### Fixed
+
+- Spelled-out digit acronyms — e.g. dictating "E2E", which the recognizer often hears as "E to E" — are now corrected to the acronym on the on-device ("Lightweight") cleanup tier, instead of being mangled (e.g. "E2E to E") or corrected inconsistently. Applies to terms you've enrolled a voiceprint for.
+- Voice enrollment no longer learns noisy one- or two-character alternate spellings (e.g. "e", "et") that could trigger spurious corrections, and the post-enrollment summary now lists exactly the alternates that were saved.
+- Fixed a crash that could occur when a dictation was started and then immediately cancelled (an empty capture).
+
 ## [0.30.0] - Unreleased
 
 Voiceprints that survive app updates, broader phonetic correction, and cleaner numbers, percentages, and capitalization.
@@ -17,6 +53,7 @@ Voiceprints that survive app updates, broader phonetic correction, and cleaner n
 
 - **Cleaner numbers, percentages, and capitalization.** Large spoken numbers like "eight point nine million" now render as "8.9 million" (previously a run of zeros), spoken percentages like "forty five percent" become "45%", and a number that begins a sentence keeps its capital letter.
 
+[0.30.1]: https://github.com/parleq/parleq-speech/releases/tag/v0.30.1
 [0.30.0]: https://github.com/parleq/parleq-speech/releases/tag/v0.30.0
 
 ## [0.29.0] - Unreleased

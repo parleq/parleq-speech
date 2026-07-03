@@ -666,7 +666,8 @@ public final class OverlayWindow {
         downloadProgress: ASRDownloadProgress? = nil,
         microphoneName: String? = nil,
         cleanupFailureMessage: String? = nil,
-        cleanupFailureReauthable: Bool = false
+        cleanupFailureReauthable: Bool = false,
+        appendMode: Bool = false
     ) {
         model.update(
             state: state,
@@ -674,7 +675,8 @@ public final class OverlayWindow {
             downloadProgress: downloadProgress,
             microphoneName: microphoneName,
             cleanupFailureMessage: cleanupFailureMessage,
-            cleanupFailureReauthable: cleanupFailureReauthable
+            cleanupFailureReauthable: cleanupFailureReauthable,
+            appendMode: appendMode
         )
         // Deferred-shrink settle point: a shrink that was held back
         // during the streaming states (see resizePanelToHeight) is
@@ -1287,6 +1289,12 @@ public final class OverlayModel: ObservableObject {
     /// `.awaitingAccept` like `cleanupFailureMessage`.
     @Published var cleanupFailureReauthable: Bool = false
 
+    /// True for an append-only refine result (a refine turn with no Polished
+    /// provider): the spoken words were appended, not interpreted. Drives a
+    /// subtle, non-error "append mode" note in `.awaitingAccept`. Gated to
+    /// `.awaitingAccept` like `cleanupFailureMessage`; never an error.
+    @Published var appendModeActive: Bool = false
+
     /// Re-auth interaction state for the signed-out notice. Only
     /// meaningful while `cleanupFailureReauthable` is true. Reset to
     /// `.signedOut` whenever a fresh failure message is applied.
@@ -1317,6 +1325,13 @@ public final class OverlayModel: ObservableObject {
     /// dictation's cleanup, nil when none. Drives the review state's
     /// "Styled with <name> · Undo" chip.
     @Published var appliedPresetName: String?
+
+    /// Per-target cleanup engine for the current dictation (Task 4). Set by
+    /// AppState from the resolved mode. Drives the header engine badge, which
+    /// renders ONLY for `.instant` / `.raw` (the notable, forced engines);
+    /// `.polished` and nil fall through to the normal interactive model badge.
+    /// A status label reflecting an automatic choice — never a selector.
+    @Published var cleanupMode: TargetMode?
 
     /// Name of the transform preset currently being applied by a
     /// manual chip tap; drives the cleaning-state status line
@@ -1468,7 +1483,8 @@ public final class OverlayModel: ObservableObject {
         downloadProgress: ASRDownloadProgress? = nil,
         microphoneName: String? = nil,
         cleanupFailureMessage: String? = nil,
-        cleanupFailureReauthable: Bool = false
+        cleanupFailureReauthable: Bool = false,
+        appendMode: Bool = false
     ) {
         self.state = state
         self.text = text
@@ -1513,6 +1529,9 @@ public final class OverlayModel: ObservableObject {
         let reauthableNow = (state == .awaitingAccept) ? cleanupFailureReauthable : false
         self.cleanupFailureReauthable = reauthableNow
         if reauthableNow { self.reauthState = .signedOut }
+        // Append-mode note follows the same .awaitingAccept gating; cleared
+        // elsewhere so it doesn't follow a later interpreted result.
+        self.appendModeActive = (state == .awaitingAccept) ? appendMode : false
         // Every full update ends a provisional display: raw-first shows
         // set the flag explicitly AFTER calling update (see
         // OverlayWindow.showProvisionalCleaning); the first streamed
@@ -2242,7 +2261,12 @@ private struct OverlayContent: View {
                     sendToEnabled: model.referenceWindowsEnabled,
                     pasteTarget: model.pasteTarget,
                     conflict: headerBadgeState.conflict,
-                    visionFallbackOption: firstConfiguredVisionModel(in: headerBadgeState.pickerEntries),
+                    // Only the configured, instance-backed models — the "Switch
+                    // to <model>" button re-cleans immediately, so a catalog
+                    // entry would fall back to a different model than claimed
+                    // (same rule as the engine-badge picker).
+                    visionFallbackOption: firstConfiguredVisionModel(
+                        in: Array(headerBadgeState.pickerEntries.prefix(headerBadgeState.configuredCount))),
                     onCopy: onCopy,
                     onCancel: onCancel,
                     onAccept: onAccept,
@@ -2631,7 +2655,21 @@ private struct OverlayContent: View {
             // helper so the badge state is computed ONCE per body
             // evaluation (Config.load reads disk; per-property
             // computed-getters would re-read it 3× per render).
-            modelBadgeRegion(headerBadgeState)
+            //
+            // Per-target Instant/Raw (Task 4): show an EngineBadge that tells
+            // the truth about what cleaned this dictation (⚡ Instant / Raw).
+            // It stays clickable — opening the SAME model picker — so the
+            // click-to-switch affordance is preserved; on a forced engine,
+            // picking re-cleans this dictation with the chosen model. Polished
+            // (and nil) keep the plain interactive model badge.
+            switch model.cleanupMode {
+            case .instant:
+                engineBadgeRegion(.instant, headerBadgeState)
+            case .raw:
+                engineBadgeRegion(.raw, headerBadgeState)
+            case .polished, .none:
+                modelBadgeRegion(headerBadgeState)
+            }
 
             // + Menu — shown only when referenceWindowsEnabled. Items
             // within the menu are further gated by sub-toggles:
@@ -2706,13 +2744,26 @@ private struct OverlayContent: View {
     private struct HeaderBadgeState {
         let resolvedModel: ModelIdentifier
         let pickerEntries: [ModelPicker.ModelEntry]
+        /// Count of leading `pickerEntries` that are configured, instance-backed
+        /// identifiers (cleanup + context) — the rest are catalog entries that
+        /// fall back at invoke time. The engine badge's re-clean picker offers
+        /// only this prefix.
+        let configuredCount: Int
         let conflict: ModelConflict?
     }
 
     private var headerBadgeState: HeaderBadgeState {
         let cfg = Config.load().config
+        // A styled dictation (a per-app or manual preset was applied — signalled
+        // by appliedPresetName) runs through the REFINE tier, not the base
+        // cleanup tier. Resolve the badge with that in mind so it names the model
+        // that actually produced the text (e.g. the configured cloud model),
+        // instead of the base cleanup model (which, for a Concord/Lightweight
+        // global, would mislabel a cloud-styled result as "Lightweight").
+        let styled = model.appliedPresetName != nil
         let resolvedModel = cfg.modelForInvocation(
             hasReferences: !model.references.isEmpty,
+            isRefine: styled,
             override: model.pickedModelOverride
         )
         let cleanupId = ModelIdentifier(provider: cfg.llmProvider, model: cfg.llmModel)
@@ -2720,6 +2771,18 @@ private struct OverlayContent: View {
         if let ctx = cfg.contextModel, ctx != cleanupId {
             ids.append(ctx)
         }
+        // The refine tier is instance-backed too, so offer it in the picker —
+        // otherwise a styled dictation's resolved (refine) model wouldn't be a
+        // selectable entry.
+        if let rfn = cfg.refineModel, rfn != cleanupId, !ids.contains(rfn) {
+            ids.append(rfn)
+        }
+        // The configured (non-catalog) identifiers are the only ones backed by
+        // a pre-built provider INSTANCE — catalog entries fall back at invoke
+        // time (llmForInvocation logs + degrades). The Instant/Raw engine badge
+        // RE-CLEANS on pick, so it must offer only these backed models, or the
+        // badge would claim a model the fallback didn't actually run.
+        let configuredCount = ids.count
         // Task #54: extend the picker with the configured providers'
         // CURATED CATALOG, so switching models is a picker tap instead
         // of a config edit. Rules:
@@ -2767,6 +2830,7 @@ private struct OverlayContent: View {
         return HeaderBadgeState(
             resolvedModel: resolvedModel,
             pickerEntries: entries,
+            configuredCount: configuredCount,
             conflict: conflict
         )
     }
@@ -2785,6 +2849,30 @@ private struct OverlayContent: View {
                 onPick: { picked in
                     model.pickedModelOverride = picked
                     modelPickerShown = false
+                }
+            )
+        }
+    }
+
+    /// Header region for a forced-engine (Instant/Raw) dictation: the truthful
+    /// EngineBadge, still clickable → the same model picker. Because Instant/Raw
+    /// ignore `pickedModelOverride` on the current dictation, picking here
+    /// RE-CLEANS this dictation with the chosen model (→ Polished) via the
+    /// switch-and-recleanup path, rather than just setting an inert override.
+    @ViewBuilder
+    private func engineBadgeRegion(_ kind: EngineBadge.Kind, _ state: HeaderBadgeState) -> some View {
+        // Offer ONLY the configured, instance-backed models — picking re-cleans
+        // immediately, so a catalog entry (which falls back at invoke time)
+        // would produce output from a different model than the badge claims.
+        let backedEntries = Array(state.pickerEntries.prefix(state.configuredCount))
+        EngineBadge(kind: kind, onTap: { modelPickerShown.toggle() })
+        .popover(isPresented: $modelPickerShown, arrowEdge: .top) {
+            ModelPicker(
+                models: backedEntries,
+                selectedModel: state.resolvedModel,
+                onPick: { picked in
+                    modelPickerShown = false
+                    onSwitchToVisionModelAndRecleanup(picked)
                 }
             )
         }
@@ -3316,6 +3404,21 @@ private struct OverlayContent: View {
                                     .fixedSize(horizontal: false, vertical: true)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                             }
+                        }
+                    } else if model.appendModeActive {
+                        // Append-only refine: no Polished provider to interpret
+                        // the instruction, so the spoken words were appended
+                        // verbatim. A subtle, non-error note (no amber icon).
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: "text.append")
+                                .foregroundColor(.secondary)
+                                .font(.system(size: 12))
+                                .padding(.top, 2)
+                            Text("Appended — add a Polished provider in Settings to refine.")
+                                .font(.system(size: 12))
+                                .foregroundColor(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
                 }

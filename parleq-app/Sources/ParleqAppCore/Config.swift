@@ -16,8 +16,17 @@
 //     "audio":     { "continue_other_audio": true },
 //     "asr":       { "mode": "default" },
 //     "llm":       { "mode": "default",
+//                    // CLEANUP config. Derives cleanupType: "none"→Raw,
+//                    // "concord"→Instant (on-device), generative→Polished.
 //                    "provider": "gemini",
 //                    "model": "gemini-2.5-flash",
+//                    // GLOBAL refinement TYPE: "raw"|"instant"|"polished".
+//                    "refinement": "polished",
+//                    // Refinement's Polished provider (used when refinement
+//                    // == "polished" and cleanup isn't itself that provider).
+//                    // With llm.provider (if generative) it forms the ONE
+//                    // shared Polished provider (Config.polishedProvider).
+//                    "refine": { "provider": "vertex", "model": "…" },
 //                    // Advanced request tuning (#55) — config-file
 //                    // only, no Settings UI, omit-when-default. All
 //                    // values clamped on load; restart required:
@@ -49,15 +58,7 @@
 //                      // Allow local provider on < 12 GB RAM machines
 //                      // despite thrash risk. Default false.
 //                      "allow_unsupported_ram": false
-//                    },
-//                    // Refinement tier (omit when unset). Routes
-//                    // voice-refine, quick chips, and styled (per-app
-//                    // preset) cleanup to a cloud provider — used when
-//                    // cleanup is the on-device Concord tier, which
-//                    // can't perform refine/style ops. Falls back to
-//                    // context_model, then cleanup, when absent:
-//                    "refine": { "provider": "gemini",
-//                                "model": "gemini-2.5-flash" } },
+//                    } },
 //     "aws":       { "region": "us-east-2",
 //                    "profile": "work",
 //                    // Enterprise OIDC federation (omit-when-default):
@@ -127,6 +128,18 @@ extension ModelIdentifier {
     /// "gpt-") and Title-Cases the remainder so it reads naturally
     /// in the UI without duplicating the group header.
     public var displayShort: String {
+        // Provider-level tiers carry no model name (empty `model` field) — the
+        // on-device Concord "Lightweight" corrector is the main one. Fall back
+        // to a human provider name so the ModelBadge / picker row never renders
+        // blank (which read as a nameless checked item + an icon-only badge).
+        if model.trimmingCharacters(in: .whitespaces).isEmpty {
+            switch provider.lowercased() {
+            case "concord": return "Lightweight"
+            case "local":   return "On-device"
+            case "none", "": return "None"
+            default:        return provider.prefix(1).uppercased() + provider.dropFirst()
+            }
+        }
         // Strip known provider prefixes so the badge reads
         // "2.5 Flash" (not "gemini-2.5-flash") or "Sonnet 4-5"
         // (not "claude-sonnet-4-5").
@@ -314,6 +327,29 @@ public enum LocalModelDefaults {
         }
         return base.appendingPathComponent("Parleq/models", isDirectory: true)
     }()
+}
+
+/// How Parleq's cleanup pipeline is routed for a given paste target.
+/// The only genuinely new routing primitive is `.instant` (a forced
+/// on-device Concord override); `.polished` is today's pipeline unchanged
+/// and `.raw` is the existing `none` (paste as transcribed).
+public enum TargetMode: String, Codable, Sendable {
+    case instant
+    case polished
+    case raw
+}
+
+/// The resolved per-app cleanup behavior: a `TargetMode` plus, for the
+/// `.polished` mode only, an optional tone preset id. (`presetID` is
+/// meaningless for `.instant`/`.raw`.)
+public struct AppBehavior: Equatable, Codable, Sendable {
+    public var mode: TargetMode
+    public var presetID: String?
+
+    public init(mode: TargetMode, presetID: String? = nil) {
+        self.mode = mode
+        self.presetID = presetID
+    }
 }
 
 public struct Config: Sendable {
@@ -537,6 +573,16 @@ public struct Config: Sendable {
     /// shows "Styled with <name> · Undo".
     public var presetAppDefaults: [String: String]
 
+    /// Per-app cleanup MODE overrides: target app bundle ID → `AppBehavior`.
+    /// In v1 this stores the per-app MODE (`.instant`/`.polished`/`.raw`);
+    /// the per-app *preset* remains in `presetAppDefaults` (the single source
+    /// of truth that the Settings UI / LearnedStore mutate), resolved via
+    /// `presetForApp`, so the two maps cannot drift. Empty by default; curated
+    /// smart defaults live in code (`CuratedAppDefaults`), not here, so this
+    /// map stores only explicit user overrides. (`AppBehavior.presetID` is
+    /// reserved for a later unification of the two maps; it is unused in v1.)
+    public var appBehaviors: [String: AppBehavior]
+
     /// Resolve the per-app default preset for a paste target. nil when
     /// the feature is disabled (MDM), the bundle is unmapped, or the
     /// mapped preset id no longer exists (deleted preset → dangling map
@@ -547,6 +593,53 @@ public struct Config: Sendable {
               let presetID = presetAppDefaults[bundleID]
         else { return nil }
         return transformPresets.first { $0.id == presetID }
+    }
+
+    /// Resolve the cleanup behavior for a paste target. Resolution order:
+    /// user override (`appBehaviors`) → curated default mode
+    /// (`CuratedAppDefaults`) → `cleanupDefaultLevel` (the global default). A
+    /// `nil`/empty bundle resolves to `cleanupDefaultLevel`. Exception: when
+    /// cleanup is globally off ("none" → `cleanupDefaultLevel == .raw`),
+    /// curated defaults are skipped so an opted-out user keeps Raw everywhere;
+    /// only an explicit `appBehaviors` override lifts an app out of Raw.
+    ///
+    /// Curated *suggested tones* are intentionally NOT applied here — this
+    /// returns only the user's explicit preset (which can only come from an
+    /// `appBehaviors` override). Suggestions stay off until the user accepts
+    /// them in the App-behavior editor.
+    public func behaviorForApp(_ bundleID: String?) -> AppBehavior {
+        guard let bundleID else { return AppBehavior(mode: cleanupType) }
+        let trimmed = bundleID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return AppBehavior(mode: cleanupType) }
+        // Mode: explicit override → curated default → global cleanup type.
+        //   • "none" (cleanupType == .raw): curated defaults are skipped
+        //     entirely — a user who opted out of cleanup keeps Raw everywhere;
+        //     only an explicit override lifts them out.
+        //   • A curated `.polished` upgrade is applied ONLY when the user's
+        //     CLEANUP is itself Polished (cleanupType == .polished). Otherwise
+        //     it falls back to the user's cleanup type. This is load-bearing:
+        //     a concord (Instant) cleanup user who configured a cloud provider
+        //     for REFINEMENT has a non-nil `polishedProvider`, so without this
+        //     guard curated comms/email/browser apps would route their CLEANUP
+        //     to the refinement provider — cloud — even though the user chose
+        //     on-device cleanup. Curated `.instant` always applies (on-device
+        //     is always available); explicit overrides are always honored.
+        let mode: TargetMode
+        if let override = appBehaviors[trimmed]?.mode {
+            mode = override
+        } else if cleanupType == .raw {
+            mode = .raw
+        } else if let curated = CuratedAppDefaults.mode(for: trimmed) {
+            mode = (curated == .polished && cleanupType != .polished) ? cleanupType : curated
+        } else {
+            mode = cleanupType
+        }
+        // Preset is sourced from presetForApp — the single source of truth
+        // (`presetAppDefaults`) plus the MDM gate — so the two maps can never
+        // drift. Only Polished carries a preset; suggested tones are never
+        // auto-applied.
+        let presetID = mode == .polished ? presetForApp(trimmed)?.id : nil
+        return AppBehavior(mode: mode, presetID: presetID)
     }
 
     /// Model to use when references are attached to a dictation.
@@ -566,7 +659,24 @@ public struct Config: Sendable {
     /// the legacy behavior for configs that don't set it. Serialized as
     /// the top-level `llm.refine` object (`{provider, model}`), mirroring
     /// the `context_model` shape.
+    ///
+    /// Reframe (v2): reinterpreted as the REFINEMENT's Polished provider —
+    /// used when `refinementType == .polished`. It is one half of the shared
+    /// `polishedProvider` (the other being `llmProvider` when cleanup is
+    /// generative). Still serialized as `llm.refine` so an older build reads it
+    /// as its refine tier (downgrade-faithful).
     public var refineModel: ModelIdentifier?
+
+    /// GLOBAL refinement type (reframe v2): how a hotkey voice-refine / quick
+    /// chip is handled.
+    ///   - `.polished` → interpret + carry out the command via `polishedProvider`
+    ///     (real rewriting).
+    ///   - `.instant`  → append-only: the new dictation is cleaned on-device
+    ///     (Concord) and appended to the prior text.
+    ///   - `.raw`      → append-only: the new dictation is appended verbatim.
+    /// Serialized as `llm.refinement`; migrated from the legacy refine tier
+    /// when the key is absent. Not per-app in v1 (refinement is global).
+    public var refinementType: TargetMode
 
     // MARK: - Feature toggles (Phase 5 / Tier 1)
     //
@@ -797,8 +907,10 @@ public struct Config: Sendable {
         ],
         transformPresets: [],
         presetAppDefaults: [:],
+        appBehaviors: [:],
         contextModel: nil,
         refineModel: nil,
+        refinementType: .polished,
         referenceWindowsEnabled: true,
         clipboardReferenceEnabled: true,
         imageReferenceEnabled: true,
@@ -1587,6 +1699,11 @@ public struct Config: Sendable {
     /// Internal so tests can call it via `@testable import`.
     static func parse(fromDictionary parsed: [String: Any]) -> Config {
         var c = Config.default
+        // Reframe v2: whether the config carried an explicit `llm.refinement`
+        // type. When absent (a pre-reframe config), we derive the refinement
+        // type from the legacy refine tier below (see the migration near the
+        // end of parse).
+        var refinementKeyPresent = false
         if let hotkey = parsed["hotkey"] as? [String: Any] {
             if let binding = hotkey["binding"] as? String {
                 c.hotkeyBinding = binding
@@ -1656,6 +1773,13 @@ public struct Config: Sendable {
                 if !tp.isEmpty && !tm.isEmpty {
                     c.refineModel = ModelIdentifier(provider: tp, model: tm)
                 }
+            }
+            // Reframe v2: the global refinement TYPE. When present it is
+            // authoritative; when absent we migrate from the legacy refine
+            // tier after all fields are parsed (see near the end of parse).
+            if let v = llm["refinement"] as? String, let t = TargetMode(rawValue: v) {
+                c.refinementType = t
+                refinementKeyPresent = true
             }
         }
         if let aws = parsed["aws"] as? [String: Any] {
@@ -1890,6 +2014,90 @@ public struct Config: Sendable {
             }
             c.presetAppDefaults = mapped
         }
+        // Per-app cleanup behavior — top-level "app_behaviors". This is the
+        // successor to `preset_app_defaults`. When present it takes
+        // precedence; legacy entries are synthesized in only for bundles
+        // NOT covered by app_behaviors, so nothing is lost across a build
+        // that wrote one map but not the other. Keys are trimmed; a
+        // missing/invalid `mode` defaults to `.polished`.
+        var behaviors: [String: AppBehavior] = [:]
+        if let raw = parsed["app_behaviors"] as? [String: Any] {
+            for (key, value) in raw {
+                let k = key.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !k.isEmpty, let obj = value as? [String: Any] else { continue }
+                let mode = (obj["mode"] as? String).flatMap(TargetMode.init(rawValue:)) ?? .polished
+                // A native app_behaviors entry may carry a `preset`. Presets
+                // live in `presetAppDefaults` (the single source of truth the
+                // Settings UI / LearnedStore mutate) — fold it there rather than
+                // duplicating it into appBehaviors, which would let the two maps
+                // drift (a delete via the legacy path could be resurrected on
+                // save). appBehaviors stores the MODE override only.
+                if mode == .polished,
+                   let preset = (obj["preset"] as? String)?
+                       .trimmingCharacters(in: .whitespacesAndNewlines),
+                   !preset.isEmpty {
+                    c.presetAppDefaults[k] = preset
+                }
+                behaviors[k] = AppBehavior(mode: mode, presetID: nil)
+            }
+        }
+        // Preserve a user's explicit Polished+styling intent: if a legacy
+        // per-app preset exists for an app whose CURATED default would flip it
+        // to a non-Polished mode (e.g. a terminal the user had styled), record
+        // a mode-only Polished override so it isn't silently turned literal.
+        // The preset itself stays in presetAppDefaults.
+        for (bundle, _) in c.presetAppDefaults where behaviors[bundle] == nil {
+            if let curated = CuratedAppDefaults.mode(for: bundle), curated != .polished {
+                behaviors[bundle] = AppBehavior(mode: .polished, presetID: nil)
+            }
+        }
+        c.appBehaviors = behaviors
+
+        // Reframe v2 migration: derive the refinement TYPE from the legacy
+        // refine tier when no explicit `llm.refinement` key was present. Old
+        // refine resolution was `refineModel ?? contextModel ?? cleanup`, so
+        // the effective refine provider tells us the type:
+        //   generative → .polished (keep/adopt that provider as the refinement
+        //                Polished provider so `polishedProvider` resolves it),
+        //   "concord"  → .instant  (append-only, cleaned on-device),
+        //   "none"     → .raw      (append-only, verbatim).
+        if !refinementKeyPresent {
+            if c.llmProvider == "none" {
+                // "none" is the GLOBAL no-cloud off switch. Never auto-promote a
+                // migrated "none" user to Polished (cloud) refinement from a
+                // refine/context tier that was DEAD under "none" — the old
+                // modelForInvocation short-circuited every refine turn to the
+                // nil cleanup provider. Keep refinement append-only so an
+                // upgrade preserves the user's zero-cloud posture, and do NOT
+                // copy the context tier into refineModel. (A user can still
+                // explicitly choose Raw cleanup + Polished refinement in the new
+                // Settings UI — that writes llm.refinement and skips this path.)
+                c.refinementType = .raw
+                // Drop the dead refine tier so NO Polished provider is
+                // resolvable for a migrated "none" user (polishedProvider → nil,
+                // no refine client built) — belt-and-suspenders on zero-cloud.
+                c.refineModel = nil
+            } else {
+                let effective = c.refineModel?.provider
+                    ?? c.contextModel?.provider
+                    ?? c.llmProvider
+                if !Config.isGenerativeProvider(effective) {
+                    c.refinementType = .instant
+                } else {
+                    c.refinementType = .polished
+                    // When the Polished refinement provider comes from the
+                    // context tier (cleanup isn't generative and no explicit
+                    // refine tier), copy it into `refineModel` so
+                    // `polishedProvider` resolves it.
+                    if c.refineModel == nil,
+                       !Config.isGenerativeProvider(c.llmProvider),
+                       let ctx = c.contextModel,
+                       Config.isGenerativeProvider(ctx.provider) {
+                        c.refineModel = ctx
+                    }
+                }
+            }
+        }
         return c
     }
 
@@ -1955,11 +2163,13 @@ public struct Config: Sendable {
         if let localDict = Self.serializeLocalSection(config) {
             llm["local"] = localDict
         }
-        // Refinement tier — emit only when set (omit-when-default). nil
-        // means "fall back to context, then cleanup" and writes no key.
+        // Refinement Polished provider — emit as `llm.refine` when set (kept
+        // for downgrade: an older build reads it as its refine tier).
         if let model = config.refineModel {
             llm["refine"] = ["provider": model.provider, "model": model.model]
         }
+        // Reframe v2: the global refinement TYPE (raw/instant/polished).
+        llm["refinement"] = config.refinementType.rawValue
         return llm
     }
 
@@ -2111,6 +2321,23 @@ public struct Config: Sendable {
                 ["id": preset.id, "name": preset.name, "prompt": preset.prompt]
             }
         }
+        // Per-app cleanup behavior — the canonical key.
+        if !config.appBehaviors.isEmpty {
+            // v1: app_behaviors is MODE-only. The per-app preset lives in
+            // presetAppDefaults (the single source of truth); never serialize
+            // AppBehavior.presetID here, or a stale / externally-constructed
+            // value would be folded back into presetAppDefaults on the next
+            // parse, re-opening the drift bug.
+            dict["app_behaviors"] = config.appBehaviors.mapValues { behavior in
+                ["mode": behavior.mode.rawValue]
+            }
+        }
+        // `preset_app_defaults` is the single source of truth for per-app
+        // presets (the Settings UI / LearnedStore mutate it directly), so write
+        // it verbatim — NOT derived from appBehaviors, which would resurrect a
+        // preset deleted via the legacy path. appBehaviors (above) carries the
+        // new MODE dimension; presets stay here. The dual-key layout keeps an
+        // older build (or a downgrade) working.
         if !config.presetAppDefaults.isEmpty {
             dict["preset_app_defaults"] = config.presetAppDefaults
         }
@@ -2480,6 +2707,12 @@ public struct Config: Sendable {
         if let localToWrite = Self.serializeLocalSection(config) {
             llmToWrite["local"] = localToWrite
         }
+        // Reframe v2: the global refinement TYPE has no MDM key — it's purely
+        // the user's value. Carry it forward or the llm-section rebuild above
+        // would drop it (serializeToDictionary emitted it, but dict["llm"] is
+        // overwritten by llmToWrite), reverting a user's Instant/Raw choice to
+        // the migrated default on the next load.
+        llmToWrite["refinement"] = config.refinementType.rawValue
         // Refinement tier — llm.refine (omit-when-unset). Mirrors the
         // context_model preservation below: when the refine tier is
         // PINNED via MDM, preserve the existing on-disk value so removing
@@ -2672,12 +2905,13 @@ extension Config {
     ///      (`contextModel`) wins; references are the most capability-
     ///      sensitive turns and trump refine.
     ///   3. refine      — REFINE-shaped turns (`isRefine`: hotkey
-    ///      voice-refine, quick chips, styled per-app-preset cleanup)
-    ///      route to the Refine tier (`refineModel`), falling back to
-    ///      the Context tier, then Cleanup. This lets the feature work
-    ///      when the user has configured EITHER a refine OR a context
-    ///      cloud tier — important when cleanup is the on-device Concord
-    ///      tier (which can't perform refine/style ops).
+    ///      voice-refine, quick chips, styled per-app-preset cleanup) are
+    ///      powered by the SAME Polished provider as cleanup (the reframe
+    ///      collapsed the separate Refine tier into Polished). They resolve
+    ///      to the cleanup identifier; when that provider can't refine
+    ///      (on-device Concord, or none) the runtime applies the append-only
+    ///      fallback (`AppState.streamCleanupOrRefine`) rather than routing to
+    ///      a different tier.
     ///   4. cleanup     — plain first-pass cleanup.
     /// nil tier values fall through to the next rung, so a user who sets
     /// nothing beyond cleanup gets unchanged single-provider behavior.
@@ -2688,32 +2922,29 @@ extension Config {
     ) -> ModelIdentifier {
         if let override { return override }
         let cleanupId = ModelIdentifier(provider: llmProvider, model: llmModel)
-        // Cleanup disabled ("none") is a GLOBAL off switch. The Context
-        // and Refine tiers are sub-features of cleanup, so when the user
-        // has opted out of cleanup entirely, neither reference-aware nor
-        // refine turns must route to a (possibly still-configured) other
-        // tier — otherwise "skip cleanup, paste raw" would silently keep
-        // sending the transcript (and reference content) to that provider.
-        // Returning the cleanup identifier makes the call path resolve
-        // to the nil cleanup provider and paste the raw ASR transcript.
+        // Cleanup disabled ("none") is a GLOBAL off switch. The Context tier
+        // is a sub-feature of cleanup, so when the user has opted out of
+        // cleanup entirely, reference-aware turns must NOT route to a
+        // (possibly still-configured) context tier — otherwise "skip cleanup,
+        // paste raw" would silently keep sending the transcript (and reference
+        // content) to that provider. Returning the cleanup identifier makes
+        // the call path resolve to the nil cleanup provider and paste raw.
         if llmProvider == "none" {
             return cleanupId
         }
-        // References win over refine: a reference-aware turn routes to the
-        // context tier even if it's also refine-shaped.
+        // References win: a reference-aware turn routes to the context tier
+        // even if it's also refine-shaped (references are the most
+        // capability-sensitive turns). Context stays a separate provider.
         if hasReferences, let context = contextModel { return context }
-        // Refine-shaped turns: refine → context → cleanup fallback chain.
-        // The cleanup rung is a genuine fallback only when the cleanup
-        // provider can actually refine. When cleanup is the on-device Concord
-        // ("Lightweight") tier — which can't follow refine instructions — and
-        // no refine/context tier is configured, there is no refine-capable
-        // target; we still return cleanupId (the type demands an identifier),
-        // but the call path (AppState.streamCleanupOrRefine) detects the
-        // non-refining provider and surfaces guidance instead of no-op'ing.
-        if isRefine {
-            return refineModel ?? contextModel ?? cleanupId
-        }
-        return cleanupId
+        // Everything else — a Polished cleanup re-clean or a Polished refine —
+        // is powered by the shared Polished provider (`llmProvider` when cleanup
+        // is generative, else the refinement provider `refineModel`). This lets
+        // a concord-cleanup user's refine / re-clean reach their cloud
+        // refinement provider. Falls back to the cleanup id when no Polished
+        // provider is configured (Concord/none) — the runtime then applies the
+        // append-only fallback. `isRefine` no longer selects a different model;
+        // it changes only prompt shape downstream.
+        return polishedIdentifier ?? cleanupId
     }
 
     /// Whether a provider can perform a refine / style-transform turn — an
@@ -2724,5 +2955,59 @@ extension Config {
     /// that would no-op it.
     public static func providerCanRefine(_ provider: String) -> Bool {
         provider != "concord" && provider != "none"
+    }
+}
+
+// MARK: - Cleanup/Refinement/Context reframe (three orthogonal settings)
+
+extension Config {
+    /// True iff `provider` is a generative (cloud/local) provider that can
+    /// serve as the Polished tier. Open-world: anything that is not the
+    /// on-device Concord tier ("concord") or the cleanup-off sentinel ("none")
+    /// — and is non-empty — is a Polished provider. A new cloud provider added
+    /// elsewhere needs no change here.
+    public static func isGenerativeProvider(_ provider: String) -> Bool {
+        !provider.isEmpty && provider != "concord" && provider != "none"
+    }
+
+    /// The global default CLEANUP type (per-app overridable via `appBehaviors`):
+    /// the cleanup behavior for a target without an explicit or curated
+    /// override. Derived from the legacy `llmProvider` (the cleanup config):
+    ///   - "none"            → `.raw`     (no cleanup; send nothing to any cloud)
+    ///   - "concord" / other → `.instant` (on-device Concord)
+    ///   - a generative provider → `.polished` (cloud/local)
+    public var cleanupType: TargetMode {
+        if llmProvider == "none" { return .raw }
+        if !Config.isGenerativeProvider(llmProvider) { return .instant }
+        return .polished
+    }
+
+    /// The ONE shared Polished provider — the cloud/local service used by
+    /// whichever of cleanup/refinement is set to Polished. It is the cleanup
+    /// provider (`llmProvider`) when that is generative; otherwise the
+    /// refinement provider (`refineModel`) when THAT is generative; else nil.
+    /// (E.g. the maintainer's concord-cleanup + vertex-refine → "vertex".)
+    public var polishedProvider: String? {
+        if Config.isGenerativeProvider(llmProvider) { return llmProvider }
+        if let rm = refineModel, Config.isGenerativeProvider(rm.provider) { return rm.provider }
+        return nil
+    }
+
+    /// The model paired with `polishedProvider` (nil when none is configured).
+    public var polishedModel: String? {
+        if Config.isGenerativeProvider(llmProvider) { return llmModel }
+        if let rm = refineModel, Config.isGenerativeProvider(rm.provider) { return rm.model }
+        return nil
+    }
+
+    /// Whether a shared Polished provider is configured. When false, a
+    /// Polished-resolved cleanup falls back to Instant (defensive) and Polished
+    /// refinement falls back to append-only.
+    public var hasPolishedProvider: Bool { polishedProvider != nil }
+
+    /// The Polished provider + model as a `ModelIdentifier`, or nil.
+    public var polishedIdentifier: ModelIdentifier? {
+        guard let p = polishedProvider, let m = polishedModel else { return nil }
+        return ModelIdentifier(provider: p, model: m)
     }
 }

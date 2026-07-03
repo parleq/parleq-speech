@@ -1,4 +1,19 @@
 {
+  "article-an-easy" : {
+    "overFired" : 0,
+    "recovered" : 1,
+    "total" : 1
+  },
+  "article-an-interesting" : {
+    "overFired" : 0,
+    "recovered" : 1,
+    "total" : 1
+  },
+  "article-an-issue" : {
+    "overFired" : 0,
+    "recovered" : 1,
+    "total" : 1
+  },
   "bird" : {
     "overFired" : 0,
     "recovered" : 0,
@@ -9,10 +24,30 @@
     "recovered" : 0,
     "total" : 5
   },
+  "duplicate-collapse-the" : {
+    "overFired" : 0,
+    "recovered" : 1,
+    "total" : 1
+  },
+  "duplicate-keep-that" : {
+    "overFired" : 0,
+    "recovered" : 0,
+    "total" : 1
+  },
   "fruit" : {
     "overFired" : 0,
     "recovered" : 0,
     "total" : 22
+  },
+  "homophone-control" : {
+    "overFired" : 0,
+    "recovered" : 0,
+    "total" : 3
+  },
+  "homophone-two-to" : {
+    "overFired" : 0,
+    "recovered" : 4,
+    "total" : 4
   },
   "keavi" : {
     "overFired" : 0,
