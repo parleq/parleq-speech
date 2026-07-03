@@ -366,10 +366,12 @@ final class SettingsModel: ObservableObject {
     @Published var localResidency: LocalResidency
 
     /// Mirrors `config.localAllowUnsupportedRAM` (`llm.local.allow_unsupported_ram`).
-    /// On machines below the 12 GB RAM floor (`RAMTier.unsupported`) the on-device
-    /// cleanup option is NOT selectable unless this explicit config-file override
-    /// is set — same gate the Setup Wizard applies to its on-device card. There is
-    /// intentionally no UI for this flag; it's a deliberate config-only escape hatch.
+    /// On machines below a given on-device model's RAM floor (`RAMTier.unsupported`
+    /// for that model — see `LocalModelInfo.ramFloorGB`, per-model since the
+    /// catalog gained a second, lighter model) that model is NOT selectable
+    /// unless this explicit config-file override is set — same gate the Setup
+    /// Wizard applies to its on-device sub-choice. There is intentionally no UI
+    /// for this flag; it's a deliberate config-only escape hatch.
     @Published var localAllowUnsupportedRAM: Bool
 
     /// The selected on-device model checkpoint. Mirrors `config.localModel`
