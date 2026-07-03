@@ -216,6 +216,23 @@ final class CleanupReframeMigrationTests: XCTestCase {
         XCTAssertEqual(llm["provider"] as? String, "none")
     }
 
+    // MARK: - save() (mergeForSave) persists the refinement type
+
+    func test_mergeForSave_persists_refinement_type() throws {
+        // Regression: the MDM-aware llm-section rebuild in save() overwrites the
+        // dict serializeToDictionary produced, and once dropped `llm.refinement`
+        // — reverting an Instant/Raw choice to the migrated default on reload.
+        for type in [TargetMode.raw, .instant, .polished] {
+            var c = config(provider: "gemini", model: "gemini-2.5-flash")
+            c.refinementType = type
+            let dict = Config.mergeForSave(c, existing: [:])
+            let llm = try XCTUnwrap(dict["llm"] as? [String: Any])
+            XCTAssertEqual(llm["refinement"] as? String, type.rawValue, "\(type)")
+            // And it round-trips back through parse (explicit key wins).
+            XCTAssertEqual(Config.parse(fromDictionary: dict).refinementType, type, "\(type)")
+        }
+    }
+
     // MARK: - "none = no cloud" invariant
 
     func test_none_never_routes_to_cloud_even_with_context() {
