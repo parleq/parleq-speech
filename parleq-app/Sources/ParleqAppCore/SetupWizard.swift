@@ -199,17 +199,18 @@ private final class WizardModel: ObservableObject {
     }
 
     /// The on-device model checkpoint selected when pickedTier == "local".
-    /// Defaults to the LIGHTEST model this machine actually clears the RAM
-    /// floor for (falling back to the catalog default if none do — e.g. the
-    /// user has the config-file `allow_unsupported_ram` override set, or is
-    /// below every floor and will see the tier card itself disabled). This
-    /// matters because a user who picks "On-device" without touching the
-    /// sub-picker below gets whatever this default is: on an 8-11 GB Mac
-    /// where Gemma (12 GB floor) is the catalog default but Qwen (8 GB floor)
-    /// clears, defaulting to Gemma would silently queue a 4.2 GB download of
-    /// a model the runtime's RAM gate then refuses to load. Drives which
-    /// model's store advance() downloads and commit() writes to
-    /// config.localModel.
+    /// Defaults to the BEST-SUPPORTED model this machine actually clears the
+    /// RAM floor for — the FIRST catalog entry (in `LocalModelCatalog.all`'s
+    /// best-quality-first order) whose floor this machine meets, falling back
+    /// to the catalog default if none do (e.g. the user has the config-file
+    /// `allow_unsupported_ram` override set, or is below every floor and will
+    /// see the tier card itself disabled). This matters because a user who
+    /// picks "On-device" without touching the sub-picker below gets whatever
+    /// this default is: on an 8-11 GB Mac where Gemma (12 GB floor) is the
+    /// catalog default but Qwen (8 GB floor) clears, defaulting to Gemma
+    /// would silently queue a 4.2 GB download of a model the runtime's RAM
+    /// gate then refuses to load. Drives which model's store advance()
+    /// downloads and commit() writes to config.localModel.
     @Published var pickedLocalModel: String = LocalModelCatalog.all
         .first { RAMTier.current(for: $0) != .unsupported }?.checkpoint
         ?? LocalModelCatalog.default.checkpoint
