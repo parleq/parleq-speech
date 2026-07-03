@@ -3343,14 +3343,19 @@ public final class AppState {
                 let hasInstant = self?.instantLLM != nil
                 let refsActive = loadedConfig.referenceWindowsEnabled
                     && !(self?.overlay.model.references.isEmpty ?? true)
-                // Context is a sub-feature of cleanup: when cleanup is Raw
-                // ("none") it's inactive (modelForInvocation short-circuits, so
-                // reference content stays off the cloud). Excluding it here also
-                // keeps the engine badge honest — a Raw turn reads Raw, not the
-                // "Polished" this branch would otherwise force.
+                // Context is a sub-feature of the turn's own mode: a Raw turn
+                // must not route reference content to the cloud context tier,
+                // and the engine badge must read Raw (not the "Polished" this
+                // branch forces). Key off the EFFECTIVE turn mode — the per-app
+                // cleanup mode for a fresh turn (so a per-app Raw override is
+                // respected even when the global default is Polished), or the
+                // global refinement type for a refine turn.
+                let turnIsRaw = asRefine
+                    ? loadedConfig.refinementType == .raw
+                    : loadedConfig.behaviorForApp(targetBundleID).mode == .raw
                 let routesToContext = refsActive
                     && loadedConfig.contextModel != nil
-                    && loadedConfig.cleanupType != .raw
+                    && !turnIsRaw
 
                 let resolvedLLM: (any LLMProvider)?
                 let effectiveMode: TargetMode

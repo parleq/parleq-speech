@@ -719,13 +719,18 @@ final class SettingsModel: ObservableObject {
         // Mirror main.swift's provider-instance construction so we only treat
         // instances that ACTUALLY got built at launch as live:
         //   • llm  = the cleanup id (nil when provider == "none").
-        //   • contextLLM / refineLLM = built only when cleanup != "none" AND the
-        //     id is set AND differs from the cleanup id.
+        //   • contextLLM = built only when cleanup != "none" AND set AND differs
+        //     from the cleanup id (references remain a sub-feature of cleanup).
+        //   • refineLLM  = built whenever set AND differs from the cleanup id,
+        //     INDEPENDENT of the cleanup provider (refinement is orthogonal —
+        //     Raw cleanup + Polished refinement builds it).
         let initialCleanupId = ModelIdentifier(provider: initialLlmProvider, model: initialLlmModel)
         var launch: [ModelIdentifier] = [initialCleanupId]
-        if initialLlmProvider != "none" {
-            if let c = initialContextModel, c != initialCleanupId { launch.append(c) }
-            if let r = initialRefineModel, r != initialCleanupId { launch.append(r) }
+        if initialLlmProvider != "none", let c = initialContextModel, c != initialCleanupId {
+            launch.append(c)
+        }
+        if let r = initialRefineModel, r != initialCleanupId {
+            launch.append(r)
         }
         func needsBuild(_ id: ModelIdentifier) -> Bool {
             // `local` matches on provider alone (no model id); everything else
