@@ -4,6 +4,14 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.31.0] - Unreleased
+
+Smarter on-device cleanup: homophone correction.
+
+### Added
+
+- The on-device ("Lightweight") cleanup tier now corrects function-word homophone errors in the to/two/too family — e.g. dictating "delegate to subagents", which the recognizer writes as "delegate two subagents", is fixed automatically. The correction is evidence-based (a bundled language-statistics table plus the recognizer's own per-word confidence) and deliberately conservative: it only fires when the surrounding words clearly support the fix, never on the word's frequency alone, and legitimate counts ("two researchers", "two questions") are left untouched. Validated end-to-end against real recorded dictations with zero false corrections.
+
 ## [0.30.1] - Unreleased
 
 Fixes for spelled-out acronym correction and voice enrollment.
