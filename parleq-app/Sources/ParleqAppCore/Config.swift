@@ -2691,6 +2691,12 @@ public struct Config: Sendable {
         if let localToWrite = Self.serializeLocalSection(config) {
             llmToWrite["local"] = localToWrite
         }
+        // Reframe v2: the global refinement TYPE has no MDM key — it's purely
+        // the user's value. Carry it forward or the llm-section rebuild above
+        // would drop it (serializeToDictionary emitted it, but dict["llm"] is
+        // overwritten by llmToWrite), reverting a user's Instant/Raw choice to
+        // the migrated default on the next load.
+        llmToWrite["refinement"] = config.refinementType.rawValue
         // Refinement tier — llm.refine (omit-when-unset). Mirrors the
         // context_model preservation below: when the refine tier is
         // PINNED via MDM, preserve the existing on-disk value so removing
