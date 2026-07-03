@@ -725,24 +725,31 @@ final class SettingsModel: ObservableObject {
         //     INDEPENDENT of the cleanup provider (refinement is orthogonal —
         //     Raw cleanup + Polished refinement builds it).
         let initialCleanupId = ModelIdentifier(provider: initialLlmProvider, model: initialLlmModel)
-        var launch: [ModelIdentifier] = [initialCleanupId]
-        if initialLlmProvider != "none", let c = initialContextModel, c != initialCleanupId {
-            launch.append(c)
+        // Instances main.swift actually built at launch:
+        let contextBuilt: ModelIdentifier? = (initialLlmProvider != "none")
+            ? initialContextModel.flatMap { $0 != initialCleanupId ? $0 : nil }
+            : nil
+        let refineBuilt: ModelIdentifier? =
+            initialRefineModel.flatMap { $0 != initialCleanupId ? $0 : nil }
+        func isLive(_ id: ModelIdentifier, in set: [ModelIdentifier]) -> Bool {
+            // `local` matches on provider alone (no model id); else provider+model.
+            set.contains { $0.provider == id.provider && (id.provider == "local" || $0.model == id.model) }
         }
-        if let r = initialRefineModel, r != initialCleanupId {
-            launch.append(r)
+        func needsBuild(_ id: ModelIdentifier, usableFrom set: [ModelIdentifier]) -> Bool {
+            Config.isGenerativeProvider(id.provider) && !isLive(id, in: set)
         }
-        func needsBuild(_ id: ModelIdentifier) -> Bool {
-            // `local` matches on provider alone (no model id); everything else
-            // matches provider + model.
-            let live = launch.contains { $0.provider == id.provider && (id.provider == "local" || $0.model == id.model) }
-            return Config.isGenerativeProvider(id.provider) && !live
-        }
+        // A Polished turn reuses ANY live instance by identity
+        // (polishedProviderInstance matches llm / refineLLM / contextLLM).
+        let polishedLive = [initialCleanupId, contextBuilt, refineBuilt].compactMap { $0 }
+        // The Context path is `contextLLM ?? llm` — it does NOT reuse refineLLM,
+        // so a refine-only provider does not satisfy a Context edit.
+        let contextLive = [initialCleanupId, contextBuilt].compactMap { $0 }
+
         if cleanupType == .polished || refinementType == .polished {
             let polishedId = ModelIdentifier(
                 provider: polishedProvider,
                 model: polishedModelName.trimmingCharacters(in: .whitespaces))
-            if needsBuild(polishedId) { return true }
+            if needsBuild(polishedId, usableFrom: polishedLive) { return true }
         }
         // The Context tier is inactive when cleanup is Raw ("none"): main.swift
         // skips contextLLM and modelForInvocation short-circuits, so an unused
@@ -751,7 +758,7 @@ final class SettingsModel: ObservableObject {
             let ctxId = ModelIdentifier(
                 provider: contextProvider,
                 model: contextModelName.trimmingCharacters(in: .whitespaces))
-            if needsBuild(ctxId) { return true }
+            if needsBuild(ctxId, usableFrom: contextLive) { return true }
         }
         return false
     }

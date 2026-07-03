@@ -3353,8 +3353,17 @@ public final class AppState {
                 let turnIsRaw = asRefine
                     ? loadedConfig.refinementType == .raw
                     : loadedConfig.behaviorForApp(targetBundleID).mode == .raw
+                // Two gates:
+                //  • global "none" is the hard no-cloud switch — the Context tier
+                //    is unbuilt and modelForInvocation short-circuits it, so it
+                //    must never be taken (even for a per-app Polished override,
+                //    whose cleanup runs via polishedProviderInstance without
+                //    references).
+                //  • the effective turn mode isn't Raw (per-app Raw override or
+                //    Raw refinement) — a Raw turn pastes raw and badges Raw.
                 let routesToContext = refsActive
                     && loadedConfig.contextModel != nil
+                    && loadedConfig.llmProvider != "none"
                     && !turnIsRaw
 
                 let resolvedLLM: (any LLMProvider)?
