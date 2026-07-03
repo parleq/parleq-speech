@@ -3343,7 +3343,14 @@ public final class AppState {
                 let hasInstant = self?.instantLLM != nil
                 let refsActive = loadedConfig.referenceWindowsEnabled
                     && !(self?.overlay.model.references.isEmpty ?? true)
-                let routesToContext = refsActive && loadedConfig.contextModel != nil
+                // Context is a sub-feature of cleanup: when cleanup is Raw
+                // ("none") it's inactive (modelForInvocation short-circuits, so
+                // reference content stays off the cloud). Excluding it here also
+                // keeps the engine badge honest — a Raw turn reads Raw, not the
+                // "Polished" this branch would otherwise force.
+                let routesToContext = refsActive
+                    && loadedConfig.contextModel != nil
+                    && loadedConfig.cleanupType != .raw
 
                 let resolvedLLM: (any LLMProvider)?
                 let effectiveMode: TargetMode

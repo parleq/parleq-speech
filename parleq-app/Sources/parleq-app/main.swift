@@ -730,23 +730,23 @@ struct ParleqApp {
             return makeProvider(ctxId, "context-model enabled")
         }()
 
-        // Refine-model tier. Build a third provider only when
-        // config.refineModel is set AND differs from the cleanup model
-        // (same pattern as contextLLM). Routes hotkey voice-refine,
-        // quick chips, and styled per-app-preset cleanup to a cloud
-        // provider when the cleanup tier is the on-device Concord model,
-        // which can't perform those operations. nil → AppState's routing
-        // falls the refine tier back to contextLLM, then llm.
+        // Refine-model tier — the shared Polished provider for REFINEMENT
+        // (reframe v2). Build it whenever `config.refineModel` is set and
+        // differs from the cleanup model, INDEPENDENT of the cleanup provider:
+        // refinement is now orthogonal to cleanup, so a user can pick Raw
+        // cleanup ("none") + Polished refinement and this must instantiate the
+        // provider. (Contrast contextLLM below/above, which stays gated on
+        // cleanup != "none" — references remain a sub-feature of cleanup.)
+        // nil → AppState's routing falls refine turns back to append-only.
         let refineLLM: (any LLMProvider)? = {
-            guard config.llmProvider != "none" else { return nil }
             guard let rfnId = config.refineModel, rfnId != cleanupId else {
-                return nil   // nil → AppState falls refine turns back to context/cleanup
+                return nil
             }
-            // Reuse the already-built context provider when the refine
-            // tier points at the SAME identifier — avoids spinning up a
-            // second client (and second Keychain read) for one provider.
-            if let ctxId = config.contextModel, rfnId == ctxId {
-                return contextLLM
+            // Reuse the already-built context provider ONLY when it points at
+            // the same identifier AND was actually built (contextLLM is nil for
+            // a "none"-cleanup user) — otherwise build a fresh client.
+            if let ctxId = config.contextModel, rfnId == ctxId, let ctx = contextLLM {
+                return ctx
             }
             return makeProvider(rfnId, "refine-model enabled")
         }()

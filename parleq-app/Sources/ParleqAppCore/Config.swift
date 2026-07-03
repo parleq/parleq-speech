@@ -2062,23 +2062,39 @@ public struct Config: Sendable {
         //   "concord"  → .instant  (append-only, cleaned on-device),
         //   "none"     → .raw      (append-only, verbatim).
         if !refinementKeyPresent {
-            let effective = c.refineModel?.provider
-                ?? c.contextModel?.provider
-                ?? c.llmProvider
-            if effective == "none" {
+            if c.llmProvider == "none" {
+                // "none" is the GLOBAL no-cloud off switch. Never auto-promote a
+                // migrated "none" user to Polished (cloud) refinement from a
+                // refine/context tier that was DEAD under "none" — the old
+                // modelForInvocation short-circuited every refine turn to the
+                // nil cleanup provider. Keep refinement append-only so an
+                // upgrade preserves the user's zero-cloud posture, and do NOT
+                // copy the context tier into refineModel. (A user can still
+                // explicitly choose Raw cleanup + Polished refinement in the new
+                // Settings UI — that writes llm.refinement and skips this path.)
                 c.refinementType = .raw
-            } else if !Config.isGenerativeProvider(effective) {
-                c.refinementType = .instant
+                // Drop the dead refine tier so NO Polished provider is
+                // resolvable for a migrated "none" user (polishedProvider → nil,
+                // no refine client built) — belt-and-suspenders on zero-cloud.
+                c.refineModel = nil
             } else {
-                c.refinementType = .polished
-                // When the Polished refinement provider comes from the context
-                // tier (cleanup isn't generative and no explicit refine tier),
-                // copy it into `refineModel` so `polishedProvider` resolves it.
-                if c.refineModel == nil,
-                   !Config.isGenerativeProvider(c.llmProvider),
-                   let ctx = c.contextModel,
-                   Config.isGenerativeProvider(ctx.provider) {
-                    c.refineModel = ctx
+                let effective = c.refineModel?.provider
+                    ?? c.contextModel?.provider
+                    ?? c.llmProvider
+                if !Config.isGenerativeProvider(effective) {
+                    c.refinementType = .instant
+                } else {
+                    c.refinementType = .polished
+                    // When the Polished refinement provider comes from the
+                    // context tier (cleanup isn't generative and no explicit
+                    // refine tier), copy it into `refineModel` so
+                    // `polishedProvider` resolves it.
+                    if c.refineModel == nil,
+                       !Config.isGenerativeProvider(c.llmProvider),
+                       let ctx = c.contextModel,
+                       Config.isGenerativeProvider(ctx.provider) {
+                        c.refineModel = ctx
+                    }
                 }
             }
         }

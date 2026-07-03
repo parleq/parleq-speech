@@ -116,6 +116,32 @@ final class CleanupReframeMigrationTests: XCTestCase {
         XCTAssertNil(c.polishedProvider)
     }
 
+    func test_none_with_context_does_not_promote_refinement_to_cloud() throws {
+        // Privacy regression guard: a migrated "none" user (Raw cleanup = the
+        // global no-cloud switch) with a leftover CONTEXT tier must NOT be
+        // auto-promoted to Polished (cloud) refinement — that would silently
+        // start sending voice-refine turns to the cloud on upgrade. Refinement
+        // stays append-only and NO cloud provider is resolvable.
+        let c = try parse(#"""
+        {"llm":{"provider":"none","model":""},"context_model":{"provider":"vertex","model":"gemini-2.5-flash"}}
+        """#)
+        XCTAssertEqual(c.refinementType, .raw)
+        XCTAssertNil(c.polishedProvider)
+        XCTAssertEqual(c.modelForInvocation(hasReferences: false, isRefine: true).provider, "none")
+    }
+
+    func test_none_with_dead_refine_tier_stays_append_only() throws {
+        // Same guard for an explicit (but dead-under-"none") refine tier — it
+        // must not revive as cloud refinement; refineModel is dropped.
+        let c = try parse(#"""
+        {"llm":{"provider":"none","model":"","refine":{"provider":"gemini","model":"gemini-2.5-flash"}}}
+        """#)
+        XCTAssertEqual(c.refinementType, .raw)
+        XCTAssertNil(c.refineModel)
+        XCTAssertNil(c.polishedProvider)
+        XCTAssertEqual(c.modelForInvocation(hasReferences: false, isRefine: true).provider, "none")
+    }
+
     func test_explicit_refinement_key_wins_over_migration() throws {
         // When the new key is present it is authoritative (not re-derived).
         let c = try parse(#"""
