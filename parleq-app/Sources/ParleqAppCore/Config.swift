@@ -55,9 +55,13 @@
 //                      // means "use the RAM-tier default" (3 min on
 //                      // cautioned / 30 min on comfortable).
 //                      "idle_unload_minutes": null,
-//                      // Allow local provider on < 12 GB RAM machines
-//                      // despite thrash risk. Default false.
-//                      "allow_unsupported_ram": false
+//                      // Allow local provider below the selected model's
+//                      // RAM floor despite thrash risk. Default false.
+//                      "allow_unsupported_ram": false,
+//                      // Selected on-device model (mlx-community checkpoint
+//                      // id). Omit for the default (Gemma 4 E4B). The other
+//                      // catalog option is Qwen3-4B-Instruct-2507-4bit.
+//                      "model": "mlx-community/gemma-4-E4B-it-qat-4bit"
 //                    } },
 //     "aws":       { "region": "us-east-2",
 //                    "profile": "work",
@@ -256,35 +260,148 @@ public enum LocalResidency: String, Codable, Sendable {
 /// Machine RAM tier, used to gate and tune the local cleanup provider.
 /// Based on physical memory reported by `ProcessInfo.processInfo.physicalMemory`.
 public enum RAMTier: Equatable, Sendable {
-    /// < 12 GB: local card not selectable (wired ~6 GB = thrash risk).
+    /// Below the model's RAM floor: local card not selectable (thrash risk).
     case unsupported
-    /// 12 GB – <24 GB: allowed with strong caution and aggressive idle-unload.
+    /// Between floor and comfortable line: allowed with strong caution and
+    /// aggressive idle-unload.
     case cautioned
-    /// >= 24 GB: comfortable fit for the ~6 GB resident model.
+    /// At/above the comfortable line: comfortable fit for the resident model.
     case comfortable
 
-    public static func forPhysicalMemory(_ bytes: UInt64) -> RAMTier {
+    /// Tier for a machine's physical memory against a specific model's floor.
+    public static func forPhysicalMemory(_ bytes: UInt64, model: LocalModelInfo) -> RAMTier {
         let gb = Double(bytes) / Double(1 << 30)
-        if gb < 12 { return .unsupported }
-        if gb < 24 { return .cautioned }
+        if gb < model.ramFloorGB { return .unsupported }
+        if gb < model.ramComfortableGB { return .cautioned }
         return .comfortable
     }
 
+    /// Tier of THIS machine for a specific model.
+    public static func current(for model: LocalModelInfo) -> RAMTier {
+        forPhysicalMemory(ProcessInfo.processInfo.physicalMemory, model: model)
+    }
+
+    // Back-compat overloads that gate against the DEFAULT model. Existing
+    // callers that don't know which model is selected keep working; per-model
+    // gating (wizard/settings) uses the `model:`-parameterized variants above.
+    public static func forPhysicalMemory(_ bytes: UInt64) -> RAMTier {
+        forPhysicalMemory(bytes, model: LocalModelCatalog.default)
+    }
+
     public static var current: RAMTier {
-        forPhysicalMemory(ProcessInfo.processInfo.physicalMemory)
+        current(for: LocalModelCatalog.default)
     }
 }
 
-/// Static defaults for the on-device cleanup tier. Single source of truth
-/// referenced by LocalModelStore, ResidencyManager, and the setup wizard.
+/// Descriptor for one selectable on-device cleanup model. Replaces the old
+/// single-model `LocalModelDefaults` scalars so the catalog, RAM gate, and UI
+/// copy all read per-model values from one place. `id` IS the HF checkpoint.
+public struct LocalModelInfo: Sendable, Equatable, Identifiable {
+    public let id: String
+    public var checkpoint: String { id }
+    /// Full name, e.g. "Gemma 4 E4B" (used in the Settings/wizard cards).
+    public let displayName: String
+    /// The name shown in the usage ledger, e.g. "On-device (Gemma 4 E4B)".
+    public let usageLedgerName: String
+    /// Short positioning chip, e.g. "Best quality" / "Lighter & faster".
+    public let shortLabel: String
+    /// One honest sentence on where this model shines (and its trade-off).
+    public let whereItShines: String
+    public let approxDownloadGB: Double
+    public let approxResidentGB: Double
+    /// Physical-memory floor (GB): below this the model is `.unsupported`.
+    public let ramFloorGB: Double
+    /// At/above this (GB) the machine is `.comfortable`; between floor and
+    /// this it is `.cautioned`.
+    public let ramComfortableGB: Double
+    public let idleUnloadMinutesCautioned: Int
+    public let idleUnloadMinutesComfortable: Int
+    public let maxTokens: Int
+    public let contextLength: Int
+    public let licenseName: String
+    public let licenseURL: String
+
+    public init(id: String, displayName: String, usageLedgerName: String,
+                shortLabel: String, whereItShines: String,
+                approxDownloadGB: Double, approxResidentGB: Double,
+                ramFloorGB: Double, ramComfortableGB: Double,
+                idleUnloadMinutesCautioned: Int, idleUnloadMinutesComfortable: Int,
+                maxTokens: Int, contextLength: Int,
+                licenseName: String, licenseURL: String) {
+        self.id = id
+        self.displayName = displayName
+        self.usageLedgerName = usageLedgerName
+        self.shortLabel = shortLabel
+        self.whereItShines = whereItShines
+        self.approxDownloadGB = approxDownloadGB
+        self.approxResidentGB = approxResidentGB
+        self.ramFloorGB = ramFloorGB
+        self.ramComfortableGB = ramComfortableGB
+        self.idleUnloadMinutesCautioned = idleUnloadMinutesCautioned
+        self.idleUnloadMinutesComfortable = idleUnloadMinutesComfortable
+        self.maxTokens = maxTokens
+        self.contextLength = contextLength
+        self.licenseName = licenseName
+        self.licenseURL = licenseURL
+    }
+}
+
+/// The set of on-device cleanup models the user can choose from. Gemma 4 E4B
+/// is the default/quality tier; Qwen3-4B-Instruct-2507 is the lighter option
+/// (loads via the stock mlx-swift-lm `qwen3` registry — no vendoring). Only
+/// ONE model is resident at a time, so the user's selection (`llm.local.model`)
+/// is a single global choice applied wherever a role resolves to "local".
+public enum LocalModelCatalog {
+    public static let gemma4E4B = LocalModelInfo(
+        id: "mlx-community/gemma-4-E4B-it-qat-4bit",
+        displayName: "Gemma 4 E4B",
+        usageLedgerName: "On-device (Gemma 4 E4B)",
+        shortLabel: "Best quality",
+        whereItShines: "Most capable on-device cleanup — strongest on tricky ASR corrections, technical terms, and world knowledge. Heaviest.",
+        approxDownloadGB: 4.2, approxResidentGB: 6.0,
+        ramFloorGB: 12, ramComfortableGB: 24,
+        idleUnloadMinutesCautioned: 3, idleUnloadMinutesComfortable: 30,
+        maxTokens: 1024, contextLength: 8192,
+        licenseName: "Google Gemma (Gemma Terms of Use)",
+        licenseURL: "https://ai.google.dev/gemma/terms")
+
+    public static let qwen3_4B = LocalModelInfo(
+        id: "mlx-community/Qwen3-4B-Instruct-2507-4bit",
+        displayName: "Qwen3-4B",
+        usageLedgerName: "On-device (Qwen3-4B)",
+        shortLabel: "Lighter & faster",
+        whereItShines: "Runs on 8 GB Macs and loads quickly. Excellent at faithful cleanup; may occasionally miss a hard ASR or technical term that Gemma catches.",
+        approxDownloadGB: 2.4, approxResidentGB: 4.0,
+        ramFloorGB: 8, ramComfortableGB: 16,
+        idleUnloadMinutesCautioned: 3, idleUnloadMinutesComfortable: 30,
+        maxTokens: 1024, contextLength: 8192,
+        licenseName: "Qwen (Apache 2.0)",
+        licenseURL: "https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507")
+
+    /// Display/selection order: default (best) first, lighter second.
+    public static let all: [LocalModelInfo] = [gemma4E4B, qwen3_4B]
+
+    /// The default on-device model when the user has not chosen one.
+    public static let `default`: LocalModelInfo = gemma4E4B
+
+    /// The descriptor for a checkpoint id, or the default if unknown.
+    public static func model(for checkpoint: String) -> LocalModelInfo {
+        all.first { $0.checkpoint == checkpoint } ?? `default`
+    }
+}
+
+/// Static defaults for the on-device cleanup tier. Model-specific values now
+/// delegate to `LocalModelCatalog.default` (back-compat shim so existing
+/// references resolve to the default model); the truly model-agnostic values
+/// (models directory, GPU-cache cap, prefix-cache capacity) remain here.
 public enum LocalModelDefaults {
-    public static let checkpoint = "mlx-community/gemma-4-E4B-it-qat-4bit"
-    public static let approxDownloadGB = 4.2
-    public static let approxResidentGB = 6.0
-    public static let idleUnloadMinutesCautioned = 3
-    public static let idleUnloadMinutesComfortable = 30
-    public static let maxTokens = 1024
-    public static let contextLength = 8192
+    public static var checkpoint: String { LocalModelCatalog.default.checkpoint }
+    public static var approxDownloadGB: Double { LocalModelCatalog.default.approxDownloadGB }
+    public static var approxResidentGB: Double { LocalModelCatalog.default.approxResidentGB }
+    public static var idleUnloadMinutesCautioned: Int { LocalModelCatalog.default.idleUnloadMinutesCautioned }
+    public static var idleUnloadMinutesComfortable: Int { LocalModelCatalog.default.idleUnloadMinutesComfortable }
+    public static var maxTokens: Int { LocalModelCatalog.default.maxTokens }
+    public static var contextLength: Int { LocalModelCatalog.default.contextLength }
     /// LRU capacity for the on-device KV system-prefix cache (Task 9). Small:
     /// per-app preset transforms vary the prefix suffix so a handful of distinct
     /// prefixes can be live, but the working set is tiny and each entry holds
@@ -834,11 +951,20 @@ public struct Config: Sendable {
     /// default" (`LocalModelDefaults.idleUnloadMinutesCautioned`
     /// or `…Comfortable`). Decoded from `llm.local.idle_unload_minutes`.
     public var localIdleUnloadMinutes: Int?
-    /// When true, allow the local provider even on machines with
-    /// < 12 GB RAM where the ~6 GB resident model will likely
-    /// cause thrashing. Default false; gated by `RAMTier.current`.
+    /// When true, allow the local provider even on machines below the
+    /// selected model's RAM floor, where the resident model will likely
+    /// cause thrashing. Default false; gated by `RAMTier.current(for:)`.
     /// Decoded from `llm.local.allow_unsupported_ram`.
     public var localAllowUnsupportedRAM: Bool
+    /// The selected on-device cleanup model (an `mlx-community/…` checkpoint
+    /// id from `LocalModelCatalog`). Only one MLX model is resident at a time,
+    /// so this single choice applies wherever a role resolves to "local".
+    /// Decoded from `llm.local.model`; absent → the default (Gemma 4 E4B).
+    /// A default value keeps the synthesized memberwise init backward-compatible.
+    public var localModel: String = LocalModelCatalog.default.checkpoint
+    /// The descriptor for the currently-selected on-device model (falls back
+    /// to the default catalog entry if `localModel` is unrecognized).
+    public var selectedLocalModel: LocalModelInfo { LocalModelCatalog.model(for: localModel) }
 
     /// Keys whose effective values were sourced from MDM
     /// (/Library/Managed Preferences) rather than from the user's
@@ -943,6 +1069,7 @@ public struct Config: Sendable {
         localResidency: .auto,
         localIdleUnloadMinutes: nil,
         localAllowUnsupportedRAM: false,
+        localModel: LocalModelCatalog.default.checkpoint,
         managedKeys: []
     )
 
@@ -1782,6 +1909,13 @@ public struct Config: Sendable {
                 if let v = local["allow_unsupported_ram"] as? Bool {
                     c.localAllowUnsupportedRAM = v
                 }
+                if let v = local["model"] as? String {
+                    if LocalModelCatalog.all.contains(where: { $0.checkpoint == v }) {
+                        c.localModel = v
+                    } else {
+                        configLogStderr("[config] WARNING: unknown llm.local.model '\(v)' — using default (\(LocalModelCatalog.default.checkpoint))")
+                    }
+                }
             }
             // Refinement tier — llm.refine sub-object ({provider, model}).
             // Mirrors the context_model shape but lives under "llm" so the
@@ -2215,6 +2349,9 @@ public struct Config: Sendable {
         }
         if config.localAllowUnsupportedRAM {
             localDict["allow_unsupported_ram"] = true
+        }
+        if config.localModel != LocalModelCatalog.default.checkpoint {
+            localDict["model"] = config.localModel
         }
         return localDict.isEmpty ? nil : localDict
     }
