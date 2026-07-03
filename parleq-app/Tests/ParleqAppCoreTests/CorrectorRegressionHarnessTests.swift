@@ -324,6 +324,22 @@ final class CorrectorRegressionHarnessTests: XCTestCase {
             print("[corrector-regression] REGRESSIONS: \(regressions.joined(separator: ", "))")
         }
         XCTAssertTrue(ok, "Corrector regression detected in intents: \(regressions.joined(separator: ", "))")
+
+        // Strict pins for the Concord 0.5.0 stages: these small, deliberately
+        // singleton recovery intents must not regress AT ALL. The global
+        // recoveryTolerance: 1 above would otherwise let a 1/1 pin silently drop
+        // to 0/1 and hide total loss of the stage. (The duplicate guard is
+        // already pinned strictly by overFireTolerance: 0.)
+        let strictRecovery: Set<String> = [
+            "article-an-issue", "article-an-easy", "article-an-interesting",
+            "duplicate-collapse-the",
+        ]
+        for intent in strictRecovery {
+            guard let base = baseline[intent] else { continue }
+            let current = tally[intent]?.recovered ?? 0
+            XCTAssertGreaterThanOrEqual(current, base.recovered,
+                "\(intent): recovery regressed \(base.recovered)→\(current) (strict pin — no tolerance)")
+        }
     }
 }
 #endif
