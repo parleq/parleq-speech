@@ -52,8 +52,8 @@ const refine = [
     before: 'hey can you get me the q3 deck when you get a sec', after: 'Hi — could you send me the <span class="mk">Q3 deck</span> when you get a chance?' },
 ];
 
-// Prototype-A style composition: one tight cluster. Both families live in the
-// same bunch; the active tab decides which grapes reveal their stamped content.
+// One tight cluster. Both families live in the same bunch; the active tab decides
+// which grapes reveal their stamped content.
 const POS = [
   { l: 24,  t: 2,   s: 1.04, z: 7, tone: 'dark' },
   { l: 126, t: 0,   s: 1.04, z: 3, tone: 'dark' },
@@ -95,7 +95,7 @@ const howitworks = [
     desc: 'Dictate a draft, then reshape it by voice.' },
   { id: 'hiw-voice', icon: 'wave', label: 'Voice', title: 'Voice enrollment', interactive: true, desc: 'Teach a term in your own voice; tell it apart by sound.' },
   { id: 'hiw-recover', icon: 'rotate', label: 'Recover', title: 'Never lose a dictation', interactive: true, desc: 'Your last dictation is held in memory — re-run it with R.' },
-  { id: 'hiw-ai', icon: 'sparkle', label: 'Your AI', title: 'The AI you bring', interactive: true, desc: 'On-device, your own cloud, or none — you choose the engine.' },
+  { id: 'hiw-ai', icon: 'sparkle', label: 'Your AI', title: 'The AI you bring', interactive: true, desc: 'Instant on-device, Polished by your model, or Raw — you set the cleanup.' },
   { id: 'hiw-quick', icon: 'bolt', label: 'Quick', title: 'Quick & continuous', interactive: true, desc: 'Double-tap to dictate with no overlay, or go hands-free.' },
   { id: 'hiw-blank-a', blank: true },
   { id: 'hiw-blank-b', blank: true },
@@ -492,21 +492,21 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
             <span class="demo-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4" set:html={icons['sparkle']} /></span>
             <h3 class="text-[15px] font-semibold text-white">The AI you bring</h3>
           </div>
-          <span class="chip chip-on" data-ai-chip>On-device</span>
+          <span class="chip chip-on" data-ai-chip>Instant</span>
         </div>
-        <div class="ai-seg" role="group" aria-label="Choose the cleanup engine">
-          <button type="button" class="ai-opt is-on" data-ai-opt="local" aria-pressed="true">On-device</button>
-          <button type="button" class="ai-opt" data-ai-opt="cloud" aria-pressed="false">Your cloud</button>
-          <button type="button" class="ai-opt" data-ai-opt="none" aria-pressed="false">None</button>
+        <div class="ai-seg" role="group" aria-label="Choose the cleanup mode">
+          <button type="button" class="ai-opt is-on" data-ai-opt="instant" aria-pressed="true">Instant</button>
+          <button type="button" class="ai-opt" data-ai-opt="polished" aria-pressed="false">Polished</button>
+          <button type="button" class="ai-opt" data-ai-opt="raw" aria-pressed="false">Raw</button>
         </div>
         <p class="ba-label mt-4">You said</p>
-        <p class="ba-before">um can you send me the q3 deck before the sync uh actually before the standup</p>
+        <p class="ba-before">So we shipped the kiwi update — uh, no, two nights ago — up forty percent.</p>
         <p class="ba-arrow" aria-hidden="true">↓</p>
-        <p class="ba-label" data-ai-reslabel>Cleaned · on-device</p>
-        <p class="ba-after" data-ai-result set:html={'Can you send me the <span class="mk">Q3</span> deck before the sync? Actually, before the standup.'}></p>
-        <p class="ai-where" data-ai-where>Runs on your Mac — audio and text never leave the device.</p>
+        <p class="ba-label" data-ai-reslabel>Fixed · Instant</p>
+        <p class="ba-after" data-ai-result set:html={'So we shipped the <span class="mk">Keavi</span> update — uh, no, two nights ago — up <span class="mk">40%</span>.'}></p>
+        <p class="ai-where" data-ai-where>Runs on your Mac — deterministic, no network, no wait.</p>
       </div>
-      <p class="rw-coach" data-ai-coach aria-live="polite">Same dictation — you choose the engine that cleans it.</p>
+      <p class="rw-coach" data-ai-coach aria-live="polite">Same dictation — you set how much cleanup runs.</p>
       <p class="rw-footnote">Every provider is your own account; Parleq runs no server in the path.</p>
     </div>
 
@@ -1155,6 +1155,10 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
   @media (max-width: 1023px) {
     #explorer { display: block; }
     #explorer > .relative { max-width: 100%; }
+    /* Let tab titles wrap on small screens — the fixed 3-col grid + nowrap titles
+       ("Refine & Shape" / "How it works") otherwise set a min-content floor that
+       overflows a ~320px viewport. Titles only wrap when they don't fit. */
+    .group-tab-title { white-space: normal; }
     .bunch { margin-left: auto; margin-right: auto; }
     /* The bunch is a fixed 286px box (absolutely-positioned grapes), which overflows
        the content column on the narrowest phones (≤~334px). zoom shrinks the layout
@@ -1502,9 +1506,9 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
       const aiWhere = ai.querySelector('[data-ai-where]');
       const aiCoach = ai.querySelector('[data-ai-coach]');
       const AI = {
-        local: { chip: ['On-device', 'chip-on'], label: 'Cleaned · on-device', result: 'Can you send me the <span class="mk">Q3</span> deck before the sync? Actually, before the standup.', where: 'Runs on your Mac — audio and text never leave the device.', coach: 'On-device: fillers gone, capitalized, punctuated — fast and fully private.' },
-        cloud: { chip: ['Your provider', 'chip-byo'], label: 'Cleaned · your cloud', result: 'Could you send me the <span class="mk">Q3</span> deck <span class="mk">before the standup</span>?', where: 'Uses the AI you bring — your own Gemini, OpenAI, Bedrock, Vertex, or Azure key.', coach: 'Your cloud: a larger model resolves the self-correction — “actually, before the standup” wins.' },
-        none: { chip: ['Raw', 'chip-raw'], label: 'Raw · no cleanup', result: 'um can you send me the q3 deck before the sync uh actually before the standup', where: 'Skip cleanup entirely — paste exactly what you said.', coach: 'None: no cleanup at all — your raw words, pasted exactly as spoken.' },
+        instant: { chip: ['Instant', 'chip-on'], label: 'Fixed · Instant', result: 'So we shipped the <span class="mk">Keavi</span> update — uh, no, two nights ago — up <span class="mk">40%</span>.', where: 'Runs on your Mac — deterministic, no network, no wait.', coach: 'Instant: deterministic on-device fixes — names, numbers, compounds. Fast and private; it won’t rewrite.' },
+        polished: { chip: ['Polished', 'chip-byo'], label: 'Rewritten · Polished', result: 'We shipped the <span class="mk">Keavi</span> update two nights ago, up <span class="mk">40%</span>.', where: 'The model you set — your own cloud, or on-device Gemma. No Parleq server in the path.', coach: 'Polished: a real model rewrites — resolves “no, two nights ago,” drops the filler. Your cloud, or on-device Gemma.' },
+        raw: { chip: ['Raw', 'chip-raw'], label: 'Raw · no cleanup', result: 'So we shipped the kiwi update — uh, no, two nights ago — up forty percent.', where: 'Skip cleanup — paste exactly as transcribed.', coach: 'Raw: no cleanup — your words pasted exactly as transcribed.' },
       };
       const pickAI = (key) => {
         const d = AI[key]; if (!d) return;
@@ -1516,8 +1520,8 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
         if (aiCoach) aiCoach.textContent = d.coach;
       };
       aiOpts.forEach((b) => b.addEventListener('click', () => pickAI(b.getAttribute('data-ai-opt'))));
-      stepperResets['hiw-ai'] = () => pickAI('local');
-      pickAI('local');
+      stepperResets['hiw-ai'] = () => pickAI('instant');
+      pickAI('instant');
     }
 
     // SPIKE: "Quick & continuous" — double-tap types straight into the mock field.

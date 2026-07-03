@@ -8,7 +8,7 @@ const base = `${import.meta.env.BASE_URL}`.replace(/\/$/, '');
 
 <Layout
   title="Parleq for the enterprise — one sign-in for every employee"
-  description="Give every employee cloud cleanup through one corporate OIDC sign-in — no per-user API keys, no Parleq servers in the data path. Federate Okta or Entra ID into AWS Bedrock or Vertex AI."
+  description="One corporate OIDC sign-in backs cloud cleanup for every employee — no per-user API keys, no Parleq servers in the path. Okta or Entra into Bedrock or Vertex."
 >
   <FloatingNav active="enterprise" spacer={false} />
 
@@ -42,7 +42,7 @@ const base = `${import.meta.env.BASE_URL}`.replace(/\/$/, '');
         Parleq itself costs nothing — there's no per-seat price and no license to buy. The only bill is your own cloud provider's charge for the LLM tokens, on the contract you already hold.
       </p>
       <div class="mt-10 flex flex-wrap gap-x-6 gap-y-3 text-[15px] font-medium">
-        <a href={base + '/docs/enterprise-sso/'} class="inline-flex items-center gap-2 rounded-full bg-[color:var(--color-accent)] px-6 py-2.5 text-white transition-colors hover:bg-[color:var(--color-accent-hover)]">
+        <a href={base + '/docs/enterprise-sso/'} class="cta-solid inline-flex items-center gap-2 rounded-full px-6 py-2.5 text-white transition-colors">
           Enterprise SSO setup →
         </a>
         <a href={`${repoUrl}/blob/main/docs/SECURITY_REVIEW.md`} class="inline-flex items-center gap-2 rounded-full border border-[color:var(--color-grape-300)]/30 px-6 py-2.5 text-[color:var(--color-grape-100)] transition-colors hover:border-[color:var(--color-grape-300)]/60">
@@ -70,7 +70,7 @@ const base = `${import.meta.env.BASE_URL}`.replace(/\/$/, '');
       <ul class="mt-8 space-y-5 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
         <li class="flex gap-3">
           <span aria-hidden="true" class="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[color:var(--color-accent)]"></span>
-          <span><strong class="font-semibold text-[color:var(--color-text)]">Audio never leaves the Mac.</strong> Speech recognition runs entirely on-device. Only the transcript text crosses a network boundary — and it goes only to your cloud provider, on your contract (or stays fully on-device when the on-device cleanup option is used).</span>
+          <span><strong class="font-semibold text-[color:var(--color-text)]">Audio never leaves the Mac.</strong> Speech recognition runs entirely on-device. Only text crosses a network boundary — the transcript, plus any reference you attach (a window, file, or clipboard snippet) — and it goes only to your cloud provider, on your contract (or stays fully on-device when you use an on-device cleanup option).</span>
         </li>
         <li class="flex gap-3">
           <span aria-hidden="true" class="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[color:var(--color-accent)]"></span>

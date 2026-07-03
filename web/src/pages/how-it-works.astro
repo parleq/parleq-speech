@@ -41,11 +41,11 @@ const stages = [
     n: '3',
     slug: 'cleanup',
     title: 'Clean up',
-    where: 'cloud LLM · on-device · or skipped',
+    where: 'Instant · Polished · Raw',
     grape: true,
     summary: [
-      'The raw transcript streams to the AI cleanup model, which polishes it into finished text — capitalization, punctuation, filler-word removal, common transcription errors, and spoken numbers turned into digits when the context is technical. Raw shows in the overlay first; the cleaned text replaces it progressively as it arrives.',
-      'You choose where that model runs. <strong class="font-semibold text-[color:var(--color-text)]">Your own cloud</strong> — Gemini, OpenAI, Bedrock, Vertex, or Azure, on your account and key — gives the strongest rewriting. <strong class="font-semibold text-[color:var(--color-text)]">On-device</strong> runs Gemma 4 E4B in-process via Apple MLX, with no network boundary and no per-call cost (one-time ~4&nbsp;GB download; 12&nbsp;GB+ RAM). Or <strong class="font-semibold text-[color:var(--color-text)]">skip cleanup</strong> entirely and paste the raw transcript exactly as the on-device speech model emitted it.',
+      'Cleanup turns the raw transcript into finished text — the raw shows in the overlay first, and the cleaned text replaces it progressively as it arrives. How much cleanup happens is up to you: three modes.',
+      '<strong class="font-semibold text-[color:var(--color-text)]">Instant</strong> is a fast, deterministic on-device pass — spoken numbers become digits, names and jargon from your dictionary are fixed, split compounds rejoined — with no network and no wait. <strong class="font-semibold text-[color:var(--color-text)]">Polished</strong> hands the transcript to a real model for the full treatment (fillers, casing, self-corrections, tone): your own cloud (Gemini, OpenAI, Bedrock, Vertex, or Azure) or on-device Gemma 4 E4B via Apple MLX (one-time ~4&nbsp;GB download; 12&nbsp;GB+ RAM). <strong class="font-semibold text-[color:var(--color-text)]">Raw</strong> skips cleanup and pastes the transcript exactly as the on-device speech model emitted it.',
       'Press Enter while the raw is still showing to accept it as-is; press Enter once cleanup is under way and Parleq finishes the pass and pastes the complete cleaned text — never a half-streamed fragment.',
     ],
     detail: [
@@ -115,7 +115,7 @@ const gestures = [
 
 <Layout
   title="The details — how Parleq works"
-  description="The technical detail behind Parleq: the capture → transcribe → clean up → paste pipeline, the keyboard gestures, and exactly what's written to disk versus held in memory."
+  description="The technical detail behind Parleq: the capture → transcribe → clean up → paste pipeline, the keyboard gestures, and what's on disk versus in memory."
 >
   <FloatingNav active="how-it-works" spacer={false} />
 

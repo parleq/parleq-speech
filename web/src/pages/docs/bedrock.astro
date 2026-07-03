@@ -216,7 +216,8 @@ aws sso login --profile work
       <p>
         Two recommended options, picked from in-house benchmarks against representative cleanup prompts:
       </p>
-      <table class="mt-4 w-full border-collapse text-[14px]">
+      <div class="mt-4 overflow-x-auto">
+      <table class="w-full border-collapse text-[14px]">
         <thead>
           <tr class="border-b border-[color:var(--color-border)] text-left text-[color:var(--color-text)]">
             <th class="py-2 pr-4 font-semibold">Model ID</th>
@@ -237,6 +238,7 @@ aws sso login --profile work
           </tr>
         </tbody>
       </table>
+      </div>
       <p class="mt-5">
         Cleanup is a low-stakes editing task; either model handles it well. GPT-OSS is the default because the latency advantage is noticeable in practice. Switch to Claude Haiku if you've already standardized on Anthropic across your tooling and want consistent style.
       </p>

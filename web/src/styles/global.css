@@ -139,9 +139,7 @@ body {
   --color-accent-hover: var(--color-grape-strong);
 }
 
-/* Small pill used for the hero feature strip. Base is neutral; `.chip-grape`
-   marks the on-device cleanup family (voiceprints, on-device Gemma 4, numbers,
-   dictionary) with the Concord-grape accent. SVG icons inherit currentColor. */
+/* Small pill used for the hero feature strip. SVG icons inherit currentColor. */
 .chip {
   display: inline-flex;
   align-items: center;
@@ -159,16 +157,6 @@ body {
 .chip:hover {
   border-color: var(--color-accent);
   color: var(--color-text);
-}
-.chip-grape {
-  border-color: color-mix(in srgb, var(--color-grape) 30%, var(--color-border));
-  background: color-mix(in srgb, var(--color-grape) 6%, var(--color-surface));
-  color: var(--color-grape);
-}
-.chip-grape:hover {
-  border-color: var(--color-grape);
-  background: color-mix(in srgb, var(--color-grape) 12%, var(--color-surface));
-  color: var(--color-grape-strong);
 }
 
 /* Flow card token highlights — used inside the hero's dark-grape panel to
@@ -191,8 +179,7 @@ body {
 }
 
 /* Dark-panel chip — for feature chips inside the dark hero panel.
-   Grape-200 text, grape-300 border tint, grape-500 background tint.
-   Mirrors prototype.astro's local `.chip-d` as a global utility. */
+   Grape-200 text, grape-300 border tint, grape-500 background tint. */
 .chip-d {
   display: inline-flex;
   align-items: center;
