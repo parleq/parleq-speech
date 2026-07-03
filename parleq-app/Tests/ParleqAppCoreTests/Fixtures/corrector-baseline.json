@@ -14,6 +14,16 @@
     "recovered" : 0,
     "total" : 22
   },
+  "homophone-control" : {
+    "overFired" : 0,
+    "recovered" : 0,
+    "total" : 3
+  },
+  "homophone-two-to" : {
+    "overFired" : 0,
+    "recovered" : 4,
+    "total" : 4
+  },
   "keavi" : {
     "overFired" : 0,
     "recovered" : 45,
