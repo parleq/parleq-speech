@@ -1,0 +1,120 @@
+---
+// FloatingNav: ONE canonical header for every page. A grape "pill" fixed at the top that
+// never moves or resizes — at rest or scrolled, homepage or inner page — so navigation never
+// shifts the header. Replaces the old homepage in-panel nav, the scroll-reveal StickyHeader,
+// AND the inner-page SiteHeader. Floats over content (grape hero or warm-white body alike),
+// so its grape background + blur + border keep it legible on both.
+import Logo from './Logo.astro';
+import { fetchLatestRelease } from '../lib/release';
+
+interface Props {
+  /** Direct .dmg URL. Omit to resolve it from the latest release (memoized per build). */
+  downloadUrl?: string;
+  /** Current page, rendered as plain (non-link) text. */
+  active?: 'home' | 'how-it-works' | 'docs' | 'enterprise' | 'about' | 'faq' | 'none';
+  /**
+   * Render an in-flow spacer below the fixed pill so page content clears it.
+   * The homepage hero handles its own clearance (pill floats over it), so it passes false.
+   */
+  spacer?: boolean;
+}
+
+const { active = 'none', spacer = true } = Astro.props;
+const downloadUrl = Astro.props.downloadUrl ?? (await fetchLatestRelease()).downloadUrl;
+const repoUrl = 'https://github.com/parleq/parleq-speech';
+const base = `${import.meta.env.BASE_URL}`.replace(/\/$/, '');
+
+const items = [
+  { key: 'how-it-works', label: 'The details', href: `${base}/how-it-works/` },
+  { key: 'docs', label: 'Docs', href: `${base}/docs/` },
+  { key: 'enterprise', label: 'Enterprise', href: `${base}/enterprise/` },
+  { key: 'faq', label: 'FAQ', href: `${base}/faq/` },
+  { key: 'about', label: 'About', href: `${base}/about/` },
+];
+---
+
+<div class="pointer-events-none fixed inset-x-0 top-3 z-50 sm:top-4">
+  <div class="mx-auto max-w-[1700px] px-3 sm:px-5">
+    <nav
+      class="pointer-events-auto flex items-center justify-between gap-4 rounded-2xl border border-white/10 px-4 py-2.5 shadow-[0_10px_30px_-12px_rgba(8,3,18,.7)] backdrop-blur-md sm:px-6"
+      style="background: #1b0c30e6;"
+      aria-label="Primary"
+    >
+      <a href={base + '/'} class="inline-flex items-center">
+        <Logo dark height="28" />
+      </a>
+
+      <!-- Desktop nav -->
+      <div class="hidden items-center gap-6 text-sm font-medium md:flex" style="color: var(--color-grape-100);">
+        {items.map((item) =>
+          item.key === active ? (
+            // Active item is still a LINK (clickable to the section root, e.g. Docs from a docs
+            // subpage) — just styled as current with the amber underline.
+            <a href={item.href} aria-current="true" class="font-semibold text-white underline decoration-[color:var(--color-accent)] decoration-2 underline-offset-[7px]">{item.label}</a>
+          ) : (
+            <a href={item.href} class="transition-colors hover:text-white">{item.label}</a>
+          )
+        )}
+        <a href={repoUrl} class="transition-colors hover:text-white">GitHub ↗</a>
+        <a
+          href={downloadUrl}
+          data-goatcounter-click="download-nav"
+          class="cta-solid inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+        >
+          <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v11M8 11l4 4 4-4M5 20h14"></path></svg>
+          Download
+        </a>
+      </div>
+
+      <!-- Mobile hamburger -->
+      <button
+        id="fnav-btn"
+        type="button"
+        aria-label="Open navigation menu"
+        aria-expanded="false"
+        aria-controls="fnav-menu"
+        class="inline-flex h-9 w-9 items-center justify-center rounded-md text-white md:hidden"
+      >
+        <svg id="fnav-burger" aria-hidden="true" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>
+        <svg id="fnav-close" aria-hidden="true" class="hidden h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
+      </button>
+    </nav>
+
+    <!-- Mobile dropdown (its own pill below the bar) -->
+    <div id="fnav-menu" hidden class="pointer-events-auto mt-2 rounded-2xl border border-white/10 px-4 py-3 shadow-[0_10px_30px_-12px_rgba(8,3,18,.7)] backdrop-blur-md md:hidden" style="background: #1b0c30f2;">
+      <nav class="flex flex-col gap-1 text-sm font-medium" style="color: var(--color-grape-100);" aria-label="Mobile">
+        {items.map((item) => (
+          <a href={item.href} class="py-2 transition-colors hover:text-white">{item.label}</a>
+        ))}
+        <a href={repoUrl} class="py-2 transition-colors hover:text-white">GitHub ↗</a>
+        <a href={downloadUrl} data-goatcounter-click="download-nav" class="cta-solid mt-2 inline-flex items-center justify-center gap-1.5 rounded-full px-4 py-2.5 text-sm font-semibold text-white">Download for macOS</a>
+      </nav>
+    </div>
+  </div>
+</div>
+
+{spacer && <div aria-hidden="true" class="h-[72px] sm:h-20"></div>}
+
+<script is:inline>
+  (() => {
+    const btn = document.getElementById('fnav-btn');
+    const menu = document.getElementById('fnav-menu');
+    const burger = document.getElementById('fnav-burger');
+    const close = document.getElementById('fnav-close');
+    if (!btn || !menu) return;
+    const setOpen = (open) => {
+      menu.toggleAttribute('hidden', !open);
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      btn.setAttribute('aria-label', open ? 'Close navigation menu' : 'Open navigation menu');
+      if (burger) burger.classList.toggle('hidden', open);
+      if (close) close.classList.toggle('hidden', !open);
+    };
+    btn.addEventListener('click', () => setOpen(btn.getAttribute('aria-expanded') !== 'true'));
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && btn.getAttribute('aria-expanded') === 'true') { setOpen(false); btn.focus(); }
+    });
+    document.addEventListener('click', (e) => {
+      if (btn.getAttribute('aria-expanded') === 'true' && !menu.contains(e.target) && !btn.contains(e.target)) setOpen(false);
+    });
+  })();
+</script>

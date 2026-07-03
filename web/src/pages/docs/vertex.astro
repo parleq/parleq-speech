@@ -1,19 +1,20 @@
 ---
 import Layout from '../../layouts/Layout.astro';
-import SiteHeader from '../../components/SiteHeader.astro';
+import FloatingNav from '../../components/FloatingNav.astro';
 import PricingNote from '../../components/PricingNote.astro';
+import DocTabs from '../../components/DocTabs.astro';
 
 ---
 
 <Layout title="Vertex AI setup — Parleq" description="Set up Google Vertex AI as Parleq's cleanup provider. Two auth modes: gcloud ADC, or service-account JSON.">
-  <SiteHeader active="docs" />
+  <FloatingNav active="docs" />
 
-  <article class="mx-auto max-w-2xl px-6 pt-16 pb-24">
+  <article class="mx-auto max-w-2xl px-6 pt-16 sm:pt-20 pb-24">
     <p class="text-sm">
       <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/'} class="text-[color:var(--color-text-subtle)] hover:text-[color:var(--color-text-muted)]">← Docs</a>
     </p>
 
-    <p class="mt-8 text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">Vertex AI</p>
+    <p class="mt-8 text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">Setup guide</p>
     <h1 class="mt-4 font-display text-4xl leading-[1.1] font-medium tracking-tight sm:text-5xl">
       Google Vertex AI
     </h1>
@@ -22,7 +23,7 @@ import PricingNote from '../../components/PricingNote.astro';
     </p>
 
     <div class="mt-8 rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6">
-      <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-text-subtle)]">At a glance</p>
+      <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent-hover)]">At a glance</p>
       <ul class="mt-3 space-y-2 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
         <li><strong class="text-[color:var(--color-text)]">Auth modes (two):</strong> gcloud Application Default Credentials (uses your existing CLI session — easiest on developer machines), or service-account JSON (a dedicated identity for Parleq, no <code class="rounded bg-[color:var(--color-bg)] px-1 font-mono text-[13px]">gcloud</code> install required).</li>
         <li><strong class="text-[color:var(--color-text)]">Default model:</strong> <code class="rounded bg-[color:var(--color-bg)] px-1 font-mono text-[13px]">gemini-2.5-flash</code> — the same model the direct Gemini API serves.</li>
@@ -32,12 +33,12 @@ import PricingNote from '../../components/PricingNote.astro';
       </ul>
     </div>
 
-    <h2 class="mt-12 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+    <h2 class="mt-12 scroll-mt-20 font-display text-2xl font-semibold leading-[1.1] tracking-tight text-[color:var(--color-text)]">
       Before you start
     </h2>
     <ol class="mt-6 space-y-7 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
       <li class="flex gap-4">
-        <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums">1.</span>
+        <span class="font-display text-2xl font-semibold text-[color:var(--color-accent)] tabular-nums">1.</span>
         <div>
           <p class="text-[color:var(--color-text)] font-medium">Have a GCP project with the Vertex AI API enabled.</p>
           <p class="mt-2">
@@ -46,7 +47,7 @@ import PricingNote from '../../components/PricingNote.astro';
         </div>
       </li>
       <li class="flex gap-4">
-        <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums">2.</span>
+        <span class="font-display text-2xl font-semibold text-[color:var(--color-accent)] tabular-nums">2.</span>
         <div>
           <p class="text-[color:var(--color-text)] font-medium">Pick a region with Gemini 2.5 Flash available.</p>
           <p class="mt-2">
@@ -55,7 +56,7 @@ import PricingNote from '../../components/PricingNote.astro';
         </div>
       </li>
       <li class="flex gap-4">
-        <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums">3.</span>
+        <span class="font-display text-2xl font-semibold text-[color:var(--color-accent)] tabular-nums">3.</span>
         <div>
           <p class="text-[color:var(--color-text)] font-medium">Decide who's calling: you or a service account.</p>
           <p class="mt-2">
@@ -65,17 +66,57 @@ import PricingNote from '../../components/PricingNote.astro';
       </li>
     </ol>
 
-    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
-      Mode 1: gcloud Application Default Credentials
-    </h2>
-    <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      <p>
-        Parleq shells out to <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">gcloud auth application-default print-access-token</code> on each token refresh, getting back a fresh OAuth bearer minted from your existing CLI session. The same auth path you already use for any other GCP-touching tool on your machine.
+    <!-- Tabbed auth-mode picker. No-JS shows both panels; inline script enhances to WAI-ARIA tabs. -->
+    <div class="mt-16" data-doctabs>
+      <h2 class="font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+        Auth mode
+      </h2>
+      <p class="mt-3 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+        Pick the auth path that fits your setup — switch anytime in Settings.
       </p>
-      <p>
-        First-time setup (one-shot):
-      </p>
-      <pre class="overflow-x-auto rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4 text-[13px] leading-relaxed font-mono text-[color:var(--color-text)]"><code>{`# Install gcloud if you haven't:
+
+      <div role="tablist" aria-label="Vertex AI auth modes" class="mt-6 grid gap-4 sm:grid-cols-2">
+        <button
+          type="button" role="tab" id="tab-adc" aria-controls="panel-adc" aria-selected="true"
+          class="doctab group flex flex-col rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5 text-left transition-colors hover:border-[color:var(--color-accent)] aria-selected:border-[color:var(--color-grape)] aria-selected:bg-[color:var(--color-panel-ink)] aria-selected:shadow-[0_10px_30px_-16px_rgba(67,32,95,.45)]"
+        >
+          <span class="flex items-center gap-2.5">
+            <span aria-hidden="true" class="inline-flex h-8 w-8 items-center justify-center rounded-lg" style="background: color-mix(in srgb, var(--color-grape) 12%, transparent); color: var(--color-grape);">
+              <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+            </span>
+            <span class="text-[15px] font-semibold text-[color:var(--color-text)]">gcloud (ADC)</span>
+          </span>
+          <span class="mt-3 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">Uses your existing gcloud CLI session — no key to paste.</span>
+          <span class="mt-3 text-[12px] font-medium text-[color:var(--color-grape)]">Tokens minted automatically · needs gcloud installed</span>
+        </button>
+        <button
+          type="button" role="tab" id="tab-sa" aria-controls="panel-sa" aria-selected="false" tabindex="-1"
+          class="doctab group flex flex-col rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5 text-left transition-colors hover:border-[color:var(--color-accent)] aria-selected:border-[color:var(--color-grape)] aria-selected:bg-[color:var(--color-panel-ink)] aria-selected:shadow-[0_10px_30px_-16px_rgba(67,32,95,.45)]"
+        >
+          <span class="flex items-center gap-2.5">
+            <span aria-hidden="true" class="inline-flex h-8 w-8 items-center justify-center rounded-lg" style="background: color-mix(in srgb, var(--color-grape) 12%, transparent); color: var(--color-grape);">
+              <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            </span>
+            <span class="text-[15px] font-semibold text-[color:var(--color-text)]">Service account JSON</span>
+          </span>
+          <span class="mt-3 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">A dedicated GCP identity for Parleq — no gcloud install required.</span>
+          <span class="mt-3 text-[12px] font-medium text-[color:var(--color-grape)]">No CLI needed · stored in Keychain · rotate via GCP console</span>
+        </button>
+      </div>
+
+      <!-- Panel: gcloud ADC -->
+      <div role="tabpanel" id="panel-adc" aria-labelledby="tab-adc" class="mt-10">
+        <h2 class="scroll-mt-20 font-display text-2xl font-semibold leading-[1.1] tracking-tight text-[color:var(--color-text)]">
+          Mode 1: gcloud Application Default Credentials
+        </h2>
+        <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+          <p>
+            Parleq shells out to <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">gcloud auth application-default print-access-token</code> on each token refresh, getting back a fresh OAuth bearer minted from your existing CLI session. The same auth path you already use for any other GCP-touching tool on your machine.
+          </p>
+          <p>
+            First-time setup (one-shot):
+          </p>
+          <pre class="overflow-x-auto rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-section-tint)] p-4 text-[13px] leading-relaxed font-mono text-[color:var(--color-text)]"><code>{`# Install gcloud if you haven't:
 brew install --cask google-cloud-sdk
 
 # Sign in (opens browser):
@@ -83,47 +124,52 @@ gcloud auth application-default login
 
 # Tell ADC which project to bill the calls against:
 gcloud auth application-default set-quota-project my-team-prod-1234`}</code></pre>
-      <p>
-        In Parleq's Setup Wizard, pick <strong class="text-[color:var(--color-text)]">Google Vertex AI</strong>, leave <strong class="text-[color:var(--color-text)]">Auth mode</strong> on <strong class="text-[color:var(--color-text)]">gcloud (ADC)</strong>, fill in <strong class="text-[color:var(--color-text)]">Project</strong> + <strong class="text-[color:var(--color-text)]">Region</strong>, click <strong class="text-[color:var(--color-text)]">Continue</strong>, then <strong class="text-[color:var(--color-text)]">Finish &amp; Restart</strong>.
-      </p>
-      <p class="text-[14px] text-[color:var(--color-text-subtle)]">
-        Parleq augments PATH at process launch to include <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[12px]">/opt/homebrew/bin</code> and <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[12px]">/usr/local/bin</code>, so a Homebrew-installed gcloud is found even when launched from Spotlight, the Dock, or as a login item — paths that <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[12px]">launchd</code> doesn't normally include.
-      </p>
-    </div>
+          <p>
+            In Parleq's Setup Wizard, pick <strong class="text-[color:var(--color-text)]">Google Vertex AI</strong>, leave <strong class="text-[color:var(--color-text)]">Auth mode</strong> on <strong class="text-[color:var(--color-text)]">gcloud (ADC)</strong>, fill in <strong class="text-[color:var(--color-text)]">Project</strong> + <strong class="text-[color:var(--color-text)]">Region</strong>, click <strong class="text-[color:var(--color-text)]">Continue</strong>, then <strong class="text-[color:var(--color-text)]">Finish &amp; Restart</strong>.
+          </p>
+          <p class="text-[14px] text-[color:var(--color-text-subtle)]">
+            Parleq augments PATH at process launch to include <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[12px]">/opt/homebrew/bin</code> and <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[12px]">/usr/local/bin</code>, so a Homebrew-installed gcloud is found even when launched from Spotlight, the Dock, or as a login item — paths that <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[12px]">launchd</code> doesn't normally include.
+          </p>
+        </div>
+      </div><!-- /panel-adc -->
 
-    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
-      Mode 2: Service-account JSON
-    </h2>
-    <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      <p>
-        Parleq mints OAuth bearer tokens on its own by signing a JWT with the service account's RSA private key and exchanging it at Google's token endpoint. No gcloud install needed — useful on locked-down workstations where you can't install dev tools, or for users on personal Macs who want a dedicated GCP identity for Parleq.
-      </p>
-      <p>
-        Setup:
-      </p>
-      <ol class="mt-3 space-y-3 list-decimal list-inside marker:font-semibold marker:text-[color:var(--color-text)]">
-        <li>
-          In <a href="https://console.cloud.google.com/iam-admin/serviceaccounts" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Cloud Console → IAM &amp; Admin → Service Accounts</a>, create a service account named something like <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">parleq-cleanup</code>.
-        </li>
-        <li>
-          On the new service account: <strong class="text-[color:var(--color-text)]">Permissions</strong> → grant the <strong class="text-[color:var(--color-text)]">Vertex AI User</strong> role (<code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">roles/aiplatform.user</code>) on this project. That's the minimum role for calling <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">streamGenerateContent</code> on Gemini publishers.
-        </li>
-        <li>
-          On the service account's <strong class="text-[color:var(--color-text)]">Keys</strong> tab: <strong class="text-[color:var(--color-text)]">Add Key → Create new key → JSON</strong>. The browser downloads a JSON file. Open it in a text editor and copy the entire contents.
-        </li>
-        <li>
-          In Parleq's Setup Wizard, pick <strong class="text-[color:var(--color-text)]">Google Vertex AI</strong>, switch <strong class="text-[color:var(--color-text)]">Auth mode</strong> to <strong class="text-[color:var(--color-text)]">Service account JSON</strong>, fill in <strong class="text-[color:var(--color-text)]">Project</strong> + <strong class="text-[color:var(--color-text)]">Region</strong>, paste the full JSON into the multi-line field, then <strong class="text-[color:var(--color-text)]">Finish &amp; Restart</strong>.
-        </li>
-      </ol>
-      <p class="mt-2">
-        The JSON contents are stored in the macOS Keychain — never in <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">~/.parleq/config.json</code>. Parleq only reads two fields from it: <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">client_email</code> and <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">private_key</code>.
-      </p>
-      <p class="text-[14px] text-[color:var(--color-text-subtle)]">
-        Service-account keys never expire on their own — they're valid until you delete or disable them. Rotate by creating a new key, pasting it into Parleq's Settings (replaces the old value in the Keychain), and deleting the old key from the GCP console.
-      </p>
-    </div>
+      <!-- Panel: Service account JSON -->
+      <div role="tabpanel" id="panel-sa" aria-labelledby="tab-sa" class="mt-10">
+        <h2 class="scroll-mt-20 font-display text-2xl font-semibold leading-[1.1] tracking-tight text-[color:var(--color-text)]">
+          Mode 2: Service-account JSON
+        </h2>
+        <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+          <p>
+            Parleq mints OAuth bearer tokens on its own by signing a JWT with the service account's RSA private key and exchanging it at Google's token endpoint. No gcloud install needed — useful on locked-down workstations where you can't install dev tools, or for users on personal Macs who want a dedicated GCP identity for Parleq.
+          </p>
+          <p>
+            Setup:
+          </p>
+          <ol class="mt-3 space-y-3 list-decimal list-inside marker:font-semibold marker:text-[color:var(--color-text)]">
+            <li>
+              In <a href="https://console.cloud.google.com/iam-admin/serviceaccounts" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Cloud Console → IAM &amp; Admin → Service Accounts</a>, create a service account named something like <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">parleq-cleanup</code>.
+            </li>
+            <li>
+              On the new service account: <strong class="text-[color:var(--color-text)]">Permissions</strong> → grant the <strong class="text-[color:var(--color-text)]">Vertex AI User</strong> role (<code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">roles/aiplatform.user</code>) on this project. That's the minimum role for calling <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">streamGenerateContent</code> on Gemini publishers.
+            </li>
+            <li>
+              On the service account's <strong class="text-[color:var(--color-text)]">Keys</strong> tab: <strong class="text-[color:var(--color-text)]">Add Key → Create new key → JSON</strong>. The browser downloads a JSON file. Open it in a text editor and copy the entire contents.
+            </li>
+            <li>
+              In Parleq's Setup Wizard, pick <strong class="text-[color:var(--color-text)]">Google Vertex AI</strong>, switch <strong class="text-[color:var(--color-text)]">Auth mode</strong> to <strong class="text-[color:var(--color-text)]">Service account JSON</strong>, fill in <strong class="text-[color:var(--color-text)]">Project</strong> + <strong class="text-[color:var(--color-text)]">Region</strong>, paste the full JSON into the multi-line field, then <strong class="text-[color:var(--color-text)]">Finish &amp; Restart</strong>.
+            </li>
+          </ol>
+          <p class="mt-2">
+            The JSON contents are stored in the macOS Keychain — never in <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">~/.parleq/config.json</code>. Parleq only reads two fields from it: <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">client_email</code> and <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">private_key</code>.
+          </p>
+          <p class="text-[14px] text-[color:var(--color-text-subtle)]">
+            Service-account keys never expire on their own — they're valid until you delete or disable them. Rotate by creating a new key, pasting it into Parleq's Settings (replaces the old value in the Keychain), and deleting the old key from the GCP console.
+          </p>
+        </div>
+      </div><!-- /panel-sa -->
+    </div><!-- /data-doctabs -->
 
-    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+    <h2 class="mt-16 scroll-mt-20 font-display text-2xl font-semibold leading-[1.1] tracking-tight text-[color:var(--color-text)]">
       Choosing a model
     </h2>
     <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
@@ -145,7 +191,7 @@ gcloud auth application-default set-quota-project my-team-prod-1234`}</code></pr
       </p>
     </div>
 
-    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+    <h2 class="mt-16 scroll-mt-20 font-display text-2xl font-semibold leading-[1.1] tracking-tight text-[color:var(--color-text)]">
       Pricing &amp; quotas
     </h2>
     <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
@@ -158,7 +204,7 @@ gcloud auth application-default set-quota-project my-team-prod-1234`}</code></pr
       <PricingNote />
     </div>
 
-    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+    <h2 class="mt-16 scroll-mt-20 font-display text-2xl font-semibold leading-[1.1] tracking-tight text-[color:var(--color-text)]">
       Compliance notes
     </h2>
     <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
@@ -173,41 +219,43 @@ gcloud auth application-default set-quota-project my-team-prod-1234`}</code></pr
       </p>
     </div>
 
-    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+    <h2 class="mt-16 scroll-mt-20 font-display text-2xl font-semibold leading-[1.1] tracking-tight text-[color:var(--color-text)]">
       Troubleshooting
     </h2>
-    <div class="mt-6 space-y-6 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      <div>
+    <div class="mt-6 space-y-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
         <p class="font-medium text-[color:var(--color-text)]"><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">PERMISSION_DENIED</code> — caller does not have <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">aiplatform.endpoints.predict</code></p>
         <p class="mt-2">
           The identity Parleq is using doesn't have the <strong class="text-[color:var(--color-text)]">Vertex AI User</strong> role on the configured project. For ADC, this is <em>your</em> identity — check the IAM page for your user. For service-account auth, it's the SA's email — make sure the role was granted on the right project.
         </p>
       </div>
-      <div>
+      <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
         <p class="font-medium text-[color:var(--color-text)]"><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">FAILED_PRECONDITION</code> — Vertex AI API not enabled</p>
         <p class="mt-2">
           Enable the API on the project at <a href="https://console.cloud.google.com/apis/library/aiplatform.googleapis.com" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Cloud Console → API Library</a>.
         </p>
       </div>
-      <div>
+      <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
         <p class="font-medium text-[color:var(--color-text)]">ADC session expired</p>
         <p class="mt-2">
           The overlay surfaces a clear "Vertex ADC token rejected" error pointing at <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">gcloud auth application-default login</code>. Run that, then dictate again — Parleq invalidates the cached token on auth failure and re-mints from your refreshed CLI session on the next call, no restart needed.
         </p>
       </div>
-      <div>
+      <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
         <p class="font-medium text-[color:var(--color-text)]">"Could not obtain an access token" / <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">gcloud: command not found</code></p>
         <p class="mt-2">
           Parleq couldn't find <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">gcloud</code> on PATH. Most likely cause: you installed gcloud somewhere outside <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">/opt/homebrew/bin</code> / <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">/usr/local/bin</code> (e.g., a custom directory referenced from your shell rc only). Either symlink the binary into <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">/usr/local/bin</code>, or switch to the service-account JSON path which doesn't need gcloud at all.
         </p>
       </div>
-      <div>
+      <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
         <p class="font-medium text-[color:var(--color-text)]">"That doesn't look like a service account JSON"</p>
         <p class="mt-2">
           Parleq validates the pasted JSON against the SA-key shape (must have <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">type</code>, <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">client_email</code>, <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">private_key</code>). If you accidentally pasted an OAuth client JSON or a Workload Identity config, this fires. Re-download the SA key from <strong class="text-[color:var(--color-text)]">IAM → Service Accounts → your SA → Keys → Add Key → JSON</strong>.
         </p>
       </div>
     </div>
+
+    <DocTabs />
   </article>
 
 </Layout>

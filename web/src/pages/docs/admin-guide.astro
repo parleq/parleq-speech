@@ -1,14 +1,15 @@
 ---
 import Layout from '../../layouts/Layout.astro';
-import SiteHeader from '../../components/SiteHeader.astro';
+import FloatingNav from '../../components/FloatingNav.astro';
+import DocTabs from '../../components/DocTabs.astro';
 
 const repoUrl = 'https://github.com/parleq/parleq-speech';
 ---
 
-<Layout title="Admin Guide — Parleq MDM Deployment" description="Step-by-step guide for IT administrators deploying Parleq via MDM (Jamf, Kandji, Mosyle, Intune, and others). Covers deployment workflow, common patterns, verification, and signed-app posture.">
-  <SiteHeader active="docs" />
+<Layout title="Admin Guide — Parleq MDM Deployment" description="Deploy Parleq to a Mac fleet via MDM (Jamf, Kandji, Mosyle, Intune): the profile → upload → verify workflow, common patterns, and signed-app posture.">
+  <FloatingNav active="docs" />
 
-  <article class="mx-auto max-w-2xl px-6 pt-16 pb-24">
+  <article class="mx-auto max-w-2xl px-6 pt-16 sm:pt-20 pb-24">
     <p class="text-sm">
       <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/'} class="text-[color:var(--color-text-subtle)] hover:text-[color:var(--color-text-muted)]">&larr; Docs</a>
     </p>
@@ -36,21 +37,21 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
 
     <ol class="mt-6 space-y-8 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
       <li class="flex gap-4">
-        <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums shrink-0">1.</span>
+        <span class="font-display text-2xl font-semibold text-[color:var(--color-grape-500)] tabular-nums shrink-0">1.</span>
         <div>
           <p class="text-[color:var(--color-text)] font-medium">Get the sample profile.</p>
           <p class="mt-2">Download <a href={`${repoUrl}/blob/main/config/parleq-managed-example.mobileconfig`} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline"><code class="font-mono text-[13px]">config/parleq-managed-example.mobileconfig</code></a> from the repo. It is a fully-formed <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[13px]">.mobileconfig</code> with every supported key commented and explained. You can use it as-is for testing, or trim it to the subset of keys you want to manage.</p>
         </div>
       </li>
       <li class="flex gap-4">
-        <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums shrink-0">2.</span>
+        <span class="font-display text-2xl font-semibold text-[color:var(--color-grape-500)] tabular-nums shrink-0">2.</span>
         <div>
           <p class="text-[color:var(--color-text)] font-medium">Customize for your organization.</p>
           <p class="mt-2">Open the file in a text editor and set the keys relevant to your deployment. Replace both <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[13px]">REPLACE-WITH-A-NEW-UUID</code> placeholders with fresh UUIDs (run <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[13px]">uuidgen</code> in Terminal) and replace the <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[13px]">com.example</code> identifiers with your organization&rsquo;s reverse-DNS prefix. Any key you omit is not managed &mdash; Parleq uses the user&rsquo;s stored preference or the built-in default. See the <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/managed-configuration/'} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">full key reference</a> for all available keys and their semantics.</p>
         </div>
       </li>
       <li class="flex gap-4">
-        <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums shrink-0">3.</span>
+        <span class="font-display text-2xl font-semibold text-[color:var(--color-grape-500)] tabular-nums shrink-0">3.</span>
         <div>
           <p class="text-[color:var(--color-text)] font-medium">Upload and scope in your MDM.</p>
           <p class="mt-2">All MDMs that speak the macOS MDM protocol accept the same <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[13px]">.mobileconfig</code> format:</p>
@@ -65,7 +66,7 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
         </div>
       </li>
       <li class="flex gap-4">
-        <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums shrink-0">4.</span>
+        <span class="font-display text-2xl font-semibold text-[color:var(--color-grape-500)] tabular-nums shrink-0">4.</span>
         <div>
           <p class="text-[color:var(--color-text)] font-medium">Verify the deployment.</p>
           <p class="mt-2">Settings take effect on Parleq&rsquo;s next launch after MDM check-in. Two ways to confirm:</p>
@@ -78,16 +79,73 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
     </ol>
 
     <!-- Common deployment patterns -->
-    <h2 class="mt-14 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
-      Common deployment patterns
-    </h2>
+    <div class="mt-14" data-doctabs>
+      <h2 class="font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+        Common deployment patterns
+      </h2>
 
-    <h3 class="mt-8 text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Azure-only org</h3>
-    <p class="mt-3 text-[15px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      You have an Azure OpenAI deployment and want all Parleq traffic to go there. Pin the provider, restrict the model list to the deployments you have provisioned, and disable the custom model entry so users can&rsquo;t route around the list.
-    </p>
-    <div class="mt-4 overflow-x-auto rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
-      <pre class="text-[13px] leading-[1.7] text-[color:var(--color-text-muted)] whitespace-pre overflow-x-auto"><code>&lt;key&gt;cleanupProvider&lt;/key&gt;
+      <div role="tablist" aria-label="Deployment patterns" class="mt-6 grid gap-4 sm:grid-cols-2">
+        <button
+          type="button" role="tab" id="tab-azure" aria-controls="panel-azure" aria-selected="true"
+          class="doctab group flex flex-col rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5 text-left transition-colors hover:border-[color:var(--color-accent)] aria-selected:border-[color:var(--color-grape)] aria-selected:bg-[color:var(--color-panel-ink)] aria-selected:shadow-[0_10px_30px_-16px_rgba(67,32,95,.45)]"
+        >
+          <span class="flex items-center gap-2.5">
+            <span aria-hidden="true" class="inline-flex h-8 w-8 items-center justify-center rounded-lg" style="background: color-mix(in srgb, var(--color-grape) 12%, transparent); color: var(--color-grape);">
+              <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>
+            </span>
+            <span class="text-[15px] font-semibold text-[color:var(--color-text)]">Azure-only org</span>
+          </span>
+          <span class="mt-3 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">Pins provider to Azure OpenAI, restricts models to provisioned deployments, and disables custom model entry.</span>
+          <span class="mt-3 text-[12px] font-medium text-[color:var(--color-grape)]">cleanupProvider &middot; cleanupAllowedModels &middot; customModelEntryEnabled</span>
+        </button>
+        <button
+          type="button" role="tab" id="tab-bedrock" aria-controls="panel-bedrock" aria-selected="false" tabindex="-1"
+          class="doctab group flex flex-col rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5 text-left transition-colors hover:border-[color:var(--color-accent)] aria-selected:border-[color:var(--color-grape)] aria-selected:bg-[color:var(--color-panel-ink)] aria-selected:shadow-[0_10px_30px_-16px_rgba(67,32,95,.45)]"
+        >
+          <span class="flex items-center gap-2.5">
+            <span aria-hidden="true" class="inline-flex h-8 w-8 items-center justify-center rounded-lg" style="background: color-mix(in srgb, var(--color-grape) 12%, transparent); color: var(--color-grape);">
+              <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="4" rx="1"/><rect x="2" y="10" width="20" height="4" rx="1"/><rect x="2" y="17" width="20" height="4" rx="1"/></svg>
+            </span>
+            <span class="text-[15px] font-semibold text-[color:var(--color-text)]">Bedrock-only org</span>
+          </span>
+          <span class="mt-3 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">Pins provider to AWS Bedrock, restricts to approved Claude models, and optionally disables screenshot references.</span>
+          <span class="mt-3 text-[12px] font-medium text-[color:var(--color-grape)]">cleanupProvider &middot; cleanupAllowedModels &middot; imageReferenceEnabled</span>
+        </button>
+        <button
+          type="button" role="tab" id="tab-auth-lockdown" aria-controls="panel-auth-lockdown" aria-selected="false" tabindex="-1"
+          class="doctab group flex flex-col rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5 text-left transition-colors hover:border-[color:var(--color-accent)] aria-selected:border-[color:var(--color-grape)] aria-selected:bg-[color:var(--color-panel-ink)] aria-selected:shadow-[0_10px_30px_-16px_rgba(67,32,95,.45)]"
+        >
+          <span class="flex items-center gap-2.5">
+            <span aria-hidden="true" class="inline-flex h-8 w-8 items-center justify-center rounded-lg" style="background: color-mix(in srgb, var(--color-grape) 12%, transparent); color: var(--color-grape);">
+              <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            </span>
+            <span class="text-[15px] font-semibold text-[color:var(--color-text)]">Auth-mode lockdown</span>
+          </span>
+          <span class="mt-3 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">Forces federated identity throughout &mdash; no static API keys &mdash; and blocks all key-based auth paths at runtime.</span>
+          <span class="mt-3 text-[12px] font-medium text-[color:var(--color-grape)]">staticApiKeysAllowed &middot; azureAuthMode &middot; bedrockAuthMode</span>
+        </button>
+        <button
+          type="button" role="tab" id="tab-compliance" aria-controls="panel-compliance" aria-selected="false" tabindex="-1"
+          class="doctab group flex flex-col rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5 text-left transition-colors hover:border-[color:var(--color-accent)] aria-selected:border-[color:var(--color-grape)] aria-selected:bg-[color:var(--color-panel-ink)] aria-selected:shadow-[0_10px_30px_-16px_rgba(67,32,95,.45)]"
+        >
+          <span class="flex items-center gap-2.5">
+            <span aria-hidden="true" class="inline-flex h-8 w-8 items-center justify-center rounded-lg" style="background: color-mix(in srgb, var(--color-grape) 12%, transparent); color: var(--color-grape);">
+              <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            </span>
+            <span class="text-[15px] font-semibold text-[color:var(--color-text)]">Compliance-first lockdown</span>
+          </span>
+          <span class="mt-3 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">Maximally locked: disables screenshots, file references, and custom models; manages updates via an internal mirror.</span>
+          <span class="mt-3 text-[12px] font-medium text-[color:var(--color-grape)]">imageReferenceEnabled &middot; fileReferenceEnabled &middot; sparkleUpdateFeedURL</span>
+        </button>
+      </div>
+
+      <!-- Panel: Azure-only org -->
+      <div role="tabpanel" id="panel-azure" aria-labelledby="tab-azure" class="mt-10">
+        <p class="mt-3 text-[15px] leading-[1.7] text-[color:var(--color-text-muted)]">
+          You have an Azure OpenAI deployment and want all Parleq traffic to go there. Pin the provider, restrict the model list to the deployments you have provisioned, and disable the custom model entry so users can&rsquo;t route around the list.
+        </p>
+        <div class="mt-4 overflow-x-auto rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-section-tint)] p-4">
+          <pre class="text-[13px] leading-[1.7] text-[color:var(--color-text-muted)] whitespace-pre overflow-x-auto"><code>&lt;key&gt;cleanupProvider&lt;/key&gt;
 &lt;string&gt;azure&lt;/string&gt;
 &lt;key&gt;cleanupAllowedModels&lt;/key&gt;
 &lt;array&gt;
@@ -96,14 +154,16 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
 &lt;/array&gt;
 &lt;key&gt;customModelEntryEnabled&lt;/key&gt;
 &lt;false/&gt;</code></pre>
-    </div>
+        </div>
+      </div><!-- /panel-azure -->
 
-    <h3 class="mt-8 text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Bedrock-only org</h3>
-    <p class="mt-3 text-[15px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      Your org uses AWS and routes LLM calls through Bedrock for data-residency and IAM auditability. Pin to Bedrock, restrict to the Claude family, and (optionally) disable the reference-window feature if screenshot-to-LLM is not in scope.
-    </p>
-    <div class="mt-4 overflow-x-auto rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
-      <pre class="text-[13px] leading-[1.7] text-[color:var(--color-text-muted)] whitespace-pre overflow-x-auto"><code>&lt;key&gt;cleanupProvider&lt;/key&gt;
+      <!-- Panel: Bedrock-only org -->
+      <div role="tabpanel" id="panel-bedrock" aria-labelledby="tab-bedrock" class="mt-10">
+        <p class="mt-3 text-[15px] leading-[1.7] text-[color:var(--color-text-muted)]">
+          Your org uses AWS and routes LLM calls through Bedrock for data-residency and IAM auditability. Pin to Bedrock, restrict to the Claude family, and (optionally) disable the reference-window feature if screenshot-to-LLM is not in scope.
+        </p>
+        <div class="mt-4 overflow-x-auto rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-section-tint)] p-4">
+          <pre class="text-[13px] leading-[1.7] text-[color:var(--color-text-muted)] whitespace-pre overflow-x-auto"><code>&lt;key&gt;cleanupProvider&lt;/key&gt;
 &lt;string&gt;bedrock&lt;/string&gt;
 &lt;key&gt;cleanupAllowedModels&lt;/key&gt;
 &lt;array&gt;
@@ -114,14 +174,16 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
 &lt;false/&gt;
 &lt;key&gt;imageReferenceEnabled&lt;/key&gt;
 &lt;false/&gt;</code></pre>
-    </div>
+        </div>
+      </div><!-- /panel-bedrock -->
 
-    <h3 class="mt-8 text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Auth-mode lockdown</h3>
-    <p class="mt-3 text-[15px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      Your security policy requires federated identity throughout &mdash; no static API keys on developer laptops. Force Entra ID for Azure and AWS SSO for Bedrock, and globally disable all API-key auth paths so users cannot use personal credentials even if they were previously stored in the Keychain.
-    </p>
-    <div class="mt-4 overflow-x-auto rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
-      <pre class="text-[13px] leading-[1.7] text-[color:var(--color-text-muted)] whitespace-pre overflow-x-auto"><code>&lt;!-- Master switch: hides API-key entry UI AND blocks static-key auth at runtime --&gt;
+      <!-- Panel: Auth-mode lockdown -->
+      <div role="tabpanel" id="panel-auth-lockdown" aria-labelledby="tab-auth-lockdown" class="mt-10">
+        <p class="mt-3 text-[15px] leading-[1.7] text-[color:var(--color-text-muted)]">
+          Your security policy requires federated identity throughout &mdash; no static API keys on developer laptops. Force Entra ID for Azure and AWS SSO for Bedrock, and globally disable all API-key auth paths so users cannot use personal credentials even if they were previously stored in the Keychain.
+        </p>
+        <div class="mt-4 overflow-x-auto rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-section-tint)] p-4">
+          <pre class="text-[13px] leading-[1.7] text-[color:var(--color-text-muted)] whitespace-pre overflow-x-auto"><code>&lt;!-- Master switch: hides API-key entry UI AND blocks static-key auth at runtime --&gt;
 &lt;key&gt;staticApiKeysAllowed&lt;/key&gt;
 &lt;false/&gt;
 
@@ -132,40 +194,44 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
 &lt;!-- Force Bedrock to use AWS SSO --&gt;
 &lt;key&gt;bedrockAuthMode&lt;/key&gt;
 &lt;string&gt;sso&lt;/string&gt;</code></pre>
-    </div>
-    <p class="mt-4 text-[14px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      With this configuration: the Azure credentials card shows a pinned &ldquo;Microsoft Entra ID&rdquo; label and hides the API key row; the Bedrock card shows a pinned &ldquo;AWS CLI session (SSO)&rdquo; label and hides the static-credentials and Bedrock-API-key rows; Gemini, OpenAI direct, and Bedrock bearer cards all hide their key-entry buttons and show an &ldquo;Auth disabled by org&rdquo; badge in the card header. Federated-auth controls (&ldquo;Auth uses your local <code class="font-mono text-[12px]">az login</code> session&rdquo;, <code class="font-mono text-[12px]">aws sso login</code>) remain fully accessible. <strong>Runtime enforcement:</strong> Parleq will refuse to use any static-key auth path even if credentials are already stored in the Keychain &mdash; previously-stored keys are not deleted, but they are not used while the policy is active. The provider picker annotates Gemini, OpenAI direct, and Bedrock bearer with &ldquo;(disabled by your organization)&rdquo; so users understand why cleanup is unavailable for those providers. Removing the MDM profile and restarting Parleq immediately restores access to all previously-stored credentials.
-    </p>
-    <p class="mt-3 text-[14px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      <strong>Provider availability under <code class="font-mono text-[12px]">staticApiKeysAllowed: false</code>:</strong>
-    </p>
-    <table class="mt-2 w-full text-[13px] leading-relaxed text-[color:var(--color-text-muted)]">
-      <thead>
-        <tr class="border-b border-[color:var(--color-border)] text-left text-[12px] font-semibold uppercase tracking-wide">
-          <th class="pb-2 pr-4">Provider</th>
-          <th class="pb-2 pr-4">Auth mode</th>
-          <th class="pb-2">Available?</th>
-        </tr>
-      </thead>
-      <tbody class="divide-y divide-[color:var(--color-border)]">
-        <tr><td class="py-1.5 pr-4 font-mono">gemini</td><td class="py-1.5 pr-4">API key (only option)</td><td class="py-1.5 text-red-600 dark:text-red-400">Blocked</td></tr>
-        <tr><td class="py-1.5 pr-4 font-mono">openai</td><td class="py-1.5 pr-4">API key (only option)</td><td class="py-1.5 text-red-600 dark:text-red-400">Blocked</td></tr>
-        <tr><td class="py-1.5 pr-4 font-mono">bedrock-bearer</td><td class="py-1.5 pr-4">Bedrock API key (only option)</td><td class="py-1.5 text-red-600 dark:text-red-400">Blocked</td></tr>
-        <tr><td class="py-1.5 pr-4 font-mono">vertex</td><td class="py-1.5 pr-4">serviceAccount (JSON key)</td><td class="py-1.5 text-red-600 dark:text-red-400">Blocked</td></tr>
-        <tr><td class="py-1.5 pr-4 font-mono">vertex</td><td class="py-1.5 pr-4">adc (gcloud ADC)</td><td class="py-1.5 text-green-700 dark:text-green-400">Available</td></tr>
-        <tr><td class="py-1.5 pr-4 font-mono">azure</td><td class="py-1.5 pr-4">apiKey</td><td class="py-1.5 text-red-600 dark:text-red-400">Blocked</td></tr>
-        <tr><td class="py-1.5 pr-4 font-mono">azure</td><td class="py-1.5 pr-4">azureAd (Entra ID)</td><td class="py-1.5 text-green-700 dark:text-green-400">Available</td></tr>
-        <tr><td class="py-1.5 pr-4 font-mono">bedrock</td><td class="py-1.5 pr-4">static / bedrockApiKey</td><td class="py-1.5 text-red-600 dark:text-red-400">Blocked</td></tr>
-        <tr><td class="py-1.5 pr-4 font-mono">bedrock</td><td class="py-1.5 pr-4">sso (AWS SSO)</td><td class="py-1.5 text-green-700 dark:text-green-400">Available</td></tr>
-      </tbody>
-    </table>
+        </div>
+        <p class="mt-4 text-[14px] leading-[1.7] text-[color:var(--color-text-muted)]">
+          With this configuration: the Azure credentials card shows a pinned &ldquo;Microsoft Entra ID&rdquo; label and hides the API key row; the Bedrock card shows a pinned &ldquo;AWS CLI session (SSO)&rdquo; label and hides the static-credentials and Bedrock-API-key rows; Gemini, OpenAI direct, and Bedrock bearer cards all hide their key-entry buttons and show an &ldquo;Auth disabled by org&rdquo; badge in the card header. Federated-auth controls (&ldquo;Auth uses your local <code class="font-mono text-[12px]">az login</code> session&rdquo;, <code class="font-mono text-[12px]">aws sso login</code>) remain fully accessible. <strong>Runtime enforcement:</strong> Parleq will refuse to use any static-key auth path even if credentials are already stored in the Keychain &mdash; previously-stored keys are not deleted, but they are not used while the policy is active. The provider picker annotates Gemini, OpenAI direct, and Bedrock bearer with &ldquo;(disabled by your organization)&rdquo; so users understand why cleanup is unavailable for those providers. Removing the MDM profile and restarting Parleq immediately restores access to all previously-stored credentials.
+        </p>
+        <p class="mt-3 text-[14px] leading-[1.7] text-[color:var(--color-text-muted)]">
+          <strong>Provider availability under <code class="font-mono text-[12px]">staticApiKeysAllowed: false</code>:</strong>
+        </p>
+        <div class="mt-2 overflow-x-auto">
+        <table class="w-full text-[13px] leading-relaxed text-[color:var(--color-text-muted)]">
+          <thead>
+            <tr class="border-b border-[color:var(--color-border)] text-left text-[12px] font-semibold uppercase tracking-wide">
+              <th class="pb-2 pr-4">Provider</th>
+              <th class="pb-2 pr-4">Auth mode</th>
+              <th class="pb-2">Available?</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-[color:var(--color-border)]">
+            <tr><td class="py-1.5 pr-4 font-mono">gemini</td><td class="py-1.5 pr-4">API key (only option)</td><td class="py-1.5 text-red-600 dark:text-red-400">Blocked</td></tr>
+            <tr><td class="py-1.5 pr-4 font-mono">openai</td><td class="py-1.5 pr-4">API key (only option)</td><td class="py-1.5 text-red-600 dark:text-red-400">Blocked</td></tr>
+            <tr><td class="py-1.5 pr-4 font-mono">bedrock-bearer</td><td class="py-1.5 pr-4">Bedrock API key (only option)</td><td class="py-1.5 text-red-600 dark:text-red-400">Blocked</td></tr>
+            <tr><td class="py-1.5 pr-4 font-mono">vertex</td><td class="py-1.5 pr-4">serviceAccount (JSON key)</td><td class="py-1.5 text-red-600 dark:text-red-400">Blocked</td></tr>
+            <tr><td class="py-1.5 pr-4 font-mono">vertex</td><td class="py-1.5 pr-4">adc (gcloud ADC)</td><td class="py-1.5 text-green-700 dark:text-green-400">Available</td></tr>
+            <tr><td class="py-1.5 pr-4 font-mono">azure</td><td class="py-1.5 pr-4">apiKey</td><td class="py-1.5 text-red-600 dark:text-red-400">Blocked</td></tr>
+            <tr><td class="py-1.5 pr-4 font-mono">azure</td><td class="py-1.5 pr-4">azureAd (Entra ID)</td><td class="py-1.5 text-green-700 dark:text-green-400">Available</td></tr>
+            <tr><td class="py-1.5 pr-4 font-mono">bedrock</td><td class="py-1.5 pr-4">static / bedrockApiKey</td><td class="py-1.5 text-red-600 dark:text-red-400">Blocked</td></tr>
+            <tr><td class="py-1.5 pr-4 font-mono">bedrock</td><td class="py-1.5 pr-4">sso (AWS SSO)</td><td class="py-1.5 text-green-700 dark:text-green-400">Available</td></tr>
+          </tbody>
+        </table>
+        </div>
+      </div><!-- /panel-auth-lockdown -->
 
-    <h3 class="mt-8 text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Compliance-first lockdown</h3>
-    <p class="mt-3 text-[15px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      Maximally locked: no screenshots, no file references, no custom models, auto-update managed centrally, logging policy documented for auditors, and updates fetched from an internal mirror after your security team&rsquo;s review.
-    </p>
-    <div class="mt-4 overflow-x-auto rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
-      <pre class="text-[13px] leading-[1.7] text-[color:var(--color-text-muted)] whitespace-pre overflow-x-auto"><code>&lt;key&gt;imageReferenceEnabled&lt;/key&gt;
+      <!-- Panel: Compliance-first lockdown -->
+      <div role="tabpanel" id="panel-compliance" aria-labelledby="tab-compliance" class="mt-10">
+        <p class="mt-3 text-[15px] leading-[1.7] text-[color:var(--color-text-muted)]">
+          Maximally locked: no screenshots, no file references, no custom models, auto-update managed centrally, logging policy documented for auditors, and updates fetched from an internal mirror after your security team&rsquo;s review.
+        </p>
+        <div class="mt-4 overflow-x-auto rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-section-tint)] p-4">
+          <pre class="text-[13px] leading-[1.7] text-[color:var(--color-text-muted)] whitespace-pre overflow-x-auto"><code>&lt;key&gt;imageReferenceEnabled&lt;/key&gt;
 &lt;false/&gt;
 &lt;key&gt;fileReferenceEnabled&lt;/key&gt;
 &lt;false/&gt;
@@ -177,7 +243,9 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
 &lt;string&gt;lengthOnly&lt;/string&gt;
 &lt;key&gt;sparkleUpdateFeedURL&lt;/key&gt;
 &lt;string&gt;https://internal-mirror.example.com/parleq/appcast.xml&lt;/string&gt;</code></pre>
-    </div>
+        </div>
+      </div><!-- /panel-compliance -->
+    </div><!-- /data-doctabs -->
 
     <!-- Verification checklist -->
     <h2 class="mt-14 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
@@ -233,21 +301,21 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
     </p>
 
     <div class="mt-6 space-y-5">
-      <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5">
+      <div class="rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5">
         <p class="font-semibold text-[color:var(--color-text)]">Code signature</p>
         <p class="mt-2 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">
           Every Parleq release is signed with Apple Developer ID. The current signing Team ID is <code class="rounded bg-[color:var(--color-surface)] border border-[color:var(--color-border)] px-1.5 py-0.5 font-mono text-[13px]">N7S8GXC725</code>. Admins can verify this independently via Apple&rsquo;s developer registry or by running <code class="rounded bg-[color:var(--color-surface)] border border-[color:var(--color-border)] px-1.5 py-0.5 font-mono text-[13px]">codesign -dv --verbose=4 /Applications/Parleq.app 2&gt;&amp;1 | grep TeamIdentifier</code> on a downloaded build.
         </p>
       </div>
 
-      <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5">
+      <div class="rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5">
         <p class="font-semibold text-[color:var(--color-text)]">Notarization</p>
         <p class="mt-2 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">
           Every Parleq release is submitted to Apple&rsquo;s notarization service before distribution. Notarized builds pass Gatekeeper automatically on macOS 10.15+ without requiring users to right-click-open or change security preferences. You can verify notarization on a downloaded build: <code class="rounded bg-[color:var(--color-surface)] border border-[color:var(--color-border)] px-1.5 py-0.5 font-mono text-[13px]">spctl --assess --type exec --verbose /Applications/Parleq.app</code> should print <code class="rounded bg-[color:var(--color-surface)] border border-[color:var(--color-border)] px-1.5 py-0.5 font-mono text-[13px]">accepted</code>.
         </p>
       </div>
 
-      <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5">
+      <div class="rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5">
         <p class="font-semibold text-[color:var(--color-text)]">Sparkle update integrity</p>
         <p class="mt-2 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">
           Parleq uses the Sparkle update framework. Every downloaded update is verified against an Ed25519 public key (<code class="font-mono text-[13px]">SUPublicEDKey</code>) embedded in the app&rsquo;s <code class="font-mono text-[13px]">Info.plist</code>. The matching private key is held exclusively by the maintainer and is never part of the repo or any build artifact. This means:
@@ -259,14 +327,14 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
         </ul>
       </div>
 
-      <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5">
+      <div class="rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5">
         <p class="font-semibold text-[color:var(--color-text)]">Third-party dependencies</p>
         <p class="mt-2 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">
           Parleq has no third-party SDKs that phone home. The full dependency manifest is published in <a href={`${repoUrl}/blob/main/THIRD_PARTY_LICENSES.md`} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline"><code class="font-mono text-[13px]">THIRD_PARTY_LICENSES.md</code></a>. Core dependencies are: Sparkle (update delivery), Soto (AWS SDK for Bedrock), swift-log (structured logging), and FluidAudio (on-device speech recognition). When the on-device cleanup option is used, four additional dependencies are active: mlx-swift, mlx-swift-lm, swift-transformers, and swift-huggingface — the last of which performs the one-time user-initiated ~4 GB Gemma 4 E4B download from huggingface.co over TLS; subsequent launches use the cached weights with no network call. None of these make network requests except when explicitly invoked: Sparkle during update checks, Soto during Bedrock cleanup calls, FluidAudio downloads its speech model from Hugging Face on first launch (~150 MB, one-time), and swift-huggingface downloads the on-device cleanup model when the user initiates it. There is no analytics, crash-reporting, or feature-flag SDK.
         </p>
       </div>
 
-      <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5">
+      <div class="rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5">
         <p class="font-semibold text-[color:var(--color-text)]">Managed configuration is local-only</p>
         <p class="mt-2 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">
           Parleq reads managed-configuration values from <code class="font-mono text-[13px]">/Library/Managed Preferences/com.parleq.app.plist</code> at startup. It never sends policy state to an external service, never reports compliance status to a Parleq endpoint, and never validates policy against a remote server. The Compliance Audit dialog (Settings &rarr; Privacy &amp; Features &rarr; <em>View managed configuration&hellip;</em>) exports state to the local clipboard for IT verification &mdash; the user decides whether to share it with IT; Parleq does not collect it automatically.
@@ -304,5 +372,7 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
         &mdash; full dependency audit for security review.
       </li>
     </ul>
+
+    <DocTabs />
   </article>
 </Layout>

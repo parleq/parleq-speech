@@ -42,7 +42,14 @@ export interface LatestRelease {
   releasePageUrl: string;
 }
 
-export async function fetchLatestRelease(): Promise<LatestRelease> {
+// Memoize across the build: many pages (every FloatingNav) call this, but the
+// release is identical for all of them — one network round-trip per build.
+let cached: Promise<LatestRelease> | undefined;
+export function fetchLatestRelease(): Promise<LatestRelease> {
+  return (cached ??= fetchLatestReleaseUncached());
+}
+
+async function fetchLatestReleaseUncached(): Promise<LatestRelease> {
   const headers: Record<string, string> = {
     Accept: 'application/vnd.github+json',
     'X-GitHub-Api-Version': '2022-11-28',

@@ -1,19 +1,20 @@
 ---
 import Layout from '../../layouts/Layout.astro';
-import SiteHeader from '../../components/SiteHeader.astro';
+import FloatingNav from '../../components/FloatingNav.astro';
 import PricingNote from '../../components/PricingNote.astro';
+import DocTabs from '../../components/DocTabs.astro';
 
 ---
 
 <Layout title="AWS Bedrock setup — Parleq" description="Set up AWS Bedrock as Parleq's cleanup provider. Three auth modes: AWS SSO, static IAM access keys, scoped Bedrock API keys.">
-  <SiteHeader active="docs" />
+  <FloatingNav active="docs" />
 
-  <article class="mx-auto max-w-2xl px-6 pt-16 pb-24">
+  <article class="mx-auto max-w-2xl px-6 pt-16 sm:pt-20 pb-24">
     <p class="text-sm">
       <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/'} class="text-[color:var(--color-text-subtle)] hover:text-[color:var(--color-text-muted)]">← Docs</a>
     </p>
 
-    <p class="mt-8 text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">Bedrock</p>
+    <p class="mt-8 text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">Setup guide</p>
     <h1 class="mt-4 font-display text-4xl leading-[1.1] font-medium tracking-tight sm:text-5xl">
       AWS Bedrock
     </h1>
@@ -22,7 +23,7 @@ import PricingNote from '../../components/PricingNote.astro';
     </p>
 
     <div class="mt-8 rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6">
-      <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-text-subtle)]">At a glance</p>
+      <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent-hover)]">At a glance</p>
       <ul class="mt-3 space-y-2 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
         <li><strong class="text-[color:var(--color-text)]">Auth modes (three):</strong> AWS SSO (recommended for corporate accounts), static IAM access keys (personal accounts or service users), or scoped Bedrock API keys (Bearer tokens with no IAM understanding required).</li>
         <li><strong class="text-[color:var(--color-text)]">Default model:</strong> <code class="rounded bg-[color:var(--color-bg)] px-1 font-mono text-[13px]">openai.gpt-oss-120b-1:0</code> — fastest in benchmarks. Claude Haiku 4.5 is a balanced alternative.</li>
@@ -32,12 +33,12 @@ import PricingNote from '../../components/PricingNote.astro';
       </ul>
     </div>
 
-    <h2 class="mt-12 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+    <h2 class="mt-12 scroll-mt-20 font-display text-2xl font-semibold leading-[1.1] tracking-tight text-[color:var(--color-text)]">
       Before you start
     </h2>
     <ol class="mt-6 space-y-7 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
       <li class="flex gap-4">
-        <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums">1.</span>
+        <span class="font-display text-2xl font-semibold text-[color:var(--color-accent)] tabular-nums">1.</span>
         <div>
           <p class="text-[color:var(--color-text)] font-medium">Enable Bedrock model access in your AWS account.</p>
           <p class="mt-2">
@@ -49,7 +50,7 @@ import PricingNote from '../../components/PricingNote.astro';
         </div>
       </li>
       <li class="flex gap-4">
-        <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums">2.</span>
+        <span class="font-display text-2xl font-semibold text-[color:var(--color-accent)] tabular-nums">2.</span>
         <div>
           <p class="text-[color:var(--color-text)] font-medium">Pick one of three auth modes.</p>
           <p class="mt-2">
@@ -64,42 +65,102 @@ import PricingNote from '../../components/PricingNote.astro';
       </li>
     </ol>
 
-    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
-      Mode 1: AWS SSO (recommended)
-    </h2>
-    <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      <p>
-        Parleq delegates to your AWS CLI session — once you've signed in via <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">aws sso login</code>, Parleq picks up the credentials automatically and refreshes them on schedule via Soto's SSO provider. No keys to paste, no secrets to rotate.
+    <!-- Tabbed picker: the three auth modes. Selecting a tab reveals its section and hides
+         the others. No-JS shows ALL three panels (content stays accessible + indexable);
+         the inline script (via DocTabs) enhances to WAI-ARIA tabs. -->
+    <div class="mt-16" data-doctabs>
+      <h2 class="font-display text-2xl font-semibold leading-[1.1] tracking-tight text-[color:var(--color-text)]">
+        Auth mode setup
+      </h2>
+      <p class="mt-3 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+        All three give Parleq the same Bedrock access — pick the tab that matches your credentials.
       </p>
-      <p>
-        First-time setup (one-shot):
-      </p>
-      <pre class="overflow-x-auto rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4 text-[13px] leading-relaxed font-mono text-[color:var(--color-text)]"><code>{`aws configure sso
+
+      <div role="tablist" aria-label="Auth modes" class="mt-6 grid gap-4 sm:grid-cols-3">
+        <button
+          type="button" role="tab" id="tab-sso" aria-controls="panel-sso" aria-selected="true"
+          class="doctab group flex flex-col rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5 text-left transition-colors hover:border-[color:var(--color-accent)] aria-selected:border-[color:var(--color-grape)] aria-selected:bg-[color:var(--color-panel-ink)] aria-selected:shadow-[0_10px_30px_-16px_rgba(67,32,95,.45)]"
+        >
+          <span class="flex items-center gap-2.5">
+            <span aria-hidden="true" class="inline-flex h-8 w-8 items-center justify-center rounded-lg" style="background: color-mix(in srgb, var(--color-grape) 12%, transparent); color: var(--color-grape);">
+              <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            </span>
+            <span class="text-[15px] font-semibold text-[color:var(--color-text)]">AWS SSO</span>
+          </span>
+          <span class="mt-3 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">Delegates to your AWS CLI session — no keys to paste or rotate.</span>
+          <span class="mt-3 text-[12px] font-medium text-[color:var(--color-grape)]">Recommended for orgs</span>
+        </button>
+
+        <button
+          type="button" role="tab" id="tab-static" aria-controls="panel-static" aria-selected="false" tabindex="-1"
+          class="doctab group flex flex-col rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5 text-left transition-colors hover:border-[color:var(--color-accent)] aria-selected:border-[color:var(--color-grape)] aria-selected:bg-[color:var(--color-panel-ink)] aria-selected:shadow-[0_10px_30px_-16px_rgba(67,32,95,.45)]"
+        >
+          <span class="flex items-center gap-2.5">
+            <span aria-hidden="true" class="inline-flex h-8 w-8 items-center justify-center rounded-lg" style="background: color-mix(in srgb, var(--color-grape) 12%, transparent); color: var(--color-grape);">
+              <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="5.5"/><path d="M21 2 11 12"/><path d="m16 7 1 1"/><path d="m19 4 1 1"/></svg>
+            </span>
+            <span class="text-[15px] font-semibold text-[color:var(--color-text)]">Static IAM keys</span>
+          </span>
+          <span class="mt-3 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">Long-lived access key + secret for personal accounts or service IAM users.</span>
+          <span class="mt-3 text-[12px] font-medium text-[color:var(--color-grape)]">Personal accounts · stored in Keychain</span>
+        </button>
+
+        <button
+          type="button" role="tab" id="tab-apikey" aria-controls="panel-apikey" aria-selected="false" tabindex="-1"
+          class="doctab group flex flex-col rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5 text-left transition-colors hover:border-[color:var(--color-accent)] aria-selected:border-[color:var(--color-grape)] aria-selected:bg-[color:var(--color-panel-ink)] aria-selected:shadow-[0_10px_30px_-16px_rgba(67,32,95,.45)]"
+        >
+          <span class="flex items-center gap-2.5">
+            <span aria-hidden="true" class="inline-flex h-8 w-8 items-center justify-center rounded-lg" style="background: color-mix(in srgb, var(--color-grape) 12%, transparent); color: var(--color-grape);">
+              <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            </span>
+            <span class="text-[15px] font-semibold text-[color:var(--color-text)]">Bedrock API key</span>
+          </span>
+          <span class="mt-3 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">Bearer token scoped to Bedrock only — no SigV4 or IAM understanding required.</span>
+          <span class="mt-3 text-[12px] font-medium text-[color:var(--color-grape)]">Bearer token · no IAM · set expiry</span>
+        </button>
+      </div>
+
+      <!-- Panel: AWS SSO -->
+      <div role="tabpanel" id="panel-sso" aria-labelledby="tab-sso" class="mt-10">
+        <h2 class="mt-0 scroll-mt-20 font-display text-2xl font-semibold leading-[1.1] tracking-tight text-[color:var(--color-text)]">
+          Mode 1: AWS SSO (recommended)
+        </h2>
+        <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+          <p>
+            Parleq delegates to your AWS CLI session — once you've signed in via <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">aws sso login</code>, Parleq picks up the credentials automatically and refreshes them on schedule via Soto's SSO provider. No keys to paste, no secrets to rotate.
+          </p>
+          <p>
+            First-time setup (one-shot):
+          </p>
+          <pre class="overflow-x-auto rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-section-tint)] p-4 text-[13px] leading-relaxed font-mono text-[color:var(--color-text)]"><code>{`aws configure sso
 # Walk through the prompts: SSO start URL, region, IAM role, profile name.
 # Pick a profile name you'll remember — e.g. "work" or "parleq".
 
 aws sso login --profile work
 # Opens a browser, completes the SSO challenge, caches a session
 # in ~/.aws/sso/cache.`}</code></pre>
-      <p>
-        Then in Parleq's Setup Wizard, pick <strong class="text-[color:var(--color-text)]">AWS Bedrock</strong>, set the <strong class="text-[color:var(--color-text)]">Region</strong> (defaults to <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">us-east-2</code>), and the <strong class="text-[color:var(--color-text)]">Profile</strong> name you used above. Click <strong class="text-[color:var(--color-text)]">Continue</strong>, then <strong class="text-[color:var(--color-text)]">Finish &amp; Restart</strong>.
-      </p>
-      <p>
-        When the SSO session expires (typically 8–12 hours), the surfaced error in the overlay tells you exactly which command to re-run — usually <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">aws sso login --profile &lt;name&gt;</code>.
-      </p>
-    </div>
+          <p>
+            Then in Parleq's Setup Wizard, pick <strong class="text-[color:var(--color-text)]">AWS Bedrock</strong>, set the <strong class="text-[color:var(--color-text)]">Region</strong> (defaults to <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">us-east-2</code>), and the <strong class="text-[color:var(--color-text)]">Profile</strong> name you used above. Click <strong class="text-[color:var(--color-text)]">Continue</strong>, then <strong class="text-[color:var(--color-text)]">Finish &amp; Restart</strong>.
+          </p>
+          <p>
+            When the SSO session expires (typically 8–12 hours), the surfaced error in the overlay tells you exactly which command to re-run — usually <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">aws sso login --profile &lt;name&gt;</code>.
+          </p>
+        </div>
+      </div><!-- /panel-sso -->
 
-    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
-      Mode 2: Static IAM access keys
-    </h2>
-    <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      <p>
-        Useful when you don't have SSO — for personal AWS accounts or org accounts that still use IAM users. Keys are stored in the macOS Keychain and never written to <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">~/.parleq/config.json</code>.
-      </p>
-      <p>
-        Create an IAM user (or use an existing one) with at minimum the following inline policy. Parleq only ever calls <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">bedrock:InvokeModelWithResponseStream</code>:
-      </p>
-      <pre class="overflow-x-auto rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4 text-[13px] leading-relaxed font-mono text-[color:var(--color-text)]"><code>{`{
+      <!-- Panel: Static IAM keys -->
+      <div role="tabpanel" id="panel-static" aria-labelledby="tab-static" class="mt-10">
+        <h2 class="mt-0 scroll-mt-20 font-display text-2xl font-semibold leading-[1.1] tracking-tight text-[color:var(--color-text)]">
+          Mode 2: Static IAM access keys
+        </h2>
+        <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+          <p>
+            Useful when you don't have SSO — for personal AWS accounts or org accounts that still use IAM users. Keys are stored in the macOS Keychain and never written to <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">~/.parleq/config.json</code>.
+          </p>
+          <p>
+            Create an IAM user (or use an existing one) with at minimum the following inline policy. Parleq only ever calls <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">bedrock:InvokeModelWithResponseStream</code>:
+          </p>
+          <pre class="overflow-x-auto rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-section-tint)] p-4 text-[13px] leading-relaxed font-mono text-[color:var(--color-text)]"><code>{`{
   "Version": "2012-10-17",
   "Statement": [
     {
@@ -112,45 +173,51 @@ aws sso login --profile work
     }
   ]
 }`}</code></pre>
-      <p>
-        Generate an access key for the user (IAM console → Users → your user → Security credentials → Create access key), then in Parleq open <strong class="text-[color:var(--color-text-muted)]">Settings… → Cleanup provider → AWS Bedrock</strong>, switch <strong class="text-[color:var(--color-text)]">Auth mode</strong> to <strong class="text-[color:var(--color-text)]">Static credentials</strong>, and paste:
-      </p>
-      <ul class="mt-3 space-y-2 list-disc list-inside marker:text-[color:var(--color-text-subtle)]">
-        <li>Access key ID (starts with <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">AKIA</code> for IAM users or <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">ASIA</code> for STS sessions)</li>
-        <li>Secret access key</li>
-        <li>Session token (only if you're using a temporary STS credential — leave blank for a permanent IAM access key)</li>
-      </ul>
-      <p>
-        The wizard hardcodes SSO; the static-credentials path is only available in Settings post-setup. There's no Restart needed when only the credentials change.
-      </p>
-    </div>
+          <p>
+            Generate an access key for the user (IAM console → Users → your user → Security credentials → Create access key), then in Parleq open <strong class="text-[color:var(--color-text-muted)]">Settings… → Cleanup provider → AWS Bedrock</strong>, switch <strong class="text-[color:var(--color-text)]">Auth mode</strong> to <strong class="text-[color:var(--color-text)]">Static credentials</strong>, and paste:
+          </p>
+          <ul class="mt-3 space-y-2 list-disc list-inside marker:text-[color:var(--color-text-subtle)]">
+            <li>Access key ID (starts with <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">AKIA</code> for IAM users or <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">ASIA</code> for STS sessions)</li>
+            <li>Secret access key</li>
+            <li>Session token (only if you're using a temporary STS credential — leave blank for a permanent IAM access key)</li>
+          </ul>
+          <p>
+            The wizard hardcodes SSO; the static-credentials path is only available in Settings post-setup. There's no Restart needed when only the credentials change.
+          </p>
+        </div>
+      </div><!-- /panel-static -->
 
-    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
-      Mode 3: Bedrock API keys
-    </h2>
-    <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      <p>
-        AWS introduced scoped Bedrock-only API keys in 2024 — a Bearer token that authenticates against Bedrock specifically, with no broader IAM reach. Parleq's <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">BedrockBearerProvider</code> talks to Bedrock over plain HTTPS with <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">Authorization: Bearer &lt;key&gt;</code>, bypassing SigV4 entirely. Useful when you want to give Parleq a credential that <em>only</em> calls Bedrock — no S3, no IAM, no other services.
-      </p>
-      <p>
-        Generate one in the AWS console under <a href="https://console.aws.amazon.com/bedrock/home#/api-keys" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Bedrock → API keys</a>. Pick a sensible expiration (e.g. 30 / 90 days) and scope it to the region(s) you'll use.
-      </p>
-      <p>
-        In Parleq, open <strong class="text-[color:var(--color-text-muted)]">Settings… → Cleanup provider → AWS Bedrock</strong>, switch <strong class="text-[color:var(--color-text)]">Auth mode</strong> to <strong class="text-[color:var(--color-text)]">Bedrock API key</strong>, and paste the key. Stored in the macOS Keychain.
-      </p>
-      <p class="text-[14px] text-[color:var(--color-text-subtle)]">
-        Bedrock API keys expire on the date you set when creating them — Parleq's error surface includes the auth-mode hint, so an expired key shows up clearly. Generate a new one and replace it in Settings; no restart needed.
-      </p>
-    </div>
+      <!-- Panel: Bedrock API key -->
+      <div role="tabpanel" id="panel-apikey" aria-labelledby="tab-apikey" class="mt-10">
+        <h2 class="mt-0 scroll-mt-20 font-display text-2xl font-semibold leading-[1.1] tracking-tight text-[color:var(--color-text)]">
+          Mode 3: Bedrock API keys
+        </h2>
+        <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+          <p>
+            AWS introduced scoped Bedrock-only API keys in 2024 — a Bearer token that authenticates against Bedrock specifically, with no broader IAM reach. Parleq's <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">BedrockBearerProvider</code> talks to Bedrock over plain HTTPS with <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">Authorization: Bearer &lt;key&gt;</code>, bypassing SigV4 entirely. Useful when you want to give Parleq a credential that <em>only</em> calls Bedrock — no S3, no IAM, no other services.
+          </p>
+          <p>
+            Generate one in the AWS console under <a href="https://console.aws.amazon.com/bedrock/home#/api-keys" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Bedrock → API keys</a>. Pick a sensible expiration (e.g. 30 / 90 days) and scope it to the region(s) you'll use.
+          </p>
+          <p>
+            In Parleq, open <strong class="text-[color:var(--color-text-muted)]">Settings… → Cleanup provider → AWS Bedrock</strong>, switch <strong class="text-[color:var(--color-text)]">Auth mode</strong> to <strong class="text-[color:var(--color-text)]">Bedrock API key</strong>, and paste the key. Stored in the macOS Keychain.
+          </p>
+          <p class="text-[14px] text-[color:var(--color-text-subtle)]">
+            Bedrock API keys expire on the date you set when creating them — Parleq's error surface includes the auth-mode hint, so an expired key shows up clearly. Generate a new one and replace it in Settings; no restart needed.
+          </p>
+        </div>
+      </div><!-- /panel-apikey -->
+    </div><!-- /data-doctabs -->
 
-    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+    <h2 class="mt-16 scroll-mt-20 font-display text-2xl font-semibold leading-[1.1] tracking-tight text-[color:var(--color-text)]">
       Choosing a model
     </h2>
     <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
       <p>
         Two recommended options, picked from in-house benchmarks against representative cleanup prompts:
       </p>
-      <table class="mt-4 w-full border-collapse text-[14px]">
+      <div class="mt-4 overflow-x-auto">
+      <table class="w-full border-collapse text-[14px]">
         <thead>
           <tr class="border-b border-[color:var(--color-border)] text-left text-[color:var(--color-text)]">
             <th class="py-2 pr-4 font-semibold">Model ID</th>
@@ -171,6 +238,7 @@ aws sso login --profile work
           </tr>
         </tbody>
       </table>
+      </div>
       <p class="mt-5">
         Cleanup is a low-stakes editing task; either model handles it well. GPT-OSS is the default because the latency advantage is noticeable in practice. Switch to Claude Haiku if you've already standardized on Anthropic across your tooling and want consistent style.
       </p>
@@ -179,7 +247,7 @@ aws sso login --profile work
       </p>
     </div>
 
-    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+    <h2 class="mt-16 scroll-mt-20 font-display text-2xl font-semibold leading-[1.1] tracking-tight text-[color:var(--color-text)]">
       Pricing notes
     </h2>
     <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
@@ -192,7 +260,7 @@ aws sso login --profile work
       <PricingNote />
     </div>
 
-    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+    <h2 class="mt-16 scroll-mt-20 font-display text-2xl font-semibold leading-[1.1] tracking-tight text-[color:var(--color-text)]">
       Compliance notes
     </h2>
     <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
@@ -204,35 +272,37 @@ aws sso login --profile work
       </p>
     </div>
 
-    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+    <h2 class="mt-16 scroll-mt-20 font-display text-2xl font-semibold leading-[1.1] tracking-tight text-[color:var(--color-text)]">
       Troubleshooting
     </h2>
-    <div class="mt-6 space-y-6 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      <div>
+    <div class="mt-6 space-y-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
         <p class="font-medium text-[color:var(--color-text)]"><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">AccessDeniedException</code> — model not enabled</p>
         <p class="mt-2">
           You haven't enabled access to the model in this region. Go to <a href="https://console.aws.amazon.com/bedrock/home#/modelaccess" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Bedrock → Model access</a>, switch to the right region, and request access. Approval is usually immediate.
         </p>
       </div>
-      <div>
+      <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
         <p class="font-medium text-[color:var(--color-text)]"><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">ValidationException: model not found</code></p>
         <p class="mt-2">
           The model ID isn't valid for the configured region. Double-check the spelling against AWS's model catalog, and confirm the model is offered in the region you selected (some are <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">us-east-1</code>-only, others have inference profiles like the <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">us.anthropic.*</code> prefix that route across regions).
         </p>
       </div>
-      <div>
+      <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
         <p class="font-medium text-[color:var(--color-text)]">SSO session expired</p>
         <p class="mt-2">
           The overlay surfaces a clear "AWS SSO session expired" error pointing at <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">aws sso login --profile &lt;name&gt;</code>. Run that, then dictate again — no restart needed.
         </p>
       </div>
-      <div>
+      <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
         <p class="font-medium text-[color:var(--color-text)]">Tracing credential resolution</p>
         <p class="mt-2">
           For deep debugging, set <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">PARLEQ_BEDROCK_TRACE=1</code> in the environment before launching Parleq (or via the launch agent plist). Soto will trace each credential provider it tries in order, so you can see exactly which one matched or why each rejected.
         </p>
       </div>
     </div>
+
+    <DocTabs />
   </article>
 
 </Layout>

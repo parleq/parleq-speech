@@ -1,95 +1,220 @@
 ---
 import Layout from '../layouts/Layout.astro';
-import SiteHeader from '../components/SiteHeader.astro';
+import FloatingNav from '../components/FloatingNav.astro';
 
 const repoUrl = 'https://github.com/parleq/parleq-speech';
 const speekUrl = 'https://github.com/jstruzik/Speek';
+const base = `${import.meta.env.BASE_URL}`.replace(/\/$/, '');
 ---
 
-<Layout title="About — Parleq">
-  <SiteHeader active="about" />
+<Layout title="About Parleq — open-source, local-first dictation" description="The story behind Parleq — an open-source, local-first dictation app for macOS from Keavi LLC, built to keep dictation on your Mac with the cloud you bring.">
+  <FloatingNav active="about" />
 
-  <article class="mx-auto max-w-2xl px-6 pt-20 pb-24">
-    <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">
-      About
-    </p>
-    <h1 class="mt-4 font-display text-4xl leading-[1.1] font-medium tracking-tight sm:text-5xl">
-      Why Parleq exists.
-    </h1>
+  {/* About is deliberately NOT a marquee page. Instead of a dark hero panel (home /
+      enterprise / details), it's treated as a printed personal essay: calm warm-white
+      ground, Fraunces-forward typography, a drop-cap, pull-quotes, and a grape accent
+      (not the site's amber) so it's unmistakably its own room. */}
+  <div class="accent-grape about">
 
-    <div class="mt-12 space-y-6 text-[17px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      <p>
-        I'm a software engineer at <a href="https://posit.co" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Posit</a>, where I work on <a href="https://posit.co/products/enterprise/package-manager/" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Posit Package Manager</a> — an enterprise product for managing R and Python packages inside large organizations. I've been writing code professionally for a long time, mostly in Go, and the intersection of speech and AI tooling is where I find myself spending more and more of my curiosity these days.
-      </p>
+    <!-- Editorial hero: airy, serif-forward, a thin grape hairline instead of a color band. -->
+    <section class="bg-[color:var(--color-bg)]">
+      <div class="mx-auto max-w-2xl px-6 pt-20 pb-10 sm:pt-28 sm:pb-14">
+        <p class="text-sm font-medium uppercase tracking-[0.2em] text-[color:var(--color-accent)]">
+          About
+        </p>
+        <h1 class="mt-6 font-display text-5xl leading-[1.02] font-medium tracking-tight sm:text-6xl">
+          Why Parleq exists.
+        </h1>
+        <p class="mt-7 max-w-xl text-xl leading-relaxed text-[color:var(--color-text-muted)]">
+          Open-source, bring-your-own-cloud dictation for the Mac — the story of how it started, the choices that shaped it, and who's behind it.
+        </p>
+        <hr class="hero-rule mt-10" />
+      </div>
+    </section>
 
-      <p>
-        Parleq started, like a lot of these projects, as a workaround.
-      </p>
+    <!-- The essay. All first-person prose preserved verbatim. -->
+    <article class="mx-auto max-w-2xl px-6 pb-24">
+      <div class="about-body space-y-6 text-[17px] leading-[1.75] text-[color:var(--color-text-muted)]">
+        <p class="dropcap">
+          I'm a software engineer at <a href="https://posit.co">Posit</a>, where I work on <a href="https://posit.co/products/enterprise/package-manager/">Posit Package Manager</a> — an enterprise product for managing R and Python packages inside large organizations. I've been writing code professionally for a long time, mostly in Go, and the intersection of speech and AI tooling is where I find myself spending more and more of my curiosity these days.
+        </p>
 
-      <p>
-        I'd been a happy user of an AI dictation app on macOS — the kind that listens, cleans up your speech with an LLM, and pastes the result wherever your cursor is. It worked well. Then I tried to use it at work, and ran into a wall: the app routes audio and transcripts through its own SaaS backend, and my employer's policies — like a lot of companies' — require that the infrastructure and models I send work through are on a pre-approved list. A new vendor that hadn't been through that review wasn't something I could keep using day-to-day, no matter how nice the product was.
-      </p>
+        <blockquote class="pullquote">Parleq started, like a lot of these projects, as a workaround.</blockquote>
 
-      <p>
-        So I started thinking about what an open-source, local-first version would look like — and what it would take to make it actually pleasant to use, not just defensible on a compliance review.
-      </p>
+        <p>
+          I'd been a happy user of an AI dictation app on macOS — the kind that listens, cleans up your speech with an LLM, and pastes the result wherever your cursor is. It worked well. Then I tried to use it at work, and ran into a wall: the app routes audio and transcripts through its own SaaS backend, and my employer's policies — like a lot of companies' — require that the infrastructure and models I send work through are on a pre-approved list. A new vendor that hadn't been through that review wasn't something I could keep using day-to-day, no matter how nice the product was.
+        </p>
 
-      <h2 class="mt-12 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
-        Two things I really wanted.
-      </h2>
+        <p>
+          So I started thinking about what an open-source, local-first version would look like — and what it would take to make it actually pleasant to use, not just defensible on a compliance review.
+        </p>
 
-      <p>
-        <strong class="font-semibold text-[color:var(--color-text)]">Low latency.</strong> Dictation falls apart the moment you have to wait for it. If there's a noticeable pause between releasing the hotkey and seeing your text, you stop trusting the tool, and the rhythm of writing-by-speaking breaks. Parleq runs the speech model entirely on the Apple Neural Engine, locally, with no network round-trip. The cleanup pass is the only step that touches a remote service, and even that is optional — you can skip it and just paste the raw transcript if you want.
-      </p>
+        <h2 class="section-head">Two things I really wanted.</h2>
 
-      <p>
-        <strong class="font-semibold text-[color:var(--color-text)]">Post-processing that listens to me.</strong> Raw speech-to-text output is rarely what you want pasted into Slack. You want punctuation, capitalization, the right spelling of names you keep saying, the "ums" and "uhs" cleaned up, half-sentences finished. An AI cleanup pass is great at this — but the moment it misreads your intent, you need a way to <em>tell it</em> what to do, not click a fix-it button. So Parleq lets you re-trigger the hotkey while the cleaned text is still on screen and just <em>say</em> what to change. "Make it more professional." "Shorter." "Add a question mark and end with thanks." The overlay shows you the result before it pastes, so you can keep refining until it lands.
-      </p>
+        <div class="want">
+          <span class="want-num" aria-hidden="true">1</span>
+          <div>
+            <h3 class="want-title">Low latency.</h3>
+            <p>Dictation falls apart the moment you have to wait for it. If there's a noticeable pause between releasing the hotkey and seeing your text, you stop trusting the tool, and the rhythm of writing-by-speaking breaks. Parleq runs the speech model entirely on the Apple Neural Engine, locally, with no network round-trip. The cleanup pass is the only step that touches a remote service, and even that is optional — you can skip it and just paste the raw transcript if you want.</p>
+          </div>
+        </div>
 
-      <p>
-        That overlay-and-iterate loop is the part of Parleq I'm proudest of. It treats the cleaned text as a draft you talk to, not a final output you accept or reject.
-      </p>
+        <div class="want">
+          <span class="want-num" aria-hidden="true">2</span>
+          <div>
+            <h3 class="want-title">Post-processing that listens to me.</h3>
+            <p>Raw speech-to-text output is rarely what you want pasted into Slack. You want punctuation, capitalization, the right spelling of names you keep saying, the "ums" and "uhs" cleaned up, half-sentences finished. An AI cleanup pass is great at this — but the moment it misreads your intent, you need a way to <em>tell it</em> what to do, not click a fix-it button. So Parleq lets you re-trigger the hotkey while the cleaned text is still on screen and just <em>say</em> what to change. "Make it more professional." "Shorter." "Add a question mark and end with thanks." The overlay shows you the result before it pastes, so you can keep refining until it lands.</p>
+          </div>
+        </div>
 
-      <h2 class="mt-12 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
-        Open-source, bring your own LLM.
-      </h2>
+        <p class="mt-10">
+          That overlay-and-iterate loop is the part of Parleq I'm proudest of.
+        </p>
 
-      <p>
-        Parleq doesn't have a backend. There's no Parleq cloud, no Parleq account, no Parleq subscription, no Parleq SaaS to audit. Speech recognition is on-device. Cleanup runs against an LLM provider you configure — Gemini, OpenAI, Vertex AI, AWS Bedrock, or Azure OpenAI — using your own credentials, your organization's existing cloud accounts, and (where it matters) the same identity and access controls you've already vetted for everything else.
-      </p>
+        <blockquote class="pullquote">It treats the cleaned text as a draft you talk to, not a final output you accept or reject.</blockquote>
 
-      <p>
-        I built it that way partly because it sidesteps a lot of complexity I didn't want to take on, and partly because it's the most honest answer for compliance-sensitive work I could come up with. If your security team has already approved your laptop hitting Bedrock or Vertex directly, then Parleq fits inside that approval — no separate vendor review, no separate data-flow diagram, no new place where transcripts pile up.
-      </p>
+        <h2 class="section-head">Open-source, bring your own LLM.</h2>
 
-      <p>
-        If you're an IT admin rather than the end user, that same posture extends to fleet deployment. Parleq supports macOS Managed Configuration — you can push a <code class="rounded bg-[color:var(--color-surface)] px-1 font-mono text-[13px]">.mobileconfig</code> profile via your existing MDM that pins the LLM provider, restricts the model list, disables optional features, and prevents users from changing any of it. No Parleq admin portal needed. The <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/admin-guide/'} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Admin Guide</a> has the full deployment walkthrough.
-      </p>
+        <p>
+          Parleq doesn't have a backend. There's no Parleq cloud, no Parleq account, no Parleq subscription, no Parleq SaaS to audit. Speech recognition is on-device. Cleanup runs on-device too, or against an LLM provider you configure — Gemini, OpenAI, Vertex AI, AWS Bedrock, or Azure OpenAI — using your own credentials, your organization's existing cloud accounts, and (where it matters) the same identity and access controls you've already vetted for everything else.
+        </p>
 
-      <p>
-        The whole thing is <a href={repoUrl} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">on GitHub</a> under Apache-2.0. Audio never leaves your Mac. Logs carry length-only diagnostics, never transcript content. API keys live in the macOS Keychain.
-      </p>
+        <p>
+          I built it that way partly because it sidesteps a lot of complexity I didn't want to take on, and partly because it's the most honest answer for compliance-sensitive work I could come up with. If your security team has already approved your laptop hitting Bedrock or Vertex directly, then Parleq fits inside that approval — no separate vendor review, no separate data-flow diagram, no new place where transcripts pile up.
+        </p>
 
-      <p>
-        Parleq stands on the shoulders of open-source software — Apple's Swift libraries, Sparkle for auto-updates, Soto for AWS, FluidAudio for on-device ASR, and others. The full list of dependencies and their licenses lives at <a href={`${repoUrl}/blob/main/THIRD_PARTY_LICENSES.md`} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">THIRD_PARTY_LICENSES.md</a> in the repo (also linked from the Parleq window's <strong class="font-semibold text-[color:var(--color-text)]">About</strong> section).
-      </p>
+        <p>
+          If you're an IT admin rather than the end user, that same posture extends to fleet deployment. Parleq supports macOS Managed Configuration — you can push a <code class="rounded bg-[color:var(--color-surface)] px-1 font-mono text-[13px]">.mobileconfig</code> profile via your existing MDM that pins the LLM provider, restricts the model list, disables optional features, and prevents users from changing any of it. No Parleq admin portal needed. The <a href={base + '/docs/admin-guide/'}>Admin Guide</a> has the full deployment walkthrough.
+        </p>
 
-      <h2 class="mt-12 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
-        Thanks.
-      </h2>
+        <p>
+          The whole thing is <a href={repoUrl}>on GitHub</a> under Apache-2.0. Audio never leaves your Mac. Logs carry length-only diagnostics, never transcript content. API keys live in the macOS Keychain.
+        </p>
 
-      <p>
-        A particular thanks to Jake Struzik, whose <a href={speekUrl} class="text-[color:var(--color-text)] underline decoration-[color:var(--color-text-muted)] decoration-1 underline-offset-2 transition-colors hover:decoration-[color:var(--color-text)]">Speek</a> showed me what a clean, local-first dictation tool on macOS could feel like. Parleq's design owes a debt to it.
-      </p>
+        <p>
+          Parleq stands on the shoulders of open-source software — Apple's Swift libraries, Sparkle for auto-updates, Soto for AWS, FluidAudio for on-device ASR, and others. The full list of dependencies and their licenses lives at <a href={`${repoUrl}/blob/main/THIRD_PARTY_LICENSES.md`}>THIRD_PARTY_LICENSES.md</a> in the repo (also linked from the Parleq window's <strong class="font-semibold text-[color:var(--color-text)]">About</strong> section).
+        </p>
+      </div>
 
-      <p>
-        Parleq is built by <strong class="font-semibold text-[color:var(--color-text)]">Keavi LLC</strong>, a Virginia limited liability company — and it's Keavi's first public, open-source project. Contact: <a href="mailto:hello@parleq.app" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">hello@parleq.app</a> · <a href="https://keavi.app" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">keavi.app</a>
-      </p>
+      <!-- Sign-off: the essay's hand-signed close. -->
+      <p class="signature mt-14">— Jon</p>
 
-      <p class="text-[15px] text-[color:var(--color-text-subtle)]">
-        — Jon
-      </p>
-    </div>
-  </article>
+      <!-- Thanks: a grounded surface-card footer, set apart from the essay. -->
+      <div class="mt-10 rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-8">
+        <h2 class="font-display text-xl font-medium tracking-tight text-[color:var(--color-text)]">
+          Thanks.
+        </h2>
+        <div class="mt-4 space-y-4 text-[17px] leading-[1.7] text-[color:var(--color-text-muted)]">
+          <p>
+            A particular thanks to Jake Struzik, whose <a href={speekUrl} class="text-[color:var(--color-text)] underline decoration-[color:var(--color-text-muted)] decoration-1 underline-offset-2 transition-colors hover:decoration-[color:var(--color-text)]">Speek</a> showed me what a clean, local-first dictation tool on macOS could feel like. Parleq's design owes a debt to it.
+          </p>
+          <p>
+            Parleq is built by <strong class="font-semibold text-[color:var(--color-text)]">Keavi LLC</strong>, a Virginia limited liability company — and it's Keavi's first public, open-source project. Contact: <a href="mailto:hello@parleq.app">hello@parleq.app</a> · <a href="https://keavi.app">keavi.app</a>
+          </p>
+        </div>
+      </div>
+
+    </article>
+  </div>
+
+  <style>
+    /* Grape-accented editorial treatment, scoped to the About page. Prose links pick
+       up the re-pointed --color-accent (grape) from the .accent-grape wrapper. */
+    .about a {
+      color: var(--color-accent);
+      font-weight: 500;
+      text-underline-offset: 4px;
+    }
+    .about a:hover { text-decoration: underline; }
+    /* Speek is a humble nod to another dev's project — keep it understated (muted dark
+       text, tight underline), not a grape accent link like the rest. Higher specificity
+       (0,2,1) than `.about a` (0,1,1) so it actually wins. */
+    .about a[href*="jstruzik"] {
+      color: var(--color-text);
+      font-weight: 500;
+      text-decoration-color: color-mix(in srgb, var(--color-text-muted) 70%, transparent);
+      text-underline-offset: 2px;
+    }
+    .about a[href*="jstruzik"]:hover { text-decoration-color: var(--color-text); }
+
+    .hero-rule {
+      width: 3.5rem;
+      height: 2px;
+      border: 0;
+      background: var(--color-grape);
+      opacity: 0.85;
+    }
+
+    .section-head {
+      margin-top: 3.5rem;
+      font-family: var(--font-serif);
+      font-size: 1.6rem;
+      font-weight: 500;
+      letter-spacing: -0.01em;
+      color: var(--color-text);
+    }
+
+    /* Drop-cap on the opening line — a single classic editorial move. */
+    .dropcap::first-letter {
+      float: left;
+      font-family: var(--font-serif);
+      font-weight: 500;
+      font-size: 3.6em;
+      line-height: 0.76;
+      color: var(--color-grape);
+      margin: 0.06em 0.14em 0 0;
+      font-variation-settings: 'opsz' 40;
+    }
+
+    /* Pull-quotes: Fraunces italic, set off with a grape rule. Give the prose room
+       to breathe without adding color bands. */
+    .pullquote {
+      margin: 2.75rem 0;
+      padding-left: 1.5rem;
+      border-left: 2px solid color-mix(in srgb, var(--color-grape) 55%, transparent);
+      font-family: var(--font-serif);
+      font-style: italic;
+      font-weight: 500;
+      font-size: 1.6rem;
+      line-height: 1.35;
+      letter-spacing: -0.01em;
+      color: var(--color-grape-strong);
+    }
+    @media (min-width: 640px) { .pullquote { font-size: 1.95rem; } }
+
+    /* "Two things I wanted" — numbered pair with large serif grape numerals. */
+    .want {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 0.25rem 1.4rem;
+      align-items: baseline;
+    }
+    .want + .want { margin-top: 2rem; }
+    .want-num {
+      font-family: var(--font-serif);
+      font-size: 2.6rem;
+      line-height: 1;
+      font-weight: 500;
+      color: color-mix(in srgb, var(--color-grape) 44%, transparent);
+      font-variation-settings: 'opsz' 40;
+    }
+    .want-title {
+      font-weight: 700;
+      color: var(--color-text);
+      font-size: 1.05rem;
+      margin-bottom: 0.4rem;
+    }
+
+    .signature {
+      font-family: var(--font-serif);
+      font-style: italic;
+      font-size: 1.35rem;
+      color: var(--color-text);
+    }
+
+    @media (prefers-reduced-motion: no-preference) {
+      .about a { transition: text-decoration-color 0.15s ease; }
+    }
+  </style>
 
 </Layout>

@@ -1,15 +1,15 @@
 ---
 import Layout from '../layouts/Layout.astro';
-import SiteHeader from '../components/SiteHeader.astro';
+import FloatingNav from '../components/FloatingNav.astro';
 ---
 
 <Layout
   title="Privacy Policy — Parleq"
   description="Parleq's privacy policy. We run no server, collect no dictation data, and never receive your audio or transcripts."
 >
-  <SiteHeader />
+  <FloatingNav />
 
-  <article class="mx-auto max-w-2xl px-6 pt-20 pb-24">
+  <article class="mx-auto max-w-2xl px-6 pt-16 pb-24 sm:pt-20">
     <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">
       Privacy
     </p>
@@ -18,30 +18,54 @@ import SiteHeader from '../components/SiteHeader.astro';
     </h1>
     <p class="mt-4 text-sm text-[color:var(--color-text-subtle)]">Last updated: June 2026</p>
 
-    <div class="mt-12 space-y-6 text-[17px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      <p>
-        Parleq is an open-source macOS dictation app made by <strong class="font-semibold text-[color:var(--color-text)]">Keavi LLC</strong>, a Virginia limited liability company ("Keavi," "we"). The short version: <strong class="font-semibold text-[color:var(--color-text)]">we don't collect your data.</strong>
-      </p>
+    <p class="mt-10 text-[17px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      Parleq is an open-source macOS dictation app made by <strong class="font-semibold text-[color:var(--color-text)]">Keavi LLC</strong>, a Virginia limited liability company ("Keavi," "we"). The short version: <strong class="font-semibold text-[color:var(--color-text)]">we don't collect your data.</strong>
+    </p>
 
-      <p>
-        <strong class="font-semibold text-[color:var(--color-text)]">We run no server and collect no dictation data.</strong> Keavi operates no backend that receives your audio, transcripts, or usage. Parleq runs entirely on your Mac.
-      </p>
+    <!-- Five privacy guarantees as light cards. On-device guarantees
+         (audio, voice enrollment) carry a faint grape tint — consistent
+         with the site's grape = on-device / privacy theme. -->
+    <div class="mt-8 space-y-3">
 
-      <p>
-        <strong class="font-semibold text-[color:var(--color-text)]">Your audio never leaves your device.</strong> By default, speech recognition runs on-device on the Apple Neural Engine. Audio lives in memory only for the duration of a dictation — never written to disk, and never sent to Parleq or Keavi.
-      </p>
+      <!-- No backend -->
+      <div class="rounded-2xl border border-[color:var(--color-border-subtle)] bg-[color:var(--color-surface)] p-6">
+        <p class="text-[17px] leading-[1.7] text-[color:var(--color-text-muted)]">
+          <strong class="font-semibold text-[color:var(--color-text)]">We run no server and collect no dictation data.</strong> Keavi operates no backend that receives your audio, transcripts, or usage. Parleq runs entirely on your Mac.
+        </p>
+      </div>
 
-      <p>
-        <strong class="font-semibold text-[color:var(--color-text)]">Transcript cleanup is on-device or your own provider.</strong> The optional cleanup step either runs <strong class="font-semibold text-[color:var(--color-text)]">on-device</strong> (nothing leaves your Mac), or is sent to <strong class="font-semibold text-[color:var(--color-text)]">a cloud provider you configure</strong> (Google Gemini, OpenAI, AWS Bedrock, Google Vertex AI, or Azure OpenAI) directly from your Mac using <em>your own</em> account and credentials. Keavi is not a party to that exchange and never receives or stores that text; the provider's handling is governed by your agreement with them. You can also skip cleanup entirely.
-      </p>
+      <!-- Audio always on-device — grape accent for the on-device family -->
+      <div class="rounded-2xl border p-6" style="border-color: color-mix(in srgb, var(--color-grape-300) 45%, var(--color-border-subtle)); background: color-mix(in srgb, var(--color-grape) 3%, var(--color-surface));">
+        <p class="text-[17px] leading-[1.7] text-[color:var(--color-text-muted)]">
+          <strong class="font-semibold text-[color:var(--color-text)]">Your audio never leaves your device.</strong> By default, speech recognition runs on-device on the Apple Neural Engine. Audio lives in memory only for the duration of a dictation — never written to disk, and never sent to Parleq or Keavi.
+        </p>
+      </div>
 
-      <p>
-        <strong class="font-semibold text-[color:var(--color-text)]">Voice enrollment stays on your device.</strong> The optional voice-enrollment feature — which teaches Parleq to tell a term apart from a similar-sounding word by the sound of your voice — runs entirely on-device. The audio you read aloud is processed in memory and discarded; what's kept is a mathematical voiceprint (an embedding), <strong class="font-semibold text-[color:var(--color-text)]">never a recording</strong>. Voiceprints are biometric data: they're stored encrypted (AES-GCM) under a key in your Mac's Keychain that is device-only and never synced to iCloud, are enrolled only for the terms you opt in to, and can be deleted per term or all at once. Nothing about enrollment or the live disambiguation is sent to Parleq, Keavi, or any cloud.
-      </p>
+      <!-- Cleanup: explicitly on-device OR your chosen cloud provider -->
+      <div class="rounded-2xl border border-[color:var(--color-border-subtle)] bg-[color:var(--color-surface)] p-6">
+        <p class="text-[17px] leading-[1.7] text-[color:var(--color-text-muted)]">
+          <strong class="font-semibold text-[color:var(--color-text)]">Transcript cleanup is on-device or your own provider.</strong> The optional cleanup step either runs <strong class="font-semibold text-[color:var(--color-text)]">on-device</strong> (processed entirely on your Mac, with no network call), or is sent to <strong class="font-semibold text-[color:var(--color-text)]">a cloud provider you configure</strong> (Google Gemini, OpenAI, AWS Bedrock, Google Vertex AI, or Azure OpenAI) directly from your Mac using <em>your own</em> account and credentials. Keavi is not a party to that exchange and never receives or stores that text; the provider's handling is governed by your agreement with them. You can also skip cleanup entirely.
+        </p>
+      </div>
 
-      <p>
-        <strong class="font-semibold text-[color:var(--color-text)]">No telemetry in the app.</strong> Parleq contains no analytics, crash-reporting, advertising, or tracking SDKs and does not phone home. Its only outbound connections are ones you initiate: update checks, your chosen cloud cleanup provider, and one-time model downloads from Hugging Face (the on-device speech model, and the on-device cleanup model if you enable it).
-      </p>
+      <!-- Voice enrollment — grape accent for the on-device family -->
+      <div class="rounded-2xl border p-6" style="border-color: color-mix(in srgb, var(--color-grape-300) 45%, var(--color-border-subtle)); background: color-mix(in srgb, var(--color-grape) 3%, var(--color-surface));">
+        <p class="text-[17px] leading-[1.7] text-[color:var(--color-text-muted)]">
+          <strong class="font-semibold text-[color:var(--color-text)]">Voice enrollment stays on your device.</strong> The optional voice-enrollment feature — which teaches Parleq to tell a term apart from a similar-sounding word by the sound of your voice — runs entirely on-device. What's kept is a mathematical voiceprint (an embedding) — <strong class="font-semibold text-[color:var(--color-text)]">not a transcript</strong>. Voiceprints are biometric data: they're stored encrypted (AES-GCM) under a key in your Mac's Keychain that is device-only and never synced to iCloud, are enrolled only for the terms you opt in to, and can be deleted per term or all at once. By default, Parleq also keeps those short enrollment clips — encrypted (AES-GCM) on your Mac under that same device-only key — only so your voiceprint can be re-derived after an on-device model update; you can turn clip storage off at any time, which erases them. Nothing about enrollment or the live disambiguation is sent to Parleq, Keavi, or any cloud.
+        </p>
+      </div>
+
+      <!-- No telemetry -->
+      <div class="rounded-2xl border border-[color:var(--color-border-subtle)] bg-[color:var(--color-surface)] p-6">
+        <p class="text-[17px] leading-[1.7] text-[color:var(--color-text-muted)]">
+          <strong class="font-semibold text-[color:var(--color-text)]">No telemetry in the app.</strong> Parleq contains no analytics, crash-reporting, advertising, or tracking SDKs and does not phone home. Its only outbound connections are ones you initiate: update checks, your chosen cloud cleanup provider, and one-time model downloads from Hugging Face (the on-device speech model, and the on-device cleanup model if you enable it).
+        </p>
+      </div>
+
+    </div>
+
+    <!-- Legal / administrative details separated by a divider -->
+    <div class="mt-12 space-y-6 border-t border-[color:var(--color-border-subtle)] pt-10 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
 
       <p>
         <strong class="font-semibold text-[color:var(--color-text)]">This website.</strong> parleq.app uses GoatCounter — a privacy-friendly, open-source analytics tool that sets no cookies, needs no consent banner, and records only aggregate pageview and referrer counts. No personal information, no cross-site tracking.
@@ -62,6 +86,7 @@ import SiteHeader from '../components/SiteHeader.astro';
       <p class="text-[15px] text-[color:var(--color-text-subtle)]">
         Keavi LLC &middot; A Virginia limited liability company &middot; <a href="https://keavi.app" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">keavi.app</a>
       </p>
+
     </div>
   </article>
 </Layout>

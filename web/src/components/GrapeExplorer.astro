@@ -1,0 +1,1642 @@
+---
+// GrapeExplorer — the interactive capability explorer (single realistic grape bunch +
+// group tabs). ALL grapes live in one dark bunch; the active tab's grapes light up with
+// EMBOSSED (debossed) icons + engraved labels and become selectable, while the rest
+// recede as plain dark grapes. Only the selected grape glows.
+const icons: Record<string, string> = {
+  hash:   '<path d="M9 3 7 21M17 3l-2 18M4 8h16M3 16h16"/>',
+  book:   '<path d="M4 5a2 2 0 0 1 2-2h12v16H6a2 2 0 0 0-2 2zM6 17h12"/>',
+  wave:   '<path d="M4 10v4M8 6v12M12 9v6M16 5v14M20 10v4"/>',
+  link:   '<path d="M9.5 14.5 14.5 9.5M8 12l-2 2a3 3 0 0 0 4.2 4.2l2-2M16 12l2-2a3 3 0 0 0-4.2-4.2l-2 2"/>',
+  bubble: '<path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.5 8.6 8.6 0 0 1-3.9-.9L3 21l1.9-5.6A8.4 8.4 0 0 1 12.5 3 8.4 8.4 0 0 1 21 11.5Z"/>',
+  sliders:'<path d="M4 7h9M17 7h3M4 12h3M11 12h9M4 17h6M14 17h6"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="12" cy="17" r="2"/>',
+  window: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/><path d="M6.5 6.5h.01M9 6.5h.01"/>',
+  question:'<path d="M9.2 9a2.8 2.8 0 1 1 3.8 2.6c-.9.4-1.5 1.2-1.5 2.1"/><path d="M12 17h.01"/>',
+  sparkle: '<path d="M12 3v5M12 16v5M3 12h5M16 12h5"/><path d="m6.8 6.8 2.1 2.1M15.1 15.1l2.1 2.1M17.2 6.8l-2.1 2.1M8.9 15.1l-2.1 2.1"/>',
+  calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9.5h18M8 3v4M16 3v4"/>',
+  notes:  '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/>',
+  grid:   '<rect x="3.5" y="3.5" width="7" height="7" rx="1.6"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.6"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.6"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.6"/>',
+  route:  '<circle cx="5" cy="12" r="1.7"/><path d="M6.7 12H16"/><path d="m12.5 8 4 4-4 4"/>',
+  rotate: '<path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4.5V9h-4.5"/>',
+  bolt:   '<path d="M13 2 5 13.5h5.2L9 22l8-11.5h-5.2z"/>',
+};
+// debossed icon — stamped into the grape skin (dark recess on top, light highlight just below)
+const emboss = (name: string) =>
+  `<g transform="translate(0,.75)" stroke="#211039" stroke-opacity=".36" stroke-width="1.85" fill="none" stroke-linecap="round" stroke-linejoin="round">${icons[name]}</g>` +
+  `<g stroke="#d8b9fb" stroke-opacity=".82" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round">${icons[name]}</g>`;
+
+const cleanup = [
+  { id: 'questions', icon: 'question', label: 'Questions', title: 'Questions', pasting: 'Notes', desc: 'Adds the “?” when you dictate a question.',
+    before: 'Did the build pass and is it ready to ship', after: 'Did the build pass and is it ready to ship<span class="mk">?</span>' },
+  { id: 'numbers', icon: 'hash', label: 'Numbers', title: 'Numbers & percents', pasting: 'Sheets', desc: 'Spoken numbers become digits — 8.9 million, 45%.',
+    before: 'We processed eight point nine million rows', after: 'We processed <span class="mk">8.9 million</span> rows' },
+  { id: 'soundalikes', icon: 'wave', label: 'Sound-alikes', title: 'Sound-alikes', pasting: 'Slack', desc: 'Tell look-alike names apart — “Keavi” vs “kiwi.”',
+    before: 'Shipped some updates to kiwi', after: 'Shipped some updates to <span class="mk">Keavi</span>' },
+  { id: 'words', icon: 'book', label: 'Your words', title: 'Your words', pasting: 'Slack', desc: 'Your names and jargon, spelled the way you mean.',
+    before: 'The parlay docs are live', after: 'The <span class="mk">Parleq</span> docs are live' },
+  { id: 'compound', icon: 'link', label: 'Compound', title: 'Compound words', pasting: 'Notes', desc: 'Joins split compounds — “code base” → “codebase.”',
+    before: 'Deploy it to the code base tonight', after: 'Deploy it to the <span class="mk">codebase</span> tonight' },
+];
+const refine = [
+  { id: 'fuller', icon: 'sparkle', label: 'Fuller cleanup', title: 'Fuller cleanup', pasting: 'Mail', desc: 'Fillers gone, self-corrections applied, spelled-out words assembled — by the LLM you choose.',
+    before: 'So the Q3 numbers are tracking ahead on revenue but behind on new deals — I mean new accounts',
+    after: 'The Q3 numbers are tracking ahead on revenue but behind on <span class="mk">new accounts</span>.' },
+  { id: 'refine', icon: 'bubble', label: 'Talk it', title: 'Talk it into shape', pasting: 'Mail', desc: 'Say what to change — it rewrites in place.',
+    instruction: '“make it a proper email to Cynthia asking for a 15-minute check-in”',
+    before: 'The Q3 numbers are tracking ahead on revenue but behind on new accounts.',
+    after: 'Hi Cynthia, could we set up a <span class="mk">15-minute check-in</span> this week to go over the Q3 numbers?' },
+  { id: 'presets', icon: 'sliders', label: 'Presets', title: 'One-tap presets', pasting: 'Notes', presets: ['Concise', 'Formal', 'Bulletize'], desc: 'One-tap styles: concise, formal, bulletize.',
+    before: 'we are ahead on revenue and a little behind on new accounts and we should sync this week',
+    after: 'Ahead on revenue, slightly behind on new accounts — <span class="mk">let’s sync this week</span>.' },
+  { id: 'perapp', icon: 'grid', label: 'Per-app', title: 'Per-app modes', pasting: 'Mail', presets: ['Mail · Polished', 'Terminal · Instant'], desc: 'Each app gets its own cleanup — instant on-device, or your polished style.',
+    before: 'hey can you get me the q3 deck when you get a sec', after: 'Hi — could you send me the <span class="mk">Q3 deck</span> when you get a chance?' },
+];
+
+// One tight cluster. Both families live in the same bunch; the active tab decides
+// which grapes reveal their stamped content.
+const POS = [
+  { l: 24,  t: 2,   s: 1.04, z: 7, tone: 'dark' },
+  { l: 126, t: 0,   s: 1.04, z: 3, tone: 'dark' },
+  { l: 86,  t: 50,  s: 1.18, z: 8, tone: 'center' },
+  { l: 6,   t: 74,  s: 1.05, z: 4, tone: 'dark' },
+  { l: 166, t: 78,  s: 1.03, z: 4, tone: 'dark' },
+  { l: 42,  t: 148, s: 1.02, z: 5, tone: 'dark' },
+  { l: 122, t: 148, s: 1.04, z: 5, tone: 'dark' },
+  { l: 84,  t: 218, s: .98,  z: 6, tone: 'dark' },
+  { l: 84,  t: 118, s: 1.12, z: 2, tone: 'shadow' },
+];
+const bunch = [
+  { ...cleanup[0], group: 'cleanup' },
+  { ...refine[0], group: 'refine' },
+  { ...cleanup[1], group: 'cleanup' },
+  { ...refine[1], group: 'refine' },
+  { ...refine[2], group: 'refine' },
+  { ...cleanup[3], group: 'cleanup' },
+  { ...cleanup[2], group: 'cleanup' },
+  { ...cleanup[4], group: 'cleanup' },
+  { ...refine[3], group: 'refine' },
+];
+// SPIKE (2026-07-01): a third "How it works" family. Its grapes are the bigger,
+// multi-step features — shown as a bounded in-place walkthrough instead of the
+// how-it-works page's long scroll. Only ONE grape (the refine loop) is wired to a
+// stepper demo for now; the rest are visible-but-inert to feel the tab. These
+// grapes are a separate overlay (data-group="howitworks"), so Cleanup/Refine are
+// untouched — CSS shows only the active family's grapes.
+// Seven feature demos + two blank filler orbs so the cluster keeps the SAME
+// nine-orb silhouette as Cleanup/Refine (the blanks read as the receded grapes
+// those tabs show for the inactive family). `interactive` grapes render a bespoke
+// panel; `steps` grapes render a stepper; blanks are inert cluster filler.
+const howitworks = [
+  { id: 'hiw-flow', icon: 'route', label: 'The flow', title: 'The whole flow', interactive: true,
+    desc: 'Press, speak, paste clean — the core loop, end to end.' },
+  { id: 'hiw-reference', icon: 'window', label: 'Reference', title: 'Reference windows', interactive: true,
+    desc: 'Point at a window so the model has your context.' },
+  { id: 'refine-loop', icon: 'bubble', label: 'Refine loop', title: 'The refine loop', interactive: true,
+    desc: 'Dictate a draft, then reshape it by voice.' },
+  { id: 'hiw-voice', icon: 'wave', label: 'Voice', title: 'Voice enrollment', interactive: true, desc: 'Teach a term in your own voice; tell it apart by sound.' },
+  { id: 'hiw-recover', icon: 'rotate', label: 'Recover', title: 'Never lose a dictation', interactive: true, desc: 'Your last dictation is held in memory — re-run it with R.' },
+  { id: 'hiw-ai', icon: 'sparkle', label: 'Your AI', title: 'The AI you bring', interactive: true, desc: 'Instant on-device, Polished by your model, or Raw — you set the cleanup.' },
+  { id: 'hiw-quick', icon: 'bolt', label: 'Quick', title: 'Quick & continuous', interactive: true, desc: 'Double-tap to dictate with no overlay, or go hands-free.' },
+  { id: 'hiw-blank-a', blank: true },
+  { id: 'hiw-blank-b', blank: true },
+];
+// howitworks[i] renders at POS[hiwPos[i]]. The whole-flow spine takes the big center
+// orb; the two blanks take the lower-center + behind-shadow positions.
+const hiwPos = [2, 0, 1, 3, 4, 5, 6, 7, 8];
+
+// SPIKE: the three windows a visitor can attach in the interactive Reference
+// Windows demo — each drives its own alternate flow (attach chip, utterance,
+// result). The picker shows each as a clean app tile (line-art glyph + name +
+// one-line context), matching the app's dark surface — the attached window then
+// shows only as a chip in the demo card, matching the real app.
+const rwWindows = [
+  { id: 'calendar', app: 'Calendar', icon: 'calendar', sub: 'This week', chip: 'Calendar — window attached',
+    utterance: 'does thursday work for the check in',
+    after: 'Looks like <span class="mk">Thursday at 2pm</span> is open — does that work for the check-in?' },
+  { id: 'slack', app: 'Slack', icon: 'bubble', sub: '#deploys', chip: 'Slack · #deploys — attached',
+    utterance: 'reply that i will take a look',
+    after: "I'll take a look at the <span class=\"mk\">post-4pm deploy logs</span> and follow up shortly." },
+  { id: 'notes', app: 'Notes', icon: 'notes', sub: 'Q3 plan', chip: 'Notes · Q3 plan — attached',
+    utterance: 'turn my notes into next steps',
+    after: 'Next steps: <span class="mk">hire two engineers, revisit the pricing tiers, and target a mid-August launch.</span>' },
+];
+
+const all = [...cleanup, ...refine];
+
+// Whole-flow spine demo content. Server-rendered (not built at runtime) so the
+// component-scoped `.mk` highlight + `.wf-corr` chip styles actually apply — Astro
+// only attaches scope hashes to elements it renders, not to innerHTML set in JS.
+const wfRaw = 'so we shipped the update to kiwi and it was eight point nine million rows';
+const wfClean = 'So we shipped the update to <span class="mk" data-corr="0" data-fixed="Keavi" data-raw="kiwi">Keavi</span> — <span class="mk" data-corr="1" data-fixed="8.9 million" data-raw="eight point nine million">8.9 million</span> rows.';
+const wfFinal = 'So we shipped the update to <span class="mk">Keavi</span> — <span class="mk">8.9 million</span> rows.';
+const wfCorr = [{ n: '1', label: 'Keavi' }, { n: '2', label: '8.9 million' }];
+
+// Recovery ("never lose a dictation") demo — the recovered text (server-rendered).
+const rcText = 'Following up on the <span class="mk">Q3 review</span> — can we lock the roadmap by <span class="mk">Friday</span> and share it with the team?';
+
+// Voice enrollment demo — the disambiguated result (server-rendered for .mk).
+const voAfter = "Let's sync with <span class=\"mk\">Keavi</span> tomorrow.";
+
+// No-JS baseline: the default active family + the grape that JS would auto-select on
+// load (prefers the "center"-toned grape of that family). Server-rendered so the
+// explorer is meaningful with JS disabled; the inline <script> below re-applies the
+// same state (idempotent) and adds interactivity on top.
+const DEFAULT_GROUP = 'cleanup';
+const defaultGrapeIndex =
+  bunch.findIndex((g, i) => g.group === DEFAULT_GROUP && POS[i].tone === 'center') >= 0
+    ? bunch.findIndex((g, i) => g.group === DEFAULT_GROUP && POS[i].tone === 'center')
+    : bunch.findIndex((g) => g.group === DEFAULT_GROUP);
+const defaultGrape = bunch[defaultGrapeIndex];
+const DEFAULT_SELECTED_ID = defaultGrape.id;
+---
+
+<div id="explorer" data-tab={DEFAULT_GROUP} class="relative mt-12 grid grid-cols-1 items-center gap-x-12 gap-y-10 lg:grid-cols-[300px_minmax(0,1fr)]">
+  <svg class="flow-lines" viewBox="0 0 464 190" preserveAspectRatio="none" aria-hidden="true">
+    <defs>
+      <linearGradient id="flowLav" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="#7c3aed" stop-opacity=".16" />
+        <stop offset="45%" stop-color="#a56af2" stop-opacity=".36" />
+        <stop offset="72%" stop-color="#d7b7ff" stop-opacity=".72" />
+        <stop offset="88%" stop-color="#f4e8ff" stop-opacity=".95" />
+        <stop offset="100%" stop-color="#ffffff" stop-opacity=".9" />
+      </linearGradient>
+      <linearGradient id="flowWarm" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="#8b5cf6" stop-opacity=".12" />
+        <stop offset="42%" stop-color="#f59e0b" stop-opacity=".38" />
+        <stop offset="70%" stop-color="#ff9f33" stop-opacity=".9" />
+        <stop offset="86%" stop-color="#ffd590" stop-opacity="1" />
+        <stop offset="100%" stop-color="#ffffff" stop-opacity=".96" />
+      </linearGradient>
+      <linearGradient id="flowPulse" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="#ffffff" stop-opacity="0" />
+        <stop offset="24%" stop-color="#f4dcff" stop-opacity=".24" />
+        <stop offset="58%" stop-color="#ff9f33" stop-opacity="1" />
+        <stop offset="82%" stop-color="#fff2cf" stop-opacity=".96" />
+        <stop offset="100%" stop-color="#ffffff" stop-opacity="0" />
+      </linearGradient>
+      <radialGradient id="flowBloomWarm" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#fff2cf" stop-opacity=".9" />
+        <stop offset="22%" stop-color="#ff9f33" stop-opacity=".68" />
+        <stop offset="58%" stop-color="#c084fc" stop-opacity=".22" />
+        <stop offset="100%" stop-color="#7c3aed" stop-opacity="0" />
+      </radialGradient>
+      <filter id="flowBlur" x="-15%" y="-80%" width="130%" height="260%">
+        <feGaussianBlur stdDeviation="2.2" />
+      </filter>
+      <filter id="flowSoft" x="-12%" y="-70%" width="124%" height="240%">
+        <feGaussianBlur stdDeviation=".8" />
+      </filter>
+    </defs>
+    <g class="flow-blooms">
+      <ellipse cx="54" cy="91" rx="48" ry="24" fill="url(#flowBloomWarm)" />
+      <ellipse cx="214" cy="101" rx="54" ry="14" fill="url(#flowBloomWarm)" />
+      <ellipse cx="404" cy="104" rx="34" ry="18" fill="url(#flowBloomWarm)" />
+    </g>
+    <g class="flow-glow" filter="url(#flowBlur)">
+      <path d="M8 24 C 76 20, 106 70, 154 82 C 182 89, 212 91, 242 91 C 318 91, 386 80, 464 68" />
+      <path d="M-2 43 C 70 41, 108 76, 158 88 C 188 95, 216 96, 246 96 C 322 96, 388 89, 464 82" />
+      <path d="M24 61 C 88 60, 116 84, 162 93 C 190 99, 218 100, 248 100 C 324 101, 390 97, 464 94" />
+      <path d="M-12 79 C 66 78, 110 92, 164 98 C 192 101, 220 102, 250 103 C 326 104, 392 104, 464 104" />
+      <path d="M16 96 C 86 97, 116 99, 166 101 C 194 102, 222 104, 252 106 C 328 109, 392 113, 464 116" />
+      <path d="M-4 116 C 74 120, 112 108, 164 104 C 194 102, 222 105, 252 110 C 328 121, 392 130, 464 138" />
+      <path d="M18 137 C 88 144, 116 119, 166 108 C 194 102, 222 108, 252 116 C 328 135, 392 148, 464 158" />
+      <path d="M48 160 C 108 168, 128 130, 168 112 C 196 100, 224 111, 254 123 C 330 150, 394 166, 464 174" />
+    </g>
+    <g class="flow-sharp">
+      <path class="flow-line flow-line-lav flow-edge" d="M8 24 C 76 20, 106 70, 154 82 C 182 89, 212 91, 242 91 C 318 91, 386 80, 464 68" />
+      <path class="flow-line flow-line-lav flow-thin" d="M-2 43 C 70 41, 108 76, 158 88 C 188 95, 216 96, 246 96 C 322 96, 388 89, 464 82" />
+      <path class="flow-line flow-line-warm flow-thread" d="M13 53 C 82 51, 112 81, 160 91 C 190 97, 218 98, 248 98 C 324 99, 390 95, 464 90" />
+      <path class="flow-line flow-line-lav flow-thread" d="M24 61 C 88 60, 116 84, 162 93 C 190 99, 218 100, 248 100 C 324 101, 390 97, 464 94" />
+      <path class="flow-line flow-line-warm flow-thread" d="M-5 70 C 70 69, 110 89, 163 96 C 192 100, 220 101, 250 101 C 326 102, 392 102, 464 102" />
+      <path class="flow-line flow-line-warm" d="M-12 79 C 66 78, 110 92, 164 98 C 192 101, 220 102, 250 103 C 326 104, 392 104, 464 104" />
+      <path class="flow-line flow-line-warm flow-hot" d="M16 96 C 86 97, 116 99, 166 101 C 194 102, 222 104, 252 106 C 328 109, 392 113, 464 116" />
+      <path class="flow-line flow-line-warm flow-thread" d="M5 106 C 78 109, 114 104, 165 103 C 194 102, 222 105, 252 108 C 328 115, 392 122, 464 128" />
+      <path class="flow-line flow-line-lav flow-thread" d="M-4 116 C 74 120, 112 108, 164 104 C 194 102, 222 105, 252 110 C 328 121, 392 130, 464 138" />
+      <path class="flow-line flow-line-lav" d="M18 137 C 88 144, 116 119, 166 108 C 194 102, 222 108, 252 116 C 328 135, 392 148, 464 158" />
+      <path class="flow-line flow-line-lav flow-thin flow-edge" d="M48 160 C 108 168, 128 130, 168 112 C 196 100, 224 111, 254 123 C 330 150, 394 166, 464 174" />
+    </g>
+    <g class="flow-runners" filter="url(#flowSoft)">
+      <path d="M-5 70 C 70 69, 110 89, 163 96 C 192 100, 220 101, 250 101 C 326 102, 392 102, 464 102" />
+      <path d="M16 96 C 86 97, 116 99, 166 101 C 194 102, 222 104, 252 106 C 328 109, 392 113, 464 116" />
+      <path d="M5 106 C 78 109, 114 104, 165 103 C 194 102, 222 105, 252 108 C 328 115, 392 122, 464 128" />
+    </g>
+  </svg>
+
+  <!-- LEFT: group tabs + one realistic bunch + preview -->
+  <div class="relative z-10">
+    <div role="tablist" aria-label="Capability family" class="group-tabs">
+      <button type="button" role="tab" id="ftab-cleanup" aria-controls="explorer-bunch" data-tab="cleanup" aria-selected={DEFAULT_GROUP === 'cleanup' ? 'true' : 'false'} tabindex={DEFAULT_GROUP === 'cleanup' ? 0 : -1} class="group-tab">
+        <span class="group-tab-title">Cleanup</span>
+        <span class="group-tab-copy">Make it correct.</span>
+      </button>
+      <button type="button" role="tab" id="ftab-refine" aria-controls="explorer-bunch" data-tab="refine" aria-selected={DEFAULT_GROUP === 'refine' ? 'true' : 'false'} tabindex={DEFAULT_GROUP === 'refine' ? 0 : -1} class="group-tab">
+        <span class="group-tab-title">Refine &amp; Shape</span>
+        <span class="group-tab-copy">Make it right for the moment.</span>
+      </button>
+      <button type="button" role="tab" id="ftab-howitworks" aria-controls="explorer-bunch" data-tab="howitworks" aria-selected={DEFAULT_GROUP === 'howitworks' ? 'true' : 'false'} tabindex={DEFAULT_GROUP === 'howitworks' ? 0 : -1} class="group-tab">
+        <span class="group-tab-title">How it works</span>
+        <span class="group-tab-copy">The whole flow.</span>
+      </button>
+    </div>
+
+    <div class="bunch" id="explorer-bunch" role="tabpanel" aria-labelledby={DEFAULT_GROUP === 'cleanup' ? 'ftab-cleanup' : 'ftab-refine'}>
+      {bunch.map((g, i) => {
+        const active = g.group === DEFAULT_GROUP;
+        const selected = g.id === DEFAULT_SELECTED_ID;
+        return (
+          <button type="button" class="grape" data-id={g.id} data-group={g.group}
+                  data-name={g.title} data-desc={g.desc} data-tone={POS[i].tone}
+                  data-active={active ? 'true' : 'false'} data-selected={selected ? 'true' : 'false'}
+                  aria-label={g.title} aria-pressed={selected ? 'true' : 'false'}
+                  aria-hidden={active ? 'false' : 'true'}
+                  tabindex={active ? 0 : -1} disabled={!active}
+                  style={`left:${POS[i].l}px;top:${POS[i].t}px;z-index:${POS[i].z};--scale:${POS[i].s}`}>
+            <span class="grape-orb">
+              <svg class="g-ic" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" set:html={emboss(g.icon)} />
+              <span class="g-lb">{g.label}</span>
+            </span>
+          </button>
+        );
+      })}
+      {/* SPIKE: How-it-works overlay grapes — hidden unless the third tab is active (CSS).
+          Blank entries render as inert filler orbs so the cluster keeps its shape. */}
+      {howitworks.map((g, i) => {
+        const p = POS[hiwPos[i]];
+        if (g.blank) {
+          return (
+            <button type="button" class="grape grape-blank" data-id={g.id} data-group="howitworks"
+                    data-tone={p.tone} data-active="false" data-selected="false" data-blank="true"
+                    aria-hidden="true" tabindex={-1} disabled
+                    style={`left:${p.l}px;top:${p.t}px;z-index:${p.z};--scale:${p.s}`}>
+              <span class="grape-orb"></span>
+            </button>
+          );
+        }
+        return (
+          <button type="button" class="grape" data-id={g.id} data-group="howitworks"
+                  data-name={g.title} data-desc={g.desc} data-tone={p.tone}
+                  data-active="false" data-selected="false"
+                  aria-label={g.title} aria-pressed="false" aria-hidden="true"
+                  tabindex={-1} disabled
+                  style={`left:${p.l}px;top:${p.t}px;z-index:${p.z};--scale:${p.s}`}>
+            <span class="grape-orb">
+              <svg class="g-ic" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" set:html={emboss(g.icon)} />
+              <span class="g-lb">{g.label}</span>
+            </span>
+          </button>
+        );
+      })}
+    </div>
+
+    <p class="bunch-preview" data-preview aria-live="polite" set:html={`<b>${defaultGrape.title}</b> — ${defaultGrape.desc}`} />
+  </div>
+
+  <!-- RIGHT: demo panel -->
+  <div class="demo-stack w-full max-w-md justify-self-center lg:justify-self-start">
+    <div class="demo-backplate" aria-hidden="true"></div>
+    {all.map((g) => (
+      <div class="demo-card" data-panel={g.id} hidden={g.id !== DEFAULT_SELECTED_ID}>
+        <div class="flex items-center justify-between gap-3">
+          <div class="flex items-center gap-2.5">
+            <span class="demo-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4" set:html={icons[g.icon]} /></span>
+            <h3 class="text-[15px] font-semibold text-white">{g.title}</h3>
+          </div>
+          <span class={`chip ${cleanup.includes(g) ? 'chip-on' : 'chip-byo'}`}>{cleanup.includes(g) ? 'On-device' : 'Your provider'}</span>
+        </div>
+        {g.instruction && (<p class="refine-instr">{g.instruction}</p>)}
+        {g.presets && (<div class="mt-3 flex flex-wrap gap-2">{g.presets.map((p, i) => (<span class={`preset-chip ${i === 0 ? 'preset-on' : ''}`}>{p}</span>))}</div>)}
+        <div class="mt-4">
+          <p class="ba-label">Before</p>
+          <p class="ba-before">{g.before}</p>
+          <p class="ba-arrow" aria-hidden="true">↓</p>
+          <p class="ba-label">After</p>
+          <p class="ba-after" set:html={g.after}></p>
+        </div>
+        {g.attachment && (<div class="attach"><span class="attach-dot" aria-hidden="true"></span>{g.attachment}</div>)}
+        <div class="demo-foot">
+          <span class="foot-paste">Pasting to {g.pasting}</span>
+          <span class="foot-actions"><span>Copy</span><span>Cancel</span><b>Accept</b></span>
+        </div>
+      </div>
+    ))}
+
+    {/* Every how-it-works grape is an interactive bespoke panel (below); blanks are
+       inert cluster filler. The old generic stepper/placeholder scaffolding is gone. */}
+
+    {/* SPIKE: INTERACTIVE Reference Windows demo (data-panel="hiw-reference"). A guided
+       4-stage flow the visitor drives; the pager is the fallback + a11y path. See
+       docs/superpowers/plans/2026-07-01-interactive-reference-windows-demo.md. */}
+    <div data-panel="hiw-reference" class="rw-demo" hidden>
+      <div class="demo-card rw-card">
+        <div class="flex items-center justify-between gap-3">
+          <div class="flex items-center gap-2.5">
+            <span class="demo-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4" set:html={icons['window']} /></span>
+            <h3 class="text-[15px] font-semibold text-white">Reference windows</h3>
+          </div>
+          <span class="chip chip-byo">Your provider</span>
+        </div>
+
+        {/* Stage 0 — attach */}
+        <div class="rw-stage" data-rwstage="0">
+          <p class="rw-listening"><span class="rw-mic-dot" aria-hidden="true"></span> Dictating in Mail…</p>
+          <button type="button" class="rw-space" data-rw-space><kbd class="rw-keycap">Space</kbd> attach a window</button>
+        </div>
+
+        {/* Stage 1 — the breakout picker (rendered as an overlay below) is open; the
+            card behind just shows a quiet "choosing" state. */}
+        <div class="rw-stage" data-rwstage="1" hidden>
+          <p class="rw-listening"><span class="rw-mic-dot" aria-hidden="true"></span> Choosing a window…</p>
+        </div>
+
+        {/* Stage 2 — dictate with context (chip/peek populated per chosen window) */}
+        <div class="rw-stage" data-rwstage="2" hidden>
+          <div class="attach rw-attach"><span class="attach-dot" aria-hidden="true"></span><span data-rw-chip>Calendar — window attached</span></div>
+          <p class="ba-label mt-3">Your dictation</p>
+          <p class="ba-before"><span class="rw-utterance" data-rw-utterance></span><span class="rw-caret" data-rw-caret aria-hidden="true"></span></p>
+          <button type="button" class="rw-mic" data-rw-mic><span class="rw-mic-dot" aria-hidden="true"></span> Tap to talk</button>
+        </div>
+
+        {/* Stage 3 — result (before/after populated per chosen window) */}
+        <div class="rw-stage" data-rwstage="3" hidden>
+          <div class="attach rw-attach"><span class="attach-dot" aria-hidden="true"></span><span data-rw-chip>Calendar — window attached</span></div>
+          <p class="ba-label mt-3">Before</p>
+          <p class="ba-before" data-rw-before>does thursday work for the check in</p>
+          <p class="ba-arrow" aria-hidden="true">↓</p>
+          <p class="ba-label">After</p>
+          <p class="ba-after" data-rw-after set:html={'Looks like <span class="mk">Thursday at 2pm</span> is open — does that work for the check-in?'} />
+          <div class="demo-foot">
+            <span class="foot-paste">Pasting to Mail</span>
+            <span class="foot-actions"><span>Copy</span><span>Cancel</span><b aria-hidden="true">Accept</b></span>
+          </div>
+          <button type="button" class="rw-replay" data-rw-replay>↺ Replay</button>
+        </div>
+      </div>
+
+      <p class="rw-coach" data-rw-coach aria-live="polite">Give the model context — tap the <b>Space</b> key in the window above.</p>
+      <div class="rw-steps" role="group" aria-label="Reference windows walkthrough progress">
+        <span class="pager-dots" aria-hidden="true"><span class="stepper-dot"></span><span class="stepper-dot"></span><span class="stepper-dot"></span><span class="stepper-dot"></span></span>
+        <span class="pager-status">Step <b class="pager-cur" data-rw-cur>1</b> of 4</span>
+      </div>
+      <p class="rw-footnote">In Parleq you'd hold your hotkey and tap Space mid-dictation. Here, just click the controls in the window.</p>
+    </div>
+
+    {/* SPIKE: INTERACTIVE whole-flow spine (data-panel="hiw-flow"). Press→speak→
+        transcribe on-device→cleanup with highlighted corrections (undo a number, or
+        E to edit)→paste where you land. A 4-stage state machine the visitor drives. */}
+    <div data-panel="hiw-flow" class="wf-demo" data-rawtext={wfRaw} hidden>
+      <div class="demo-card rw-card">
+        <div class="flex items-center justify-between gap-3">
+          <div class="flex items-center gap-2.5">
+            <span class="demo-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4" set:html={icons['route']} /></span>
+            <h3 class="text-[15px] font-semibold text-white">The whole flow</h3>
+          </div>
+          <span class="chip chip-on" data-wf-engine>On-device</span>
+        </div>
+
+        {/* S0 — speak */}
+        <div class="rw-stage" data-wfstage="0">
+          <p class="rw-listening"><span class="rw-mic-dot" aria-hidden="true"></span> Ready in Mail…</p>
+          <button type="button" class="rw-mic" data-wf-talk><span class="rw-mic-dot" aria-hidden="true"></span> Tap to talk</button>
+        </div>
+
+        {/* S1 — transcribe on-device */}
+        <div class="rw-stage" data-wfstage="1" hidden>
+          <p class="wf-status" data-wf-status><span class="rw-mic-dot" aria-hidden="true"></span> Transcribing on your Mac…</p>
+          <p class="ba-label mt-3">Raw</p>
+          <p class="ba-before"><span data-wf-raw></span><span class="rw-caret" data-wf-caret aria-hidden="true"></span></p>
+          <button type="button" class="rw-mic" data-wf-clean hidden>Clean it up ▸</button>
+        </div>
+
+        {/* S2 — cleanup + highlighted corrections (server-rendered so scoped styles apply) */}
+        <div class="rw-stage" data-wfstage="2" hidden>
+          <p class="ba-label mt-3">Cleaned</p>
+          <p class="ba-after" data-wf-clean-text set:html={wfClean}></p>
+          <div class="wf-corrections">
+            {wfCorr.map((c, i) => (
+              <button type="button" class="wf-corr" data-wf-undo={i} data-off="false"><b>{c.n}</b><span>{c.label}</span></button>
+            ))}
+          </div>
+          <p class="wf-hint">Click a number to undo a correction, or <button type="button" class="wf-kbd" data-wf-edit><kbd class="rw-keycap">E</kbd> edit</button>.</p>
+          <button type="button" class="rw-mic" data-wf-paste>Paste ▸</button>
+        </div>
+
+        {/* S3 — pasted where you land */}
+        <div class="rw-stage" data-wfstage="3" hidden>
+          <p class="ba-label mt-3">Pasted</p>
+          <p class="ba-after" data-wf-final set:html={wfFinal}></p>
+          <div class="demo-foot">
+            <span class="foot-paste">Pasted to Mail</span>
+            <span class="foot-actions"><span>Copy</span><span>Cancel</span><b aria-hidden="true">Accept</b></span>
+          </div>
+          <button type="button" class="rw-replay" data-wf-replay>↺ Replay</button>
+        </div>
+      </div>
+
+      <p class="rw-coach" data-wf-coach aria-live="polite">Hold your hotkey and speak — here, tap to talk.</p>
+      <div class="rw-steps" role="group" aria-label="Whole flow walkthrough progress">
+        <span class="pager-dots" aria-hidden="true"><span class="stepper-dot"></span><span class="stepper-dot"></span><span class="stepper-dot"></span><span class="stepper-dot"></span></span>
+        <span class="pager-status">Step <b class="pager-cur" data-wf-cur>1</b> of 4</span>
+      </div>
+      <p class="rw-footnote">In Parleq this is one press-speak-release. Here, tap the controls to step through.</p>
+    </div>
+
+    {/* SPIKE: INTERACTIVE Recovery demo (data-panel="hiw-recover"). A dictation is
+        lost → tap R → it re-runs from the audio still held in memory. 3 stages. */}
+    <div data-panel="hiw-recover" class="rc-demo" hidden>
+      <div class="demo-card rw-card">
+        <div class="flex items-center justify-between gap-3">
+          <div class="flex items-center gap-2.5">
+            <span class="demo-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4" set:html={icons['rotate']} /></span>
+            <h3 class="text-[15px] font-semibold text-white">Never lose a dictation</h3>
+          </div>
+          <span class="chip chip-on">Held in memory</span>
+        </div>
+
+        {/* S0 — lost */}
+        <div class="rw-stage" data-rcstage="0">
+          <p class="rc-lost"><span class="rc-warn" aria-hidden="true">!</span> That dictation didn't land — the window closed before it pasted.</p>
+          <button type="button" class="rw-mic" data-rc-recover><kbd class="rw-keycap">R</kbd> Recover last dictation</button>
+        </div>
+
+        {/* S1 — recovering */}
+        <div class="rw-stage" data-rcstage="1" hidden>
+          <p class="wf-status" data-rc-status><span class="rw-mic-dot" aria-hidden="true"></span> Re-running from memory…</p>
+        </div>
+
+        {/* S2 — recovered */}
+        <div class="rw-stage" data-rcstage="2" hidden>
+          <p class="ba-label mt-3">Recovered</p>
+          <p class="ba-after" set:html={rcText}></p>
+          <div class="demo-foot">
+            <span class="foot-paste">Pasted to Mail</span>
+            <span class="foot-actions"><span>Copy</span><span>Cancel</span><b aria-hidden="true">Accept</b></span>
+          </div>
+          <button type="button" class="rw-replay" data-rc-replay>↺ Replay</button>
+        </div>
+      </div>
+
+      <p class="rw-coach" data-rc-coach aria-live="polite">Closed it too soon? Your last dictation is still in memory — tap <b>R</b>.</p>
+      <div class="rw-steps" role="group" aria-label="Recovery walkthrough progress">
+        <span class="pager-dots" aria-hidden="true"><span class="stepper-dot"></span><span class="stepper-dot"></span><span class="stepper-dot"></span></span>
+        <span class="pager-status">Step <b class="pager-cur" data-rc-cur>1</b> of 3</span>
+      </div>
+      <p class="rw-footnote">In Parleq your last dictation's audio is held in memory — tap R to re-run it, no re-speaking.</p>
+    </div>
+
+    {/* SPIKE: INTERACTIVE "The AI you bring" (data-panel="hiw-ai"). A segmented
+        picker — On-device / Your cloud / None — updates the result + where-note. */}
+    <div data-panel="hiw-ai" class="ai-demo" hidden>
+      <div class="demo-card rw-card">
+        <div class="flex items-center justify-between gap-3">
+          <div class="flex items-center gap-2.5">
+            <span class="demo-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4" set:html={icons['sparkle']} /></span>
+            <h3 class="text-[15px] font-semibold text-white">The AI you bring</h3>
+          </div>
+          <span class="chip chip-on" data-ai-chip>Instant</span>
+        </div>
+        <div class="ai-seg" role="group" aria-label="Choose the cleanup mode">
+          <button type="button" class="ai-opt is-on" data-ai-opt="instant" aria-pressed="true">Instant</button>
+          <button type="button" class="ai-opt" data-ai-opt="polished" aria-pressed="false">Polished</button>
+          <button type="button" class="ai-opt" data-ai-opt="raw" aria-pressed="false">Raw</button>
+        </div>
+        <p class="ba-label mt-4">You said</p>
+        <p class="ba-before">So we shipped the kiwi update — uh, no, two nights ago — up forty percent.</p>
+        <p class="ba-arrow" aria-hidden="true">↓</p>
+        <p class="ba-label" data-ai-reslabel>Fixed · Instant</p>
+        <p class="ba-after" data-ai-result set:html={'So we shipped the <span class="mk">Keavi</span> update — uh, no, two nights ago — up <span class="mk">40%</span>.'}></p>
+        <p class="ai-where" data-ai-where>Runs on your Mac — deterministic, no network, no wait.</p>
+      </div>
+      <p class="rw-coach" data-ai-coach aria-live="polite">Same dictation — you set how much cleanup runs.</p>
+      <p class="rw-footnote">Every provider is your own account; Parleq runs no server in the path.</p>
+    </div>
+
+    {/* SPIKE: INTERACTIVE "Quick & continuous" (data-panel="hiw-quick"). Double-tap →
+        dictate with no overlay → text lands straight in the focused field. */}
+    <div data-panel="hiw-quick" class="qk-demo" hidden>
+      <div class="demo-card rw-card">
+        <div class="flex items-center justify-between gap-3">
+          <div class="flex items-center gap-2.5">
+            <span class="demo-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4" set:html={icons['bolt']} /></span>
+            <h3 class="text-[15px] font-semibold text-white">Quick &amp; continuous</h3>
+          </div>
+          <span class="chip chip-on">No overlay</span>
+        </div>
+        <div class="qk-field" data-qk-field>
+          <span class="qk-fieldlabel">Reply · Slack</span>
+          <p class="qk-text"><span data-qk-text></span><span class="rw-caret" data-qk-caret aria-hidden="true"></span></p>
+        </div>
+        <button type="button" class="rw-mic" data-qk-go><kbd class="rw-keycap">⌥⌥</kbd> Double-tap &amp; hold</button>
+        <button type="button" class="rw-replay" data-qk-replay hidden>↺ Replay</button>
+      </div>
+      <p class="rw-coach" data-qk-coach aria-live="polite">Skip the overlay — double-tap and hold, speak, release. Text lands right in the field.</p>
+      <p class="rw-footnote">Double-tap and <b>release</b> instead for hands-free continuous dictation.</p>
+    </div>
+
+    {/* SPIKE: INTERACTIVE Voice enrollment (data-panel="hiw-voice"). Read a term aloud
+        → a voiceprint is saved on-device → it tells the sound-alike apart. 3 stages. */}
+    <div data-panel="hiw-voice" class="vo-demo" hidden>
+      <div class="demo-card rw-card">
+        <div class="flex items-center justify-between gap-3">
+          <div class="flex items-center gap-2.5">
+            <span class="demo-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4" set:html={icons['wave']} /></span>
+            <h3 class="text-[15px] font-semibold text-white">Voice enrollment</h3>
+          </div>
+          <span class="chip chip-on">On-device</span>
+        </div>
+
+        {/* S0 — enroll */}
+        <div class="rw-stage" data-vostage="0">
+          <p class="vo-teach">Teach a sound-alike: <span class="vo-term">Keavi</span> <span class="vo-vs">not “kiwi”</span></p>
+          <p class="vo-read">Read aloud: <b>“We shipped the update with Keavi.”</b></p>
+          <button type="button" class="rw-mic" data-vo-read><span class="rw-mic-dot" aria-hidden="true"></span> Read it aloud</button>
+        </div>
+
+        {/* S1 — enrolling */}
+        <div class="rw-stage" data-vostage="1" hidden>
+          <p class="wf-status" data-vo-status><span class="rw-mic-dot" aria-hidden="true"></span> Listening…</p>
+        </div>
+
+        {/* S2 — tells them apart */}
+        <div class="rw-stage" data-vostage="2" hidden>
+          <div class="attach rw-attach"><span class="attach-dot" aria-hidden="true"></span>Voiceprint saved · on-device</div>
+          <p class="ba-label mt-3">Next time you dictate</p>
+          <p class="ba-before">let's sync with kiwi tomorrow</p>
+          <p class="ba-arrow" aria-hidden="true">↓</p>
+          <p class="ba-label">Heard correctly</p>
+          <p class="ba-after" set:html={voAfter}></p>
+          <button type="button" class="rw-replay" data-vo-replay>↺ Replay</button>
+        </div>
+      </div>
+
+      <p class="rw-coach" data-vo-coach aria-live="polite">Sound-alikes trip up any recognizer. Teach Parleq your voice — read the line aloud.</p>
+      <div class="rw-steps" role="group" aria-label="Voice enrollment walkthrough progress">
+        <span class="pager-dots" aria-hidden="true"><span class="stepper-dot"></span><span class="stepper-dot"></span><span class="stepper-dot"></span></span>
+        <span class="pager-status">Step <b class="pager-cur" data-vo-cur>1</b> of 3</span>
+      </div>
+      <p class="rw-footnote">Parleq stores a voiceprint — your acoustics, not audio or a transcript — encrypted on your Mac.</p>
+    </div>
+
+    {/* SPIKE: INTERACTIVE refine loop (data-panel="refine-loop"). Dictate a draft, then
+        reshape it by voice, turn by turn, and finish with a preset. 4 stages. */}
+    <div data-panel="refine-loop" class="rl-demo" hidden>
+      <div class="demo-card rw-card">
+        <div class="flex items-center justify-between gap-3">
+          <div class="flex items-center gap-2.5">
+            <span class="demo-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4" set:html={icons['bubble']} /></span>
+            <h3 class="text-[15px] font-semibold text-white">The refine loop</h3>
+          </div>
+          <span class="chip chip-byo">Your provider</span>
+        </div>
+
+        {/* S0 — draft */}
+        <div class="rw-stage" data-rlstage="0">
+          <p class="ba-label mt-3">You dictated</p>
+          <p class="ba-before">so um can we push the sync to thursday and i'll send the deck</p>
+          <p class="ba-arrow" aria-hidden="true">↓</p>
+          <p class="ba-label">Draft</p>
+          <p class="ba-after">Can we push the sync to Thursday? I'll send the deck.</p>
+          <button type="button" class="rw-mic" data-rl-next="1"><span class="rw-mic-dot" aria-hidden="true"></span> Refine by voice</button>
+        </div>
+
+        {/* S1 — refine 1 */}
+        <div class="rw-stage" data-rlstage="1" hidden>
+          <p class="refine-instr">“make it a polite email to Sam”</p>
+          <p class="ba-label mt-3">Rewritten</p>
+          <p class="ba-after" set:html={"Hi Sam — could we move our sync to <span class=\"mk\">Thursday</span>? I'll send the deck ahead of time."}></p>
+          <button type="button" class="rw-mic" data-rl-next="2"><span class="rw-mic-dot" aria-hidden="true"></span> Refine again</button>
+        </div>
+
+        {/* S2 — refine 2 */}
+        <div class="rw-stage" data-rlstage="2" hidden>
+          <p class="refine-instr">“offer Friday as a backup”</p>
+          <p class="ba-label mt-3">Rewritten</p>
+          <p class="ba-after" set:html={"Hi Sam — could we move our sync to Thursday, or <span class=\"mk\">Friday</span> if that's easier? I'll send the deck ahead."}></p>
+          <button type="button" class="rw-mic" data-rl-next="3">Finish ▸</button>
+        </div>
+
+        {/* S3 — finish with a preset */}
+        <div class="rw-stage" data-rlstage="3" hidden>
+          <p class="ba-label mt-3">One tap to finish</p>
+          <div class="mt-2 flex flex-wrap gap-2"><span class="preset-chip preset-on">Concise</span><span class="preset-chip">Formal</span><span class="preset-chip">Bulletize</span></div>
+          <p class="rl-hint">Tap a preset to restyle in one more pass — or just Accept.</p>
+          <div class="demo-foot">
+            <span class="foot-paste">Styling · Mail</span>
+            <span class="foot-actions"><span>Copy</span><span>Cancel</span><b aria-hidden="true">Accept</b></span>
+          </div>
+          <button type="button" class="rw-replay" data-rl-replay>↺ Replay</button>
+        </div>
+      </div>
+
+      <p class="rw-coach" data-rl-coach aria-live="polite">You dictated a draft. Reshape it by voice — tap to refine.</p>
+      <div class="rw-steps" role="group" aria-label="Refine loop walkthrough progress">
+        <span class="pager-dots" aria-hidden="true"><span class="stepper-dot"></span><span class="stepper-dot"></span><span class="stepper-dot"></span><span class="stepper-dot"></span></span>
+        <span class="pager-status">Step <b class="pager-cur" data-rl-cur>1</b> of 4</span>
+      </div>
+      <p class="rw-footnote">Each hotkey press treats your speech as an edit instruction — voice undo/redo.</p>
+    </div>
+
+  </div>
+
+  {/* SPIKE: the anchored breakout window-picker — pops OVER the explorer (dimmed
+      backdrop, wider than the demo card) with realistic app-window cards. Shown
+      only during the Reference Windows demo's pick stage. */}
+  <div class="rw-picker-overlay" data-rw-overlay hidden>
+    <div class="rw-picker-backdrop" data-rw-cancel aria-hidden="true"></div>
+    <div class="rw-picker-panel" role="dialog" aria-modal="true" aria-label="Choose a window to attach">
+      <p class="rw-picker-title">Choose a window for context</p>
+      <div class="rw-picker-grid">
+        {rwWindows.map((w) => (
+          <button type="button" class="rw-appwin" data-rw-appwin={w.id}
+                  aria-label={`Attach ${w.app}`}
+                  data-chip={w.chip} data-utterance={w.utterance} data-after={w.after}>
+            <span class="rw-appwin-ic"><svg class="rw-appwin-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" set:html={icons[w.icon]} /></span>
+            <span class="rw-appwin-meta"><span class="rw-appwin-name">{w.app}</span><span class="rw-appwin-sub">{w.sub}</span></span>
+          </button>
+        ))}
+      </div>
+      <button type="button" class="rw-picker-cancel" data-rw-cancel>Cancel · Esc</button>
+    </div>
+  </div>
+</div>
+
+<style>
+  .group-tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 0;
+    max-width: 36rem;
+    border-bottom: 1px solid color-mix(in srgb, var(--color-grape-300) 24%, var(--color-border));
+  }
+  .group-tab {
+    position: relative;
+    display: flex;
+    min-height: 4.6rem;
+    flex-direction: column;
+    justify-content: flex-start;
+    border: 0;
+    padding: 0 1.1rem .85rem 0;
+    text-align: left;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    background: none;
+  }
+  .group-tab + .group-tab { padding-left: 1.1rem; }
+  .group-tab + .group-tab::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: .15rem;
+    bottom: 1rem;
+    width: 1px;
+    background: color-mix(in srgb, var(--color-grape-300) 18%, transparent);
+  }
+  .group-tab::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 1.1rem;
+    bottom: -1px;
+    height: 2px;
+    background: transparent;
+    transition: background .18s ease;
+  }
+  .group-tab + .group-tab::after { left: 1.1rem; right: 0; }
+  .group-tab-title {
+    display: block;
+    font-size: .92rem;
+    font-weight: 700;
+    line-height: 1.2;
+    white-space: nowrap;
+    color: var(--color-text-muted);
+    transition: color .18s ease;
+  }
+  .group-tab-copy {
+    display: block;
+    margin-top: .45rem;
+    max-width: 11rem;
+    font-size: .82rem;
+    line-height: 1.35;
+    color: var(--color-text-subtle);
+    transition: color .18s ease;
+  }
+  .group-tab[aria-selected="true"]::after { background: var(--color-grape); }
+  .group-tab[aria-selected="true"] .group-tab-title { color: var(--color-grape); }
+  .group-tab[aria-selected="true"] .group-tab-copy { color: var(--color-text-muted); }
+
+  .flow-lines {
+    display: none;
+    position: absolute;
+    left: 178px;
+    top: 154px;
+    z-index: 6;
+    width: 456px;
+    height: 210px;
+    overflow: visible;
+    pointer-events: none;
+  }
+  .flow-glow path {
+    fill: none;
+    stroke: url(#flowWarm);
+    stroke-linecap: round;
+    stroke-width: 4.5;
+    opacity: .42;
+  }
+  .flow-glow path:nth-child(1),
+  .flow-glow path:nth-child(2),
+  .flow-glow path:nth-child(5),
+  .flow-glow path:nth-child(6) {
+    stroke: url(#flowLav);
+    opacity: .22;
+  }
+  .flow-blooms {
+    mix-blend-mode: screen;
+    opacity: .26;
+  }
+  .flow-line {
+    fill: none;
+    stroke-linecap: round;
+    stroke-width: 1.25;
+    opacity: .94;
+  }
+  .flow-line-lav { stroke: url(#flowLav); }
+  .flow-line-warm { stroke: url(#flowWarm); stroke-width: 1.55; opacity: .98; }
+  .flow-thin { stroke-width: .85; opacity: .7; }
+  .flow-thread { stroke-width: .72; opacity: .62; }
+  .flow-edge { opacity: .42; }
+  .flow-hot { stroke-width: 2.55; opacity: 1; }
+  .flow-runners path {
+    fill: none;
+    stroke: url(#flowPulse);
+    stroke-linecap: round;
+    stroke-width: 3.9;
+    stroke-dasharray: 72 560;
+    stroke-dashoffset: 560;
+    opacity: 0;
+  }
+  .flow-runners path:nth-child(2) { stroke-width: 5.3; }
+  .flow-sharp .flow-hot,
+  .flow-sharp .flow-line-warm + .flow-line-warm {
+    filter:
+      drop-shadow(0 0 3px rgba(255, 213, 144, .72))
+      drop-shadow(0 0 7px rgba(255, 159, 51, .5));
+  }
+  #explorer.is-pulsing .flow-runners path {
+    animation: flow-run 1.2s cubic-bezier(.22,.72,.2,1) both;
+  }
+  #explorer.is-pulsing .flow-runners path:nth-child(2) { animation-delay: .06s; }
+  #explorer.is-pulsing .flow-runners path:nth-child(3) { animation-delay: .12s; }
+
+  @keyframes flow-run {
+    0% { stroke-dashoffset: 560; opacity: 0; }
+    10% { opacity: .98; }
+    62% { opacity: .92; }
+    100% { stroke-dashoffset: 0; opacity: 0; }
+  }
+
+  @media (min-width: 1024px) {
+    .flow-lines { display: block; }
+  }
+
+  .bunch {
+    position: relative;
+    margin-top: 2.75rem;
+    width: 286px;
+    height: 308px;
+    filter: drop-shadow(0 28px 34px rgba(36, 16, 62, .18));
+  }
+  .bunch::before {
+    content: "";
+    position: absolute;
+    left: 33px;
+    top: 46px;
+    width: 210px;
+    height: 238px;
+    border-radius: 48% 52% 44% 56%;
+    background:
+      radial-gradient(70% 62% at 50% 42%, rgba(118, 61, 195, .18), transparent 62%),
+      radial-gradient(50% 45% at 44% 54%, rgba(26, 8, 49, .68), transparent 74%);
+    filter: blur(16px);
+    opacity: .86;
+    pointer-events: none;
+  }
+  .grape {
+    position: absolute;
+    height: 5.55rem;
+    width: 5.55rem;
+    background: none;
+    border: 0;
+    padding: 0;
+    cursor: default;
+    transform: scale(var(--scale, 1));
+    transform-origin: center;
+  }
+  .grape-orb {
+    position: relative;
+    isolation: isolate;
+    height: 100%;
+    width: 100%;
+    border-radius: 9999px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: .18rem;
+    text-align: center;
+    overflow: hidden;
+    background:
+      radial-gradient(42% 36% at 36% 23%, rgba(255, 255, 255, .13), transparent 58%),
+      radial-gradient(105% 96% at 48% 28%, #56308b 0%, #33165b 48%, #1e0b3a 100%);
+    box-shadow:
+      inset 0 2px 5px rgba(255,255,255,.13),
+      inset 10px 0 18px rgba(122, 72, 199, .12),
+      inset 0 -18px 22px rgba(12,3,24,.55),
+      0 18px 24px -14px rgba(18, 6, 34, .75);
+    transition: background .25s ease, box-shadow .25s ease, transform .16s ease, filter .25s ease, opacity .25s ease;
+  }
+  .grape-orb::before {
+    content: "";
+    position: absolute;
+    inset: 5px 8px auto 12px;
+    height: 32%;
+    border-radius: 50%;
+    background: radial-gradient(closest-side, rgba(255,255,255,.18), transparent 72%);
+    transform: rotate(-18deg);
+    z-index: -1;
+  }
+  .grape-orb::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 1px rgba(218, 196, 255, .08);
+    z-index: 3;
+    pointer-events: none;
+  }
+  .g-lb {
+    display: block;
+    max-width: 5rem;
+    font-family: var(--font-sans);
+    font-size: .7rem;
+    font-weight: 600;
+    line-height: 1.04;
+    color: rgba(250, 245, 255, .84);
+    text-shadow:
+      0 1px 1px rgba(9, 3, 20, .62),
+      0 -1px 0 rgba(211, 178, 246, .16);
+  }
+  .g-ic, .g-lb { opacity: 0; transition: opacity .28s ease; }
+  .g-ic {
+    color: #d8b9fb;
+    filter:
+      drop-shadow(0 1px 0 rgba(255,255,255,.08))
+      drop-shadow(0 0 7px rgba(176, 105, 234, .18));
+  }
+
+  .grape[data-tone="center"] .grape-orb {
+    background:
+      radial-gradient(42% 36% at 36% 22%, rgba(255,255,255,.16), transparent 60%),
+      radial-gradient(106% 98% at 48% 28%, #5e3596 0%, #38186a 48%, #200d3f 100%);
+  }
+  .grape[data-tone="shadow"] .grape-orb {
+    background:
+      radial-gradient(42% 36% at 38% 22%, rgba(255,255,255,.1), transparent 58%),
+      radial-gradient(108% 100% at 48% 30%, #3d2168 0%, #281149 58%, #19082f 100%);
+    box-shadow:
+      inset 0 2px 4px rgba(255,255,255,.08),
+      inset 0 -18px 22px rgba(8, 2, 17, .68),
+      0 14px 22px -16px rgba(20, 5, 35, .66);
+  }
+
+  /* ACTIVE family: stamped content visible, selectable */
+  .grape[data-active="true"] { cursor: pointer; }
+  .grape[data-active="true"] .g-ic, .grape[data-active="true"] .g-lb { opacity: 1; }
+  /* The grape in the receded "shadow" slot sits behind the center orb; when its
+     family is active, lift it forward so it's clickable (e.g. Per-app on Refine).
+     Blanks never go active, so this never lifts a filler orb. */
+  .grape[data-tone="shadow"][data-active="true"] { z-index: 18 !important; }
+  /* BLANK filler orbs (how-it-works): complete the cluster shape, never interactive.
+     Styled like the receded inactive-family grapes so the silhouette matches. */
+  .grape-blank { cursor: default; pointer-events: none; }
+  .grape-blank .grape-orb { filter: brightness(.82) saturate(.84); opacity: .85; box-shadow: inset 0 2px 3px rgba(255,255,255,.07), inset 0 -14px 20px rgba(10,3,20,.62), 0 10px 18px -14px rgba(10,3,20,.65); }
+  /* INACTIVE family: plain dark grapes, recede into the bunch */
+  .grape[data-active="false"] .grape-orb { filter: brightness(.82) saturate(.84); opacity: .88; box-shadow: inset 0 2px 3px rgba(255,255,255,.07), inset 0 -14px 20px rgba(10,3,20,.62), 0 10px 18px -14px rgba(10,3,20,.65); }
+  .grape[data-active="false"] .g-ic { filter: none; }
+
+  .grape[data-active="true"]:hover { z-index: 20; }
+  .grape[data-active="true"]:hover .grape-orb { transform: translateY(-3px); box-shadow: inset 0 2px 4px rgba(255,255,255,.16), inset 0 -14px 20px rgba(10,3,20,.55), 0 18px 28px -13px rgba(10,3,20,.6); }
+  .grape:focus-visible { outline: none; }
+  .grape[data-active="true"]:focus-visible .grape-orb { box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 55%, transparent), inset 0 -10px 18px rgba(10,3,20,.5); }
+
+  /* SELECTED: glows bright violet */
+  .grape[data-selected="true"][data-active="true"] { z-index: 30 !important; }
+  .grape[data-selected="true"][data-active="true"] .grape-orb {
+    background:
+      radial-gradient(42% 36% at 38% 22%, rgba(255,255,255,.24), transparent 60%),
+      radial-gradient(120% 112% at 50% 24%, #c79bf0 0%, #9251df 48%, #6124b4 100%);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-grape-200) 80%, transparent), 0 0 36px -2px color-mix(in srgb, var(--color-grape-400) 95%, transparent), inset 0 2px 6px rgba(255,255,255,.3), inset 0 -15px 20px rgba(40,15,80,.45);
+    transform: translateY(-5px) scale(1.035);
+  }
+  .grape[data-selected="true"][data-active="true"] .g-lb { color: #fff; text-shadow: 0 1px 1px rgba(60,20,110,.5), 0 0 12px rgba(255,255,255,.22); }
+  .grape[data-selected="true"][data-active="true"] .g-ic { filter: drop-shadow(0 0 10px rgba(255,255,255,.24)); }
+  .grape[data-selected="true"][data-active="true"] .g-ic :global(g:first-child) { stroke: #552493; stroke-opacity: .48; }
+  .grape[data-selected="true"][data-active="true"] .g-ic :global(g:last-child) { stroke: #f4e8ff; stroke-opacity: .94; }
+
+  /* Fixed height (fits the longest 2-line preview) so hovering a grape — which
+     swaps this description — never reflows the column and jogs the demo card. */
+  /* Fixed height (reserved for the longest ~3-line description) so switching grapes
+     never reflows the column — but tall enough that Fuller cleanup / Per-app aren't clipped. */
+  .bunch-preview { margin-top: 1.6rem; max-width: 19rem; font-size: .82rem; line-height: 1.45; color: var(--color-text-muted); height: 4.5em; overflow: hidden; }
+  .bunch-preview b { color: var(--color-text); font-weight: 600; }
+
+  /* demo panel */
+  .demo-stack {
+    position: relative;
+  }
+  .demo-backplate {
+    display: none;
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    border-radius: .95rem;
+    background:
+      linear-gradient(180deg, #1c2128, #171c22);
+    border: 1px solid rgba(255,255,255,.10);
+    box-shadow: 0 26px 64px -30px rgba(8,3,18,.7);
+    pointer-events: none;
+  }
+  .demo-card {
+    position: relative;
+    z-index: 12;
+    overflow: hidden;
+    border-radius: .95rem;
+    border: 1px solid transparent;
+    background: linear-gradient(90deg, transparent 0 1.05rem, #1c2128 1.05rem 100%);
+    padding: 1.25rem 1.4rem;
+    box-shadow: none;
+    color: #e2e8f0;
+  }
+  .demo-card > * {
+    position: relative;
+    z-index: 1;
+  }
+  @media (min-width: 1024px) {
+    .demo-backplate { display: block; }
+  }
+  .demo-ic { display:inline-flex; height:1.9rem; width:1.9rem; align-items:center; justify-content:center; border-radius:.55rem; background: color-mix(in srgb, var(--color-grape-400) 30%, transparent); color: var(--color-grape-100); }
+  .chip { flex-shrink:0; border-radius:.5rem; padding:.18rem .6rem; font-size:.68rem; font-weight:600; letter-spacing:.02em; }
+  .chip-on  { color:#bbf7d0; background: color-mix(in srgb, #34d399 16%, transparent); border:1px solid color-mix(in srgb, #34d399 32%, transparent); }
+  .chip-byo { color: rgba(255,255,255,.6); background: rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.14); }
+  .chip-raw { color: rgba(255,255,255,.45); background: rgba(255,255,255,.03); border:1px dashed rgba(255,255,255,.18); }
+  .refine-instr { margin-top:.85rem; border-left:2px solid color-mix(in srgb, var(--color-accent) 60%, transparent); padding-left:.7rem; font-size:.8rem; line-height:1.5; color: rgba(255,255,255,.78); }
+  .preset-chip { border-radius:9999px; border:1px solid rgba(255,255,255,.15); padding:.18rem .65rem; font-size:.66rem; font-weight:600; color: rgba(255,255,255,.6); }
+  .preset-on { color:#fcd9a3; background: color-mix(in srgb, var(--color-accent) 22%, transparent); border-color: color-mix(in srgb, var(--color-accent) 80%, transparent); }
+  .ba-label { font-size:.6rem; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color: rgba(255,255,255,.38); }
+  .ba-before { margin-top:.25rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:.82rem; line-height:1.5; color: rgba(255,255,255,.55); }
+  .ba-arrow { margin:.4rem 0; font-size:.8rem; color: rgba(255,255,255,.3); }
+  .ba-after { margin-top:.25rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:.82rem; line-height:1.5; color:#f1f5f9; }
+  /* `:global(.mk)` — the highlighted tokens live inside set:html / runtime-injected
+     content, which Astro does NOT stamp with the scope hash; a plain scoped `.mk`
+     selector would never match them. The ancestor `.ba-after` is still scoped. */
+  .ba-after :global(.mk) { color:#e9d5ff; background: color-mix(in srgb, var(--color-grape-400) 45%, transparent); border-radius:3px; padding:0 .2em; font-weight:600; }
+  .attach { margin-top:.85rem; display:inline-flex; align-items:center; gap:.4rem; border-radius:.45rem; border:1px solid color-mix(in srgb, var(--color-accent) 40%, transparent); background: color-mix(in srgb, var(--color-accent) 10%, transparent); padding:.25rem .6rem; font-size:.7rem; font-weight:500; color:#fcd9a3; }
+  .attach-dot { height:.4rem; width:.4rem; border-radius:9999px; background: var(--color-accent); }
+  .demo-foot { margin-top:1.1rem; display:flex; align-items:center; justify-content:space-between; gap:.75rem; border-top:1px solid rgba(255,255,255,.1); padding-top:.8rem; }
+  .foot-paste { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:.62rem; letter-spacing:.1em; text-transform:uppercase; color: rgba(255,255,255,.4); }
+  .foot-actions { display:flex; align-items:center; gap:.5rem; font-size:.68rem; color: rgba(255,255,255,.5); }
+  .foot-actions b { border-radius:.4rem; background: var(--color-accent); padding:.18rem .6rem; color:#fff; font-weight:600; }
+
+  /* SPIKE: three-family visibility. Only the active family's grapes occupy the
+     bunch — the how-it-works overlay grapes reuse the same positions, so we hide
+     whichever family isn't active. Cleanup/Refine keep their existing
+     receded-inactive look between themselves; the how-it-works grapes only appear
+     on their own tab. */
+  #explorer[data-tab="howitworks"] .grape:not([data-group="howitworks"]) { display: none; }
+  #explorer:not([data-tab="howitworks"]) .grape[data-group="howitworks"] { display: none; }
+
+  /* Step indicator for the interactive walkthroughs: dots + "Step N of M" (in .rw-steps). */
+  .pager-dots { display:inline-flex; gap:.4rem; }
+  .stepper-dot { height:.42rem; width:.42rem; border-radius:9999px; background: color-mix(in srgb, var(--color-grape) 22%, var(--color-border)); transition: background .18s ease, width .18s ease; }
+  .stepper-dot[data-on="true"] { width:1.1rem; background: var(--color-grape); }
+  .pager-status { font-size:.72rem; letter-spacing:.02em; color: var(--color-text-subtle); }
+  .pager-status b { color: var(--color-text-muted); font-weight:700; }
+  /* When an interactive demo is showing, drop the dark backplate so the
+     coachmark + step indicator read on the light section bg. */
+  .demo-stack:has(.rw-demo:not([hidden])) .demo-backplate,
+  .demo-stack:has(.wf-demo:not([hidden])) .demo-backplate,
+  .demo-stack:has(.rc-demo:not([hidden])) .demo-backplate,
+  .demo-stack:has(.ai-demo:not([hidden])) .demo-backplate,
+  .demo-stack:has(.qk-demo:not([hidden])) .demo-backplate,
+  .demo-stack:has(.vo-demo:not([hidden])) .demo-backplate,
+  .demo-stack:has(.rl-demo:not([hidden])) .demo-backplate { display: none; }
+
+  /* BUGFIX: walkthrough cards hide the backplate, so the demo-card's transparent
+     left strip (a stacked-card flourish that normally reveals the backplate) would
+     instead expose the flow-line SVG. Give walkthrough cards a SOLID background. */
+  .rw-card { background: #1c2128; }
+  /* Walkthrough panels are a taller stack (card + coachmark + step indicator), and
+     the interactive demo's card GROWS between stages (short at "attach", tall at the
+     result). With the grid's default items-center, a tall stage made the demo column
+     the tallest grid item, so the row grew and the LEFT column re-centered downward —
+     pushing the tabs down (widening the gap under the paragraph), dragging them onto
+     the card top again, and floating the fixed-offset flow lines above the grapes.
+     Fix: pin BOTH columns to the top on this tab so the card grows DOWNWARD only —
+     the tabs, grapes, and flow lines never move, and the card clears the tabs by a
+     fixed 7.5rem regardless of which stage is showing. */
+  @media (min-width: 1024px) {
+    #explorer[data-tab="howitworks"] { align-items: start; }
+    #explorer[data-tab="howitworks"] .demo-stack { margin-top: 7.5rem; }
+  }
+  #explorer[data-tab="howitworks"] .flow-lines { top: 96px; }
+
+  /* SPIKE: interactive Reference Windows demo. The dark .rw-card is the "example";
+     the coachmark + pager sit below it on the light section bg. */
+  .rw-card { min-height: 14rem; }
+  .rw-stage { margin-top: 1rem; }
+  .rw-listening { display:flex; align-items:center; gap:.5rem; font-size:.82rem; color: rgba(255,255,255,.55); }
+  .rw-mic-dot { height:.5rem; width:.5rem; border-radius:9999px; background:#f87171; box-shadow:0 0 0 0 rgba(248,113,113,.5); animation: rw-rec 1.4s ease-in-out infinite; }
+  .rw-space { margin-top:1.1rem; display:inline-flex; align-items:center; gap:.5rem; border-radius:.6rem; border:1px solid rgba(216,185,251,.28); background:rgba(255,255,255,.05); padding:.5rem .8rem; font-size:.85rem; color:rgba(255,255,255,.85); cursor:pointer; animation: rw-pulse 1.9s ease-in-out infinite; }
+  .rw-space:hover { background:rgba(255,255,255,.1); }
+  .rw-keycap { border-radius:.35rem; border:1px solid rgba(255,255,255,.28); border-bottom-width:2px; background:rgba(255,255,255,.1); padding:.05rem .5rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:.72rem; color:#fff; }
+  .rw-footnote { margin-top:.5rem; text-align:center; font-size:.68rem; color: var(--color-text-subtle); }
+
+  /* Anchored breakout window-picker — surfaces OVER the explorer on the same dark
+     product surface as the overlay card (not a white sheet), so it reads as the
+     app popping up rather than a foreign panel. Subtle dimmed backdrop; clean
+     app tiles (glyph + name + one-line context), no emoji, no fake title bars. */
+  .rw-picker-overlay { position:absolute; inset:-1.5rem; z-index:50; display:flex; align-items:center; justify-content:center; padding:1rem; }
+  .rw-picker-backdrop { position:absolute; inset:0; background: color-mix(in srgb, var(--color-grape-950) 12%, transparent); }
+  .rw-picker-panel { position:relative; z-index:1; width:100%; max-width:32rem; border-radius:1rem; border:1px solid rgba(216,185,251,.16); background: linear-gradient(180deg, #20262e, #171c22); box-shadow: 0 40px 90px -32px rgba(10,4,20,.72); padding:1.3rem; animation: rw-pop .22s cubic-bezier(.22,.72,.2,1.2) both; }
+  .rw-picker-title { text-align:center; font-size:.86rem; font-weight:600; letter-spacing:.01em; color: rgba(255,255,255,.9); }
+  .rw-picker-grid { margin-top:1.1rem; display:grid; grid-template-columns: repeat(3, 1fr); gap:.6rem; }
+  .rw-appwin { display:flex; flex-direction:column; align-items:flex-start; gap:.6rem; border-radius:.7rem; border:1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.03); padding:.85rem .85rem 1rem; text-align:left; cursor:pointer; transition: transform .14s ease, border-color .14s ease, background-color .14s ease; }
+  .rw-appwin:hover, .rw-appwin:focus-visible { transform: translateY(-2px); border-color: color-mix(in srgb, var(--color-grape-300) 55%, transparent); background: color-mix(in srgb, var(--color-grape-400) 14%, transparent); outline:none; }
+  .rw-appwin-ic { display:inline-flex; height:2.1rem; width:2.1rem; align-items:center; justify-content:center; border-radius:.6rem; background: color-mix(in srgb, var(--color-grape-400) 30%, transparent); color: var(--color-grape-100); }
+  .rw-appwin-glyph { width:1.15rem; height:1.15rem; }
+  .rw-appwin-meta { display:flex; flex-direction:column; gap:.1rem; }
+  .rw-appwin-name { font-size:.82rem; font-weight:600; color: rgba(255,255,255,.92); }
+  .rw-appwin-sub { font-size:.7rem; color: rgba(216,185,251,.62); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .rw-picker-cancel { margin:1.1rem auto 0; display:block; border-radius:9999px; border:1px solid rgba(255,255,255,.16); background: transparent; padding:.35rem 1rem; font-size:.76rem; font-weight:600; color: rgba(255,255,255,.62); cursor:pointer; transition: color .14s ease, border-color .14s ease; }
+  .rw-picker-cancel:hover { border-color: rgba(255,255,255,.4); color: rgba(255,255,255,.9); }
+  @keyframes rw-pop { from { opacity:0; transform: scale(.94); } to { opacity:1; transform: scale(1); } }
+  /* On desktop, anchor the panel directly over the demo card (right column) and
+     size it to cover the card with a small breakout margin, so the example window
+     doesn't peek out top/right — it reads as the overlay surfacing the chooser.
+     Coordinates are keyed to this component's layout: 300px sidebar + gap-x-12
+     (3rem) locate the right column; the how-it-works demo-stack sits at
+     margin-top 7.5rem (see the align-self:start rule); the overlay is inset -1.5rem.
+     Card = max-w-md (28rem) × min-height 14rem; 0.75rem breakout on each edge. */
+  @media (min-width: 1024px) {
+    .rw-picker-panel {
+      position: absolute;
+      top: 8.25rem;                    /* 7.5rem card top − 0.75rem breakout + 1.5rem overlay inset */
+      left: calc(300px + 3.75rem);     /* 300px sidebar + 3rem gap − 0.75rem breakout + 1.5rem inset */
+      width: calc(28rem + 1.5rem);     /* card width + breakout both sides */
+      max-width: none;
+      min-height: calc(14rem + 1.5rem);/* card min-height + breakout top/bottom */
+    }
+  }
+  .rw-steps { margin-top:1rem; display:flex; align-items:center; justify-content:center; gap:.6rem; }
+
+  /* SPIKE: whole-flow spine demo — reuses .rw-card / .rw-stage / .rw-mic / .ba-*. */
+  .wf-status { display:flex; align-items:center; gap:.5rem; font-size:.82rem; color: rgba(255,255,255,.6); }
+  .wf-corrections { margin-top:.7rem; display:flex; flex-wrap:wrap; gap:.45rem; }
+  .wf-corr { display:inline-flex; align-items:center; gap:.4rem; border-radius:9999px; border:1px solid color-mix(in srgb, var(--color-grape-300) 40%, transparent); background: color-mix(in srgb, var(--color-grape-400) 16%, transparent); padding:.2rem .65rem .2rem .28rem; font-size:.72rem; color: var(--color-grape-100); cursor:pointer; transition: opacity .14s ease, border-color .14s ease; }
+  .wf-corr b { display:inline-flex; align-items:center; justify-content:center; height:1.2rem; width:1.2rem; border-radius:9999px; background: color-mix(in srgb, var(--color-grape-400) 48%, transparent); font-size:.66rem; font-weight:700; color:#fff; }
+  .wf-corr:hover { border-color: var(--color-grape-300); }
+  .wf-corr[data-off="true"] { opacity:.5; }
+  .wf-corr[data-off="true"] span, .wf-corr[data-off="true"] { text-decoration: line-through; text-decoration-color: rgba(255,255,255,.4); }
+  .ba-after :global(.mk.wf-off) { color: rgba(255,255,255,.55); background: none; text-decoration: line-through; text-decoration-color: rgba(255,255,255,.35); font-weight:400; }
+  .wf-hint { margin-top:.75rem; font-size:.72rem; color: rgba(255,255,255,.5); }
+  .wf-kbd { display:inline-flex; align-items:center; gap:.3rem; border:none; background:none; padding:0; font:inherit; color: rgba(255,255,255,.75); cursor:pointer; }
+  .wf-kbd:hover { color:#fff; }
+  .ba-after.wf-editing { outline:1px solid color-mix(in srgb, var(--color-accent) 60%, transparent); border-radius:.4rem; padding:.3rem .45rem; background: rgba(255,255,255,.03); }
+
+  /* SPIKE: recovery demo — the "lost" notice + its warning glyph. */
+  .rc-lost { margin-top:.4rem; display:flex; align-items:flex-start; gap:.5rem; font-size:.85rem; line-height:1.45; color: rgba(255,255,255,.62); }
+  .rc-warn { flex-shrink:0; display:inline-flex; align-items:center; justify-content:center; height:1.15rem; width:1.15rem; border-radius:9999px; background: color-mix(in srgb, var(--color-accent) 24%, transparent); color:#fcd9a3; font-size:.72rem; font-weight:700; }
+
+  /* SPIKE: "The AI you bring" — segmented engine picker + where-it-runs note. */
+  .ai-seg { margin-top:1rem; display:inline-flex; gap:.25rem; padding:.2rem; border-radius:.7rem; border:1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.04); }
+  .ai-opt { border-radius:.5rem; border:1px solid transparent; background:none; padding:.32rem .7rem; font-size:.76rem; font-weight:600; color: rgba(255,255,255,.6); cursor:pointer; transition: color .14s ease, background-color .14s ease, border-color .14s ease; }
+  .ai-opt:hover { color: rgba(255,255,255,.9); }
+  .ai-opt.is-on { color:#fff; background: color-mix(in srgb, var(--color-grape-400) 34%, transparent); border-color: color-mix(in srgb, var(--color-grape-300) 45%, transparent); }
+  .ai-where { margin-top:.7rem; font-size:.73rem; line-height:1.45; color: rgba(216,185,251,.66); }
+
+  /* SPIKE: "Quick & continuous" — a mock focused field the dictation types into. */
+  .qk-field { margin-top:1rem; border-radius:.6rem; border:1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.04); padding:.7rem .8rem; min-height:4.2rem; }
+  .qk-fieldlabel { font-size:.62rem; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color: rgba(255,255,255,.34); }
+  .qk-text { margin-top:.4rem; font-size:.9rem; line-height:1.5; color:#f1f5f9; min-height:1.5em; }
+
+  /* SPIKE: voice enrollment — the term to teach + the read-aloud line. */
+  .vo-teach { margin-top:.5rem; display:flex; align-items:center; flex-wrap:wrap; gap:.5rem; font-size:.82rem; color: rgba(255,255,255,.6); }
+  .vo-term { border-radius:.4rem; background: color-mix(in srgb, var(--color-grape-400) 40%, transparent); color:#e9d5ff; padding:.1rem .5rem; font-weight:700; }
+  .vo-vs { font-size:.74rem; color: rgba(255,255,255,.42); }
+  .vo-read { margin-top:.9rem; border-left:2px solid color-mix(in srgb, var(--color-grape-300) 45%, transparent); padding-left:.7rem; font-size:.85rem; line-height:1.5; color: rgba(255,255,255,.8); }
+
+  /* SPIKE: refine loop — the "or just Accept" hint under the preset chips. */
+  .rl-hint { margin-top:.75rem; font-size:.73rem; color: rgba(255,255,255,.5); }
+  .rw-utterance { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .rw-caret { display:inline-block; width:2px; height:1em; margin-left:1px; vertical-align:text-bottom; background:rgba(255,255,255,.6); animation: rw-blink 1s step-end infinite; }
+  .rw-mic { margin-top:1.1rem; display:inline-flex; align-items:center; gap:.5rem; border-radius:9999px; border:1px solid color-mix(in srgb, var(--color-accent) 70%, transparent); background: var(--color-accent-hover); padding:.5rem .9rem; font-size:.85rem; font-weight:600; color:#fff; cursor:pointer; animation: rw-pulse 1.9s ease-in-out infinite; }
+  .rw-mic[data-recording="true"] { background:#b91c1c; border-color:#b91c1c; animation:none; }
+  .rw-replay { margin-top:1rem; display:inline-flex; align-items:center; gap:.35rem; border-radius:9999px; border:1px solid rgba(255,255,255,.2); background:rgba(255,255,255,.05); padding:.35rem .8rem; font-size:.78rem; font-weight:600; color:rgba(255,255,255,.8); cursor:pointer; }
+  .rw-replay:hover { background:rgba(255,255,255,.12); color:#fff; }
+  .rw-coach { margin-top:.9rem; text-align:center; font-size:.82rem; line-height:1.45; color: var(--color-text-muted); min-height:2.6em; }
+  .rw-coach b { color: var(--color-text); font-weight:600; }
+  @keyframes rw-pulse { 0%,100% { box-shadow:0 0 0 0 rgba(216,185,251,0); } 50% { box-shadow:0 0 0 4px rgba(216,185,251,.16); } }
+  @keyframes rw-rec { 0%,100% { box-shadow:0 0 0 0 rgba(248,113,113,.5); } 50% { box-shadow:0 0 0 4px rgba(248,113,113,0); } }
+  @keyframes rw-blink { 0%,100% { opacity:1; } 50% { opacity:0; } }
+
+  /* Mobile (< lg): the flow lines are already hidden, so drop the two-column
+     grid and stack simply — the interactive bunch on top, the demo card below.
+     Cap everything to the viewport and let the monospace before/after wrap so
+     the dark card never overflows the screen (the grid's default auto track
+     sizes to the card's max-content and pushes it off-screen otherwise). */
+  @media (max-width: 1023px) {
+    #explorer { display: block; }
+    #explorer > .relative { max-width: 100%; }
+    /* Let tab titles wrap on small screens — the fixed 3-col grid + nowrap titles
+       ("Refine & Shape" / "How it works") otherwise set a min-content floor that
+       overflows a ~320px viewport. Titles only wrap when they don't fit. */
+    .group-tab-title { white-space: normal; }
+    .bunch { margin-left: auto; margin-right: auto; }
+    /* The bunch is a fixed 286px box (absolutely-positioned grapes), which overflows
+       the content column on the narrowest phones (≤~334px). zoom shrinks the layout
+       box too (unlike transform), so the page never scrolls horizontally. */
+    @media (max-width: 360px) { .bunch { zoom: 0.86; } }
+    .bunch-preview { margin-left: auto; margin-right: auto; text-align: center; max-width: 22rem; }
+    .demo-stack { width: 100%; max-width: 100%; margin-top: 2rem; }
+    .demo-card { max-width: 100%; }
+    .demo-card > .flex { flex-wrap: wrap; }
+    .ba-before, .ba-after { overflow-wrap: anywhere; }
+    .foot-paste, .foot-actions { font-size: .6rem; }
+    .rw-picker-grid { grid-template-columns: 1fr; }
+    .rw-picker-overlay { inset: 0; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .grape-orb, .g-ic, .g-lb { transition: none; }
+    .group-tab-title, .group-tab-copy, .group-tab::after { transition: none; }
+    #explorer.is-pulsing .flow-runners path { animation: none; }
+    .rw-space, .rw-mic, .rw-mic-dot, .rw-caret { animation: none !important; }
+    .rw-picker-panel { animation: none !important; }
+  }
+</style>
+
+<script is:inline>
+  (() => {
+    const root = document.getElementById('explorer');
+    if (!root) return;
+    const tabs = Array.from(root.querySelectorAll('[data-tab]'));
+    const grapes = Array.from(root.querySelectorAll('.grape'));
+    const panels = Array.from(root.querySelectorAll('[data-panel]'));
+    const preview = root.querySelector('[data-preview]');
+    const stepperResets = {};  // SPIKE: panelId -> reset-to-step-1 fn (populated below)
+    let rwCancel = () => {};   // SPIKE: cancels the RW demo's in-flight animation (set below)
+    let wfCancel = () => {};   // SPIKE: cancels the whole-flow demo's in-flight animation (set below)
+    let rcCancel = () => {};   // SPIKE: cancels the recovery demo's in-flight animation (set below)
+    let qkCancel = () => {};   // SPIKE: cancels the quick demo's in-flight typing (set below)
+    let voCancel = () => {};   // SPIKE: cancels the voice demo's in-flight animation (set below)
+
+    const showPreview = (g) => { if (preview) preview.innerHTML = '<b>' + g.dataset.name + '</b> — ' + g.dataset.desc; };
+    const pulseFlow = () => {
+      root.classList.remove('is-pulsing');
+      void root.offsetWidth;
+      root.classList.add('is-pulsing');
+    };
+    const selectGrape = (g) => {
+      rwCancel();  // SPIKE: stop any RW-demo animation when the selection changes
+      wfCancel();  // SPIKE: stop any whole-flow-demo animation when the selection changes
+      rcCancel();  // SPIKE: stop any recovery-demo animation when the selection changes
+      qkCancel();  // SPIKE: stop any quick-demo typing when the selection changes
+      voCancel();  // SPIKE: stop any voice-demo animation when the selection changes
+      grapes.forEach((x) => {
+        const sel = x === g;
+        x.setAttribute('data-selected', sel ? 'true' : 'false');
+        x.setAttribute('aria-pressed', sel ? 'true' : 'false');
+      });
+      panels.forEach((p) => { p.hidden = p.getAttribute('data-panel') !== g.dataset.id; });
+      if (stepperResets[g.dataset.id]) stepperResets[g.dataset.id]();
+      showPreview(g);
+      pulseFlow();
+    };
+    const setTab = (group) => {
+      tabs.forEach((t) => {
+        const on = t.dataset.tab === group;
+        t.setAttribute('aria-selected', on ? 'true' : 'false');
+        t.tabIndex = on ? 0 : -1;
+      });
+      grapes.forEach((g) => {
+        if (g.dataset.blank === 'true') return;  // filler orbs stay inert on every tab
+        const active = g.dataset.group === group;
+        g.dataset.active = active ? 'true' : 'false';
+        g.tabIndex = active ? 0 : -1;
+        g.disabled = !active;
+        g.setAttribute('aria-hidden', active ? 'false' : 'true');
+      });
+      root.dataset.tab = group;  // SPIKE: drives which family's grapes show (CSS)
+      const panel = root.querySelector('#explorer-bunch');
+      if (panel) panel.setAttribute('aria-labelledby', 'ftab-' + group);
+      const first = grapes.find((g) => g.dataset.group === group && g.dataset.tone === 'center') || grapes.find((g) => g.dataset.group === group);
+      if (first) selectGrape(first);
+    };
+
+    // Roving-tabindex tablist nav (model: DocTabs) — ArrowLeft/Right + Home/End move
+    // focus between the two group tabs and activate the target group.
+    const activateTab = (i, focus) => {
+      setTab(tabs[i].dataset.tab);
+      if (focus) tabs[i].focus();
+    };
+    tabs.forEach((t, i) => {
+      t.addEventListener('click', () => activateTab(i, false));
+      t.addEventListener('keydown', (e) => {
+        const last = tabs.length - 1;
+        if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); activateTab(i === last ? 0 : i + 1, true); }
+        else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); activateTab(i === 0 ? last : i - 1, true); }
+        else if (e.key === 'Home') { e.preventDefault(); activateTab(0, true); }
+        else if (e.key === 'End') { e.preventDefault(); activateTab(last, true); }
+      });
+    });
+    grapes.forEach((g) => {
+      g.addEventListener('click', () => { if (g.dataset.active === 'true') selectGrape(g); });
+      g.addEventListener('mouseenter', () => { if (g.dataset.active === 'true') showPreview(g); });
+      g.addEventListener('focus', () => { if (g.dataset.active === 'true') showPreview(g); });
+    });
+    const bunchEl = root.querySelector('.bunch');
+    if (bunchEl) bunchEl.addEventListener('mouseleave', () => {
+      const sel = grapes.find((g) => g.getAttribute('data-selected') === 'true');
+      if (sel) showPreview(sel);
+    });
+
+    // SPIKE: interactive Reference Windows demo — a 4-stage guided state machine.
+    // Focus follows only GESTURE-driven advances (never on grape-select or pager
+    // advance, so keyboard pager-repeat stays intact); all timers cancel on any
+    // stage exit / grape switch; Next auto-completes instantly.
+    const rw = root.querySelector('.rw-demo');
+    const overlay = root.querySelector('[data-rw-overlay]');
+    if (rw && overlay) {
+      const stages = Array.from(rw.querySelectorAll('.rw-stage'));
+      const dots = Array.from(rw.querySelectorAll('.rw-steps .stepper-dot'));
+      const cur = rw.querySelector('[data-rw-cur]');
+      const coach = rw.querySelector('[data-rw-coach]');
+      const spaceBtn = rw.querySelector('[data-rw-space]');
+      const micBtn = rw.querySelector('[data-rw-mic]');
+      const replayBtn = rw.querySelector('[data-rw-replay]');
+      const utteranceEl = rw.querySelector('[data-rw-utterance]');
+      const chipEls = Array.from(rw.querySelectorAll('[data-rw-chip]'));
+      const beforeEl = rw.querySelector('[data-rw-before]');
+      const afterEl = rw.querySelector('[data-rw-after]');
+      const appwins = Array.from(overlay.querySelectorAll('[data-rw-appwin]'));
+      const cancels = Array.from(overlay.querySelectorAll('[data-rw-cancel]'));
+      const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const COACH = [
+        'Give the model context — tap the <b>Space</b> key in the window above.',
+        'Choose a window to bring in — click one, or press Esc to cancel.',
+        'Now say your question — <b>tap to talk</b>.',
+        "Parleq read that window to answer accurately. That's Reference Windows.",
+      ];
+      let stage = 0, typing = null, recTimer = null;
+      let utterance = 'does thursday work for the check in';
+      const cancel = () => {
+        if (typing) { clearInterval(typing); typing = null; }
+        if (recTimer) { clearTimeout(recTimer); recTimer = null; }
+        if (micBtn) micBtn.removeAttribute('data-recording');
+      };
+      rwCancel = () => { cancel(); overlay.hidden = true; };
+      const render = (viaGesture) => {
+        cancel();
+        stages.forEach((s) => { s.hidden = Number(s.dataset.rwstage) !== stage; });
+        dots.forEach((d, i) => d.setAttribute('data-on', i === stage ? 'true' : 'false'));
+        if (cur) cur.textContent = String(stage + 1);
+        if (coach) coach.innerHTML = COACH[stage];
+        if (utteranceEl) utteranceEl.textContent = '';
+        overlay.hidden = stage !== 1;  // the breakout picker is open only at the pick stage
+        if (stage === 1 && appwins[0]) appwins[0].focus({ preventScroll: true });
+        else if (viaGesture) {
+          const t = stage === 0 ? spaceBtn : stage === 2 ? micBtn : replayBtn;
+          if (t) t.focus({ preventScroll: true });
+        }
+        if (stage === 3) pulseFlow();
+      };
+      const go = (n, viaGesture) => { stage = Math.max(0, Math.min(3, n)); render(viaGesture); };
+      const pickWindow = (btn) => {
+        utterance = btn.getAttribute('data-utterance') || utterance;
+        const chip = btn.getAttribute('data-chip') || '';
+        const after = btn.getAttribute('data-after') || '';
+        chipEls.forEach((el) => { el.textContent = chip; });
+        if (beforeEl) beforeEl.textContent = utterance;
+        if (afterEl) afterEl.innerHTML = after;
+        go(2, true);
+      };
+      if (spaceBtn) spaceBtn.addEventListener('click', () => go(1, true));
+      appwins.forEach((b) => b.addEventListener('click', () => pickWindow(b)));
+      cancels.forEach((b) => b.addEventListener('click', () => go(0, true)));
+      document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !overlay.hidden) go(0, true); });  // viaGesture=true returns focus to the Space affordance
+      const playMic = () => {
+        if (stage !== 2) return;
+        if (typing) { cancel(); if (utteranceEl) utteranceEl.textContent = utterance; go(3, true); return; }
+        cancel();
+        if (reduce) { if (utteranceEl) utteranceEl.textContent = utterance; go(3, true); return; }
+        if (micBtn) micBtn.setAttribute('data-recording', 'true');
+        let i = 0;
+        typing = setInterval(() => {
+          i += 1;
+          if (utteranceEl) utteranceEl.textContent = utterance.slice(0, i);
+          if (i >= utterance.length) { clearInterval(typing); typing = null; recTimer = setTimeout(() => { recTimer = null; go(3, true); }, 350); }
+        }, 34);
+      };
+      if (micBtn) micBtn.addEventListener('click', playMic);
+      if (replayBtn) replayBtn.addEventListener('click', () => go(0, true));
+      stepperResets['hiw-reference'] = () => { stage = 0; render(false); };
+      render(false);
+    }
+
+    // Shared guard: don't hijack single-key shortcuts (E/R) while the visitor is
+    // typing in a field (input/textarea/contenteditable, incl. the inline edit box).
+    const isTyping = () => {
+      const el = document.activeElement;
+      if (!el) return false;
+      return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable === true;
+    };
+
+    // SPIKE: whole-flow spine demo — press→transcribe(on-device)→cleanup(highlight)→paste.
+    const wf = root.querySelector('.wf-demo');
+    if (wf) {
+      const wstages = Array.from(wf.querySelectorAll('.rw-stage'));
+      const wdots = Array.from(wf.querySelectorAll('.rw-steps .stepper-dot'));
+      const wcur = wf.querySelector('[data-wf-cur]');
+      const wcoach = wf.querySelector('[data-wf-coach]');
+      const wengine = wf.querySelector('[data-wf-engine]');
+      const talkBtn = wf.querySelector('[data-wf-talk]');
+      const cleanBtn = wf.querySelector('[data-wf-clean]');
+      const pasteBtn = wf.querySelector('[data-wf-paste]');
+      const wreplay = wf.querySelector('[data-wf-replay]');
+      const rawEl = wf.querySelector('[data-wf-raw]');
+      const caretEl = wf.querySelector('[data-wf-caret]');
+      const cleanTextEl = wf.querySelector('[data-wf-clean-text]');
+      const cleanTextHTML = cleanTextEl ? cleanTextEl.innerHTML : '';  // pristine markup to restore after inline edits
+      const corrBtns = Array.from(wf.querySelectorAll('[data-wf-undo]'));
+      const editBtn = wf.querySelector('[data-wf-edit]');
+      const wreduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const RAW = wf.dataset.rawtext || '';
+      const WCOACH = [
+        'Hold your hotkey and speak — here, tap to talk.',
+        'Parakeet transcribes on your Mac — your audio never leaves.',
+        'Cleanup fixes it; corrections are highlighted. Undo any, or edit.',
+        'Pasted into the app you were in — captured when you pressed the hotkey.',
+      ];
+      let wstage = 0, wtimer = null, wtype = null;
+      const wcancel = () => { if (wtimer) { clearTimeout(wtimer); wtimer = null; } if (wtype) { clearInterval(wtype); wtype = null; } };
+      const setEngine = () => {
+        if (!wengine) return;
+        const cloud = wstage === 2;
+        wengine.textContent = cloud ? 'Your AI' : 'On-device';
+        wengine.className = 'chip ' + (cloud ? 'chip-byo' : 'chip-on');
+      };
+      const setCorr = (b, off) => {
+        const span = cleanTextEl && cleanTextEl.querySelector('[data-corr="' + b.getAttribute('data-wf-undo') + '"]');
+        if (span) { span.textContent = off ? span.dataset.raw : span.dataset.fixed; span.classList.toggle('wf-off', off); }
+        b.setAttribute('data-off', off ? 'true' : 'false');
+      };
+      const resetCorr = () => corrBtns.forEach((b) => setCorr(b, false));
+      corrBtns.forEach((b) => b.addEventListener('click', () => setCorr(b, b.getAttribute('data-off') !== 'true')));
+      const stopEdit = () => { if (cleanTextEl) { cleanTextEl.contentEditable = 'false'; cleanTextEl.classList.remove('wf-editing'); } };
+      const startEdit = () => {
+        if (wstage !== 2 || !cleanTextEl) return;
+        cleanTextEl.contentEditable = 'true';
+        cleanTextEl.classList.add('wf-editing');
+        cleanTextEl.focus();
+      };
+      const wrender = () => {
+        wcancel();
+        wstages.forEach((s) => { s.hidden = Number(s.dataset.wfstage) !== wstage; });
+        wdots.forEach((d, i) => d.setAttribute('data-on', i === wstage ? 'true' : 'false'));
+        if (wcur) wcur.textContent = String(wstage + 1);
+        if (wcoach) wcoach.textContent = WCOACH[wstage];
+        setEngine();
+        if (cleanBtn) cleanBtn.hidden = true;
+        if (rawEl && wstage < 1) rawEl.textContent = '';
+        if (caretEl) caretEl.style.display = wstage === 1 ? '' : 'none';
+      };
+      const wgo = (n) => { stopEdit(); wstage = Math.max(0, Math.min(3, n)); wrender(); };
+      const playTranscribe = () => {
+        wgo(1);
+        const reveal = () => { if (cleanBtn) cleanBtn.hidden = false; if (caretEl) caretEl.style.display = 'none'; };
+        if (!rawEl) { reveal(); return; }
+        if (wreduce) { rawEl.textContent = RAW; reveal(); return; }
+        rawEl.textContent = '';
+        wtimer = setTimeout(() => {
+          wtimer = null;
+          let i = 0;
+          wtype = setInterval(() => {
+            i += 1;
+            rawEl.textContent = RAW.slice(0, i);
+            if (i >= RAW.length) { clearInterval(wtype); wtype = null; reveal(); }
+          }, 26);
+        }, 620);  // brief "transcribing on-device" beat before the raw text lands
+      };
+      const restoreClean = () => { if (cleanTextEl) cleanTextEl.innerHTML = cleanTextHTML; };
+      const showClean = () => { restoreClean(); resetCorr(); wgo(2); };
+      const showPaste = () => wgo(3);
+      if (talkBtn) talkBtn.addEventListener('click', playTranscribe);
+      if (cleanBtn) cleanBtn.addEventListener('click', showClean);
+      if (pasteBtn) pasteBtn.addEventListener('click', showPaste);
+      if (editBtn) editBtn.addEventListener('click', startEdit);
+      if (wreplay) wreplay.addEventListener('click', () => wgo(0));
+      // "E" edits while the cleanup stage is on-screen (not while already typing in it).
+      document.addEventListener('keydown', (e) => {
+        if ((e.key === 'e' || e.key === 'E') && wstage === 2 && !wf.hidden && !isTyping()) {
+          e.preventDefault(); startEdit();
+        }
+      });
+      const wreset = () => { wcancel(); stopEdit(); restoreClean(); resetCorr(); wstage = 0; wrender(); };
+      wfCancel = () => { wcancel(); stopEdit(); };
+      stepperResets['hiw-flow'] = wreset;
+      wrender();
+    }
+
+    // SPIKE: recovery demo — a lost dictation re-runs from memory on R.
+    const rc = root.querySelector('.rc-demo');
+    if (rc) {
+      const rstages = Array.from(rc.querySelectorAll('.rw-stage'));
+      const rdots = Array.from(rc.querySelectorAll('.rw-steps .stepper-dot'));
+      const rcur = rc.querySelector('[data-rc-cur]');
+      const rcoach = rc.querySelector('[data-rc-coach]');
+      const recoverBtn = rc.querySelector('[data-rc-recover]');
+      const rreplay = rc.querySelector('[data-rc-replay]');
+      const rreduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const RCOACH = [
+        'Closed it too soon? Your last dictation is still in memory — tap R.',
+        'Re-running ASR + cleanup on the held audio — no re-speaking.',
+        'Back, exactly as you said it.',
+      ];
+      let rstage = 0, rtimer = null;
+      const rcancel = () => { if (rtimer) { clearTimeout(rtimer); rtimer = null; } };
+      const rrender = () => {
+        rcancel();
+        rstages.forEach((s) => { s.hidden = Number(s.dataset.rcstage) !== rstage; });
+        rdots.forEach((d, i) => d.setAttribute('data-on', i === rstage ? 'true' : 'false'));
+        if (rcur) rcur.textContent = String(rstage + 1);
+        if (rcoach) rcoach.innerHTML = RCOACH[rstage];
+      };
+      const rgo = (n) => { rstage = Math.max(0, Math.min(2, n)); rrender(); };
+      const recover = () => {
+        rgo(1);
+        if (rreduce) { rgo(2); return; }
+        rtimer = setTimeout(() => { rtimer = null; rgo(2); }, 900);
+      };
+      if (recoverBtn) recoverBtn.addEventListener('click', recover);
+      if (rreplay) rreplay.addEventListener('click', () => rgo(0));
+      // "R" recovers while the demo's lost stage is on-screen.
+      document.addEventListener('keydown', (e) => {
+        if ((e.key === 'r' || e.key === 'R') && rstage === 0 && !rc.hidden && !isTyping()) { e.preventDefault(); recover(); }
+      });
+      rcCancel = () => rcancel();
+      stepperResets['hiw-recover'] = () => { rcancel(); rstage = 0; rrender(); };
+      rrender();
+    }
+
+    // SPIKE: "The AI you bring" — segmented engine picker updates the result inline.
+    const ai = root.querySelector('.ai-demo');
+    if (ai) {
+      const aiOpts = Array.from(ai.querySelectorAll('[data-ai-opt]'));
+      const aiChip = ai.querySelector('[data-ai-chip]');
+      const aiResLabel = ai.querySelector('[data-ai-reslabel]');
+      const aiResult = ai.querySelector('[data-ai-result]');
+      const aiWhere = ai.querySelector('[data-ai-where]');
+      const aiCoach = ai.querySelector('[data-ai-coach]');
+      const AI = {
+        instant: { chip: ['Instant', 'chip-on'], label: 'Fixed · Instant', result: 'So we shipped the <span class="mk">Keavi</span> update — uh, no, two nights ago — up <span class="mk">40%</span>.', where: 'Runs on your Mac — deterministic, no network, no wait.', coach: 'Instant: deterministic on-device fixes — names, numbers, compounds. Fast and private; it won’t rewrite.' },
+        polished: { chip: ['Polished', 'chip-byo'], label: 'Rewritten · Polished', result: 'We shipped the <span class="mk">Keavi</span> update two nights ago, up <span class="mk">40%</span>.', where: 'The model you set — your own cloud, or on-device Gemma. No Parleq server in the path.', coach: 'Polished: a real model rewrites — resolves “no, two nights ago,” drops the filler. Your cloud, or on-device Gemma.' },
+        raw: { chip: ['Raw', 'chip-raw'], label: 'Raw · no cleanup', result: 'So we shipped the kiwi update — uh, no, two nights ago — up forty percent.', where: 'Skip cleanup — paste exactly as transcribed.', coach: 'Raw: no cleanup — your words pasted exactly as transcribed.' },
+      };
+      const pickAI = (key) => {
+        const d = AI[key]; if (!d) return;
+        aiOpts.forEach((b) => { const on = b.getAttribute('data-ai-opt') === key; b.classList.toggle('is-on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+        if (aiChip) { aiChip.textContent = d.chip[0]; aiChip.className = 'chip ' + d.chip[1]; }
+        if (aiResLabel) aiResLabel.textContent = d.label;
+        if (aiResult) aiResult.innerHTML = d.result;
+        if (aiWhere) aiWhere.textContent = d.where;
+        if (aiCoach) aiCoach.textContent = d.coach;
+      };
+      aiOpts.forEach((b) => b.addEventListener('click', () => pickAI(b.getAttribute('data-ai-opt'))));
+      stepperResets['hiw-ai'] = () => pickAI('instant');
+      pickAI('instant');
+    }
+
+    // SPIKE: "Quick & continuous" — double-tap types straight into the mock field.
+    const qk = root.querySelector('.qk-demo');
+    if (qk) {
+      const qkText = qk.querySelector('[data-qk-text]');
+      const qkCaret = qk.querySelector('[data-qk-caret]');
+      const qkGo = qk.querySelector('[data-qk-go]');
+      const qkReplay = qk.querySelector('[data-qk-replay]');
+      const qkCoach = qk.querySelector('[data-qk-coach]');
+      const qreduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const QTEXT = "Sounds good — I'll have the draft ready by Friday.";
+      const QC0 = 'Skip the overlay — double-tap and hold, speak, release. Text lands right in the field.';
+      const QC1 = 'No overlay, no review — straight into the app. Great for quick replies.';
+      let qtype = null;
+      const qcancel = () => { if (qtype) { clearInterval(qtype); qtype = null; } };
+      const qreset = () => {
+        qcancel();
+        if (qkText) qkText.textContent = '';
+        if (qkCaret) qkCaret.style.display = '';
+        if (qkGo) qkGo.hidden = false;
+        if (qkReplay) qkReplay.hidden = true;
+        if (qkCoach) qkCoach.textContent = QC0;
+      };
+      const qdone = () => {
+        if (qkCaret) qkCaret.style.display = 'none';
+        if (qkReplay) qkReplay.hidden = false;
+        if (qkCoach) qkCoach.textContent = QC1;
+      };
+      const qplay = () => {
+        qcancel();
+        if (qkGo) qkGo.hidden = true;
+        if (qreduce) { if (qkText) qkText.textContent = QTEXT; qdone(); return; }
+        let i = 0;
+        qtype = setInterval(() => {
+          i += 1;
+          if (qkText) qkText.textContent = QTEXT.slice(0, i);
+          if (i >= QTEXT.length) { clearInterval(qtype); qtype = null; qdone(); }
+        }, 32);
+      };
+      if (qkGo) qkGo.addEventListener('click', qplay);
+      if (qkReplay) qkReplay.addEventListener('click', qreset);
+      qkCancel = () => qcancel();
+      stepperResets['hiw-quick'] = qreset;
+      qreset();
+    }
+
+    // SPIKE: voice enrollment — read a term aloud → voiceprint → tells sound-alikes apart.
+    const vo = root.querySelector('.vo-demo');
+    if (vo) {
+      const vstages = Array.from(vo.querySelectorAll('.rw-stage'));
+      const vdots = Array.from(vo.querySelectorAll('.rw-steps .stepper-dot'));
+      const vcur = vo.querySelector('[data-vo-cur]');
+      const vcoach = vo.querySelector('[data-vo-coach]');
+      const vstatus = vo.querySelector('[data-vo-status]');
+      const readBtn = vo.querySelector('[data-vo-read]');
+      const vreplay = vo.querySelector('[data-vo-replay]');
+      const vreduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const VCOACH = [
+        'Sound-alikes trip up any recognizer. Teach Parleq your voice — read the line aloud.',
+        'Saving a voiceprint — your acoustics, not a transcript. On-device and encrypted.',
+        'Now it hears the difference — “Keavi”, not “kiwi.”',
+      ];
+      let vstage = 0, vtimer = null;
+      const vcancel = () => { if (vtimer) { clearTimeout(vtimer); vtimer = null; } };
+      const vrender = () => {
+        vcancel();
+        vstages.forEach((s) => { s.hidden = Number(s.dataset.vostage) !== vstage; });
+        vdots.forEach((d, i) => d.setAttribute('data-on', i === vstage ? 'true' : 'false'));
+        if (vcur) vcur.textContent = String(vstage + 1);
+        if (vcoach) vcoach.innerHTML = VCOACH[vstage];
+      };
+      const vgo = (n) => { vstage = Math.max(0, Math.min(2, n)); vrender(); };
+      const enroll = () => {
+        vgo(1);
+        const saved = () => { if (vstatus) vstatus.innerHTML = '<span class="rw-mic-dot" aria-hidden="true"></span> Voiceprint saved.'; vtimer = setTimeout(() => { vtimer = null; vgo(2); }, 650); };
+        if (vreduce) { vgo(2); return; }
+        vtimer = setTimeout(saved, 850);
+      };
+      if (readBtn) readBtn.addEventListener('click', enroll);
+      if (vreplay) vreplay.addEventListener('click', () => vgo(0));
+      voCancel = () => vcancel();
+      stepperResets['hiw-voice'] = () => { vcancel(); if (vstatus) vstatus.innerHTML = '<span class="rw-mic-dot" aria-hidden="true"></span> Listening…'; vstage = 0; vrender(); };
+      vrender();
+    }
+
+    // SPIKE: refine loop — gesture-driven turn-by-turn voice refinement (no Back/Next).
+    const rl = root.querySelector('.rl-demo');
+    if (rl) {
+      const rlstages = Array.from(rl.querySelectorAll('.rw-stage'));
+      const rldots = Array.from(rl.querySelectorAll('.rw-steps .stepper-dot'));
+      const rlcur = rl.querySelector('[data-rl-cur]');
+      const rlcoach = rl.querySelector('[data-rl-coach]');
+      const rlNextBtns = Array.from(rl.querySelectorAll('[data-rl-next]'));
+      const rlReplay = rl.querySelector('[data-rl-replay]');
+      const RLCOACH = [
+        'You dictated a draft. Reshape it by voice — tap to refine.',
+        'Say the change out loud — it rewrites in place, keeping the rest.',
+        'Each turn edits the last result — no starting over.',
+        'One tap to restyle with a preset — or just Accept.',
+      ];
+      let rlstage = 0;
+      const rlrender = () => {
+        rlstages.forEach((s) => { s.hidden = Number(s.dataset.rlstage) !== rlstage; });
+        rldots.forEach((d, i) => d.setAttribute('data-on', i === rlstage ? 'true' : 'false'));
+        if (rlcur) rlcur.textContent = String(rlstage + 1);
+        if (rlcoach) rlcoach.textContent = RLCOACH[rlstage];
+      };
+      const rlgo = (n) => { rlstage = Math.max(0, Math.min(3, n)); rlrender(); };
+      rlNextBtns.forEach((b) => b.addEventListener('click', () => rlgo(Number(b.getAttribute('data-rl-next')))));
+      if (rlReplay) rlReplay.addEventListener('click', () => rlgo(0));
+      stepperResets['refine-loop'] = () => { rlstage = 0; rlrender(); };
+      rlrender();
+    }
+
+    setTab('cleanup');
+  })();
+</script>

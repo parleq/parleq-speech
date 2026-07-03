@@ -1,6 +1,6 @@
 ---
 import Layout from '../layouts/Layout.astro';
-import SiteHeader from '../components/SiteHeader.astro';
+import FloatingNav from '../components/FloatingNav.astro';
 import PricingNote from '../components/PricingNote.astro';
 
 const repoUrl = 'https://github.com/parleq/parleq-speech';
@@ -15,7 +15,7 @@ const sections = [
     items: [
       {
         q: 'Does my audio leave my Mac?',
-        a: `No. Speech recognition runs entirely on-device using Apple's Neural Engine — Parleq bundles the Parakeet TDT v3 model (~150 MB, downloaded once on first launch from Hugging Face) and calls it in-process. There are no listening sockets on the default ASR path; the audio buffer is a Swift value handed directly to the speech model inside the same process, never across a process or network boundary. The model itself never makes outbound network calls; audio bytes never appear in any cloud log, S3 bucket, or vendor analytics pipeline. They live in process memory for the duration of one dictation and disappear when it's done. Reviewers can verify the no-listening-sockets claim with \`lsof -i -nP -a -p $(pgrep -n ParleqApp)\` on a running Parleq.`,
+        a: `No. Speech recognition runs entirely on-device using Apple's Neural Engine — Parleq bundles the Parakeet TDT v3 model (~150 MB, downloaded once on first launch from Hugging Face) and calls it in-process. There are no listening sockets on the default ASR path; the audio buffer is a Swift value handed directly to the speech model inside the same process, never across a process or network boundary. The model itself never makes outbound network calls; audio bytes never appear in any cloud log, S3 bucket, or vendor analytics pipeline. They live in process memory only — the most recent dictation's audio is held so you can re-run it (hotkey + R), and everything is cleared when you quit Parleq; audio is never written to disk. Reviewers can verify the no-listening-sockets claim with \`lsof -i -nP -a -p $(pgrep -n ParleqApp)\` on a running Parleq.`,
       },
       {
         q: 'What does the cloud cleanup provider see, and what gets logged on my Mac?',
@@ -40,7 +40,7 @@ const sections = [
     items: [
       {
         q: 'Which cleanup provider should I pick?',
-        a: `For personal use with no compliance constraints: **Gemini direct** or **OpenAI direct** — both offer five-minute setup using just an API key, no infrastructure to think about. If you want cleanup to run entirely on your Mac with no internet needed and no per-call cost, pick **On-device** — it downloads a ~4 GB model once (Gemma 4 E4B, quantized) and requires 12 GB+ RAM. For work where you have an existing cloud relationship: pick the one your team already uses (**Bedrock** for AWS, **Vertex** for GCP, **Azure** for Microsoft). All options produce comparable cleanup quality on the short text Parleq generates. The provider choice mostly comes down to where you want the bill to land, whose contract you're operating under, and whether the transcript should cross a network boundary at all.`,
+        a: `For personal use with no compliance constraints: **Gemini direct** or **OpenAI direct** — both offer five-minute setup using just an API key, no infrastructure to think about. If you want cleanup to run entirely on your Mac with no internet needed and no per-call cost, you have two on-device choices: **Lightweight** (built on Concord — a fast deterministic corrector with nothing to download and no RAM floor, though it can't freely rewrite), or the **On-device LLM** (Gemma 4 E4B, quantized — full rewriting; a one-time ~4 GB download and 12 GB+ RAM). For work where you have an existing cloud relationship: pick the one your team already uses (**Bedrock** for AWS, **Vertex** for GCP, **Azure** for Microsoft). All options produce comparable cleanup quality on the short text Parleq generates. The provider choice mostly comes down to where you want the bill to land, whose contract you're operating under, and whether the transcript should cross a network boundary at all.`,
       },
       {
         q: 'Can I use OpenAI directly?',
@@ -52,7 +52,7 @@ const sections = [
       },
       {
         q: 'Can I run cleanup entirely locally, with no cloud at all?',
-        a: `Yes — select **On-device** in the Setup Wizard or **Settings → Cleanup → Provider**. Parleq downloads a ~4 GB model (Gemma 4 E4B, quantized) from Hugging Face once; after that, cleanup runs entirely in-process on your Mac with no network boundary and no per-call cost. The model uses about 6 GB of memory while it's running, and Parleq frees that memory after a few minutes of inactivity. Parleq also caps the pool of reusable GPU buffers the model keeps around, so the footprint you see in Activity Monitor stays close to the model's own size instead of climbing higher after a longer cleanup. Because of that footprint, the on-device option requires a Mac with at least 12 GB of RAM — on Macs with less, it appears in the picker but can't be selected. The model is stored at \`~/Library/Application Support/Parleq/models/\` and can be removed from Settings to reclaim the disk space. If you want no cleanup at all rather than local cleanup, choose **None — paste raw ASR** instead, which pastes the on-device speech model's output without any cleanup pass.`,
+        a: `Yes — two ways. For a **zero-download, no-RAM-floor** option, pick **Lightweight** in **Settings → Cleanup → Provider** — a deterministic on-device corrector (numbers, questions, your dictionary, voiceprints) built on Concord, ready immediately, though it can't freely rewrite text. For full on-device cleanup, select **On-device** (Gemma 4) in the Setup Wizard or Settings. Parleq downloads a ~4 GB model (Gemma 4 E4B, quantized) from Hugging Face once; after that, cleanup runs entirely in-process on your Mac with no network boundary and no per-call cost. The model uses about 6 GB of memory while it's running, and Parleq frees that memory after a few minutes of inactivity. Parleq also caps the pool of reusable GPU buffers the model keeps around, so the footprint you see in Activity Monitor stays close to the model's own size instead of climbing higher after a longer cleanup. Because of that footprint, the on-device option requires a Mac with at least 12 GB of RAM — on Macs with less, it appears in the picker but can't be selected. The model is stored at \`~/Library/Application Support/Parleq/models/\` and can be removed from Settings to reclaim the disk space. If you want no cleanup at all rather than local cleanup, choose **None — paste raw ASR** instead, which pastes the on-device speech model's output without any cleanup pass.`,
       },
       {
         q: 'Can I use a model that isn\'t in the dropdown?',
@@ -99,7 +99,7 @@ const sections = [
     items: [
       {
         q: 'What keyboard gestures can I use while dictating?',
-        a: `Beyond hold-to-dictate, a few one-key gestures speed things up. **Double-tap-and-hold** the hotkey for quick dictation that pastes straight away with no review step, or **double-tap-and-release** to record hands-free for a longer dictation — tap once more to stop. **While holding the hotkey — or while reviewing a result —** tap **Space** to pick a window as context, **C** to attach the window you're already looking at, or **P** to cancel and bring up the Parleq window. **Hold the hotkey and tap R** to recover (re-run) your last dictation if you lost it — also available as "Recover last dictation" in the menu bar. **While reviewing**, press **Enter** to accept and paste, **E** to edit the text yourself before accepting, **V** to send the text to a different window, or hold the hotkey again to **refine** it by voice ("make it shorter"). And **?** (or **/**) opens an in-app card listing every gesture — the same reference lives on the How it works page.`,
+        a: `Beyond hold-to-dictate, a few one-key gestures speed things up. **Double-tap-and-hold** the hotkey for quick dictation that pastes straight away with no review step, or **double-tap-and-release** to record hands-free for a longer dictation — tap once more to stop. **While holding the hotkey — or while reviewing a result —** tap **Space** to pick a window as context, **C** to attach the window you're already looking at, or **P** to cancel and bring up the Parleq window. **Hold the hotkey and tap R** to recover (re-run) your last dictation if you lost it — also available as "Recover last dictation" in the menu bar. **While reviewing**, press **Enter** to accept and paste, **E** to edit the text yourself before accepting, **V** to send the text to a different window, or hold the hotkey again to **refine** it by voice ("make it shorter"). And **?** (or **/**) opens an in-app card listing every gesture — the same reference lives on the details page.`,
       },
     ],
   },
@@ -116,7 +116,7 @@ const sections = [
       },
       {
         q: 'Can I teach Parleq a word in my own voice?',
-        a: `Yes — it's the **voice enrollment** feature, and it's opt-in, per term. Some names sound almost identical to a common word ("Keavi" vs. the fruit "kiwi", "Claude" vs. "clawed"), and spelling alone can't separate them. From a term's entry in **Settings → Custom Dictionary**, you can run a short read-aloud wizard: speak a few carrier sentences, and Parleq learns the sound of *you* saying that word. On later dictations it disambiguates by sound — recovering the name you meant, and leaving the everyday word alone when that's what you actually said. It runs entirely on-device with **no LLM and no cloud**. What's stored is a mathematical **voiceprint (an embedding), never a recording** — the audio is processed in memory and discarded. Voiceprints are biometric data, so they're kept **encrypted at rest** (AES-GCM) under a Keychain key that is device-only and never synced to iCloud, and you can delete a single term's voiceprint or all of them at any time.`,
+        a: `Yes — it's the **voice enrollment** feature, and it's opt-in, per term. Some names sound almost identical to a common word ("Keavi" vs. the fruit "kiwi", "Claude" vs. "clawed"), and spelling alone can't separate them. From a term's entry in **Settings → Custom Dictionary**, you can run a short read-aloud wizard: speak a few carrier sentences, and Parleq learns the sound of *you* saying that word. On later dictations it disambiguates by sound — recovering the name you meant, and leaving the everyday word alone when that's what you actually said. It runs entirely on-device with **no LLM and no cloud**. What's stored is a mathematical **voiceprint (an embedding)** — a fingerprint of the sound, not a transcript of your words. Voiceprints are biometric data, so they're kept **encrypted at rest** (AES-GCM) under a Keychain key that is device-only and never synced to iCloud, and you can delete a single term's voiceprint or all of them at any time. By default, Parleq also keeps those short enrollment clips — encrypted on your Mac under that same device-only key — only so your voiceprint can be re-derived after an on-device model update; you can turn clip storage off at any time, which erases them. Either way, nothing about enrollment leaves your Mac.`,
       },
       {
         q: 'Can I attach a window or file as context for a dictation?',
@@ -284,48 +284,63 @@ function renderInline(text: string): string {
 }
 ---
 
-<Layout title="FAQ — Parleq" description="Common questions about Parleq's privacy posture, provider choice, hardware support, customization, cost, and workplace use.">
+<Layout title="FAQ — Parleq dictation for macOS" description="Answers on Parleq's privacy model, provider choice (Gemini, OpenAI, Bedrock, Vertex, Azure, or on-device), Mac requirements, cost, and use at work.">
   <script type="application/ld+json" slot="head" set:html={JSON.stringify(faqSchema)} />
-  <SiteHeader active="faq" />
+  <FloatingNav active="faq" spacer={false} />
 
-  <article class="mx-auto max-w-3xl px-6 pt-20 pb-24">
-    <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">FAQ</p>
-    <h1 class="mt-4 font-display text-4xl leading-[1.1] font-medium tracking-tight sm:text-5xl">
-      Frequently asked questions.
-    </h1>
-    <p class="mt-6 text-lg leading-relaxed text-[color:var(--color-text-muted)]">
-      Quick answers to the questions that come up most. If something here doesn't match what you're seeing, or if you have a question that should be added, <a href={`${repoUrl}/issues/new`} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">open an issue</a>.
-    </p>
+  <!-- Page hero: grape-panel-ink tinted band that extends to the very top so the dark
+       FloatingNav pill floats over the light-purple (no white strip above it). Top padding
+       clears the pill. -->
+  <section class="border-b border-[color:var(--color-border-subtle)]" style="background: linear-gradient(180deg, var(--color-hero-light-top) 0%, var(--color-hero-light-bottom) 100%);">
+    <div class="mx-auto max-w-3xl px-6 pb-12 pt-28 sm:pt-32">
+      <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-grape)]">FAQ</p>
+      <h1 class="mt-3 font-display text-4xl leading-[1.1] font-medium tracking-tight sm:text-5xl">
+        Frequently asked questions.
+      </h1>
+      <p class="mt-6 max-w-2xl text-lg leading-relaxed text-[color:var(--color-text-muted)]">
+        Quick answers to the questions that come up most. If something here doesn't match what you're seeing, or if you have a question that should be added, <a href={`${repoUrl}/issues/new`} class="font-medium text-[color:var(--color-grape)] underline underline-offset-4 hover:text-[color:var(--color-grape-strong)]">open an issue</a>.
+      </p>
+    </div>
+  </section>
 
-    <!-- Section chip row. A slim horizontal wrap of the 12 section names
-         as in-page anchor links — enough to jump straight to a topic
-         without the heavyweight TOC card the chips replaced. Each links
-         to its section header's slug; headers carry scroll-mt-20 so the
-         jump clears the sticky site header. -->
-    <nav id="faq-top" aria-label="Jump to a section" class="mt-12 flex flex-wrap gap-2">
-      {tocSections.map((section) => (
-        <a
-          href={`#${section.slug}`}
-          class="inline-flex items-center rounded-full border border-[color:var(--color-border-subtle)] bg-[color:var(--color-surface)] px-3.5 py-1.5 text-[13px] font-medium text-[color:var(--color-text-muted)] transition-colors hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-accent)]"
-        >
-          {section.title}
-        </a>
-      ))}
+  <article class="mx-auto max-w-3xl px-6 pt-12 pb-24">
+
+    <!-- Section chip row. "Privacy & data flow" gets grape theming to
+         signal it's the primary privacy/on-device reference section.
+         Each chip links to its section header's slug; headers carry
+         scroll-mt-20 so the jump clears the sticky site header. -->
+    <nav id="faq-top" aria-label="Jump to a section" class="flex flex-wrap gap-2">
+      {tocSections.map((section) => {
+        const isPrivacy = section.title === 'Privacy & data flow';
+        return (
+          <a
+            href={`#${section.slug}`}
+            class={`inline-flex items-center rounded-full border px-3.5 py-1.5 text-[13px] font-medium transition-colors ${
+              isPrivacy
+                ? 'border-[color:color-mix(in_srgb,var(--color-grape)_35%,var(--color-border-subtle))] bg-[color:color-mix(in_srgb,var(--color-grape)_6%,var(--color-surface))] text-[color:var(--color-grape)] hover:border-[color:var(--color-grape)] hover:text-[color:var(--color-grape-strong)]'
+                : 'border-[color:var(--color-border-subtle)] bg-[color:var(--color-surface)] text-[color:var(--color-text-muted)] hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-accent)]'
+            }`}
+          >
+            {section.title}
+          </a>
+        );
+      })}
     </nav>
 
     {tocSections.map((section) => (
       <section class="mt-16">
         <h2
           id={section.slug}
-          class="scroll-mt-20 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]"
+          class="scroll-mt-20 flex items-center gap-3 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]"
         >
+          <span class="inline-block h-6 w-0.5 shrink-0 rounded-full bg-[color:var(--color-accent)]" aria-hidden="true"></span>
           {section.title}
         </h2>
         <div class="mt-6 space-y-3">
           {section.items.map((item) => (
             <details
               id={item.slug}
-              class="faq-item scroll-mt-20 group rounded-xl border border-[color:var(--color-border-subtle)] bg-[color:var(--color-surface)] px-5 open:bg-[color:var(--color-surface)]"
+              class="faq-item scroll-mt-20 group rounded-2xl border border-[color:var(--color-border-subtle)] bg-[color:var(--color-surface)] px-5 transition-colors open:border-[color:var(--color-grape-200)] open:bg-[color:var(--color-surface)]"
             >
               <summary
                 class="flex cursor-pointer list-none items-start justify-between gap-4 py-4 text-base font-semibold tracking-tight text-[color:var(--color-text)] sm:text-lg [&::-webkit-details-marker]:hidden"
@@ -354,7 +369,7 @@ function renderInline(text: string): string {
       </section>
     ))}
 
-    <section class="mt-16 rounded-xl border border-[color:var(--color-border-subtle)] bg-[color:var(--color-surface)] p-6">
+    <section class="mt-16 rounded-2xl border border-[color:var(--color-border-subtle)] bg-[color:var(--color-surface)] p-6 transition-colors hover:border-[color:var(--color-accent)]">
       <h2 class="text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Question not here?</h2>
       <p class="mt-3 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
         File an issue on GitHub — answers that come up more than once tend to land in this FAQ. For provider-specific setup questions, the <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/'} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">docs</a> are usually the better starting point.

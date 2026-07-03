@@ -1,7 +1,6 @@
 ---
 import Layout from '../layouts/Layout.astro';
-import SiteHeader from '../components/SiteHeader.astro';
-import OverlayMockup from '../components/OverlayMockup.astro';
+import FloatingNav from '../components/FloatingNav.astro';
 import PricingNote from '../components/PricingNote.astro';
 
 const repoUrl = 'https://github.com/parleq/parleq-speech';
@@ -12,6 +11,7 @@ const stages = [
     slug: 'capture',
     title: 'Capture',
     where: 'on-device',
+    grape: false,
     summary:
       'AVAudioEngine taps the system microphone at the hardware sample rate and converts each buffer in-line to 16 kHz mono Int16 — the format the local ASR model expects. Audio is accumulated as raw samples in process memory; nothing is ever written to disk.',
     detail: [
@@ -27,12 +27,13 @@ const stages = [
     slug: 'transcribe',
     title: 'Transcribe',
     where: 'on-device · Apple Neural Engine',
+    grape: true,
     summary:
       'The audio buffer is handed directly to Parakeet TDT v3 (CoreML) running on the Apple Neural Engine, in-process. Typical latency is ~64 ms for a 5-second clip after the model is warm. The model resides at ~150 MB and downloads from Hugging Face on first launch.',
     detail: [
       ['Custom dictionary biasing', 'Terms you\'ve added in Settings are passed to FluidAudio\'s CTC keyword-spotting + rescoring pass, which runs after the TDT transcription. Aliases for variant spellings ("parlay", "parlez") all match the canonical "Parleq" — the rescorer always emits the canonical form.'],
       ['Per-term opt-out', 'A term whose phonetics overlap a common word (and so triggers false positives at the speech-recognition layer) can be marked LLM-only. The transcribe stage skips it; the LLM hint still applies.'],
-      ['Tell sound-alikes apart by voice', 'Some names sound almost exactly like an everyday word — a product called "Keavi" against the fruit "kiwi", or "Claude" against "clawed." You can optionally teach a term <em>in your own voice</em>: read a few short sentences aloud once, and Parleq learns the sound of you saying it. On later dictations it disambiguates by sound — recovering the right name, and, just as importantly, leaving the common word alone when that\'s what you actually said. Entirely on-device, no LLM, no cloud. Opt-in per term; the full story is in the <a href="#voice-enrollment" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Voice enrollment</a> section below.'],
+      ['Tell sound-alikes apart by voice', 'Some names sound almost exactly like an everyday word — a product called "Keavi" against the fruit "kiwi", or "Claude" against "clawed." You can optionally teach a term <em>in your own voice</em>: read a few short sentences aloud once, and Parleq learns the sound of you saying it. On later dictations it disambiguates by sound — recovering the right name, and, just as importantly, leaving the common word alone when that\'s what you actually said. Entirely on-device, no LLM, no cloud. Opt-in per term — try the interactive Voice enrollment demo on the <a href="/#explore" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">homepage explorer</a>.'],
       ['Local-only, no listening sockets', 'No cloud transcription. No per-call cost. No cold-start delay once the model has loaded. Audio bytes never leave your Mac — they aren\'t even handed across a process boundary. Parleq has no listening sockets bound on the default ASR path; reviewers can verify with `lsof -i -nP -a -p $(pgrep -n ParleqApp)`.'],
     ],
   },
@@ -40,17 +41,21 @@ const stages = [
     n: '3',
     slug: 'cleanup',
     title: 'Clean up',
-    where: 'cloud LLM · on-device · or skipped',
-    summary:
-      'The raw transcript streams to a configurable AI provider that polishes it into finished text — capitalization, punctuation, filler-word removal, common transcription errors, and spoken numbers turned into digits when the context is technical. The raw transcript shows in the overlay first, and the cleaned text replaces it progressively as it arrives. Press Enter while the raw is still showing to accept it as-is and skip cleanup; press Enter once cleanup is under way and Parleq finishes it and pastes the complete cleaned text — never a half-streamed fragment. Cleanup can also run entirely on-device (no network boundary) via the on-device option — a one-time ~4 GB model download runs Gemma 4 E4B in-process via Apple MLX; requires 12 GB+ RAM.',
+    where: 'Instant · Polished · Raw',
+    grape: true,
+    summary: [
+      'Cleanup turns the raw transcript into finished text — the raw shows in the overlay first, and the cleaned text replaces it progressively as it arrives. How much cleanup happens is up to you: three modes.',
+      '<strong class="font-semibold text-[color:var(--color-text)]">Instant</strong> is a fast, deterministic on-device pass — spoken numbers become digits, names and jargon from your dictionary are fixed, split compounds rejoined — with no network and no wait. <strong class="font-semibold text-[color:var(--color-text)]">Polished</strong> hands the transcript to a real model for the full treatment (fillers, casing, self-corrections, tone): your own cloud (Gemini, OpenAI, Bedrock, Vertex, or Azure) or on-device Gemma 4 E4B via Apple MLX (one-time ~4&nbsp;GB download; 12&nbsp;GB+ RAM). <strong class="font-semibold text-[color:var(--color-text)]">Raw</strong> skips cleanup and pastes the transcript exactly as the on-device speech model emitted it.',
+      'Press Enter while the raw is still showing to accept it as-is; press Enter once cleanup is under way and Parleq finishes the pass and pastes the complete cleaned text — never a half-streamed fragment.',
+    ],
     detail: [
-      ['Pluggable providers', 'Seven options: On-device (Gemma 4 E4B via Apple MLX — no network boundary, no per-call cost, one-time ~4 GB download, 12 GB+ RAM), Google Gemini direct API (default — free tier<sup>†</sup>, ~500–700 ms TTFT), OpenAI direct API (GPT-4o / GPT-4.1 family), Google Vertex AI (Gemini + Claude on GCP with IAM + audit logs), AWS Bedrock (Claude or GPT-OSS via your AWS account), Azure OpenAI (GPT-4o / GPT-4.1 + reasoning models on Microsoft\'s contract), or skip cleanup entirely and paste raw ASR. The choice is made in Settings or via the first-run setup wizard. For IT-deployed Macs, the provider and allowed model list can be pinned centrally via an MDM-managed configuration profile so users cannot change it.'],
+      ['Pluggable providers', 'Eight options: Lightweight (a fast deterministic on-device corrector built on Concord by Keavi — no download, no RAM floor, but no free-form rewriting), On-device LLM (Gemma 4 E4B via Apple MLX — no network boundary, no per-call cost, one-time ~4 GB download, 12 GB+ RAM), Google Gemini direct API (default — free tier<sup>†</sup>, ~500–700 ms TTFT), OpenAI direct API (GPT-4o / GPT-4.1 family), Google Vertex AI (Gemini + Claude on GCP with IAM + audit logs), AWS Bedrock (Claude or GPT-OSS via your AWS account), Azure OpenAI (GPT-4o / GPT-4.1 + reasoning models on Microsoft\'s contract), or skip cleanup entirely and paste raw ASR. The choice is made in Settings or via the first-run setup wizard. For IT-deployed Macs, the provider and allowed model list can be pinned centrally via an MDM-managed configuration profile so users cannot change it.'],
       ['Auth flexibility per provider', 'Each cloud supports both pasted API keys (stored in the macOS Keychain) and your existing CLI session — gcloud Application Default Credentials for Vertex (or service-account JSON), AWS SSO / static IAM keys / scoped Bedrock API keys for Bedrock, az login or resource keys for Azure. Parleq never stores long-lived cloud session tokens directly; the AWS/GCP/Azure CLIs handle refresh through their own caches.'],
       ['Skippable', 'Re-run the setup wizard (menu bar → Run Setup…) and choose "None — skip cleanup", or set llm.provider to "none" in ~/.parleq/config.json (IT can pin it via managed configuration). The in-app Settings picker lists only real providers. Parleq will then paste the raw transcript exactly as the on-device speech model emitted it. Useful when transcript content must never leave the device.'],
       ['Custom dictionary hint', 'Your dictionary feeds a smart-vocabulary addendum to the cleanup prompt — terms with optional context blurbs and aliases. The LLM judges topic alignment and prefers your canonical spellings without force-correcting genuine homophones.'],
       ['Learns from your corrections', 'When you repeatedly fix the same name or phrase, Parleq notices. The opt-in "Learn from corrections" feature keeps short correction snippets in memory (never written to disk) and occasionally asks your already-configured cleanup model to suggest dictionary improvements — no new service, no new network destination. High-confidence spelling fixes apply automatically (and are revertible); the rest appear as suggestions to accept or dismiss.'],
       ['Catches self-corrections and spelled-out words', 'Say "scratch that", "no wait", or "I mean Rob" and Parleq drops the retracted words, keeping only your final intent (conservatively — when it can\'t tell whether you\'re correcting or listing both, it leaves your words alone). Spell a word aloud — "M I R A" — and it assembles the letters into the single word and capitalizes it correctly: a name stays a name, an acronym like URL stays all-caps. Most useful for fixing a name the speech model misheard.'],
-      ['Refinement', 'When the overlay is already open, the next hotkey press re-runs this stage with a different system prompt that takes your speech as an edit instruction over the existing text. Walked through in detail in the section below.'],
+      ['Refinement', 'When the overlay is already open, the next hotkey press re-runs this stage with a different system prompt that takes your speech as an edit instruction over the existing text. Try the interactive refine-loop demo on the <a href="/#explore" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">homepage explorer</a>.'],
     ],
   },
   {
@@ -58,6 +63,7 @@ const stages = [
     slug: 'paste',
     title: 'Paste',
     where: 'on-device',
+    grape: false,
     summary:
       'On accept (auto-timer or manual hotkey tap), the cleaned text pastes into whatever app was focused when you pressed the hotkey originally — not whatever happens to be focused at accept time. CGEventTap synthesizes the keystrokes; the trailing-space heuristic adds a space after the pasted text by default.',
     detail: [
@@ -108,26 +114,93 @@ const gestures = [
 ---
 
 <Layout
-  title="How Parleq works — local-first AI dictation"
-  description="The four stages of a Parleq dictation: capture, transcribe, clean up, paste. What happens locally vs in the cloud. What gets stored vs what doesn't."
+  title="The details — how Parleq works"
+  description="The technical detail behind Parleq: the capture → transcribe → clean up → paste pipeline, the keyboard gestures, and what's on disk versus in memory."
 >
-  <SiteHeader active="how-it-works" />
+  <FloatingNav active="how-it-works" spacer={false} />
 
-  <!-- Page intro. -->
-  <section class="mx-auto max-w-3xl px-6 pt-20 pb-12 sm:pt-24">
-    <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">
-      How it works
-    </p>
-    <h1 class="mt-4 font-display text-4xl leading-[1.1] font-medium tracking-tight sm:text-5xl">
-      A press, a sentence, a paste.
-    </h1>
-    <p class="mt-6 text-lg leading-relaxed text-[color:var(--color-text-muted)]">
-      When you hold the hotkey, four stages run in sequence. Three of them stay on your Mac. The middle one — LLM cleanup — talks to a cloud provider you configure (or runs fully on-device, or can be skipped entirely). This page walks each stage and what gets persisted versus what doesn't.
-    </p>
-    <p class="mt-5 text-sm">
-      <a href="#gestures" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Just want the keyboard gestures? Jump to the cheat sheet →</a>
-    </p>
+  <!-- Hero: LIGHT-lavender "utility / reference" hero (docs family), NOT the deep-grape
+       marquee — the deep hero is reserved for the homepage so it stands out. Dark text +
+       grape accent (amber fails AA on the light-purple ground). Nav pill floats over it. -->
+  <section class="mx-auto max-w-[1700px] px-0 py-0 sm:px-5 sm:py-5">
+    <div
+      class="relative overflow-hidden rounded-none px-5 pb-28 pt-28 sm:rounded-[28px] sm:px-10 sm:pt-36"
+      style="background: linear-gradient(180deg, var(--color-hero-light-top) 0%, var(--color-hero-light-bottom) 100%);"
+    >
+      <div class="mx-auto grid max-w-5xl items-center gap-10 lg:grid-cols-[1.35fr_1fr] lg:gap-14">
+        <div>
+          <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-grape)]">
+            How it works
+          </p>
+          <h1 class="mt-4 font-display text-4xl leading-[1.05] font-medium tracking-tight sm:text-5xl md:text-6xl">
+            The details, stage by stage.
+          </h1>
+          <p class="mt-6 text-lg leading-relaxed text-[color:var(--color-text-muted)] sm:text-xl">
+            How a dictation goes from keypress to pasted text — capture, transcribe, clean up, paste. Speech recognition stays on your Mac; only cleanup can reach the network, and only if you choose a cloud provider.
+          </p>
+          <p class="mt-6 text-sm">
+            <a href="#gestures" class="font-medium text-[color:var(--color-grape)] underline-offset-4 hover:underline">Just want the keyboard gestures? Jump to the cheat sheet →</a>
+          </p>
+        </div>
+
+        <!-- Guided-tour fork: the interactive explorer on the homepage, for visitors who
+             want the tour rather than the mechanics. In the hero so the choice is up front. -->
+        <a
+          href="/#explore"
+          class="group block rounded-2xl border border-[color:var(--color-grape-200)]/60 bg-[color:var(--color-surface)] p-6 shadow-[0_10px_30px_-18px_rgba(67,32,95,0.35)] transition duration-300 hover:border-[color:var(--color-grape)] hover:shadow-[0_22px_50px_-24px_rgba(67,32,95,0.45)]"
+        >
+          <div class="flex items-center gap-4">
+            <svg class="h-20 w-16 shrink-0 transition-transform duration-300 group-hover:-translate-y-1" viewBox="0 0 112 152" fill="none" aria-hidden="true">
+              <defs>
+                <radialGradient id="hwGrapeLite" cx="36%" cy="28%" r="80%">
+                  <stop offset="0%" stop-color="#9a5fc9" />
+                  <stop offset="52%" stop-color="#5b2a86" />
+                  <stop offset="100%" stop-color="#331652" />
+                </radialGradient>
+              </defs>
+              <path d="M56 6c2 6 1 11 3 17" stroke="#8a6a3a" stroke-width="2.4" stroke-linecap="round" />
+              <path d="M58 12c5-8 17-10 23-6-3 8-12 12-21 11" fill="#5f9d4c" opacity="0.9" />
+              <g stroke="#2a1046" stroke-opacity="0.4" stroke-width="1">
+                <circle cx="38" cy="34" r="14" fill="url(#hwGrapeLite)" />
+                <circle cx="64" cy="30" r="15" fill="url(#hwGrapeLite)" />
+                <circle cx="89" cy="35" r="13" fill="url(#hwGrapeLite)" />
+                <circle cx="27" cy="56" r="13" fill="url(#hwGrapeLite)" />
+                <circle cx="52" cy="54" r="15" fill="url(#hwGrapeLite)" />
+                <circle cx="77" cy="55" r="14" fill="url(#hwGrapeLite)" />
+                <circle cx="99" cy="59" r="11" fill="url(#hwGrapeLite)" />
+                <circle cx="40" cy="76" r="14" fill="url(#hwGrapeLite)" />
+                <circle cx="66" cy="76" r="15" fill="url(#hwGrapeLite)" />
+                <circle cx="90" cy="79" r="12" fill="url(#hwGrapeLite)" />
+                <circle cx="53" cy="97" r="14" fill="url(#hwGrapeLite)" />
+                <circle cx="78" cy="97" r="13" fill="url(#hwGrapeLite)" />
+                <circle cx="64" cy="117" r="14" fill="url(#hwGrapeLite)" />
+                <circle cx="57" cy="137" r="12" fill="url(#hwGrapeLite)" />
+              </g>
+              <g fill="#f0e2ff" opacity="0.55">
+                <circle cx="34" cy="30" r="3" />
+                <circle cx="60" cy="26" r="3.2" />
+                <circle cx="48" cy="50" r="3" />
+                <circle cx="62" cy="72" r="3.2" />
+                <circle cx="60" cy="113" r="2.8" />
+              </g>
+            </svg>
+            <div>
+              <p class="text-xs font-medium uppercase tracking-[0.16em] text-[color:var(--color-grape)]">Every capability</p>
+              <p class="mt-1 font-display text-xl font-medium leading-tight text-[color:var(--color-text)]">Prefer a guided tour?</p>
+            </div>
+          </div>
+          <p class="mt-4 text-sm leading-relaxed text-[color:var(--color-text-muted)]">Every feature — cleanup, refine &amp; shape, the whole flow — is an interactive demo you drive on the homepage.</p>
+          <span class="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-[color:var(--color-grape)] underline-offset-4 group-hover:underline">Open the explorer →</span>
+        </a>
+      </div>
+    </div>
   </section>
+
+  <!-- Content panel: a white card superimposed on the grape hero (rounded top, bordered
+       bottom, shadow onto the grape). Opens straight into the technical pipeline;
+       supplementary sections (gestures, privacy) follow below it. -->
+  <div class="mx-auto max-w-[1700px] px-0 sm:px-5">
+    <div class="relative z-10 -mt-14 border border-[color:var(--color-grape-200)]/50 bg-[color:var(--color-surface)] px-3 pb-10 pt-3 shadow-[0_18px_50px_-18px_rgba(67,32,95,.35)] sm:-mt-16 sm:rounded-t-[28px] sm:px-10 sm:pb-12 sm:pt-6">
 
   <!-- Pipeline stepper. The example-flow strip (Audio → Transcript →
        Cleaned → Pasted) is now the STAGE NAVIGATION: each box is a
@@ -144,7 +217,7 @@ const gestures = [
        visitor keeps the full stacked page. A11y: plain
        buttons-with-aria-current pattern (matching the homepage
        carousel), not the APG tabs pattern. -->
-  <section data-reveal class="mx-auto max-w-4xl px-6 pb-16">
+  <section data-reveal class="mx-auto max-w-4xl px-6 pb-4 pt-10">
     <div
       id="pipeline-stepper"
       class="rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6 sm:p-8"
@@ -166,7 +239,7 @@ const gestures = [
         <a
           href="#stage-capture"
           data-stage-nav="0"
-          class="stepper-box rounded-lg border border-[color:var(--color-border-subtle)] bg-[color:var(--color-bg)] p-3 text-left transition-colors hover:border-[color:var(--color-border)]"
+          class="stepper-box rounded-lg border border-[color:var(--color-border-subtle)] bg-[color:var(--color-bg)] p-3 text-left transition-colors hover:border-[color:var(--color-accent)]"
         >
           <p class="text-[10px] font-medium uppercase tracking-wider text-[color:var(--color-text-subtle)]">1 · Audio</p>
           <p class="mt-1 font-mono text-[12px] text-[color:var(--color-text-muted)]">~3 s WAV<br/>16 kHz mono</p>
@@ -176,7 +249,7 @@ const gestures = [
         <a
           href="#stage-transcribe"
           data-stage-nav="1"
-          class="stepper-box rounded-lg border border-[color:var(--color-border-subtle)] bg-[color:var(--color-bg)] p-3 text-left transition-colors hover:border-[color:var(--color-border)]"
+          class="stepper-box rounded-lg border border-[color:var(--color-border-subtle)] bg-[color:var(--color-bg)] p-3 text-left transition-colors hover:border-[color:var(--color-accent)]"
         >
           <p class="text-[10px] font-medium uppercase tracking-wider text-[color:var(--color-text-subtle)]">2 · Transcript</p>
           <p class="mt-1 font-mono text-[12px] text-[color:var(--color-text)]">"lets go to the beach this weekend"</p>
@@ -186,7 +259,7 @@ const gestures = [
         <a
           href="#stage-cleanup"
           data-stage-nav="2"
-          class="stepper-box rounded-lg border border-[color:var(--color-border-subtle)] bg-[color:var(--color-bg)] p-3 text-left transition-colors hover:border-[color:var(--color-border)]"
+          class="stepper-box rounded-lg border border-[color:var(--color-border-subtle)] bg-[color:var(--color-bg)] p-3 text-left transition-colors hover:border-[color:var(--color-accent)]"
         >
           <p class="text-[10px] font-medium uppercase tracking-wider text-[color:var(--color-text-subtle)]">3 · Cleaned</p>
           <p class="mt-1 font-mono text-[12px] text-[color:var(--color-text)]">"Let's go to the beach this weekend."</p>
@@ -222,7 +295,7 @@ const gestures = [
             data-stage-panel={String(i)}
           >
             <div class="grid gap-6 sm:grid-cols-[auto_1fr] sm:gap-8">
-              <div class="font-display text-5xl font-semibold tabular-nums text-[color:var(--color-accent)] leading-none sm:text-6xl">
+              <div class={`font-display text-5xl font-semibold tabular-nums leading-none sm:text-6xl ${stage.grape ? 'text-[color:var(--color-grape)]' : 'text-[color:var(--color-accent)]'}`}>
                 {stage.n}
               </div>
               <div>
@@ -230,24 +303,24 @@ const gestures = [
                   <h2 class="font-display text-2xl font-semibold tracking-tight sm:text-3xl">
                     {stage.title}
                   </h2>
-                  <span class="font-mono text-xs uppercase tracking-wider text-[color:var(--color-text-subtle)]">
+                  <span class={`font-mono text-xs uppercase tracking-wider ${stage.grape ? 'text-[color:var(--color-grape)]' : 'text-[color:var(--color-text-subtle)]'}`}>
                     {stage.where}
                   </span>
                 </div>
-                <p class="mt-4 leading-relaxed text-[color:var(--color-text-muted)]">
-                  {stage.summary}
-                </p>
+                {(Array.isArray(stage.summary) ? stage.summary : [stage.summary]).map((para) => (
+                  <p class="mt-4 leading-relaxed text-[color:var(--color-text-muted)]" set:html={para}></p>
+                ))}
                 <!-- Detail rows as native <details>/<summary> accordions,
                      closed by default. Native because Chromium auto-expands
                      them on find-in-page — a reimplemented accordion would
                      hide matches from Ctrl-F. -->
-                <div class="mt-6 space-y-2 border-l border-[color:var(--color-border)] pl-5">
+                <div class={`mt-6 space-y-2 border-l pl-5 ${stage.grape ? 'border-[color:var(--color-grape-200)]' : 'border-[color:var(--color-border)]'}`}>
                   {stage.detail.map(([term, body]) => (
                     <details class="stage-detail group">
                       <summary class="flex cursor-pointer items-center gap-2 text-sm font-semibold text-[color:var(--color-text)]">
                         <svg
                           aria-hidden="true"
-                          class="stage-detail-chevron h-3.5 w-3.5 shrink-0 text-[color:var(--color-accent)] transition-transform"
+                          class={`stage-detail-chevron h-3.5 w-3.5 shrink-0 transition-transform ${stage.grape ? 'text-[color:var(--color-grape)]' : 'text-[color:var(--color-accent)]'}`}
                           viewBox="0 0 24 24"
                           fill="none"
                           stroke="currentColor"
@@ -297,12 +370,16 @@ const gestures = [
     </div>
   </section>
 
+    </div>
+  </div>
+  <!-- end content panel -->
+
   <!-- Keyboard gestures: the same quick reference the in-app "?" help
        overlay shows, grouped the same way. Placed high with its own
        anchor (#gestures) so it's reachable in a single jump, for
        readers who'd otherwise get lost in the verbose stage cards. -->
   <section id="gestures" data-reveal class="scroll-mt-20 border-t border-[color:var(--color-border-subtle)] bg-[color:var(--color-section-tint)]">
-    <div class="mx-auto max-w-3xl px-6 py-16">
+    <div class="mx-auto max-w-4xl px-6 py-20">
     <div class="rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6 sm:p-8">
       <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">
         Keyboard gestures
@@ -343,304 +420,16 @@ const gestures = [
     </div>
   </section>
 
-  <!-- Reference Windows. Explain the feature before the refinement
-       loop because references feed into cleanup + refinement turns.
-       Tinted band; copy-left / overlay-mockup-right on lg, stacked on
-       mobile. The mockup reuses OverlayMockup with the prominent hint
-       row + an attached-window pill, the anatomy this section describes. -->
-  <section id="reference-windows" data-reveal class="scroll-mt-20 border-t border-[color:var(--color-border-subtle)] bg-[color:var(--color-section-tint)]">
-    <div class="mx-auto grid max-w-5xl items-start gap-10 px-6 py-20 lg:grid-cols-2 lg:gap-14">
-      <div>
-      <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">
-        Reference Windows
-      </p>
-      <h2 class="mt-4 font-display text-3xl font-medium tracking-tight sm:text-4xl">
-        Give the LLM something to look at.
-      </h2>
-      <p class="mt-6 text-lg leading-relaxed text-[color:var(--color-text-muted)]">
-        Before dictating, you can attach context — a window's contents, a file, or the current clipboard — and the cleanup LLM will use it when processing your speech. Useful when you're dictating something that references on-screen material: a ticket, an email, a code diff, a document.
-      </p>
-
-      <dl class="mt-8 space-y-6 border-l border-[color:var(--color-border)] pl-5">
-        <div>
-          <dt class="text-sm font-semibold text-[color:var(--color-text)]">Space-during-dictation gesture</dt>
-          <dd class="mt-1 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
-            The fastest way to attach a window: while holding your dictation hotkey, tap <strong>Space</strong>. Audio pauses, the window picker opens, you pick a window (arrow keys + Enter, or click), and the overlay enters a <em>latched</em> state. Hold the hotkey again to keep dictating with the reference attached, or just tap-and-release to send. Tap Space mid-dictation again to attach a second, third, … reference into the same composition. Esc cancels the entire composition.
-          </dd>
-        </div>
-        <div>
-          <dt class="text-sm font-semibold text-[color:var(--color-text)]">Tap C for the window you're looking at</dt>
-          <dd class="mt-1 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
-            When the window you want is the one you dictated from, skip the picker entirely: while holding the hotkey, tap <strong>C</strong> to attach the current front window as a reference. Both Space and C also work while you're <em>reviewing</em> a result, so you can pull in context after seeing the draft and then refine with it.
-          </dd>
-        </div>
-        <div>
-          <dt class="text-sm font-semibold text-[color:var(--color-text)]">Window picker (mouse + keyboard)</dt>
-          <dd class="mt-1 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
-            Click the <strong>"+"</strong> button on the overlay to open the picker directly without the Space gesture. The picker is a sizable, screen-relative panel showing every capturable window — fully keyboard-navigable (arrow keys to move selection, Enter to pick, Cmd-W or Esc to dismiss). Picker captures a window via ScreenCaptureKit — either as OCR'd text or, when you've picked a vision-capable model, as an actual PNG sent to the LLM as image tokens. Screen Recording permission is requested lazily on first use, not at startup.
-          </dd>
-        </div>
-        <div>
-          <dt class="text-sm font-semibold text-[color:var(--color-text)]">File and clipboard</dt>
-          <dd class="mt-1 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
-            Drag a file onto the overlay, use the file picker button, or attach the current clipboard as a text reference. PDFs, images, and plain-text files are all supported.
-          </dd>
-        </div>
-        <div>
-          <dt class="text-sm font-semibold text-[color:var(--color-text)]">Per-tier model configuration</dt>
-          <dd class="mt-1 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
-            Settings exposes a Cleanup tier and a Context tier, each with its own provider + model dropdown. You can mix providers — for example, Gemini Flash-Lite for fast everyday cleanup and Claude Sonnet on Bedrock for reference-aware turns that benefit from deeper reasoning. The model badge on the review overlay opens a picker offering your configured providers' full model catalog, so you can switch models mid-review — a one-off override for that dictation that re-runs the turn, never a config change.
-          </dd>
-        </div>
-        <div>
-          <dt class="text-sm font-semibold text-[color:var(--color-text)]">Works across full-screen Spaces</dt>
-          <dd class="mt-1 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
-            You can attach a window whose app is on a full-screen Space — a dedicated Space, a split view, or a target on another monitor. Parleq activates the source app, waits for macOS to compose that Space, captures, then animates back to where you were. No "switch to that Space first" step.
-          </dd>
-        </div>
-        <div>
-          <dt class="text-sm font-semibold text-[color:var(--color-text)]">Memory only</dt>
-          <dd class="mt-1 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
-            Captured PNG data lives in process memory and is released when the dictation session ends (accept or cancel). Reference content is sent only to your configured LLM endpoint — no Parleq-controlled relay, no caching, no disk write.
-          </dd>
-        </div>
-      </dl>
-      </div>
-
-      <!-- Mockup column: the overlay with the prominent reference hint
-           row + an attached-window pill, mirroring what this section
-           describes. Sticky on lg so it tracks alongside the tall copy. -->
-      <div class="flex justify-center lg:sticky lg:top-16 lg:justify-end">
-        <OverlayMockup
-          pastingTo="Mail"
-          model="2.5 Flash"
-          hint="Dictating with a reference window"
-          hintProminent={true}
-          attachment="Calendar — window attached"
-        >
-          "Looks like Thursday at 2pm is open on your calendar — does that work for the check-in?"
-        </OverlayMockup>
-      </div>
-    </div>
-  </section>
-
-  <!-- Refinement loop. Stages 3 and 4 don't have to run once: while
-       the overlay is open, each subsequent hotkey press re-runs
-       stage 3 with a different system prompt that treats your speech
-       as an edit instruction over the existing text. Stage 4 only
-       fires when you tap to accept. The chain below shows what that
-       looks like in practice. Base band; the intro is copy-left /
-       overlay-mockup-right on lg (stacked on mobile), the mockup showing
-       a transcript with a refine-instruction quote line — the move this
-       section is about. The step-by-step chain stays full width below. -->
-  <section id="refine-loop" data-reveal class="scroll-mt-20 border-t border-[color:var(--color-border-subtle)] bg-[color:var(--color-bg)]">
-    <div class="mx-auto max-w-5xl px-6 py-20">
-      <div class="grid items-start gap-10 lg:grid-cols-2 lg:gap-14">
-        <div>
-      <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">
-        The loop
-      </p>
-      <h2 class="mt-4 font-display text-3xl font-medium tracking-tight sm:text-4xl">
-        Refine until it's right.
-      </h2>
-      <p class="mt-6 text-lg leading-relaxed text-[color:var(--color-text-muted)]">
-        Stages 3 and 4 don't have to run once. While the overlay is open, each subsequent hotkey press re-runs stage 3 with a different system prompt — a refine prompt that takes the existing text plus your new utterance as an edit instruction and produces the smallest change that fully accomplishes it. Stage 4 only fires when you tap to accept.
-      </p>
-      <p class="mt-4 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
-        It's a voice undo/redo loop. The visible text is the working state; each press replaces it with the LLM's edit. Tone, format, length, structure — anything you can describe in a sentence is a valid edit.
-      </p>
-      <p class="mt-4 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
-        Edits you make often are worth saving: a <strong>transform preset</strong> is a named, stored refine instruction ("Rewrite as a tight bulleted list", "Make this formal") that appears as a one-tap chip on the review overlay — same refine pass, no speaking required. A preset can also be assigned as an app's default, in which case its instruction folds into that app's stage-3 cleanup prompt — one LLM call, the text arrives already styled, and the overlay shows a one-tap Undo that re-runs plain cleanup. If you keep making the same kind of edit by voice, Parleq can also <em>suggest</em> a preset for it (you review and edit the wording before it's created); and if you keep tapping the same preset in one app, it can suggest making that preset the app's default. Both suggestions show up in the <strong>Learned</strong> section and are never applied without your confirmation.
-      </p>
-        </div>
-
-        <!-- Mockup column: a transcript mid-refine, with the spoken edit
-             instruction shown as the accent-barred refine line. -->
-        <div class="flex justify-center lg:sticky lg:top-16 lg:justify-end">
-          <OverlayMockup
-            pastingTo="Mail"
-            model="2.5 Flash"
-            refine={`"make it more professional"`}
-          >
-            "Yeah, we should probably move the meeting to next Thursday because too many people are out this week."
-          </OverlayMockup>
-        </div>
-      </div>
-
-      <div class="mt-12 space-y-3">
-        <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5">
-          <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-text-subtle)]">
-            After stage 3 (initial cleanup)
-          </p>
-          <p class="mt-2 text-[15px] leading-relaxed text-[color:var(--color-text)]">
-            "Yeah, we should probably move the meeting to next Thursday because too many people are out this week."
-          </p>
-        </div>
-
-        <div class="rounded-xl border border-[color:var(--color-accent-soft)] bg-[color:var(--color-accent-soft)]/15 p-5">
-          <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">
-            You press ⌥ and say
-          </p>
-          <p class="mt-2 font-medium text-[15px] leading-relaxed text-[color:var(--color-text)]">
-            "make it more professional"
-          </p>
-        </div>
-
-        <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5">
-          <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-text-subtle)]">
-            Refine pass — same LLM, different prompt
-          </p>
-          <p class="mt-2 text-[15px] leading-relaxed text-[color:var(--color-text)]">
-            "I'd like to move our meeting to next Thursday — too many team members are out this week."
-          </p>
-        </div>
-
-        <div class="rounded-xl border border-[color:var(--color-accent-soft)] bg-[color:var(--color-accent-soft)]/15 p-5">
-          <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">
-            You press ⌥ and say
-          </p>
-          <p class="mt-2 font-medium text-[15px] leading-relaxed text-[color:var(--color-text)]">
-            "shorter, end with a question mark"
-          </p>
-        </div>
-
-        <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5">
-          <p class="mt-2 text-[15px] leading-relaxed text-[color:var(--color-text)]">
-            "Could we move our meeting to next Thursday?"
-          </p>
-        </div>
-
-        <div class="rounded-xl border border-[color:var(--color-accent-soft)] bg-[color:var(--color-accent-soft)]/15 p-5">
-          <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">
-            You press ⌥ and say
-          </p>
-          <p class="mt-2 font-medium text-[15px] leading-relaxed text-[color:var(--color-text)]">
-            "add 'attendance has been thin lately' as the reason"
-          </p>
-        </div>
-
-        <div class="rounded-xl border-2 border-[color:var(--color-accent-soft)] bg-[color:var(--color-accent-soft)]/30 p-5">
-          <p class="text-[15px] leading-relaxed text-[color:var(--color-text)]">
-            "Could we move our meeting to next Thursday? Attendance has been thin lately."
-          </p>
-          <p class="mt-3 font-mono text-[10px] uppercase tracking-[0.16em] text-[color:var(--color-accent)]">
-            ↳ tap ⌥ — stage 4 runs, text pastes
-          </p>
-        </div>
-      </div>
-
-      <p class="mt-10 text-sm leading-relaxed text-[color:var(--color-text-subtle)]">
-        Implementation note: the refine prompt lives in <code class="rounded bg-[color:var(--color-border-subtle)] px-1.5 py-0.5 font-mono text-[12px] text-[color:var(--color-text)]">SystemPrompts.swift</code> alongside the cleanup prompt. Both run through the same streaming LLM provider; the only differences are the system prompt text and the user-message shape (refine includes the prior text + edit instruction in a single user message).
-      </p>
-    </div>
-  </section>
-
-  <!-- Voice enrollment. The acoustic-disambiguation feature: teach a
-       term in your own voice so Parleq can tell it apart from a common
-       sound-alike. Sits between the overlay features and the privacy
-       band because its story is half "what it fixes" and half "how the
-       voiceprint is handled" — the latter leads naturally into the
-       privacy posture below. Tinted band; copy-left / before-after
-       illustration-right on lg, stacked on mobile. The privacy points
-       are detail rows in the left dl, because the privacy framing is
-       the point as much as the accuracy win. -->
-  <section id="voice-enrollment" data-reveal class="scroll-mt-20 border-t border-[color:var(--color-border-subtle)] bg-[color:var(--color-section-tint)]">
-    <div class="mx-auto grid max-w-5xl items-start gap-10 px-6 py-20 lg:grid-cols-2 lg:gap-14">
-      <div>
-      <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">
-        Voice enrollment
-      </p>
-      <h2 class="mt-4 font-display text-3xl font-medium tracking-tight sm:text-4xl">
-        Teach it a word in your own voice.
-      </h2>
-      <p class="mt-6 text-lg leading-relaxed text-[color:var(--color-text-muted)]">
-        Some of the words you most want right are the ones that sound like something else. A product name like <strong class="text-[color:var(--color-text)]">Keavi</strong> collides with the fruit <em>kiwi</em>; <strong class="text-[color:var(--color-text)]">Claude</strong> collides with <em>clawed</em>. Spelling alone can't separate them — they sound the same. So Parleq lets you enroll a term by voice: read a few short sentences aloud, and it learns the sound of <em>you</em> saying that word. On later dictations it disambiguates by sound — recovering the name you meant, and leaving the everyday word untouched when that's the one you actually said.
-      </p>
-      <p class="mt-4 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
-        It works alongside on-device cleanup, not instead of it — a sharper ear at the recognition stage, so the right word is already there before cleanup ever runs. And like everything in the recognition path, it stays on your Mac.
-      </p>
-
-      <dl class="mt-8 space-y-6 border-l border-[color:var(--color-border)] pl-5">
-        <div>
-          <dt class="text-sm font-semibold text-[color:var(--color-text)]">A short read-aloud, once</dt>
-          <dd class="mt-1 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
-            The enrollment wizard shows a handful of carrier sentences that place the term in varied, natural contexts — beginning, middle, and end of a sentence — so it captures how the word actually sounds in speech rather than said in isolation. Speak each one; that's it. You can edit or regenerate any sentence first.
-          </dd>
-        </div>
-        <div>
-          <dt class="text-sm font-semibold text-[color:var(--color-text)]">A voiceprint, not a recording</dt>
-          <dd class="mt-1 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
-            What's kept is a mathematical <strong class="text-[color:var(--color-text)]">voiceprint</strong> — a compact embedding derived from the audio — never the audio itself. The recording is processed in memory and discarded; no enrollment audio is ever written to disk.
-          </dd>
-        </div>
-        <div>
-          <dt class="text-sm font-semibold text-[color:var(--color-text)]">On-device, no LLM, no cloud</dt>
-          <dd class="mt-1 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
-            Both enrollment and the live, by-sound comparison run entirely on your Mac. No network call, no cloud service, and no LLM is involved in the disambiguation — it's an acoustic match against your enrolled voiceprint.
-          </dd>
-        </div>
-        <div>
-          <dt class="text-sm font-semibold text-[color:var(--color-text)]">Encrypted at rest, device-only</dt>
-          <dd class="mt-1 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
-            Voiceprints are biometric data, and Parleq treats them as such. They're stored as an <strong class="text-[color:var(--color-text)]">AES-GCM-encrypted</strong> blob under a key held in your Mac's Keychain that is <strong class="text-[color:var(--color-text)]">device-only and never synced</strong> — it isn't routed through iCloud Keychain, so the voiceprint can't leave the machine it was made on.
-          </dd>
-        </div>
-        <div>
-          <dt class="text-sm font-semibold text-[color:var(--color-text)]">Opt-in, per term, deletable anytime</dt>
-          <dd class="mt-1 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
-            Enrollment is never automatic. You opt in once, and only for the specific terms you choose. Delete a single term's voiceprint, or wipe them all, whenever you like — and the encrypted file goes with it.
-          </dd>
-        </div>
-      </dl>
-      </div>
-
-      <!-- Illustration column: a compact before/after of the
-           disambiguation — what a corrector hears vs. what your voice
-           lets Parleq recover. Reuses the refine-loop card vocabulary
-           (surface cards, accent-tinted "result" card). Sticky on lg so
-           it tracks the tall copy. -->
-      <div class="lg:sticky lg:top-16">
-        <div class="rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6 sm:p-7">
-          <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-text-subtle)]">
-            Without your voice
-          </p>
-          <p class="mt-2 text-[15px] leading-relaxed text-[color:var(--color-text)]">
-            "I shipped the <span class="rounded bg-[color:var(--color-border-subtle)] px-1 text-[color:var(--color-text-muted)] line-through decoration-[color:var(--color-text-subtle)]">kiwi</span> build last night."
-          </p>
-          <p class="mt-1.5 text-[13px] leading-relaxed text-[color:var(--color-text-subtle)]">
-            A name that sounds like a common word is a coin-flip — and a corrector that "fixes" every <em>kiwi</em> into your product name will mangle the times you really did mean the fruit.
-          </p>
-
-          <div class="my-5 flex items-center gap-3 text-[11px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">
-            <span class="h-px flex-1 bg-[color:var(--color-border)]"></span>
-            Enrolled by voice
-            <span class="h-px flex-1 bg-[color:var(--color-border)]"></span>
-          </div>
-
-          <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">
-            With your voice
-          </p>
-          <p class="mt-2 text-[15px] leading-relaxed text-[color:var(--color-text)]">
-            "I shipped the <mark class="rounded bg-[color:var(--color-accent)]/20 px-1 text-[color:var(--color-text)]">Keavi</mark> build last night."
-          </p>
-          <p class="mt-2 rounded-lg border border-[color:var(--color-accent-soft)] bg-[color:var(--color-accent-soft)]/20 px-3 py-2 text-[13px] leading-relaxed text-[color:var(--color-text-muted)]">
-            Parleq compares the sound to your enrolled voiceprint, recovers <strong class="text-[color:var(--color-text)]">Keavi</strong> — and still leaves a genuine <em>kiwi</em> alone when that's what you said.
-          </p>
-        </div>
-      </div>
-    </div>
-  </section>
-
   <!-- Privacy posture: an explicit kept/not-kept table. This is the
        part testers and security-reviewers usually want to skim, so
        it's its own section with a clear visual rhythm rather than
        being buried in stage 4's detail. Rendered as the page's DARK
-       TRUST BAND — same near-black slate gradient family as the
+       TRUST BAND — same near-black grape gradient as the
        homepage #enterprise band — to read as the trust centerpiece.
-       Text + cards are restyled for the dark ground: light slate body,
+       Text + cards are restyled for the dark ground: grape-200 body,
        white emphasis, amber accents, white/10 borders and inline-code
        chips that all clear contrast on the dark surface. -->
-  <section data-reveal class="bg-gradient-to-br from-[#272d35] to-[#15181d] text-[#cbd5e1]">
+  <section data-reveal class="border-b border-white/10 bg-gradient-to-br from-[#23103a] to-[#140622] text-[color:var(--color-grape-200)]">
     <div class="mx-auto max-w-3xl px-6 py-20">
       <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">
         Privacy posture
@@ -651,31 +440,37 @@ const gestures = [
 
       <div class="mt-10 grid gap-6 sm:grid-cols-2">
         <div class="rounded-2xl border border-white/10 bg-white/[0.04] p-6">
-          <h3 class="text-lg font-semibold text-white">Persisted</h3>
-          <ul class="mt-3 space-y-3 text-[15px] leading-relaxed text-[#cbd5e1]">
-            <li><code class="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[13px] text-white">~/.parleq/config.json</code> — settings + custom dictionary, user-authored.</li>
-            <li><code class="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[13px] text-white">~/.parleq/usage.jsonl</code> — one line per LLM call: timestamp, model, token counts, latency. <strong class="font-semibold text-white">Metadata only.</strong></li>
-            <li><code class="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[13px] text-white">~/.parleq/app.log</code> — diagnostic log. ASR/LLM metrics are length-only ("post-utterance 87 ms, 142 chars / 28 words"); never the transcript itself.</li>
-            <li><code class="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[13px] text-white">~/.parleq/metrics.jsonl</code> — one text-free record per dictation (duration, ASR/LLM latency, token counts, ref-attached + cleanup-failed flags) so the Stats dashboard spans sessions. <strong class="font-semibold text-white">No transcript text</strong>; bounded to the last 30 days. Disabled entirely when history retention is set to 0.</li>
-            <li>Provider secrets in the macOS <strong class="font-semibold text-white">Keychain</strong> — Gemini API key, OpenAI API key, Bedrock API key, AWS static credentials, Vertex service-account JSON, Azure resource API key. Whichever you've configured.</li>
-            <li><code class="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[13px] text-white">~/.parleq/voiceprints.enc</code> — only if you opt into <strong class="font-semibold text-white">voice enrollment</strong>. An <strong class="font-semibold text-white">AES-GCM-encrypted</strong> blob of per-term voiceprint embeddings (<strong class="font-semibold text-white">not audio</strong>), under a Keychain key that is device-only and never synced to iCloud. Deletable per term or all at once.</li>
+          <div class="flex items-baseline justify-between gap-3">
+            <h3 class="text-lg font-semibold text-white">Persisted</h3>
+            <span class="text-[12px] text-[color:var(--color-grape-300)]">in <code class="font-mono">~/.parleq/</code> or Keychain</span>
+          </div>
+          <ul class="mt-4 divide-y divide-white/[0.07] text-[14px]">
+            <li class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 py-2.5"><code class="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[12.5px] text-white">config.json</code><span class="text-[color:var(--color-grape-300)]">your settings + custom dictionary</span></li>
+            <li class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 py-2.5"><code class="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[12.5px] text-white">usage.jsonl</code><span class="text-[color:var(--color-grape-300)]">LLM-call metadata — no text</span></li>
+            <li class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 py-2.5"><code class="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[12.5px] text-white">app.log</code><span class="text-[color:var(--color-grape-300)]">diagnostics — length-only, never the transcript</span></li>
+            <li class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 py-2.5"><code class="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[12.5px] text-white">metrics.jsonl</code><span class="text-[color:var(--color-grape-300)]">text-free per-dictation stats (30-day cap)</span></li>
+            <li class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 py-2.5"><strong class="text-white">Keychain</strong><span class="text-[color:var(--color-grape-300)]">your provider secrets — whichever you set</span></li>
+            <li class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 py-2.5"><code class="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[12.5px] text-white">voiceprints.enc</code><span class="text-[color:var(--color-grape-300)]">opt-in — AES-GCM embeddings, not audio</span></li>
+            <li class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 py-2.5"><code class="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[12.5px] text-white">enrollment-audio.enc</code><span class="text-[color:var(--color-grape-300)]">kept with enrollment — encrypted, erased when off</span></li>
           </ul>
         </div>
         <div class="rounded-2xl border border-[color:var(--color-accent)]/30 bg-white/[0.04] p-6">
-          <h3 class="text-lg font-semibold text-white">Never on disk</h3>
-          <ul class="mt-3 space-y-3 text-[15px] leading-relaxed text-[#cbd5e1]">
-            <li><strong class="font-semibold text-white">Audio bytes.</strong> WAV / PCM stays in process memory only. The Parakeet model is called directly as a Swift function call — there's no IPC, no listening sockets, no <code class="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[13px] text-white">/tmp/parleq-*.wav</code>.</li>
-            <li><strong class="font-semibold text-white">Transcripts.</strong> Raw ASR output stays in memory.</li>
-            <li><strong class="font-semibold text-white">Voice-enrollment audio.</strong> The sentences you read aloud during enrollment are processed in memory and discarded — only the derived voiceprint embedding is kept (encrypted; see the Persisted column). No enrollment recording is ever written to disk.</li>
-            <li><strong class="font-semibold text-white">Cleaned text.</strong> Held in the overlay during cleanup, then in an in-memory ring backing the Parleq window's Recent Dictations section, then gone on app quit. Never serialized. (Only the text-free per-dictation metrics in <code class="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[13px] text-white">metrics.jsonl</code> persist — never the words.)</li>
-            <li><strong class="font-semibold text-white">Reference captures.</strong> PNG screenshots and OCR'd text from Reference Windows stay in process memory for the duration of a single dictation session. Released on accept or cancel — never written to disk and never cached between sessions.</li>
-            <li><strong class="font-semibold text-white">Cloud session tokens (AWS / GCP / Azure).</strong> CLI-session auth modes delegate token refresh to the official AWS / gcloud / az CLI caches at <code class="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[13px] text-white">~/.aws/sso/cache/</code>, <code class="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[13px] text-white">~/.config/gcloud/</code>, and <code class="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[13px] text-white">~/.azure/</code>. Parleq stores no long-lived session tokens directly.</li>
+          <div class="flex items-baseline justify-between gap-3">
+            <h3 class="text-lg font-semibold text-white">Never on disk</h3>
+            <span class="text-[12px] text-[color:var(--color-grape-300)]">memory only — wiped on quit</span>
+          </div>
+          <ul class="mt-4 divide-y divide-white/[0.07] text-[14px]">
+            <li class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 py-2.5"><strong class="text-white">Audio bytes</strong><span class="text-[color:var(--color-grape-300)]">no IPC, sockets, or <code class="font-mono text-[12.5px]">/tmp</code> WAV</span></li>
+            <li class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 py-2.5"><strong class="text-white">Transcripts</strong><span class="text-[color:var(--color-grape-300)]">raw ASR stays in memory</span></li>
+            <li class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 py-2.5"><strong class="text-white">Cleaned text</strong><span class="text-[color:var(--color-grape-300)]">overlay + history ring — gone on quit</span></li>
+            <li class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 py-2.5"><strong class="text-white">Reference captures</strong><span class="text-[color:var(--color-grape-300)]">released on accept or cancel</span></li>
+            <li class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 py-2.5"><strong class="text-white">Cloud tokens</strong><span class="text-[color:var(--color-grape-300)]">delegated to your AWS / gcloud / az caches</span></li>
           </ul>
         </div>
       </div>
 
-      <p class="mt-10 text-sm text-[#94a3b8]">
-        Read the full enterprise-review packet in <a href={`${repoUrl}/blob/main/docs/SECURITY_REVIEW.md`} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">SECURITY_REVIEW.md</a>.
+      <p class="mt-10 text-sm text-[color:var(--color-grape-300)]">
+        Every path, key, and flag — with the full rationale — is in <a href={`${repoUrl}/blob/main/docs/SECURITY_REVIEW.md`} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">SECURITY_REVIEW.md</a>.
       </p>
     </div>
   </section>

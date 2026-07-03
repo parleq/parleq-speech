@@ -40,6 +40,38 @@
   --color-grape: #5b2a86;
   --color-grape-strong: #43205f;
 
+  /* Concord grape RAMP — derived from --color-grape #5b2a86. Dark steps
+     ground the framed hero panel + trust strip; light steps feed the
+     flow-line gradients, cluster nodes, and the lavender headline.
+     -500 == --color-grape. WCAG (scripts/contrast.mjs), verified pairings:
+       body  #f6f1fb on panel #23103a → 15.66 (AAA)
+       lavender headline #a87fce on #23103a → 5.46 (AA normal)
+       grape-200 #cdb4e6 on #23103a → 9.34
+       amber #d97706 small text on #311551 → 4.86 (just passes AA)
+     RULE: amber small text on the panel is borderline — prefer amber for
+     large text, icons, and CTA fill. (Solid Download CTAs use the darker
+     --color-accent-hover #b45309 via `.cta-solid` = 5.02:1 white-on-amber;
+     the base #d97706 fill is 3.19 and reserved for large/icon accents.) */
+  --color-grape-950: #150720;
+  --color-grape-900: #23103a;
+  --color-grape-800: #311551;
+  --color-grape-700: #472075;
+  --color-grape-600: #552789;
+  --color-grape-500: #5b2a86;
+  --color-grape-400: #7d44b0;
+  --color-grape-300: #a87fce;
+  --color-grape-200: #cdb4e6;
+  --color-grape-100: #ebe0f6;
+  --color-panel-ink: #f6f1fb;             /* near-white body/headline on dark panel */
+  --flow-voice: var(--color-accent);      /* amber spark = voice energy */
+  --flow-clean: var(--color-grape-300);   /* lavender = cleanup/intelligence */
+
+  /* Light-purple "utility page" hero (docs + FAQ family) — a shade darker than panel-ink so it
+     reads as a hero, but clearly lighter than the deep-grape marquee heroes (home/enterprise).
+     Used as a top→bottom gradient. Dark text + amber eyebrow sit on it (AA-verified). */
+  --color-hero-light-top: #ece4f7;
+  --color-hero-light-bottom: #ddccf0;
+
   /* Very faint slate wash for the homepage section rhythm — sits a hair
      below the warm-white base so alternating sections read as distinct
      bands without a hard line. Derived from the slate border palette. */
@@ -78,90 +110,20 @@ body {
   letter-spacing: -0.02em;
 }
 
-/* Sound-bar hero motif. Five vertical bars that idle-pulse, the
-   same visual language as the in-app capture overlay. The phase
-   offsets give the wave a left-to-right travel without needing JS. */
-.wave-bar {
-  display: inline-block;
-  width: 6px;
-  height: 56px;
-  margin: 0 3px;
-  background: var(--color-wave);
-  border-radius: 3px;
-  transform-origin: center;
-  animation: wave 1.4s ease-in-out infinite;
-}
-.wave-bar:nth-child(1) { animation-delay: 0s; }
-.wave-bar:nth-child(2) { animation-delay: 0.1s; }
-.wave-bar:nth-child(3) { animation-delay: 0.2s; }
-.wave-bar:nth-child(4) { animation-delay: 0.3s; }
-.wave-bar:nth-child(5) { animation-delay: 0.4s; }
 
-@keyframes wave {
-  0%, 100% { transform: scaleY(0.25); opacity: 0.85; }
-  50%      { transform: scaleY(1.0);  opacity: 1.0;  }
-}
 
-@media (prefers-reduced-motion: reduce) {
-  .wave-bar { animation: none; transform: scaleY(0.6); }
-}
-
-/* Hero live cleanup demo. A raw spoken transcript types out in muted
-   monospace, then morphs into the cleaned sentence in the site text
-   color. The JS owns the word-by-word build; CSS owns the two visual
-   states (raw vs. cleaned), the per-word collapse of filler words, and
-   the typing caret. Everything here is purely decorative — the region
-   is aria-hidden and the loop only runs when motion is allowed. */
-
-/* Each word is its own inline element so fillers can collapse
-   independently. The width/opacity transition is what makes the
-   fillers look like they "dissolve" rather than snap away. */
-.hero-demo-word {
-  display: inline-block;
-  white-space: pre;            /* keep the trailing space per word */
-  max-width: 12ch;             /* generous cap; no real word exceeds it */
-  opacity: 1;
-  transition:
-    opacity 0.45s ease,
-    max-width 0.45s ease;
-}
-/* Filler words on cleanup: fade to nothing and pinch their width to 0
-   so the surrounding words slide together. overflow:hidden keeps the
-   collapsing glyphs from spilling during the transition. */
-.hero-demo-word.is-dropped {
-  max-width: 0;
-  opacity: 0;
-  overflow: hidden;
-}
-
-/* Raw (dictation) phase: muted monospace, as if mid-utterance. */
-.hero-demo-raw {
-  font-family: var(--font-mono);
-  color: var(--color-text-subtle);
-}
-/* Cleaned phase: settle into the site's body text color. */
-.hero-demo-cleaned {
-  color: var(--color-text);
-}
-
-/* The one token the cleanup changed (a percent, a name, a dictionary term,
-   a period), emphasized in the cleaned line so the eye lands on what Parleq
-   actually did. Accent color + weight + a soft highlighter tint; the
-   color-mix tint degrades gracefully to plain accent text where unsupported. */
-.hero-demo-mark {
-  /* Darker accent for the TEXT (WCAG AA ≥4.5:1 on the tint over warm white);
-     the lighter accent stays as the highlighter background tint only. */
-  color: var(--color-accent-hover);
-  font-weight: 600;
-  border-radius: 3px;
-  padding: 0 0.15em;
-  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
-}
+/* Solid brand CTA (the Download buttons). Fills with the DARKER accent so the
+   white label clears WCAG AA — #b45309 on white is 5.02:1, vs the base
+   #d97706's 3.19:1. Hover darkens the *current* accent (color-mix toward
+   black), so a CTA that lands inside a grape zone — where the accent tokens
+   re-point — still themes and darkens correctly. */
+.cta-solid { background: var(--color-accent-hover); }
+.cta-solid:hover { background: color-mix(in srgb, var(--color-accent-hover) 80%, #000); }
 
 /* On-device "grape zone". Applied to a block or page that features on-device
    cleanup, it re-points the accent variables to Concord grape — so every
-   descendant that reads --color-accent (section kickers, .hero-demo-mark
-   highlights, accent links) themes to grape automatically — and lays a very
+   descendant that reads --color-accent (section kickers, accent links)
+   themes to grape automatically — and lays a very
    faint grape wash so the zone reads as set-apart without a hard edge. */
 .zone-grape {
   --color-accent: var(--color-grape);
@@ -177,9 +139,7 @@ body {
   --color-accent-hover: var(--color-grape-strong);
 }
 
-/* Small pill used for the hero feature strip. Base is neutral; `.chip-grape`
-   marks the on-device cleanup family (voiceprints, on-device Gemma 4, numbers,
-   dictionary) with the Concord-grape accent. SVG icons inherit currentColor. */
+/* Small pill used for the hero feature strip. SVG icons inherit currentColor. */
 .chip {
   display: inline-flex;
   align-items: center;
@@ -198,46 +158,41 @@ body {
   border-color: var(--color-accent);
   color: var(--color-text);
 }
-.chip-grape {
-  border-color: color-mix(in srgb, var(--color-grape) 30%, var(--color-border));
-  background: color-mix(in srgb, var(--color-grape) 6%, var(--color-surface));
-  color: var(--color-grape);
+
+/* Flow card token highlights — used inside the hero's dark-grape panel to
+   mark the "wrong" tokens in the input card and the "fixed" tokens in the
+   output card. `.u-tok` = amber underline (raw, unrecognized term);
+   `.mk-tok` = lavender grape-200 text on grape-400/42% tint (corrected).
+   Both rely on the grape-ramp variables available globally. */
+.u-tok {
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--color-accent) 75%, transparent);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
 }
-.chip-grape:hover {
-  border-color: var(--color-grape);
-  background: color-mix(in srgb, var(--color-grape) 12%, var(--color-surface));
-  color: var(--color-grape-strong);
+.mk-tok {
+  color: var(--color-grape-200);
+  background: color-mix(in srgb, var(--color-grape-400) 42%, transparent);
+  border-radius: 3px;
+  padding: 0 .18em;
+  font-weight: 600;
 }
 
-/* Whole-line crossfade used when swapping examples and on the final
-   hold→clear. Kept short so the loop feels calm, not flashy. Carries
-   both opacity and color so the combined `.hero-demo-cleaned
-   .hero-demo-fade` class still animates the color shift (a later
-   single-property `transition` would otherwise override it). */
-.hero-demo-fade {
-  transition:
-    opacity 0.5s ease,
-    color 0.45s ease;
+/* Dark-panel chip — for feature chips inside the dark hero panel.
+   Grape-200 text, grape-300 border tint, grape-500 background tint. */
+.chip-d {
+  display: inline-flex;
+  align-items: center;
+  gap: .375rem;
+  border-radius: 9999px;
+  border: 1px solid color-mix(in srgb, var(--color-grape-300) 28%, transparent);
+  background: color-mix(in srgb, var(--color-grape-500) 14%, transparent);
+  padding: .25rem .75rem;
+  font-size: .75rem;
+  font-weight: 500;
+  color: var(--color-grape-200);
 }
 
-/* Typing caret: a slim blinking bar appended during the dictation
-   phase only. Gated behind no-preference so reduced-motion visitors
-   never see it (the loop itself is also disabled for them in JS). */
-@media (prefers-reduced-motion: no-preference) {
-  .hero-demo-caret {
-    display: inline-block;
-    width: 2px;
-    height: 1.05em;
-    margin-left: 1px;
-    vertical-align: text-bottom;
-    background: var(--color-text-subtle);
-    animation: hero-demo-blink 1s step-end infinite;
-  }
-  @keyframes hero-demo-blink {
-    0%, 100% { opacity: 1; }
-    50%      { opacity: 0; }
-  }
-}
 
 /* Reveal-on-scroll. The .reveal class is applied by JS only when the
    user hasn't asked for reduced motion — content is fully visible by
@@ -301,3 +256,18 @@ body {
     animation: scroll-cue 1.6s ease-in-out infinite;
   }
 }
+
+/* DocTabs panels. Give the selected tab's content a contained "card" treatment so it's clear
+   where the tabbed (per-option) content ends and the page's fixed content resumes below — the
+   issue is most visible on pages whose options have different lengths (e.g. diy-sso). A subtle
+   bordered, faint-grape region; the first child's top margin is reset so it sits flush. */
+[data-doctabs] > [role='tabpanel'] {
+  border: 1px solid var(--color-border);
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--color-grape) 2.5%, var(--color-surface));
+  padding: 1.5rem;
+}
+@media (min-width: 640px) {
+  [data-doctabs] > [role='tabpanel'] { padding: 1.75rem 2rem; }
+}
+[data-doctabs] > [role='tabpanel'] > :first-child { margin-top: 0; }

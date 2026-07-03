@@ -1,12 +1,13 @@
 ---
 import Layout from '../../layouts/Layout.astro';
-import SiteHeader from '../../components/SiteHeader.astro';
+import FloatingNav from '../../components/FloatingNav.astro';
 import PricingNote from '../../components/PricingNote.astro';
+import DocTabs from '../../components/DocTabs.astro';
 
 ---
 
-<Layout title="DIY: SSO & Sign-in with Google at home — Parleq" description="Wire up OIDC sign-in or Sign-in-with-Google for Parleq's cloud cleanup at home, without an IT department. A path-picker decision table, a flagship Sign-in-with-Google → Vertex walkthrough, the gotchas that burn hours, and how to drive it with an AI assistant.">
-  <SiteHeader active="docs" />
+<Layout title="DIY: SSO & Sign-in with Google at home — Parleq" description="Wire up OIDC or Sign-in-with-Google for Parleq's cloud cleanup at home, no IT needed — a decision table, a Google→Vertex walkthrough, and the gotchas.">
+  <FloatingNav active="docs" />
 
   <article class="mx-auto max-w-2xl px-6 pt-16 pb-24">
     <p class="text-sm">
@@ -24,21 +25,22 @@ import PricingNote from '../../components/PricingNote.astro';
       <strong class="text-[color:var(--color-text)]">Who this page is for:</strong> hobbyists and geeks wiring this up without an IT department &mdash; probably with an AI assistant open in another window. This stuff is fiddly, and the console UIs change constantly. So this page gives you the <em>route map</em> and the gotchas that burn hours; your assistant fills in the exact console-clicking for whatever the current UI looks like. The section at the bottom on <a href="#assistant" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">working with your AI assistant</a> is the intended workflow, not an afterthought.
     </p>
 
-    <div class="mt-6 rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5">
+    <div class="mt-6 rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5">
       <p class="text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
         Setting this up for a company instead? The IT-admin version &mdash; Okta / Entra ID / any OIDC IdP, with MDM pins &mdash; lives in <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/enterprise-sso/'} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Enterprise SSO</a>.
       </p>
     </div>
 
     <!-- Pick your path -->
-    <h2 class="mt-12 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+    <p class="mt-12 text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">Decision table</p>
+    <h2 class="mt-3 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
       Pick your path
     </h2>
     <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
       Three routes, all roughly $0<sup>†</sup> &mdash; Cognito&rsquo;s free tier (10,000 monthly active users on the default Essentials plan), OAuth, STS, and Workforce Identity Federation carry no service charge at personal scale. You pay only for the LLM tokens you use. Start at the top.
     </p>
 
-    <div class="mt-6 overflow-x-auto rounded-xl border border-[color:var(--color-border)]">
+    <div class="mt-6 overflow-x-auto rounded-2xl border border-[color:var(--color-border)]">
       <table class="w-full text-[14px] text-[color:var(--color-text-muted)]">
         <thead class="border-b border-[color:var(--color-border)] bg-[color:var(--color-surface)]">
           <tr>
@@ -70,47 +72,106 @@ import PricingNote from '../../components/PricingNote.astro';
       Choose <strong class="text-[color:var(--color-text)]">A</strong> unless you have a specific reason not to. Choose <strong class="text-[color:var(--color-text)]">B</strong> if you want Bedrock (Claude / GPT-OSS) and are comfortable in the AWS console. Choose <strong class="text-[color:var(--color-text)]">C</strong> only if you specifically want the federation architecture &mdash; it needs a GCP org, which is the single biggest step on this whole page.
     </p>
 
-    <!-- Path A walkthrough -->
-    <h2 class="mt-14 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
-      Path A &mdash; Sign in with Google &rarr; Vertex
-    </h2>
-    <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      &ldquo;Sign in with Google, dictate with Gemini.&rdquo; No broker, no Workforce Identity Federation, no gcloud CLI. GCP refuses to accept Google itself as a workforce IdP, so federation can&rsquo;t do this &mdash; instead Parleq&rsquo;s own Google sign-in requests the <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">cloud-platform</code> scope, and the resulting OAuth <em>access</em> token is a valid Vertex bearer directly (exactly what gcloud ADC produces, done in-app). <strong class="text-[color:var(--color-text)]">No GCP organization required.</strong>
-    </p>
+    <!-- Tabbed path walkthroughs: path-a, path-b, path-c. DocTabs hash-awareness activates the
+         right tab when a #path-x link is clicked (e.g. from the decision table above). No-JS
+         shows all three panels; the inline script hides the inactive ones before first paint. -->
+    <div class="mt-12" data-doctabs>
+      <h2 class="font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+        Path walkthroughs
+      </h2>
+      <p class="mt-3 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+        Step-by-step setup for the path you chose — each tab covers the full walkthrough, config, and gotchas.
+      </p>
 
-    <ol class="mt-6 space-y-7 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      <li class="flex gap-4">
-        <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums shrink-0">1.</span>
-        <div>
-          <p class="text-[color:var(--color-text)] font-medium">Create a GCP project and enable the Vertex AI API.</p>
-          <p class="mt-2">Any project works. Enable <strong class="text-[color:var(--color-text)]">Vertex AI API</strong> from the API Library, and note the <strong class="text-[color:var(--color-text)]">Project ID</strong> (the ID, not the display name).</p>
-        </div>
-      </li>
-      <li class="flex gap-4">
-        <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums shrink-0">2.</span>
-        <div>
-          <p class="text-[color:var(--color-text)] font-medium">Create an OAuth client &mdash; of the <em>Desktop app</em> type.</p>
-          <p class="mt-2">In <strong class="text-[color:var(--color-text)]">APIs &amp; Services &rarr; Credentials &rarr; Create credentials &rarr; OAuth client ID</strong>, choose application type <strong class="text-[color:var(--color-text)]">Desktop app</strong>, give it a name, and create. Note both the <strong class="text-[color:var(--color-text)]">client ID</strong> <em>and</em> the <strong class="text-[color:var(--color-text)]">client secret</strong> &mdash; copy the secret too. Google <strong class="text-[color:var(--color-text)]">requires</strong> the client secret on the token exchange for Desktop-app clients even though Parleq also uses PKCE; without it the exchange fails with <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">invalid_request</code>. This secret is <strong class="text-[color:var(--color-text)]">public-by-design</strong> &mdash; per Google&rsquo;s own docs an installed-app secret is not treated as confidential &mdash; but Parleq still stores it in the macOS Keychain rather than in plaintext. Paste it into <strong class="text-[color:var(--color-text)]">Settings &rarr; Company Account &rarr; Configuration &rarr; Client secret</strong>. (An <em>iOS</em>-type client has no secret, which is why the alternate below skips this step.) In your Parleq config set <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">"redirect_uri": "http://127.0.0.1/oauth2redirect"</code> &mdash; Parleq opens your default browser for sign-in and answers the callback on a temporary <strong class="text-[color:var(--color-text)]">127.0.0.1</strong> listener on a random port (Google Desktop clients accept any loopback port, so you don&rsquo;t pin one). The listener exists only while you&rsquo;re signing in.</p>
-          <p class="mt-2 text-[14px]"><strong class="text-[color:var(--color-text)]">Alternate:</strong> an <em>iOS</em>-type client also works &mdash; use its <strong class="text-[color:var(--color-text)]">reversed client ID</strong> as a custom-scheme redirect (<code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">com.googleusercontent.apps.&lt;id&gt;:/oauth2redirect</code>), which Parleq intercepts in-process with no local listener. Pick this if you prefer no loopback socket at all; otherwise the Desktop-app recipe above is Google&rsquo;s current guidance and the simpler setup.</p>
-        </div>
-      </li>
-      <li class="flex gap-4">
-        <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums shrink-0">3.</span>
-        <div>
-          <p class="text-[color:var(--color-text)] font-medium">Grant IAM on the project.</p>
-          <p class="mt-2">The signing account needs <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">roles/aiplatform.user</code> and <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">roles/serviceusage.serviceUsageConsumer</code> on the project. If you&rsquo;re the project Owner, you already have both.</p>
-        </div>
-      </li>
-      <li class="flex gap-4">
-        <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums shrink-0">4.</span>
-        <div>
-          <p class="text-[color:var(--color-text)] font-medium">Write the config.</p>
-        </div>
-      </li>
-    </ol>
+      <div role="tablist" aria-label="Setup paths" class="mt-6 grid gap-4 sm:grid-cols-3">
 
-    <div class="mt-4 overflow-x-auto rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
-      <pre class="text-[13px] leading-[1.7] text-[color:var(--color-text-muted)] whitespace-pre overflow-x-auto"><code>{`{
+        <button
+          type="button" role="tab" id="tab-path-a" aria-controls="panel-path-a" aria-selected="true"
+          class="doctab group flex flex-col rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5 text-left transition-colors hover:border-[color:var(--color-accent)] aria-selected:border-[color:var(--color-grape)] aria-selected:bg-[color:var(--color-panel-ink)] aria-selected:shadow-[0_10px_30px_-16px_rgba(67,32,95,.45)]"
+        >
+          <span class="flex items-center gap-2.5">
+            <span aria-hidden="true" class="inline-flex h-8 w-8 items-center justify-center rounded-lg" style="background: color-mix(in srgb, var(--color-grape) 12%, transparent); color: var(--color-grape);">
+              <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            </span>
+            <span class="text-[15px] font-semibold text-[color:var(--color-text)]">Sign in with Google &rarr; Vertex</span>
+          </span>
+          <span class="mt-3 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">Your personal Google account grants Vertex AI access directly &mdash; no broker, no GCP org.</span>
+          <span class="mt-3 text-[12px] font-medium text-[color:var(--color-grape)]">Lowest effort &middot; Recommended start</span>
+        </button>
+
+        <button
+          type="button" role="tab" id="tab-path-b" aria-controls="panel-path-b" aria-selected="false" tabindex="-1"
+          class="doctab group flex flex-col rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5 text-left transition-colors hover:border-[color:var(--color-accent)] aria-selected:border-[color:var(--color-grape)] aria-selected:bg-[color:var(--color-panel-ink)] aria-selected:shadow-[0_10px_30px_-16px_rgba(67,32,95,.45)]"
+        >
+          <span class="flex items-center gap-2.5">
+            <span aria-hidden="true" class="inline-flex h-8 w-8 items-center justify-center rounded-lg" style="background: color-mix(in srgb, var(--color-grape) 12%, transparent); color: var(--color-grape);">
+              <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            </span>
+            <span class="text-[15px] font-semibold text-[color:var(--color-text)]">Cognito &rarr; AWS Bedrock</span>
+          </span>
+          <span class="mt-3 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">A free Cognito user pool as your personal OIDC issuer; IAM role assumed via web identity federation.</span>
+          <span class="mt-3 text-[12px] font-medium text-[color:var(--color-grape)]">Medium effort &middot; Free tier &middot; Claude / GPT-OSS</span>
+        </button>
+
+        <button
+          type="button" role="tab" id="tab-path-c" aria-controls="panel-path-c" aria-selected="false" tabindex="-1"
+          class="doctab group flex flex-col rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5 text-left transition-colors hover:border-[color:var(--color-accent)] aria-selected:border-[color:var(--color-grape)] aria-selected:bg-[color:var(--color-panel-ink)] aria-selected:shadow-[0_10px_30px_-16px_rgba(67,32,95,.45)]"
+        >
+          <span class="flex items-center gap-2.5">
+            <span aria-hidden="true" class="inline-flex h-8 w-8 items-center justify-center rounded-lg" style="background: color-mix(in srgb, var(--color-grape) 12%, transparent); color: var(--color-grape);">
+              <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><line x1="12" y1="7" x2="12" y2="12"/><line x1="10" y1="12" x2="5" y2="17"/><line x1="14" y1="12" x2="19" y2="17"/></svg>
+            </span>
+            <span class="text-[15px] font-semibold text-[color:var(--color-text)]">Cognito &rarr; Workforce &rarr; Vertex</span>
+          </span>
+          <span class="mt-3 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">Full workforce federation architecture for Vertex &mdash; heaviest path, needs a GCP organization.</span>
+          <span class="mt-3 text-[12px] font-medium text-[color:var(--color-grape)]">Highest effort &middot; GCP org required &middot; Advanced</span>
+        </button>
+
+      </div>
+
+      <!-- Panel: Path A -->
+      <div role="tabpanel" id="panel-path-a" aria-labelledby="tab-path-a" class="mt-10">
+        <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">Recommended start &middot; Google &amp; Vertex</p>
+        <h2 id="path-a" class="mt-3 scroll-mt-20 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+          Path A &mdash; Sign in with Google &rarr; Vertex
+        </h2>
+        <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+          &ldquo;Sign in with Google, dictate with Gemini.&rdquo; No broker, no Workforce Identity Federation, no gcloud CLI. GCP refuses to accept Google itself as a workforce IdP, so federation can&rsquo;t do this &mdash; instead Parleq&rsquo;s own Google sign-in requests the <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">cloud-platform</code> scope, and the resulting OAuth <em>access</em> token is a valid Vertex bearer directly (exactly what gcloud ADC produces, done in-app). <strong class="text-[color:var(--color-text)]">No GCP organization required.</strong>
+        </p>
+
+        <ol class="mt-6 space-y-7 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+          <li class="flex gap-4">
+            <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums shrink-0">1.</span>
+            <div>
+              <p class="text-[color:var(--color-text)] font-medium">Create a GCP project and enable the Vertex AI API.</p>
+              <p class="mt-2">Any project works. Enable <strong class="text-[color:var(--color-text)]">Vertex AI API</strong> from the API Library, and note the <strong class="text-[color:var(--color-text)]">Project ID</strong> (the ID, not the display name).</p>
+            </div>
+          </li>
+          <li class="flex gap-4">
+            <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums shrink-0">2.</span>
+            <div>
+              <p class="text-[color:var(--color-text)] font-medium">Create an OAuth client &mdash; of the <em>Desktop app</em> type.</p>
+              <p class="mt-2">In <strong class="text-[color:var(--color-text)]">APIs &amp; Services &rarr; Credentials &rarr; Create credentials &rarr; OAuth client ID</strong>, choose application type <strong class="text-[color:var(--color-text)]">Desktop app</strong>, give it a name, and create. Note both the <strong class="text-[color:var(--color-text)]">client ID</strong> <em>and</em> the <strong class="text-[color:var(--color-text)]">client secret</strong> &mdash; copy the secret too. Google <strong class="text-[color:var(--color-text)]">requires</strong> the client secret on the token exchange for Desktop-app clients even though Parleq also uses PKCE; without it the exchange fails with <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">invalid_request</code>. This secret is <strong class="text-[color:var(--color-text)]">public-by-design</strong> &mdash; per Google&rsquo;s own docs an installed-app secret is not treated as confidential &mdash; but Parleq still stores it in the macOS Keychain rather than in plaintext. Paste it into <strong class="text-[color:var(--color-text)]">Settings &rarr; Company Account &rarr; Configuration &rarr; Client secret</strong>. (An <em>iOS</em>-type client has no secret, which is why the alternate below skips this step.) In your Parleq config set <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">"redirect_uri": "http://127.0.0.1/oauth2redirect"</code> &mdash; Parleq opens your default browser for sign-in and answers the callback on a temporary <strong class="text-[color:var(--color-text)]">127.0.0.1</strong> listener on a random port (Google Desktop clients accept any loopback port, so you don&rsquo;t pin one). The listener exists only while you&rsquo;re signing in.</p>
+              <p class="mt-2 text-[14px]"><strong class="text-[color:var(--color-text)]">Alternate:</strong> an <em>iOS</em>-type client also works &mdash; use its <strong class="text-[color:var(--color-text)]">reversed client ID</strong> as a custom-scheme redirect (<code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">com.googleusercontent.apps.&lt;id&gt;:/oauth2redirect</code>), which Parleq intercepts in-process with no local listener. Pick this if you prefer no loopback socket at all; otherwise the Desktop-app recipe above is Google&rsquo;s current guidance and the simpler setup.</p>
+            </div>
+          </li>
+          <li class="flex gap-4">
+            <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums shrink-0">3.</span>
+            <div>
+              <p class="text-[color:var(--color-text)] font-medium">Grant IAM on the project.</p>
+              <p class="mt-2">The signing account needs <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">roles/aiplatform.user</code> and <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">roles/serviceusage.serviceUsageConsumer</code> on the project. If you&rsquo;re the project Owner, you already have both.</p>
+            </div>
+          </li>
+          <li class="flex gap-4">
+            <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums shrink-0">4.</span>
+            <div>
+              <p class="text-[color:var(--color-text)] font-medium">Write the config.</p>
+            </div>
+          </li>
+        </ol>
+
+        <div class="mt-4 overflow-x-auto rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
+          <pre class="text-[13px] leading-[1.7] text-[color:var(--color-text-muted)] whitespace-pre overflow-x-auto"><code>{`{
   "oidc": {
     "issuer": "https://accounts.google.com",
     "client_id": "123456789-abc.apps.googleusercontent.com",
@@ -124,49 +185,52 @@ import PricingNote from '../../components/PricingNote.astro';
     "auth_mode": "googleOAuth"
   }
 }`}</code></pre>
-    </div>
+        </div>
 
-    <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      Why <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">"prompt": "select_account consent"</code> is the default to use, not just <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">"consent"</code>: <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">select_account</code> prevents a dead-end where Google silently reuses whatever account is active in the browser and hard-blocks the sign-in without ever showing an account picker. <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">consent</code> guarantees Google re-issues a refresh token (it only does so when it shows the consent screen). Together they make sign-in reliable across the consent-screen modes below.
-    </p>
+        <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+          Why <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">"prompt": "select_account consent"</code> is the default to use, not just <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">"consent"</code>: <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">select_account</code> prevents a dead-end where Google silently reuses whatever account is active in the browser and hard-blocks the sign-in without ever showing an account picker. <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">consent</code> guarantees Google re-issues a refresh token (it only does so when it shows the consent screen). Together they make sign-in reliable across the consent-screen modes below.
+        </p>
 
-    <!-- The consent-screen trilemma -->
-    <h3 class="mt-10 text-xl font-semibold tracking-tight text-[color:var(--color-text)]">The consent-screen trilemma</h3>
-    <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      This is the #1 source of confusion. Your OAuth consent screen is in one of three publishing states, and each has a different trade-off:
-    </p>
-    <ul class="mt-4 space-y-3 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      <li>&bull; <strong class="text-[color:var(--color-text)]">Testing mode</strong> &mdash; works immediately, but refresh tokens expire every <strong class="text-[color:var(--color-text)]">7 days</strong>. You&rsquo;ll re-sign-in roughly weekly. Fine for kicking the tires.</li>
-      <li>&bull; <strong class="text-[color:var(--color-text)]">Published / External</strong> &mdash; refresh tokens persist, but because <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">cloud-platform</code> is a restricted scope an unverified personal client shows an &ldquo;unverified app&rdquo; interstitial. Click <strong class="text-[color:var(--color-text)]">Advanced &rarr; continue</strong>; harmless for a personal client. Why does a stranger who somehow got your client ID gain nothing? The tokens belong to whoever <em>signs in</em>, and the IAM grant is on <em>your</em> project &mdash; their token can&rsquo;t touch it. Worst case, Google suspends a client that&rsquo;s being abused.</li>
-      <li>&bull; <strong class="text-[color:var(--color-text)]">Internal</strong> &mdash; the clean endgame: no warning, no token cap, no expiry, and outsiders are hard-blocked. But it requires putting the project in a Google Cloud <strong class="text-[color:var(--color-text)]">organization</strong> (Cloud Identity Free + a domain you own), and you then sign in with an <em>org</em> account, not <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">@gmail.com</code>.</li>
-    </ul>
-    <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      Pragmatic call: start in Testing to prove it works, then go Internal only if you already want a GCP org for other reasons. Otherwise Publish (External) and click past the warning if weekly re-sign-in annoys you &mdash; it&rsquo;s your own client; see why that&rsquo;s safe above.
-    </p>
+        <!-- The consent-screen trilemma -->
+        <h3 class="mt-10 text-xl font-semibold tracking-tight text-[color:var(--color-text)]">The consent-screen trilemma</h3>
+        <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+          This is the #1 source of confusion. Your OAuth consent screen is in one of three publishing states, and each has a different trade-off:
+        </p>
+        <ul class="mt-4 space-y-3 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+          <li>&bull; <strong class="text-[color:var(--color-text)]">Testing mode</strong> &mdash; works immediately, but refresh tokens expire every <strong class="text-[color:var(--color-text)]">7 days</strong>. You&rsquo;ll re-sign-in roughly weekly. Fine for kicking the tires.</li>
+          <li>&bull; <strong class="text-[color:var(--color-text)]">Published / External</strong> &mdash; refresh tokens persist, but because <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">cloud-platform</code> is a restricted scope an unverified personal client shows an &ldquo;unverified app&rdquo; interstitial. Click <strong class="text-[color:var(--color-text)]">Advanced &rarr; continue</strong>; harmless for a personal client. Why does a stranger who somehow got your client ID gain nothing? The tokens belong to whoever <em>signs in</em>, and the IAM grant is on <em>your</em> project &mdash; their token can&rsquo;t touch it. Worst case, Google suspends a client that&rsquo;s being abused.</li>
+          <li>&bull; <strong class="text-[color:var(--color-text)]">Internal</strong> &mdash; the clean endgame: no warning, no token cap, no expiry, and outsiders are hard-blocked. But it requires putting the project in a Google Cloud <strong class="text-[color:var(--color-text)]">organization</strong> (Cloud Identity Free + a domain you own), and you then sign in with an <em>org</em> account, not <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">@gmail.com</code>.</li>
+        </ul>
+        <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+          Pragmatic call: start in Testing to prove it works, then go Internal only if you already want a GCP org for other reasons. Otherwise Publish (External) and click past the warning if weekly re-sign-in annoys you &mdash; it&rsquo;s your own client; see why that&rsquo;s safe above.
+        </p>
 
-    <!-- Granular-consent gotcha -->
-    <div class="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-5">
-      <p class="text-[14px] leading-relaxed text-amber-900">
-        <strong class="font-semibold">Gotcha that burned us live &mdash; tick the box.</strong> Google&rsquo;s granular-consent screen shows &ldquo;See, edit, configure and delete your Google Cloud data&rdquo; as an <strong>unchecked checkbox</strong>. If you don&rsquo;t tick it, you get a working sign-in whose token then <code class="font-mono text-[12px]">403</code>s at Vertex &mdash; and the next silent refresh may sign you out entirely. Parleq now detects a missing grant at sign-in and tells you, but the fix is simple: <strong>tick the box</strong> on the consent screen.
-      </p>
-    </div>
+        <!-- Granular-consent gotcha -->
+        <div class="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-5">
+          <p class="text-[14px] leading-relaxed text-amber-900">
+            <strong class="font-semibold">Gotcha that burned us live &mdash; tick the box.</strong> Google&rsquo;s granular-consent screen shows &ldquo;See, edit, configure and delete your Google Cloud data&rdquo; as an <strong>unchecked checkbox</strong>. If you don&rsquo;t tick it, you get a working sign-in whose token then <code class="font-mono text-[12px]">403</code>s at Vertex &mdash; and the next silent refresh may sign you out entirely. Parleq now detects a missing grant at sign-in and tells you, but the fix is simple: <strong>tick the box</strong> on the consent screen.
+          </p>
+        </div>
+      </div><!-- /panel-path-a -->
 
-    <!-- Path B -->
-    <h2 class="mt-14 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
-      Path B &mdash; Cognito &rarr; AWS Bedrock
-    </h2>
-    <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      A free Amazon Cognito user pool becomes your personal OIDC issuer; an IAM role trusts it via <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">AssumeRoleWithWebIdentity</code>. Cognito gives you an AWS-hosted public issuer with a publicly-fetchable JWKS, so the AWS leg works with nothing exposed to the internet yourself. The free tier<sup>†</sup> covers far more monthly active users than a single person will ever use &mdash; but note the tiers: 10,000 MAU free is the default <strong class="text-[color:var(--color-text)]">Essentials</strong> plan, the <strong class="text-[color:var(--color-text)]">Plus</strong> plan has no free tier, and SAML/OIDC-<em>federated</em> users get only 50 free MAU (<a href="https://aws.amazon.com/cognito/pricing/" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">aws.amazon.com/cognito/pricing</a>).
-    </p>
-    <ul class="mt-4 space-y-2 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      <li>&bull; Create a user pool and add an <strong class="text-[color:var(--color-text)]">app client</strong> of the <strong class="text-[color:var(--color-text)]">public client</strong> type (no secret), with the authorization-code grant and a callback of <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">parleq-auth://oidc/callback</code>.</li>
-      <li>&bull; <strong class="text-[color:var(--color-text)]">Scopes:</strong> <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">["openid", "email"]</code>. Don&rsquo;t add <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">profile</code> &mdash; the wizard-created client usually doesn&rsquo;t enable it, and requesting it makes Cognito error-redirect instantly (the symptom is a window that flashes open and shut; see troubleshooting). Cognito also rejects <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">offline_access</code> but still issues a refresh token from the auth-code grant.</li>
-      <li>&bull; In IAM, register an <strong class="text-[color:var(--color-text)]">OIDC identity provider</strong> for the pool issuer (<code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">https://cognito-idp.&lt;region&gt;.amazonaws.com/&lt;pool-id&gt;</code>) with the app client ID as an audience.</li>
-      <li>&bull; Create a role whose trust policy admits that provider via <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">AssumeRoleWithWebIdentity</code> with an <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">aud</code> condition equal to the client ID. Attach a permissions policy granting <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">bedrock:InvokeModel*</code>.</li>
-      <li>&bull; Config: <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">aws.auth_mode</code> = <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">oidc</code>, plus <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">aws.role_arn</code> and <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">aws.region</code>.</li>
-    </ul>
-    <div class="mt-4 overflow-x-auto rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
-      <pre class="text-[13px] leading-[1.7] text-[color:var(--color-text-muted)] whitespace-pre overflow-x-auto"><code>{`{
+      <!-- Panel: Path B -->
+      <div role="tabpanel" id="panel-path-b" aria-labelledby="tab-path-b" class="mt-10">
+        <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">Alternative &middot; Cognito &amp; AWS Bedrock</p>
+        <h2 id="path-b" class="mt-3 scroll-mt-20 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+          Path B &mdash; Cognito &rarr; AWS Bedrock
+        </h2>
+        <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+          A free Amazon Cognito user pool becomes your personal OIDC issuer; an IAM role trusts it via <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">AssumeRoleWithWebIdentity</code>. Cognito gives you an AWS-hosted public issuer with a publicly-fetchable JWKS, so the AWS leg works with nothing exposed to the internet yourself. The free tier<sup>†</sup> covers far more monthly active users than a single person will ever use &mdash; but note the tiers: 10,000 MAU free is the default <strong class="text-[color:var(--color-text)]">Essentials</strong> plan, the <strong class="text-[color:var(--color-text)]">Plus</strong> plan has no free tier, and SAML/OIDC-<em>federated</em> users get only 50 free MAU (<a href="https://aws.amazon.com/cognito/pricing/" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">aws.amazon.com/cognito/pricing</a>).
+        </p>
+        <ul class="mt-4 space-y-2 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+          <li>&bull; Create a user pool and add an <strong class="text-[color:var(--color-text)]">app client</strong> of the <strong class="text-[color:var(--color-text)]">public client</strong> type (no secret), with the authorization-code grant and a callback of <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">parleq-auth://oidc/callback</code>.</li>
+          <li>&bull; <strong class="text-[color:var(--color-text)]">Scopes:</strong> <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">["openid", "email"]</code>. Don&rsquo;t add <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">profile</code> &mdash; the wizard-created client usually doesn&rsquo;t enable it, and requesting it makes Cognito error-redirect instantly (the symptom is a window that flashes open and shut; see troubleshooting). Cognito also rejects <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">offline_access</code> but still issues a refresh token from the auth-code grant.</li>
+          <li>&bull; In IAM, register an <strong class="text-[color:var(--color-text)]">OIDC identity provider</strong> for the pool issuer (<code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">https://cognito-idp.&lt;region&gt;.amazonaws.com/&lt;pool-id&gt;</code>) with the app client ID as an audience.</li>
+          <li>&bull; Create a role whose trust policy admits that provider via <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">AssumeRoleWithWebIdentity</code> with an <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">aud</code> condition equal to the client ID. Attach a permissions policy granting <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">bedrock:InvokeModel*</code>.</li>
+          <li>&bull; Config: <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">aws.auth_mode</code> = <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">oidc</code>, plus <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">aws.role_arn</code> and <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">aws.region</code>.</li>
+        </ul>
+        <div class="mt-4 overflow-x-auto rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
+          <pre class="text-[13px] leading-[1.7] text-[color:var(--color-text-muted)] whitespace-pre overflow-x-auto"><code>{`{
   "oidc": {
     "issuer": "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_EXAMPLE",
     "client_id": "EXAMPLEcognitoclientid",
@@ -178,31 +242,38 @@ import PricingNote from '../../components/PricingNote.astro';
     "role_arn": "arn:aws:iam::<account>:role/ParleqDictation"
   }
 }`}</code></pre>
-    </div>
-    <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      The trust-policy and permissions-policy shapes are in <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/enterprise-sso/'} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Enterprise SSO &rarr; AWS Bedrock setup</a> &mdash; the same JSON, just with your Cognito issuer as the federated principal.
-    </p>
+        </div>
+        <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+          The trust-policy and permissions-policy shapes are in <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/enterprise-sso/'} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Enterprise SSO &rarr; AWS Bedrock setup</a> &mdash; the same JSON, just with your Cognito issuer as the federated principal.
+        </p>
+      </div><!-- /panel-path-b -->
 
-    <!-- Path C -->
-    <h2 class="mt-14 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
-      Path C &mdash; Cognito &rarr; GCP Workforce Federation &rarr; Vertex <span class="ml-1 align-middle rounded bg-[color:var(--color-surface)] border border-[color:var(--color-border)] px-2 py-0.5 text-[11px] font-medium text-[color:var(--color-text-subtle)]">Advanced</span>
-    </h2>
-    <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      This is the full federation architecture for Vertex, and the heaviest path on the page. Choose it only if you specifically want workforce federation &mdash; Path A reaches Vertex with far less ceremony. The blocker is that Workforce Identity Pools are an <strong class="text-[color:var(--color-text)]">Organization-level</strong> GCP resource, so you need a Google Cloud org first.
-    </p>
-    <ul class="mt-4 space-y-2 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      <li>&bull; Build the Cognito pool exactly as in Path B (it&rsquo;s your issuer for both clouds).</li>
-      <li>&bull; <strong class="text-[color:var(--color-text)]">Get a GCP organization:</strong> sign up for <strong class="text-[color:var(--color-text)]">Cloud Identity Free</strong> with a domain you own and complete the DNS TXT verification. This is the real work in Path C. (Cloud Identity Free is free for up to 50 users; the domain you verify is a separate ~$10&ndash;15/yr registrar charge.<sup>†</sup>)</li>
-      <li>&bull; Create a <strong class="text-[color:var(--color-text)]">workforce pool</strong> and add an <strong class="text-[color:var(--color-text)]">OIDC provider</strong> for the Cognito issuer. The issuer URI <strong class="text-[color:var(--color-text)]">must be public HTTPS</strong> &mdash; a localhost IdP cannot work here even if you upload the JWKS inline. Cognito is public HTTPS, so it&rsquo;s fine.</li>
-      <li>&bull; Grant <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">roles/aiplatform.user</code> to the workforce-pool <strong class="text-[color:var(--color-text)]">principalSet</strong> (scope it tighter by attribute if you can).</li>
-      <li>&bull; Config: <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">vertex.auth_mode</code> = <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">oidcFederation</code>, plus <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">vertex.workforce_provider</code> (<code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">locations/global/workforcePools/&lt;pool&gt;/providers/&lt;provider&gt;</code>) and <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">vertex.project</code>.</li>
-    </ul>
-    <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      Full workforce-pool details (attribute mapping, the <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">x-goog-user-project</code> billing requirement) are in <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/enterprise-sso/'} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Enterprise SSO &rarr; Google Cloud Vertex AI setup</a>.
-    </p>
+      <!-- Panel: Path C -->
+      <div role="tabpanel" id="panel-path-c" aria-labelledby="tab-path-c" class="mt-10">
+        <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">Advanced &middot; Workforce Federation</p>
+        <h2 id="path-c" class="mt-3 scroll-mt-20 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+          Path C &mdash; Cognito &rarr; GCP Workforce Federation &rarr; Vertex <span class="ml-1 align-middle rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-2 py-0.5 text-[11px] font-medium text-[color:var(--color-text-subtle)]">Advanced</span>
+        </h2>
+        <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+          This is the full federation architecture for Vertex, and the heaviest path on the page. Choose it only if you specifically want workforce federation &mdash; Path A reaches Vertex with far less ceremony. The blocker is that Workforce Identity Pools are an <strong class="text-[color:var(--color-text)]">Organization-level</strong> GCP resource, so you need a Google Cloud org first.
+        </p>
+        <ul class="mt-4 space-y-2 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+          <li>&bull; Build the Cognito pool exactly as in Path B (it&rsquo;s your issuer for both clouds).</li>
+          <li>&bull; <strong class="text-[color:var(--color-text)]">Get a GCP organization:</strong> sign up for <strong class="text-[color:var(--color-text)]">Cloud Identity Free</strong> with a domain you own and complete the DNS TXT verification. This is the real work in Path C. (Cloud Identity Free is free for up to 50 users; the domain you verify is a separate ~$10&ndash;15/yr registrar charge.<sup>†</sup>)</li>
+          <li>&bull; Create a <strong class="text-[color:var(--color-text)]">workforce pool</strong> and add an <strong class="text-[color:var(--color-text)]">OIDC provider</strong> for the Cognito issuer. The issuer URI <strong class="text-[color:var(--color-text)]">must be public HTTPS</strong> &mdash; a localhost IdP cannot work here even if you upload the JWKS inline. Cognito is public HTTPS, so it&rsquo;s fine.</li>
+          <li>&bull; Grant <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">roles/aiplatform.user</code> to the workforce-pool <strong class="text-[color:var(--color-text)]">principalSet</strong> (scope it tighter by attribute if you can).</li>
+          <li>&bull; Config: <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">vertex.auth_mode</code> = <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">oidcFederation</code>, plus <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">vertex.workforce_provider</code> (<code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">locations/global/workforcePools/&lt;pool&gt;/providers/&lt;provider&gt;</code>) and <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">vertex.project</code>.</li>
+        </ul>
+        <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+          Full workforce-pool details (attribute mapping, the <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">x-goog-user-project</code> billing requirement) are in <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/enterprise-sso/'} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Enterprise SSO &rarr; Google Cloud Vertex AI setup</a>.
+        </p>
+      </div><!-- /panel-path-c -->
+
+    </div><!-- /data-doctabs -->
 
     <!-- Working with your AI assistant -->
-    <h2 id="assistant" class="mt-14 scroll-mt-20 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+    <p class="mt-14 text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">Guided setup</p>
+    <h2 id="assistant" class="mt-3 scroll-mt-20 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
       Working with your AI assistant
     </h2>
     <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
@@ -216,10 +287,11 @@ import PricingNote from '../../components/PricingNote.astro';
     </ul>
 
     <!-- Troubleshooting -->
-    <h2 class="mt-14 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+    <p class="mt-14 text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">Common issues</p>
+    <h2 class="mt-3 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
       Troubleshooting
     </h2>
-    <div class="mt-6 overflow-x-auto rounded-xl border border-[color:var(--color-border)]">
+    <div class="mt-6 overflow-x-auto rounded-2xl border border-[color:var(--color-border)]">
       <table class="w-full text-[14px] text-[color:var(--color-text-muted)]">
         <thead class="border-b border-[color:var(--color-border)] bg-[color:var(--color-surface)]">
           <tr>
@@ -256,6 +328,8 @@ import PricingNote from '../../components/PricingNote.astro';
     </div>
 
     <PricingNote />
+
+    <DocTabs />
   </article>
 
 </Layout>

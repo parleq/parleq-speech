@@ -1,14 +1,15 @@
 ---
 import Layout from '../../layouts/Layout.astro';
-import SiteHeader from '../../components/SiteHeader.astro';
+import FloatingNav from '../../components/FloatingNav.astro';
+import DocTabs from '../../components/DocTabs.astro';
 
 const repoUrl = 'https://github.com/parleq/parleq-speech';
 ---
 
-<Layout title="Enterprise SSO — Parleq" description="Back Parleq's cloud access with one corporate OIDC sign-in instead of per-user API keys. Federate into AWS Bedrock (AssumeRoleWithWebIdentity) and Google Cloud Vertex AI (Workforce Identity Federation). Per-IdP playbooks for Okta, Microsoft Entra ID, Keycloak, and generic OIDC.">
-  <SiteHeader active="docs" />
+<Layout title="Enterprise SSO — Parleq" description="One corporate OIDC sign-in backs Parleq's cloud cleanup — no per-user keys. Federate into AWS Bedrock or Vertex AI; playbooks for Okta, Entra ID, and Keycloak.">
+  <FloatingNav active="docs" />
 
-  <article class="mx-auto max-w-2xl px-6 pt-16 pb-24">
+  <article class="mx-auto max-w-2xl px-6 pt-16 sm:pt-20 pb-24">
     <p class="text-sm">
       <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/'} class="text-[color:var(--color-text-subtle)] hover:text-[color:var(--color-text-muted)]">&larr; Docs</a>
     </p>
@@ -21,7 +22,7 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
       This page is for IT admins standing up Parleq&rsquo;s LLM cleanup access behind <strong class="text-[color:var(--color-text)]">one corporate OIDC sign-in</strong> instead of handing each user an API key. The user signs in once with their company identity provider; Parleq federates that sign-in into your cloud &mdash; AWS Bedrock and/or Google Cloud Vertex AI &mdash; and mints short-lived per-cloud credentials at call time. No long-lived cloud secret is stored on the device.
     </p>
 
-    <div class="mt-6 rounded-xl border border-[color:var(--color-accent-soft)] bg-[color:var(--color-accent-soft)]/15 p-5">
+    <div class="mt-6 rounded-xl border border-[color:var(--color-grape-200)] bg-[color:var(--color-grape-100)]/20 p-5">
       <p class="text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
         <strong class="text-[color:var(--color-text)]">Setting this up at home without an IT department?</strong> The same engine works for a single user on a free identity provider (Cognito) or a personal Google account &mdash; with different gotchas. See the <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/diy-sso/'} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">DIY: SSO &amp; Sign-in with Google guide</a> for the path-picker and the burn-an-hour gotchas.
       </p>
@@ -34,13 +35,13 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
     <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
       One engine, several legs. The user runs a single OIDC sign-in (PKCE); Parleq trades the resulting token for short-lived cloud credentials on demand. The properties that matter for a security review:
     </p>
-    <ul class="mt-4 space-y-2 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      <li>&bull; <strong class="text-[color:var(--color-text)]">No per-user API keys.</strong> Nothing to distribute, store, or rotate per employee &mdash; identity comes from your IdP.</li>
-      <li>&bull; <strong class="text-[color:var(--color-text)]">Short-lived cloud credentials, memory only.</strong> Only the refresh token touches the Keychain; the cloud credentials live in process memory and expire on their own.</li>
-      <li>&bull; <strong class="text-[color:var(--color-text)]">Fail-closed.</strong> If any leg fails, Parleq pastes the raw on-device transcript rather than falling back to a personal credential &mdash; the cleanup pass is skipped, the dictation is not lost.</li>
-      <li>&bull; <strong class="text-[color:var(--color-text)]">A connection doctor.</strong> Settings &rarr; Company Account runs token-free discovery plus a silent refresh and reports which hop (IdP / token exchange / provider) last succeeded or failed &mdash; the place to confirm a new setup end-to-end.</li>
-      <li>&bull; <strong class="text-[color:var(--color-text)]">Per-user audit attribution.</strong> The AWS leg carries the signed-in user&rsquo;s email as the role session name, so CloudTrail attributes each call to the person.</li>
-      <li>&bull; <strong class="text-[color:var(--color-text)]">A revocation caveat.</strong> Offboarding (disabling the user at the IdP) takes effect at the next refresh, but already-issued STS credentials are <em>not</em> revocable and live to their session maximum &mdash; keep the AWS session duration short if you need tight offboarding.</li>
+    <ul class="mt-4 space-y-3 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      <li class="flex items-start gap-2.5"><span class="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-[color:var(--color-grape-400)]" aria-hidden="true"></span><span><strong class="text-[color:var(--color-text)]">No per-user API keys.</strong> Nothing to distribute, store, or rotate per employee &mdash; identity comes from your IdP.</span></li>
+      <li class="flex items-start gap-2.5"><span class="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-[color:var(--color-grape-400)]" aria-hidden="true"></span><span><strong class="text-[color:var(--color-text)]">Short-lived cloud credentials, memory only.</strong> Only the refresh token touches the Keychain; the cloud credentials live in process memory and expire on their own.</span></li>
+      <li class="flex items-start gap-2.5"><span class="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-[color:var(--color-grape-400)]" aria-hidden="true"></span><span><strong class="text-[color:var(--color-text)]">Fail-closed.</strong> If any leg fails, Parleq pastes the raw on-device transcript rather than falling back to a personal credential &mdash; the cleanup pass is skipped, the dictation is not lost.</span></li>
+      <li class="flex items-start gap-2.5"><span class="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-[color:var(--color-grape-400)]" aria-hidden="true"></span><span><strong class="text-[color:var(--color-text)]">A connection doctor.</strong> Settings &rarr; Company Account runs token-free discovery plus a silent refresh and reports which hop (IdP / token exchange / provider) last succeeded or failed &mdash; the place to confirm a new setup end-to-end.</span></li>
+      <li class="flex items-start gap-2.5"><span class="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-[color:var(--color-grape-400)]" aria-hidden="true"></span><span><strong class="text-[color:var(--color-text)]">Per-user audit attribution.</strong> The AWS leg carries the signed-in user&rsquo;s email as the role session name, so CloudTrail attributes each call to the person.</span></li>
+      <li class="flex items-start gap-2.5"><span class="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-[color:var(--color-grape-400)]" aria-hidden="true"></span><span><strong class="text-[color:var(--color-text)]">A revocation caveat.</strong> Offboarding (disabling the user at the IdP) takes effect at the next refresh, but already-issued STS credentials are <em>not</em> revocable and live to their session maximum &mdash; keep the AWS session duration short if you need tight offboarding.</span></li>
     </ul>
 
     <!-- Overview -->
@@ -50,22 +51,22 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
     <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
       Parleq runs an OIDC authorization-code flow with PKCE in a system web view (no embedded browser, no password ever touches Parleq). The flow yields a refresh token, which Parleq stores in the macOS Keychain and uses to mint short-lived ID tokens on demand. Each cloud leg then trades that ID token for its own credentials:
     </p>
-    <ul class="mt-4 space-y-2 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      <li>&bull; <strong class="text-[color:var(--color-text)]">AWS Bedrock</strong> &mdash; <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">AssumeRoleWithWebIdentity</code> exchanges the ID token for temporary STS credentials scoped to an IAM role you control.</li>
-      <li>&bull; <strong class="text-[color:var(--color-text)]">Google Cloud Vertex AI</strong> &mdash; Workforce Identity Federation exchanges the ID token for a federated access token used directly as the Vertex bearer.</li>
+    <ul class="mt-4 space-y-3 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      <li class="flex items-start gap-2.5"><span class="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-[color:var(--color-grape-400)]" aria-hidden="true"></span><span><strong class="text-[color:var(--color-text)]">AWS Bedrock</strong> &mdash; <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">AssumeRoleWithWebIdentity</code> exchanges the ID token for temporary STS credentials scoped to an IAM role you control.</span></li>
+      <li class="flex items-start gap-2.5"><span class="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-[color:var(--color-grape-400)]" aria-hidden="true"></span><span><strong class="text-[color:var(--color-text)]">Google Cloud Vertex AI</strong> &mdash; Workforce Identity Federation exchanges the ID token for a federated access token used directly as the Vertex bearer.</span></li>
     </ul>
     <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
       Two principles bound the data handling:
     </p>
-    <ul class="mt-4 space-y-2 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      <li>&bull; <strong class="text-[color:var(--color-text)]">What crosses which boundary.</strong> Only OIDC tokens reach the identity provider and the cloud STS endpoints (<code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">sts.&lt;region&gt;.amazonaws.com</code>, <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">sts.googleapis.com</code>) &mdash; never transcript text. Transcript text only ever reaches the cleanup LLM endpoint you already configured, exactly as with any other auth mode.</li>
-      <li>&bull; <strong class="text-[color:var(--color-text)]">Fail-closed.</strong> If sign-in, refresh, or the per-cloud exchange fails, Parleq does <em>not</em> silently fall back to a personal credential or a different provider. It fails closed and pastes the raw on-device ASR transcript &mdash; the cleanup pass is skipped, but your dictation is never lost. When the failure is just an expired session, the overlay&rsquo;s sign-in notice is tappable &mdash; sign in right there and Parleq offers to re-clean the transcript you just dictated, no trip to Settings required.</li>
+    <ul class="mt-4 space-y-3 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      <li class="flex items-start gap-2.5"><span class="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-[color:var(--color-grape-400)]" aria-hidden="true"></span><span><strong class="text-[color:var(--color-text)]">What crosses which boundary.</strong> Only OIDC tokens reach the identity provider and the cloud STS endpoints (<code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">sts.&lt;region&gt;.amazonaws.com</code>, <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">sts.googleapis.com</code>) &mdash; never transcript text. Transcript text only ever reaches the cleanup LLM endpoint you already configured, exactly as with any other auth mode.</span></li>
+      <li class="flex items-start gap-2.5"><span class="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-[color:var(--color-grape-400)]" aria-hidden="true"></span><span><strong class="text-[color:var(--color-text)]">Fail-closed.</strong> If sign-in, refresh, or the per-cloud exchange fails, Parleq does <em>not</em> silently fall back to a personal credential or a different provider. It fails closed and pastes the raw on-device ASR transcript &mdash; the cleanup pass is skipped, but your dictation is never lost. When the failure is just an expired session, the overlay&rsquo;s sign-in notice is tappable &mdash; sign in right there and Parleq offers to re-clean the transcript you just dictated, no trip to Settings required.</span></li>
     </ul>
     <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
       Refresh tokens are rotated where the IdP supports it: Parleq persists each newly-issued refresh token to the Keychain the instant it arrives, before doing anything else, so a rotated token is never lost. The access and ID tokens stay in process memory only. Offboarding (disabling the user at the IdP) takes effect at Parleq&rsquo;s next token refresh; note that already-issued STS credentials are not revocable and live to their session maximum, so keep the AWS session duration short if you need tight offboarding (see the <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/managed-configuration/'} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">managed-configuration reference</a> and <a href={`${repoUrl}/blob/main/docs/SECURITY_REVIEW.md`} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">security review</a>).
     </p>
 
-    <div class="mt-6 rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5">
+    <div class="mt-6 rounded-xl border border-[color:var(--color-grape-200)] bg-[color:var(--color-grape-100)]/15 p-5">
       <p class="text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">
         <strong class="text-[color:var(--color-text)]">Azure OpenAI note:</strong> the Azure OpenAI provider keeps its existing Microsoft Entra ID auth (via <code class="font-mono text-[12px]">az login</code>). OIDC federation for Azure is not part of this release &mdash; the two federated legs today are AWS Bedrock and Google Cloud Vertex AI; Azure OpenAI keeps its existing Entra ID and API-key auth modes.
       </p>
@@ -78,7 +79,7 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
     <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
       Set the shared OIDC section, then turn on whichever cloud leg(s) you need. All of these can be pinned fleet-wide via MDM &mdash; see the <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/managed-configuration/'} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Enterprise OIDC federation keys</a>. Hand-editing <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">~/.parleq/config.json</code> directly:
     </p>
-    <div class="mt-4 overflow-x-auto rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
+    <div class="mt-4 overflow-x-auto rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-section-tint)] p-4">
       <pre class="text-[13px] leading-[1.7] text-[color:var(--color-text-muted)] whitespace-pre overflow-x-auto"><code>{`{
   "oidc": {
     "issuer": "https://acme.okta.com",
@@ -109,59 +110,122 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
       Identity-provider playbooks
     </h2>
 
-    <h3 class="mt-8 text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Okta</h3>
-    <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      Register Parleq as a <strong class="text-[color:var(--color-text)]">native / public application</strong> (authorization-code + PKCE, no client secret):
-    </p>
-    <ul class="mt-4 space-y-2 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      <li>&bull; Application type: <strong class="text-[color:var(--color-text)]">Native</strong>. Grant types: Authorization Code and Refresh Token. PKCE: required.</li>
-      <li>&bull; Sign-in redirect URI: <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">parleq-auth://oidc/callback</code>.</li>
-      <li>&bull; Scopes: <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">openid profile email offline_access</code> (<code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">offline_access</code> is what gets you a refresh token).</li>
-      <li>&bull; Issuer: your org / custom authorization-server URL (e.g. <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">https://acme.okta.com</code>). Client ID: the app&rsquo;s client ID.</li>
-    </ul>
-    <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      <strong class="text-[color:var(--color-text)]">Refresh rotation:</strong> Okta rotates refresh tokens and runs replay detection &mdash; reusing an old refresh token after rotation revokes the session. Parleq handles this by persisting the rotated token on receipt, but it means a lost rotated token forces a fresh sign-in. Because Okta is a public issuer with a publicly-fetchable JWKS, it works for both the AWS and GCP legs.
-    </p>
+    <!-- Tabbed picker: the four IdP playbooks are mutually exclusive. No-JS shows all panels
+         (accessible + indexable); the inline script from DocTabs enhances to WAI-ARIA tabs. -->
+    <div class="mt-8" data-doctabs>
+      <div role="tablist" aria-label="Identity provider" class="mt-6 grid gap-4 sm:grid-cols-2">
+        <button
+          type="button" role="tab" id="tab-okta" aria-controls="panel-okta" aria-selected="true"
+          class="doctab group flex flex-col rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5 text-left transition-colors hover:border-[color:var(--color-accent)] aria-selected:border-[color:var(--color-grape)] aria-selected:bg-[color:var(--color-panel-ink)] aria-selected:shadow-[0_10px_30px_-16px_rgba(67,32,95,.45)]"
+        >
+          <span class="flex items-center gap-2.5">
+            <span aria-hidden="true" class="inline-flex h-8 w-8 items-center justify-center rounded-lg" style="background: color-mix(in srgb, var(--color-grape) 12%, transparent); color: var(--color-grape);">
+              <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L4 6v6c0 5 3.6 9.7 8 11 4.4-1.3 8-6 8-11V6z"/></svg>
+            </span>
+            <span class="text-[15px] font-semibold text-[color:var(--color-text)]">Okta</span>
+          </span>
+          <span class="mt-3 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">Native public app with PKCE; works for both the AWS and GCP federation legs.</span>
+          <span class="mt-3 text-[12px] font-medium text-[color:var(--color-grape)]">Custom-scheme redirect · refresh rotation</span>
+        </button>
+        <button
+          type="button" role="tab" id="tab-entra" aria-controls="panel-entra" aria-selected="false" tabindex="-1"
+          class="doctab group flex flex-col rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5 text-left transition-colors hover:border-[color:var(--color-accent)] aria-selected:border-[color:var(--color-grape)] aria-selected:bg-[color:var(--color-panel-ink)] aria-selected:shadow-[0_10px_30px_-16px_rgba(67,32,95,.45)]"
+        >
+          <span class="flex items-center gap-2.5">
+            <span aria-hidden="true" class="inline-flex h-8 w-8 items-center justify-center rounded-lg" style="background: color-mix(in srgb, var(--color-grape) 12%, transparent); color: var(--color-grape);">
+              <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="1"/><path d="M9 22v-4h6v4"/><rect x="8" y="6" width="2" height="2"/><rect x="14" y="6" width="2" height="2"/><rect x="8" y="11" width="2" height="2"/><rect x="14" y="11" width="2" height="2"/></svg>
+            </span>
+            <span class="text-[15px] font-semibold text-[color:var(--color-text)]">Microsoft Entra ID</span>
+          </span>
+          <span class="mt-3 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">App registration with mandatory loopback redirect; live-validated against AWS Bedrock.</span>
+          <span class="mt-3 text-[12px] font-medium text-[color:var(--color-grape)]">Loopback redirect required · live-validated</span>
+        </button>
+        <button
+          type="button" role="tab" id="tab-keycloak" aria-controls="panel-keycloak" aria-selected="false" tabindex="-1"
+          class="doctab group flex flex-col rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5 text-left transition-colors hover:border-[color:var(--color-accent)] aria-selected:border-[color:var(--color-grape)] aria-selected:bg-[color:var(--color-panel-ink)] aria-selected:shadow-[0_10px_30px_-16px_rgba(67,32,95,.45)]"
+        >
+          <span class="flex items-center gap-2.5">
+            <span aria-hidden="true" class="inline-flex h-8 w-8 items-center justify-center rounded-lg" style="background: color-mix(in srgb, var(--color-grape) 12%, transparent); color: var(--color-grape);">
+              <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="14" r="4"/><path d="m14 10 5.5-5.5"/><path d="m19 5 1 1"/><path d="m16 7 1 1"/></svg>
+            </span>
+            <span class="text-[15px] font-semibold text-[color:var(--color-text)]">Keycloak</span>
+          </span>
+          <span class="mt-3 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">Self-hosted public client with S256 PKCE; dev rig with docker-compose in the repo.</span>
+          <span class="mt-3 text-[12px] font-medium text-[color:var(--color-grape)]">Self-hosted · dev rig in repo</span>
+        </button>
+        <button
+          type="button" role="tab" id="tab-generic" aria-controls="panel-generic" aria-selected="false" tabindex="-1"
+          class="doctab group flex flex-col rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5 text-left transition-colors hover:border-[color:var(--color-accent)] aria-selected:border-[color:var(--color-grape)] aria-selected:bg-[color:var(--color-panel-ink)] aria-selected:shadow-[0_10px_30px_-16px_rgba(67,32,95,.45)]"
+        >
+          <span class="flex items-center gap-2.5">
+            <span aria-hidden="true" class="inline-flex h-8 w-8 items-center justify-center rounded-lg" style="background: color-mix(in srgb, var(--color-grape) 12%, transparent); color: var(--color-grape);">
+              <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            </span>
+            <span class="text-[15px] font-semibold text-[color:var(--color-text)]">Generic OIDC</span>
+          </span>
+          <span class="mt-3 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">Any PKCE-compliant OIDC provider with HTTPS issuer and refresh-token support.</span>
+          <span class="mt-3 text-[12px] font-medium text-[color:var(--color-grape)]">Any PKCE IdP · HTTPS issuer required</span>
+        </button>
+      </div>
 
-    <!--
-      Microsoft Entra ID playbook. Entra ID → AWS Bedrock leg LIVE-VALIDATED 2026-06-08
-      (sign-in + dictation through a free tenant). The GCP Vertex-workforce leg reuses the
-      validated Okta workforce shape (confirm the oid/sub principal claim per tenant).
-      Verified against current Microsoft / AWS / GCP docs:
-        Redirect URI rules (https + localhost-http only; custom schemes unsupported for
-          apps implementing OAuth directly; "Mobile and desktop applications" platform;
-          http-loopback added via the app-manifest replyUrlsWithType; port ignored for
-          loopback matching):
-          https://learn.microsoft.com/en-us/entra/identity-platform/reply-url
-          https://learn.microsoft.com/en-us/entra/identity-platform/how-to-add-redirect-uri
-        v2.0 issuer / discovery / tid+iss+aud claim shape:
-          https://learn.microsoft.com/en-us/entra/identity-platform/v2-protocols-oidc
-          https://learn.microsoft.com/en-us/entra/identity-platform/access-tokens
-          https://learn.microsoft.com/en-us/entra/identity-platform/id-token-claims-reference
-        AWS IAM OIDC provider + AssumeRoleWithWebIdentity audience/trust:
-          https://aws.amazon.com/blogs/security/how-to-access-aws-resources-from-microsoft-entra-id-tenants-using-aws-security-token-service/
-        GCP Workforce Identity Federation with Entra (issuer, oid/sub attribute mapping,
-          web-sso flags):
-          https://docs.cloud.google.com/iam/docs/workforce-sign-in-microsoft-entra-id
-    -->
-    <h3 class="mt-8 text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Microsoft Entra ID</h3>
-    <div class="mt-4 rounded-xl border border-[color:var(--color-accent-soft)] bg-[color:var(--color-accent-soft)]/15 p-4">
-      <p class="text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">
-        <strong class="text-[color:var(--color-text)]">Entra requires the loopback redirect.</strong> Unlike Okta/Cognito (custom scheme) or Google (either), Entra rejects custom-scheme redirects for apps that implement OAuth directly &mdash; so Parleq&rsquo;s loopback sign-in (default browser + a transient <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">127.0.0.1</code> listener) is mandatory here, not optional. Register the redirect via the app manifest&rsquo;s <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">publicClient.redirectUris</code> (the portal&rsquo;s &ldquo;Web&rdquo; platform is the wrong type). The Entra&nbsp;ID&nbsp;&rarr;&nbsp;AWS&nbsp;Bedrock leg below is live-validated; the GCP&nbsp;Vertex leg uses the same workforce-federation shape as the validated Okta leg (confirm the <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">oid</code> vs <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">sub</code> principal claim against your tenant).
-      </p>
-    </div>
-    <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      Register Parleq under <strong class="text-[color:var(--color-text)]">App registrations &rarr; New registration</strong>. Pick <strong class="text-[color:var(--color-text)]">single-tenant</strong> (&ldquo;Accounts in this organizational directory only&rdquo;) for a corporate deployment &mdash; it pins the token issuer to your tenant GUID and is the form both cloud legs federate against most cleanly:
-    </p>
-    <ul class="mt-4 space-y-2 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      <li>&bull; <strong class="text-[color:var(--color-text)]">Redirect URI:</strong> add a <strong class="text-[color:var(--color-text)]">Mobile and desktop applications</strong> platform (<em>not</em> the iOS/macOS platform &mdash; that one is MSAL-only and forces the <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">msauth.&lt;bundle-id&gt;://auth</code> scheme, which Parleq&rsquo;s own OIDC engine doesn&rsquo;t emit). Entra accepts only <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">https</code> and loopback-<code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">http</code> redirects for an app implementing OAuth directly &mdash; <strong class="text-[color:var(--color-text)]">a custom scheme like <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">parleq-auth://oidc/callback</code> is rejected.</strong> Register <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">http://127.0.0.1/oidc/callback</code> &mdash; the <strong class="text-[color:var(--color-text)]">path must match</strong> the <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">redirect_uri</code> path you set in Parleq&rsquo;s config (below). Entra ignores only the <em>port</em> when matching loopback redirects (not the path), and Parleq always sends the configured path with a kernel-chosen ephemeral port, so <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">http://127.0.0.1:&lt;port&gt;/oidc/callback</code> matches the registered <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">http://127.0.0.1/oidc/callback</code>. The portal&rsquo;s redirect-URI text box may refuse an <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">http</code> loopback value &mdash; if so, add it via the app manifest&rsquo;s <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">replyUrlsWithType</code> (type <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">InstalledClient</code>).</li>
-      <li>&bull; <strong class="text-[color:var(--color-text)]">Public client:</strong> no client secret. Under <strong class="text-[color:var(--color-text)]">Authentication &rarr; Advanced settings</strong>, &ldquo;Allow public client flows&rdquo; can stay at its default; PKCE is automatic for the auth-code flow.</li>
-      <li>&bull; <strong class="text-[color:var(--color-text)]">Scopes:</strong> <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">openid profile email offline_access</code> (<code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">offline_access</code> is what yields a refresh token). These are delegated, user-consentable permissions; if your tenant requires admin consent, grant it once on the app registration so users aren&rsquo;t prompted.</li>
-      <li>&bull; <strong class="text-[color:var(--color-text)]">Issuer:</strong> <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">https://login.microsoftonline.com/&lt;tenant-id&gt;/v2.0</code> (the <strong class="text-[color:var(--color-text)]">v2.0</strong> endpoint &mdash; not the v1.0 <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">sts.windows.net</code> form). Its discovery doc lives at <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">.../v2.0/.well-known/openid-configuration</code>. Tokens carry an <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">iss</code> of exactly that form with your tenant GUID, a matching <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">tid</code> claim, and an <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">aud</code> equal to the app&rsquo;s Application (client) ID. <strong class="text-[color:var(--color-text)]">Client ID:</strong> the registration&rsquo;s Application (client) ID.</li>
-    </ul>
-    <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">Parleq config &mdash; note the loopback <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">redirect_uri</code>, which routes sign-in through the default-browser + transient-127.0.0.1-listener path instead of the custom-scheme web view:</p>
-    <div class="mt-4 overflow-x-auto rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
-      <pre class="text-[13px] leading-[1.7] text-[color:var(--color-text-muted)] whitespace-pre overflow-x-auto"><code>{`{
+      <!-- Panel: Okta -->
+      <div role="tabpanel" id="panel-okta" aria-labelledby="tab-okta" class="mt-10">
+        <h3 class="mt-0 border-l-2 border-[color:var(--color-grape-300)] pl-3 text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Okta</h3>
+        <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+          Register Parleq as a <strong class="text-[color:var(--color-text)]">native / public application</strong> (authorization-code + PKCE, no client secret):
+        </p>
+        <ul class="mt-4 space-y-2 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+          <li>&bull; Application type: <strong class="text-[color:var(--color-text)]">Native</strong>. Grant types: Authorization Code and Refresh Token. PKCE: required.</li>
+          <li>&bull; Sign-in redirect URI: <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">parleq-auth://oidc/callback</code>.</li>
+          <li>&bull; Scopes: <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">openid profile email offline_access</code> (<code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">offline_access</code> is what gets you a refresh token).</li>
+          <li>&bull; Issuer: your org / custom authorization-server URL (e.g. <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">https://acme.okta.com</code>). Client ID: the app&rsquo;s client ID.</li>
+        </ul>
+        <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+          <strong class="text-[color:var(--color-text)]">Refresh rotation:</strong> Okta rotates refresh tokens and runs replay detection &mdash; reusing an old refresh token after rotation revokes the session. Parleq handles this by persisting the rotated token on receipt, but it means a lost rotated token forces a fresh sign-in. Because Okta is a public issuer with a publicly-fetchable JWKS, it works for both the AWS and GCP legs.
+        </p>
+      </div><!-- /panel-okta -->
+
+      <!--
+        Microsoft Entra ID playbook. Entra ID → AWS Bedrock leg LIVE-VALIDATED 2026-06-08
+        (sign-in + dictation through a free tenant). The GCP Vertex-workforce leg reuses the
+        validated Okta workforce shape (confirm the oid/sub principal claim per tenant).
+        Verified against current Microsoft / AWS / GCP docs:
+          Redirect URI rules (https + localhost-http only; custom schemes unsupported for
+            apps implementing OAuth directly; "Mobile and desktop applications" platform;
+            http-loopback added via the app-manifest replyUrlsWithType; port ignored for
+            loopback matching):
+            https://learn.microsoft.com/en-us/entra/identity-platform/reply-url
+            https://learn.microsoft.com/en-us/entra/identity-platform/how-to-add-redirect-uri
+          v2.0 issuer / discovery / tid+iss+aud claim shape:
+            https://learn.microsoft.com/en-us/entra/identity-platform/v2-protocols-oidc
+            https://learn.microsoft.com/en-us/entra/identity-platform/access-tokens
+            https://learn.microsoft.com/en-us/entra/identity-platform/id-token-claims-reference
+          AWS IAM OIDC provider + AssumeRoleWithWebIdentity audience/trust:
+            https://aws.amazon.com/blogs/security/how-to-access-aws-resources-from-microsoft-entra-id-tenants-using-aws-security-token-service/
+          GCP Workforce Identity Federation with Entra (issuer, oid/sub attribute mapping,
+            web-sso flags):
+            https://docs.cloud.google.com/iam/docs/workforce-sign-in-microsoft-entra-id
+      -->
+      <!-- Panel: Microsoft Entra ID -->
+      <div role="tabpanel" id="panel-entra" aria-labelledby="tab-entra" class="mt-10">
+        <h3 class="mt-0 border-l-2 border-[color:var(--color-grape-300)] pl-3 text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Microsoft Entra ID</h3>
+        <div class="mt-4 rounded-xl border border-[color:var(--color-grape-200)] bg-[color:var(--color-grape-100)]/20 p-4">
+          <p class="text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">
+            <strong class="text-[color:var(--color-text)]">Entra requires the loopback redirect.</strong> Unlike Okta/Cognito (custom scheme) or Google (either), Entra rejects custom-scheme redirects for apps that implement OAuth directly &mdash; so Parleq&rsquo;s loopback sign-in (default browser + a transient <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">127.0.0.1</code> listener) is mandatory here, not optional. Register the redirect via the app manifest&rsquo;s <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">publicClient.redirectUris</code> (the portal&rsquo;s &ldquo;Web&rdquo; platform is the wrong type). The Entra&nbsp;ID&nbsp;&rarr;&nbsp;AWS&nbsp;Bedrock leg below is live-validated; the GCP&nbsp;Vertex leg uses the same workforce-federation shape as the validated Okta leg (confirm the <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">oid</code> vs <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">sub</code> principal claim against your tenant).
+          </p>
+        </div>
+        <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+          Register Parleq under <strong class="text-[color:var(--color-text)]">App registrations &rarr; New registration</strong>. Pick <strong class="text-[color:var(--color-text)]">single-tenant</strong> (&ldquo;Accounts in this organizational directory only&rdquo;) for a corporate deployment &mdash; it pins the token issuer to your tenant GUID and is the form both cloud legs federate against most cleanly:
+        </p>
+        <ul class="mt-4 space-y-2 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+          <li>&bull; <strong class="text-[color:var(--color-text)]">Redirect URI:</strong> add a <strong class="text-[color:var(--color-text)]">Mobile and desktop applications</strong> platform (<em>not</em> the iOS/macOS platform &mdash; that one is MSAL-only and forces the <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">msauth.&lt;bundle-id&gt;://auth</code> scheme, which Parleq&rsquo;s own OIDC engine doesn&rsquo;t emit). Entra accepts only <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">https</code> and loopback-<code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">http</code> redirects for an app implementing OAuth directly &mdash; <strong class="text-[color:var(--color-text)]">a custom scheme like <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">parleq-auth://oidc/callback</code> is rejected.</strong> Register <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">http://127.0.0.1/oidc/callback</code> &mdash; the <strong class="text-[color:var(--color-text)]">path must match</strong> the <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">redirect_uri</code> path you set in Parleq&rsquo;s config (below). Entra ignores only the <em>port</em> when matching loopback redirects (not the path), and Parleq always sends the configured path with a kernel-chosen ephemeral port, so <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">http://127.0.0.1:&lt;port&gt;/oidc/callback</code> matches the registered <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">http://127.0.0.1/oidc/callback</code>. The portal&rsquo;s redirect-URI text box may refuse an <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">http</code> loopback value &mdash; if so, add it via the app manifest&rsquo;s <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">replyUrlsWithType</code> (type <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">InstalledClient</code>).</li>
+          <li>&bull; <strong class="text-[color:var(--color-text)]">Public client:</strong> no client secret. Under <strong class="text-[color:var(--color-text)]">Authentication &rarr; Advanced settings</strong>, &ldquo;Allow public client flows&rdquo; can stay at its default; PKCE is automatic for the auth-code flow.</li>
+          <li>&bull; <strong class="text-[color:var(--color-text)]">Scopes:</strong> <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">openid profile email offline_access</code> (<code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">offline_access</code> is what yields a refresh token). These are delegated, user-consentable permissions; if your tenant requires admin consent, grant it once on the app registration so users aren&rsquo;t prompted.</li>
+          <li>&bull; <strong class="text-[color:var(--color-text)]">Issuer:</strong> <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">https://login.microsoftonline.com/&lt;tenant-id&gt;/v2.0</code> (the <strong class="text-[color:var(--color-text)]">v2.0</strong> endpoint &mdash; not the v1.0 <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">sts.windows.net</code> form). Its discovery doc lives at <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">.../v2.0/.well-known/openid-configuration</code>. Tokens carry an <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">iss</code> of exactly that form with your tenant GUID, a matching <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">tid</code> claim, and an <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">aud</code> equal to the app&rsquo;s Application (client) ID. <strong class="text-[color:var(--color-text)]">Client ID:</strong> the registration&rsquo;s Application (client) ID.</li>
+        </ul>
+        <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">Parleq config &mdash; note the loopback <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">redirect_uri</code>, which routes sign-in through the default-browser + transient-127.0.0.1-listener path instead of the custom-scheme web view:</p>
+        <div class="mt-4 overflow-x-auto rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-section-tint)] p-4">
+          <pre class="text-[13px] leading-[1.7] text-[color:var(--color-text-muted)] whitespace-pre overflow-x-auto"><code>{`{
   "oidc": {
     "issuer": "https://login.microsoftonline.com/<tenant-id>/v2.0",
     "client_id": "<application-client-id>",
@@ -170,15 +234,15 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
     "ephemeral_browser": false
   }
 }`}</code></pre>
-    </div>
-    <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      <strong class="text-[color:var(--color-text)]">Conditional access &amp; device trust:</strong> Parleq signs in through the system browser, which shares the Safari session &mdash; so a device already enrolled / compliant in Entra carries that state into the sign-in, and conditional-access policies (MFA, compliant-device, managed-network) apply as usual without Parleq handling any of it. <strong class="text-[color:var(--color-text)]">Refresh rotation:</strong> Entra issues rotating refresh tokens; Parleq persists each rotated token on receipt, so a normal refresh is silent and a lost rotated token forces a fresh sign-in. Because the v2.0 issuer is public with a publicly-fetchable JWKS, Entra works for both the AWS and GCP legs.
-    </p>
-    <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      The two cloud legs reuse the same IAM-OIDC-provider / role-trust and Workforce-pool steps as the other IdPs (see <a href="#aws-bedrock-setup" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">AWS Bedrock setup</a> and <a href="#google-cloud-vertex-ai-setup" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Google Cloud Vertex AI setup</a> below), with the Entra-specific values noted here. For the AWS leg, the IAM OIDC provider URL is the v2.0 issuer <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">https://login.microsoftonline.com/&lt;tenant-id&gt;/v2.0</code> and the role&rsquo;s trust-policy <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">aud</code> condition is the Application (client) ID:
-    </p>
-    <div class="mt-4 overflow-x-auto rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
-      <pre class="text-[13px] leading-[1.7] text-[color:var(--color-text-muted)] whitespace-pre overflow-x-auto"><code>{`{
+        </div>
+        <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+          <strong class="text-[color:var(--color-text)]">Conditional access &amp; device trust:</strong> Parleq signs in through the system browser, which shares the Safari session &mdash; so a device already enrolled / compliant in Entra carries that state into the sign-in, and conditional-access policies (MFA, compliant-device, managed-network) apply as usual without Parleq handling any of it. <strong class="text-[color:var(--color-text)]">Refresh rotation:</strong> Entra issues rotating refresh tokens; Parleq persists each rotated token on receipt, so a normal refresh is silent and a lost rotated token forces a fresh sign-in. Because the v2.0 issuer is public with a publicly-fetchable JWKS, Entra works for both the AWS and GCP legs.
+        </p>
+        <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+          The two cloud legs reuse the same IAM-OIDC-provider / role-trust and Workforce-pool steps as the other IdPs (see <a href="#aws-bedrock-setup" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">AWS Bedrock setup</a> and <a href="#google-cloud-vertex-ai-setup" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Google Cloud Vertex AI setup</a> below), with the Entra-specific values noted here. For the AWS leg, the IAM OIDC provider URL is the v2.0 issuer <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">https://login.microsoftonline.com/&lt;tenant-id&gt;/v2.0</code> and the role&rsquo;s trust-policy <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">aud</code> condition is the Application (client) ID:
+        </p>
+        <div class="mt-4 overflow-x-auto rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-section-tint)] p-4">
+          <pre class="text-[13px] leading-[1.7] text-[color:var(--color-text-muted)] whitespace-pre overflow-x-auto"><code>{`{
   "Effect": "Allow",
   "Principal": {
     "Federated": "arn:aws:iam::<account>:oidc-provider/login.microsoftonline.com/<tenant-id>/v2.0"
@@ -190,15 +254,15 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
     }
   }
 }`}</code></pre>
-    </div>
-    <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      Set <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">aws.role_arn</code> to the role (e.g. <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">arn:aws:iam::&lt;account&gt;:role/ParleqDictation</code>) and <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">aws.auth_mode</code> to <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">oidc</code>; the permissions policy and per-region model-access notes in the AWS section apply unchanged.
-    </p>
-    <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      For the GCP leg, create the Workforce Identity Federation OIDC provider with the same issuer and the Application (client) ID as the allowed audience. Entra v2.0 tokens federate as a <strong class="text-[color:var(--color-text)]">web-SSO</strong> provider; map the subject from Entra&rsquo;s immutable object-ID claim and request the auth-code response type:
-    </p>
-    <div class="mt-4 overflow-x-auto rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
-      <pre class="text-[13px] leading-[1.7] text-[color:var(--color-text-muted)] whitespace-pre overflow-x-auto"><code>{`gcloud iam workforce-pools providers create-oidc entra \\
+        </div>
+        <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+          Set <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">aws.role_arn</code> to the role (e.g. <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">arn:aws:iam::&lt;account&gt;:role/ParleqDictation</code>) and <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">aws.auth_mode</code> to <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">oidc</code>; the permissions policy and per-region model-access notes in the AWS section apply unchanged.
+        </p>
+        <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+          For the GCP leg, create the Workforce Identity Federation OIDC provider with the same issuer and the Application (client) ID as the allowed audience. Entra v2.0 tokens federate as a <strong class="text-[color:var(--color-text)]">web-SSO</strong> provider; map the subject from Entra&rsquo;s immutable object-ID claim and request the auth-code response type:
+        </p>
+        <div class="mt-4 overflow-x-auto rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-section-tint)] p-4">
+          <pre class="text-[13px] leading-[1.7] text-[color:var(--color-text-muted)] whitespace-pre overflow-x-auto"><code>{`gcloud iam workforce-pools providers create-oidc entra \\
   --workforce-pool="<pool>" \\
   --location="global" \\
   --issuer-uri="https://login.microsoftonline.com/<tenant-id>/v2.0" \\
@@ -206,46 +270,96 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
   --attribute-mapping="google.subject=assertion.oid,google.display_name=assertion.name" \\
   --web-sso-response-type="code" \\
   --web-sso-assertion-claims-behavior="merge-user-info-over-id-token-claims"`}</code></pre>
-    </div>
-    <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      <strong class="text-[color:var(--color-text)]">Pick the federated principal claim carefully.</strong> Entra&rsquo;s <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">oid</code> (object ID) is the stable, immutable per-user GUID within a tenant and is the recommended subject; <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">sub</code> is pairwise (per-app) and also stable but app-scoped. Use <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">assertion.oid</code> unless you have a specific reason to scope to <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">sub</code>. Then put the provider&rsquo;s full resource name (<code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">locations/global/workforcePools/&lt;pool&gt;/providers/entra</code>) in <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">vertex.workforce_provider</code>, set <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">vertex.auth_mode</code> to <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">oidcFederation</code>, and follow the rest of the <a href="#google-cloud-vertex-ai-setup" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Vertex AI setup</a> (role binding, <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">x-goog-user-project</code>).
-    </p>
+        </div>
+        <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+          <strong class="text-[color:var(--color-text)]">Pick the federated principal claim carefully.</strong> Entra&rsquo;s <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">oid</code> (object ID) is the stable, immutable per-user GUID within a tenant and is the recommended subject; <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">sub</code> is pairwise (per-app) and also stable but app-scoped. Use <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">assertion.oid</code> unless you have a specific reason to scope to <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">sub</code>. Then put the provider&rsquo;s full resource name (<code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">locations/global/workforcePools/&lt;pool&gt;/providers/entra</code>) in <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">vertex.workforce_provider</code>, set <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">vertex.auth_mode</code> to <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">oidcFederation</code>, and follow the rest of the <a href="#google-cloud-vertex-ai-setup" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Vertex AI setup</a> (role binding, <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">x-goog-user-project</code>).
+        </p>
+      </div><!-- /panel-entra -->
 
-    <h3 class="mt-8 text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Keycloak</h3>
-    <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      Create a <strong class="text-[color:var(--color-text)]">public client</strong> in your realm with the standard (authorization-code) flow enabled and PKCE (S256) required:
-    </p>
-    <ul class="mt-4 space-y-2 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      <li>&bull; Client authentication: <strong class="text-[color:var(--color-text)]">off</strong> (public client). Standard flow: on. PKCE method: <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">S256</code>.</li>
-      <li>&bull; Valid redirect URI: <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">parleq-auth://oidc/callback</code>.</li>
-      <li>&bull; Realm refresh rotation: <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">revokeRefreshToken</code> on with <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">refreshTokenMaxReuse</code> 0 to rotate on every refresh.</li>
-      <li>&bull; Issuer: <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">https://&lt;host&gt;/realms/&lt;realm&gt;</code>.</li>
-    </ul>
-    <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      A ready-made dev rig &mdash; docker-compose Keycloak with this exact client and a test user &mdash; lives in the repo at <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">scripts/dev/keycloak/</code>. One caveat for end-to-end cloud testing: AWS STS fetches the issuer&rsquo;s JWKS from its own side, so a <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">localhost</code> issuer can&rsquo;t pass <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">AssumeRoleWithWebIdentity</code>. GCP accepts an inline-uploaded JWKS (no fetch), but requires the issuer URI itself to use HTTPS &mdash; so a plain-http localhost issuer works for neither cloud leg. For live cloud tests, use a hosted free issuer (Cognito or an Okta Integrator org) or front Keycloak with a stable-hostname HTTPS tunnel.
-    </p>
+      <!-- Panel: Keycloak -->
+      <div role="tabpanel" id="panel-keycloak" aria-labelledby="tab-keycloak" class="mt-10">
+        <h3 class="mt-0 border-l-2 border-[color:var(--color-grape-300)] pl-3 text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Keycloak</h3>
+        <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+          Create a <strong class="text-[color:var(--color-text)]">public client</strong> in your realm with the standard (authorization-code) flow enabled and PKCE (S256) required:
+        </p>
+        <ul class="mt-4 space-y-2 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+          <li>&bull; Client authentication: <strong class="text-[color:var(--color-text)]">off</strong> (public client). Standard flow: on. PKCE method: <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">S256</code>.</li>
+          <li>&bull; Valid redirect URI: <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">parleq-auth://oidc/callback</code>.</li>
+          <li>&bull; Realm refresh rotation: <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">revokeRefreshToken</code> on with <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">refreshTokenMaxReuse</code> 0 to rotate on every refresh.</li>
+          <li>&bull; Issuer: <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">https://&lt;host&gt;/realms/&lt;realm&gt;</code>.</li>
+        </ul>
+        <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+          A ready-made dev rig &mdash; docker-compose Keycloak with this exact client and a test user &mdash; lives in the repo at <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">scripts/dev/keycloak/</code>. One caveat for end-to-end cloud testing: AWS STS fetches the issuer&rsquo;s JWKS from its own side, so a <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">localhost</code> issuer can&rsquo;t pass <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">AssumeRoleWithWebIdentity</code>. GCP accepts an inline-uploaded JWKS (no fetch), but requires the issuer URI itself to use HTTPS &mdash; so a plain-http localhost issuer works for neither cloud leg. For live cloud tests, use a hosted free issuer (Cognito or an Okta Integrator org) or front Keycloak with a stable-hostname HTTPS tunnel.
+        </p>
+      </div><!-- /panel-keycloak -->
 
-    <h3 class="mt-8 text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Generic OIDC</h3>
-    <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      Any spec-compliant OIDC provider works if it offers:
-    </p>
-    <ul class="mt-4 space-y-2 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      <li>&bull; A discovery document at <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">&lt;issuer&gt;/.well-known/openid-configuration</code> with <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">authorization_endpoint</code> and <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">token_endpoint</code> (a <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">revocation_endpoint</code> enables clean sign-out).</li>
-      <li>&bull; A public client (no secret) supporting authorization-code + PKCE (S256).</li>
-      <li>&bull; The custom-scheme redirect URI <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">parleq-auth://oidc/callback</code>.</li>
-      <li>&bull; Refresh tokens (request <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">offline_access</code>) so Parleq can refresh silently.</li>
-      <li>&bull; An HTTPS issuer URI; the AWS leg additionally needs the JWKS publicly fetchable (GCP can take an inline-uploaded JWKS instead).</li>
-    </ul>
+      <!-- Panel: Generic OIDC -->
+      <div role="tabpanel" id="panel-generic" aria-labelledby="tab-generic" class="mt-10">
+        <h3 class="mt-0 border-l-2 border-[color:var(--color-grape-300)] pl-3 text-lg font-semibold tracking-tight text-[color:var(--color-text)]">Generic OIDC</h3>
+        <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+          Any spec-compliant OIDC provider works if it offers:
+        </p>
+        <ul class="mt-4 space-y-2 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+          <li>&bull; A discovery document at <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">&lt;issuer&gt;/.well-known/openid-configuration</code> with <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">authorization_endpoint</code> and <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">token_endpoint</code> (a <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">revocation_endpoint</code> enables clean sign-out).</li>
+          <li>&bull; A public client (no secret) supporting authorization-code + PKCE (S256).</li>
+          <li>&bull; The custom-scheme redirect URI <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">parleq-auth://oidc/callback</code>.</li>
+          <li>&bull; Refresh tokens (request <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">offline_access</code>) so Parleq can refresh silently.</li>
+          <li>&bull; An HTTPS issuer URI; the AWS leg additionally needs the JWKS publicly fetchable (GCP can take an inline-uploaded JWKS instead).</li>
+        </ul>
+      </div><!-- /panel-generic -->
+    </div><!-- /data-doctabs -->
 
-    <!-- AWS setup -->
-    <h2 id="aws-bedrock-setup" class="mt-12 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+    <!-- Cloud-setup tab group: pick which cloud you federate into. DocTabs handles this second
+         group too; the panel headings keep their ids so the enterprise-page deep-links + hash
+         navigation activate the right tab. -->
+    <div class="mt-14" data-doctabs>
+      <h2 class="font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+        Federate into your cloud
+      </h2>
+      <p class="mt-3 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+        Once your IdP is set up, wire it into the cloud that runs cleanup. Pick the leg you need — you can enable more than one.
+      </p>
+
+      <div role="tablist" aria-label="Cloud setup" class="mt-6 grid gap-4 sm:grid-cols-3">
+        <button type="button" role="tab" id="tab-aws" aria-controls="panel-aws" aria-selected="true"
+          class="doctab group flex flex-col rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5 text-left transition-colors hover:border-[color:var(--color-accent)] aria-selected:border-[color:var(--color-grape)] aria-selected:bg-[color:var(--color-panel-ink)] aria-selected:shadow-[0_10px_30px_-16px_rgba(67,32,95,.45)]">
+          <span class="flex items-center gap-2.5">
+            <span aria-hidden="true" class="inline-flex h-8 w-8 items-center justify-center rounded-lg" style="background: color-mix(in srgb, var(--color-grape) 12%, transparent); color: var(--color-grape);"><svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19a4.5 4.5 0 0 0 .5-9 6 6 0 0 0-11.5-1.5A4 4 0 0 0 6.5 19z"/></svg></span>
+            <span class="text-[15px] font-semibold text-[color:var(--color-text)]">AWS Bedrock</span>
+          </span>
+          <span class="mt-3 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">Federate your IdP into AWS via AssumeRoleWithWebIdentity.</span>
+          <span class="mt-3 text-[12px] font-medium text-[color:var(--color-grape)]">OIDC provider + role trust policy</span>
+        </button>
+        <button type="button" role="tab" id="tab-vertex" aria-controls="panel-vertex" aria-selected="false" tabindex="-1"
+          class="doctab group flex flex-col rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5 text-left transition-colors hover:border-[color:var(--color-accent)] aria-selected:border-[color:var(--color-grape)] aria-selected:bg-[color:var(--color-panel-ink)] aria-selected:shadow-[0_10px_30px_-16px_rgba(67,32,95,.45)]">
+          <span class="flex items-center gap-2.5">
+            <span aria-hidden="true" class="inline-flex h-8 w-8 items-center justify-center rounded-lg" style="background: color-mix(in srgb, var(--color-grape) 12%, transparent); color: var(--color-grape);"><svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9V6z"/></svg></span>
+            <span class="text-[15px] font-semibold text-[color:var(--color-text)]">Google Vertex AI</span>
+          </span>
+          <span class="mt-3 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">Federate your IdP into GCP via Workforce Identity Federation.</span>
+          <span class="mt-3 text-[12px] font-medium text-[color:var(--color-grape)]">Workforce pool + provider</span>
+        </button>
+        <button type="button" role="tab" id="tab-google" aria-controls="panel-google" aria-selected="false" tabindex="-1"
+          class="doctab group flex flex-col rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5 text-left transition-colors hover:border-[color:var(--color-accent)] aria-selected:border-[color:var(--color-grape)] aria-selected:bg-[color:var(--color-panel-ink)] aria-selected:shadow-[0_10px_30px_-16px_rgba(67,32,95,.45)]">
+          <span class="flex items-center gap-2.5">
+            <span aria-hidden="true" class="inline-flex h-8 w-8 items-center justify-center rounded-lg" style="background: color-mix(in srgb, var(--color-grape) 12%, transparent); color: var(--color-grape);"><svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></span>
+            <span class="text-[15px] font-semibold text-[color:var(--color-text)]">Google → Vertex direct</span>
+          </span>
+          <span class="mt-3 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">Sign in with Google directly — no federation broker.</span>
+          <span class="mt-3 text-[12px] font-medium text-[color:var(--color-grape)]">googleOAuth · cloud-platform scope</span>
+        </button>
+      </div>
+
+      <!-- Panel: AWS -->
+      <div role="tabpanel" id="panel-aws" aria-labelledby="tab-aws" class="mt-10">
+    <h2 id="aws-bedrock-setup" class="scroll-mt-20 font-display text-xl font-semibold tracking-tight text-[color:var(--color-text)]">
       AWS Bedrock setup
     </h2>
     <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
       In IAM, register the IdP as an <strong class="text-[color:var(--color-text)]">OpenID Connect identity provider</strong> (the issuer URL plus the client ID as an audience), then create a role whose trust policy admits tokens from that provider. <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">AssumeRoleWithWebIdentity</code> is the gate: the call itself is unauthenticated, so the role&rsquo;s trust policy is what authorizes access &mdash; constrain it with an <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">aud</code> condition.
     </p>
     <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">Example role trust policy (placeholder account ID and client ID):</p>
-    <div class="mt-4 overflow-x-auto rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
+    <div class="mt-4 overflow-x-auto rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-section-tint)] p-4">
       <pre class="text-[13px] leading-[1.7] text-[color:var(--color-text-muted)] whitespace-pre overflow-x-auto"><code>{`{
   "Version": "2012-10-17",
   "Statement": [
@@ -265,7 +379,7 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
 }`}</code></pre>
     </div>
     <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">Attach a permissions policy granting Bedrock model invocation:</p>
-    <div class="mt-4 overflow-x-auto rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
+    <div class="mt-4 overflow-x-auto rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-section-tint)] p-4">
       <pre class="text-[13px] leading-[1.7] text-[color:var(--color-text-muted)] whitespace-pre overflow-x-auto"><code>{`{
   "Version": "2012-10-17",
   "Statement": [
@@ -284,8 +398,11 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
       Put the role&rsquo;s ARN in <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">aws.role_arn</code> and set <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">aws.auth_mode</code> to <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">oidc</code>. The requested STS session duration is <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">aws.session_duration_seconds</code> (default 3600, clamped to 900&ndash;43200). Bedrock model access is per-region, so make sure the chosen region has the model enabled. The role&rsquo;s session name carries the signed-in user&rsquo;s email for CloudTrail attribution.
     </p>
 
-    <!-- GCP setup -->
-    <h2 id="google-cloud-vertex-ai-setup" class="mt-12 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+      </div><!-- /panel-aws -->
+
+      <!-- Panel: GCP Vertex -->
+      <div role="tabpanel" id="panel-vertex" aria-labelledby="tab-vertex" class="mt-10">
+    <h2 id="google-cloud-vertex-ai-setup" class="scroll-mt-20 font-display text-xl font-semibold tracking-tight text-[color:var(--color-text)]">
       Google Cloud Vertex AI setup
     </h2>
     <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
@@ -300,8 +417,11 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
       Workforce-federated calls must specify a billing/quota project: Parleq sends your configured <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">vertex.project</code> as the <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">x-goog-user-project</code> header on every Vertex request, so that project needs the Vertex AI API enabled and the federated principal needs <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">serviceusage.services.use</code> on it.
     </p>
 
-    <!-- Google account -> Vertex directly -->
-    <h2 class="mt-12 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+      </div><!-- /panel-vertex -->
+
+      <!-- Panel: Google account -> Vertex directly -->
+      <div role="tabpanel" id="panel-google" aria-labelledby="tab-google" class="mt-10">
+    <h2 class="font-display text-xl font-semibold tracking-tight text-[color:var(--color-text)]">
       Google account &rarr; Vertex AI directly
     </h2>
     <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
@@ -311,12 +431,15 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
       <li>&bull; In the Google Cloud console, create an <strong class="text-[color:var(--color-text)]">OAuth client ID of the Desktop app type</strong> (public, no usable secret for this flow) and set <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">oidc.redirect_uri</code> to <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">http://127.0.0.1/oauth2redirect</code> &mdash; Google&rsquo;s current desktop guidance. Parleq signs in via the default browser and answers the callback on a temporary <strong class="text-[color:var(--color-text)]">127.0.0.1</strong> listener (ephemeral port; present only during sign-in). <strong class="text-[color:var(--color-text)]">Alternate:</strong> an <strong class="text-[color:var(--color-text)]">iOS-type</strong> client also works &mdash; use its reversed-client-ID redirect (<code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">com.googleusercontent.apps.&lt;client-id&gt;:/oauth2redirect</code>), which Parleq intercepts in-process with no local listener.</li>
       <li>&bull; <strong class="text-[color:var(--color-text)]">Admin note (managed Macs):</strong> the loopback sign-in only activates for an <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">http://127.0.0.1</code> redirect. Pin <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">oidcRedirectURI</code> to your custom-scheme value (e.g. <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">parleq-auth://oidc/callback</code> or the iOS-type reversed-client-ID scheme) to ensure Parleq never binds a local listener. The redirect URI is the complete control &mdash; there is no separate &ldquo;disable loopback&rdquo; key because pinning a custom-scheme redirect already prevents the listener from ever activating.</li>
       <li>&bull; <strong class="text-[color:var(--color-text)]">Scopes:</strong> <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">["openid", "email", "https://www.googleapis.com/auth/cloud-platform"]</code> &mdash; the <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">cloud-platform</code> scope is what makes the access token usable against Vertex.</li>
-      <li>&bull; <strong class="text-[color:var(--color-text)]">Force a refresh token:</strong> set <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">oidc.extra_auth_params</code> to <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">{`{"access_type": "offline", "prompt": "select_account consent"}`}</code>. Google only re-issues a refresh token when it shows the consent screen.</li>
+      <li>&bull; <strong class="text-[color:var(--color-text)]">Force a refresh token:</strong> set <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">oidc.extra_auth_params</code> to <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">&#123;"access_type": "offline", "prompt": "select_account consent"&#125;</code>. Google only re-issues a refresh token when it shows the consent screen.</li>
       <li>&bull; Set <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">vertex.auth_mode</code> to <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">googleOAuth</code> and <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">vertex.project</code> to the GCP project that owns the Vertex AI quota. Every call carries <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">x-goog-user-project</code>, so the signing account needs both <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">roles/aiplatform.user</code> and <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">roles/serviceusage.serviceUsageConsumer</code> on it (a project Owner already has both).</li>
     </ul>
     <p class="mt-4 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
       For org-owned Google identities this works the same way &mdash; with no &ldquo;unverified app&rdquo; warning and no refresh-token cap if the OAuth client lives in your Google Cloud organization. The personal-@gmail variant, with its consent-screen trade-offs and the granular-consent gotcha, is covered in the <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/diy-sso/'} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">DIY guide</a>.
     </p>
+
+      </div><!-- /panel-google -->
+    </div><!-- /data-doctabs cloud-setup -->
 
     <!-- MDM key reference pointer -->
     <h2 class="mt-12 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
@@ -374,5 +497,6 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
       </table>
     </div>
 
+    <DocTabs />
   </article>
 </Layout>

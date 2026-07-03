@@ -1,11 +1,13 @@
 ---
 import Layout from '../../layouts/Layout.astro';
-import SiteHeader from '../../components/SiteHeader.astro';
+import FloatingNav from '../../components/FloatingNav.astro';
+import GrapeCluster from '../../components/GrapeCluster.astro';
+import DocTabs from '../../components/DocTabs.astro';
 
 ---
 
-<Layout title="On-device setup — Parleq" description="Run Parleq's cleanup entirely on your Mac — a fast deterministic Lightweight tier, or the Gemma 4 E4B local model via Apple MLX. No API key, no cloud account, no network boundary.">
-  <SiteHeader active="docs" />
+<Layout title="On-device setup — Parleq" description="Run Parleq's cleanup entirely on your Mac — a fast Lightweight tier or the Gemma 4 local model via Apple MLX. No API key, no cloud account, no network.">
+  <FloatingNav active="docs" />
 
   <article class="accent-grape mx-auto max-w-2xl px-6 pt-16 pb-24">
     <p class="text-sm">
@@ -16,57 +18,81 @@ import SiteHeader from '../../components/SiteHeader.astro';
     <h1 class="mt-4 font-display text-4xl leading-[1.1] font-medium tracking-tight sm:text-5xl">
       On-device cleanup
     </h1>
-    <p class="mt-6 text-[17px] leading-[1.7] text-[color:var(--color-text-muted)]">
+    <p class="mt-6 max-w-2xl text-[17px] leading-[1.7] text-[color:var(--color-text-muted)]">
       Parleq can run the cleanup pass entirely on your Mac — no API key, no cloud account, no per-call cost, and no network boundary for your transcript. There are <strong class="text-[color:var(--color-text)]">two on-device options</strong>, both available under <strong class="text-[color:var(--color-text)]">Settings → Cleanup → Provider</strong> — and the first-run setup wizard offers the Gemma 4 one directly as its <strong class="text-[color:var(--color-text)]">On-device</strong> choice. Both keep your transcript on your machine; they differ in what they can do and what they cost in download and memory.
     </p>
 
-    <h2 class="mt-12 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
-      Two ways to run on-device
-    </h2>
-    <div class="mt-6 grid gap-4 sm:grid-cols-2">
-      <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6">
-        <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">Lightweight (on-device)</p>
-        <p class="mt-2 text-[15px] font-medium text-[color:var(--color-text)]">Instant, deterministic cleanup</p>
-        <ul class="mt-3 space-y-2 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
-          <li>Punctuation, casing, numbers &amp; percents, your custom-dictionary terms, and voiceprint disambiguation.</li>
-          <li><strong class="text-[color:var(--color-text)]">No download, negligible memory, sub-second.</strong></li>
-          <li>Can't rewrite text — the voice-refine loop, style chips, and per-app styling need an LLM (Gemma 4 or a cloud provider).</li>
-        </ul>
-      </div>
-      <div class="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6">
-        <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-accent)]">On-device LLM (Gemma 4)</p>
-        <p class="mt-2 text-[15px] font-medium text-[color:var(--color-text)]">Fuller cleanup + the refine loop</p>
-        <ul class="mt-3 space-y-2 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
-          <li>Everything above, plus free-form rewriting and the full voice-refine loop, run by a local language model.</li>
-          <li><strong class="text-[color:var(--color-text)]">~4 GB one-time download, ~6 GB while loaded, 12 GB RAM minimum.</strong></li>
-          <li>Google's Gemma 4 E4B (Apache 2.0), 4-bit, in-process via Apple MLX.</li>
-        </ul>
-      </div>
-    </div>
-    <p class="mt-6 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      Pick <strong class="text-[color:var(--color-text)]">Lightweight</strong> for instant, zero-footprint structured cleanup; pick <strong class="text-[color:var(--color-text)]">Gemma 4</strong> when you want a model to reshape and refine your text. You can switch between them anytime.
-    </p>
+    <!-- Tabbed picker: the two on-device tracks. Selecting a tab reveals its sections and hides
+         the other, so the page isn't one long concatenation. No-JS shows BOTH panels (content
+         stays accessible + indexable); the inline script enhances to WAI-ARIA tabs. -->
+    <div class="mt-12" data-doctabs>
+      <h2 class="font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
+        Two ways to run on-device
+      </h2>
+      <p class="mt-3 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+        Both keep your transcript on your Mac — pick the track that fits, and switch anytime.
+      </p>
 
-    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
-      Lightweight (on-device)
-    </h2>
-    <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      <div role="tablist" aria-label="On-device options" class="mt-6 grid gap-4 sm:grid-cols-2">
+        <button
+          type="button" role="tab" id="tab-lite" aria-controls="panel-lite" aria-selected="true"
+          class="doctab group flex flex-col rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5 text-left transition-colors hover:border-[color:var(--color-accent)] aria-selected:border-[color:var(--color-grape)] aria-selected:bg-[color:var(--color-panel-ink)] aria-selected:shadow-[0_10px_30px_-16px_rgba(67,32,95,.45)]"
+        >
+          <span class="flex items-center gap-2.5">
+            <span aria-hidden="true" class="inline-flex h-8 w-8 items-center justify-center rounded-lg" style="background: color-mix(in srgb, var(--color-grape) 12%, transparent); color: var(--color-grape);">
+              <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-2 8 9-12h-7z"/></svg>
+            </span>
+            <span class="text-[15px] font-semibold text-[color:var(--color-text)]">Lightweight</span>
+          </span>
+          <span class="mt-3 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">Instant, deterministic cleanup — questions, numbers, your dictionary, and voiceprints.</span>
+          <span class="mt-3 text-[12px] font-medium text-[color:var(--color-grape)]">No download · sub-second · negligible memory</span>
+        </button>
+        <button
+          type="button" role="tab" id="tab-gemma" aria-controls="panel-gemma" aria-selected="false" tabindex="-1"
+          class="doctab group flex flex-col rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5 text-left transition-colors hover:border-[color:var(--color-accent)] aria-selected:border-[color:var(--color-grape)] aria-selected:bg-[color:var(--color-panel-ink)] aria-selected:shadow-[0_10px_30px_-16px_rgba(67,32,95,.45)]"
+        >
+          <span class="flex items-center gap-2.5">
+            <span aria-hidden="true" class="inline-flex h-8 w-8 items-center justify-center rounded-lg" style="background: color-mix(in srgb, var(--color-grape) 12%, transparent); color: var(--color-grape);">
+              <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="14" height="14" rx="2"/><rect x="9" y="9" width="6" height="6" rx="1"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>
+            </span>
+            <span class="text-[15px] font-semibold text-[color:var(--color-text)]">On-device LLM — Gemma 4</span>
+          </span>
+          <span class="mt-3 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">Everything Lightweight does, plus free-form rewriting and the full voice-refine loop.</span>
+          <span class="mt-3 text-[12px] font-medium text-[color:var(--color-grape)]">~4 GB download · 12 GB RAM · $0</span>
+        </button>
+      </div>
+
+      <!-- Panel: Lightweight -->
+      <div role="tabpanel" id="panel-lite" aria-labelledby="tab-lite" class="mt-10">
+    <div class="space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
       <p>
-        The Lightweight option — built on Concord (by Keavi) — is a fast, fully deterministic corrector that runs in-process, with nothing to download and almost no memory overhead. It handles the structured cleanup: capitals and end punctuation, spelled-out numbers and percents (so "forty five percent" becomes "45%"), your custom-dictionary terms, and — once you've enrolled them — voiceprint disambiguation of sound-alike words. Because there is no language model on this path, it can't freely rewrite text, so the voice-refine loop, the one-tap style chips, and per-app styling aren't available here; switch to Gemma 4 or a cloud provider when you want those.
+        The Lightweight option — built on Concord (by Keavi) — is a fast, fully deterministic corrector that runs in-process, with nothing to download and almost no memory overhead. It handles the structured cleanup: adding the "?" when you dictate a question, spelled-out numbers and percents (so "forty five percent" becomes "45%"), joining split compound words, your custom-dictionary terms (plus spoken forms), and — once you've enrolled them — voiceprint disambiguation of sound-alike words. General sentence casing and punctuation come from the speech model itself, not this tier. Because there is no language model on this path, it can't freely rewrite text, so the voice-refine loop, the one-tap style chips, and per-app styling aren't available here; switch to Gemma 4 or a cloud provider when you want those.
       </p>
       <p>
         To use it, open <strong class="text-[color:var(--color-text)]">Settings → Cleanup → Provider</strong> and select <strong class="text-[color:var(--color-text)]">Lightweight (on-device)</strong>. (It's a Settings option — the first-run wizard's <strong class="text-[color:var(--color-text)]">On-device</strong> choice is the Gemma 4 model below.) There's nothing to download and nothing to configure — it's ready immediately, and like every on-device path your transcript never crosses a network boundary.
       </p>
     </div>
 
-    <h2 class="mt-16 font-display text-2xl font-semibold tracking-tight text-[color:var(--color-text)]">
-      On-device LLM: Gemma 4
-    </h2>
-    <p class="mt-6 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      The rest of this page covers the Gemma 4 option — the local language model for fuller cleanup and the full refine loop. Pick it when transcript content must never leave your machine but you still want a model to rewrite, not just tidy.
+    <!-- The engine, up close: grape-cluster moment for the Lightweight tier -->
+    <div class="mt-10 rounded-2xl border border-[color:var(--color-border)] bg-white/40 px-6 py-10 text-center sm:px-10">
+      <p class="text-xs font-medium uppercase tracking-[0.18em] text-[color:var(--color-grape)]">The engine, up close</p>
+      <h3 class="mt-2 font-display text-2xl font-medium tracking-tight">A cluster of small, fast corrections.</h3>
+      <p class="mx-auto mt-3 max-w-xl text-[color:var(--color-text-muted)]">
+        On-device cleanup isn't a black box — it's a handful of deterministic helpers, each doing one thing well, all running in-process on your Mac. <span class="text-[color:var(--color-text-subtle)]">Built on Concord (by Keavi).</span>
+      </p>
+      <div class="mt-8">
+        <GrapeCluster />
+      </div>
+    </div>
+      </div><!-- /panel-lite -->
+
+      <!-- Panel: Gemma 4 -->
+      <div role="tabpanel" id="panel-gemma" aria-labelledby="tab-gemma" class="mt-10">
+    <p class="text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
+      Gemma 4 E4B is the local language model for fuller cleanup and the full voice-refine loop — pick it when transcript content must never leave your machine but you still want a model to rewrite, not just tidy.
     </p>
 
-    <div class="mt-8 rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6">
+    <div class="mt-8 rounded-2xl border border-[color:var(--color-grape-300)] bg-[color:var(--color-panel-ink)] p-6">
       <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-text-subtle)]">At a glance</p>
       <ul class="mt-3 space-y-2 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
         <li><strong class="text-[color:var(--color-text)]">Auth:</strong> None. No account, no key.</li>
@@ -151,6 +177,10 @@ import SiteHeader from '../../components/SiteHeader.astro';
         The model is Google Gemma 4, licensed under the <a href="https://ai.google.dev/gemma/docs/gemma_4_license" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Apache 2.0 license</a>. Parleq doesn't redistribute the weights — your Mac downloads them from Hugging Face when you enable this option.
       </p>
     </div>
+      </div><!-- /panel-gemma -->
+    </div><!-- /data-doctabs -->
+
+    <DocTabs />
   </article>
 
 </Layout>
