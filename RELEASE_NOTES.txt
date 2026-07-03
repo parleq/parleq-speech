@@ -1,3 +1,11 @@
-Parleq 0.31.0
+Parleq 0.40.0
 
-Smarter on-device cleanup: the Lightweight tier now fixes to/two/too homophone mistakes (like "delegate two subagents" → "delegate to subagents") using surrounding-word evidence and the recognizer's own confidence — conservatively, so real counts like "two questions" are never touched.
+Per-app cleanup, a clearer cleanup model, and more on-device corrections.
+
+Parleq now tailors how much cleanup each app gets: terminals, code editors, and spreadsheets default to fast on-device tidy-up with no rewriting, while chat and email get fuller polished cleanup — and you can override any app or suggest a per-app tone.
+
+Settings are clearer, too. Cleanup and Refinement are each a simple choice — Raw, Instant (on-device), or Polished (cloud or on-device model) — sharing one Polished-provider picker. That makes setups like "keep everyday cleanup fast and on-device, but use the cloud when I give a follow-up command" easy to configure, and switching between them no longer needs a restart when the engine is already running.
+
+On-device ("Lightweight") cleanup gained two more corrections: a/an agreement ("a issue" → "an issue", "a API" → "an API") and collapsing accidental doubled words ("the the"), alongside the existing to/two/too homophone fix — all fully on-device, no rewriting.
+
+Also: Dictionary and Presets are now top-level, Usage folds into Stats, and a rare tail-drop that could lose the last word or two of a dictation is fixed.
