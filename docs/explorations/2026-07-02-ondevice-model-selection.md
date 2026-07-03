@@ -70,7 +70,7 @@ We drafted two surgical edits to the shared prompt — a **CAPS firm-up** (a fir
 - The 58-case corpus is synthetic; it differentiates models well but isn't a real-usage distribution. Real-world quality remains cloud-led (the standing posture: cloud = quality default, local = privacy/offline/zero-cost tier).
 - **Qwen's exact RAM floor is pending a real 8 GB-Mac footprint measurement** (with the GPU-cache cap applied). The dev-machine peak was 3.9 GB; the productization uses an 8 GB floor with the 8 GB tier treated as "cautioned."
 - Some of Qwen's residual losses (technical ITN, specific terms) may be addressable later via the user dictionary / vocabulary biasing rather than the model.
-- Confirm the `-2507` checkpoint honors `enable_thinking:false` (it is a non-thinking Instruct variant, so likely moot).
+- `enable_thinking: false` is sent unconditionally on every on-device generation call (invariant #8 / `LocalLLMProvider.swift`), so it applies to Qwen automatically — no per-model wiring needed; the `-2507` checkpoint is a non-thinking Instruct variant regardless.
 
 ## Artifacts
 

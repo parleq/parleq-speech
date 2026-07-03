@@ -60,7 +60,8 @@
 //                      "allow_unsupported_ram": false,
 //                      // Selected on-device model (mlx-community checkpoint
 //                      // id). Omit for the default (Gemma 4 E4B). The other
-//                      // catalog option is Qwen3-4B-Instruct-2507-4bit.
+//                      // catalog option is the full checkpoint id
+//                      // "mlx-community/Qwen3-4B-Instruct-2507-4bit".
 //                      "model": "mlx-community/gemma-4-E4B-it-qat-4bit"
 //                    } },
 //     "aws":       { "region": "us-east-2",
