@@ -199,9 +199,20 @@ private final class WizardModel: ObservableObject {
     }
 
     /// The on-device model checkpoint selected when pickedTier == "local".
-    /// Defaults to the catalog default (Gemma). Drives which model's store
-    /// advance() downloads and commit() writes to config.localModel.
-    @Published var pickedLocalModel: String = LocalModelCatalog.default.checkpoint
+    /// Defaults to the LIGHTEST model this machine actually clears the RAM
+    /// floor for (falling back to the catalog default if none do — e.g. the
+    /// user has the config-file `allow_unsupported_ram` override set, or is
+    /// below every floor and will see the tier card itself disabled). This
+    /// matters because a user who picks "On-device" without touching the
+    /// sub-picker below gets whatever this default is: on an 8-11 GB Mac
+    /// where Gemma (12 GB floor) is the catalog default but Qwen (8 GB floor)
+    /// clears, defaulting to Gemma would silently queue a 4.2 GB download of
+    /// a model the runtime's RAM gate then refuses to load. Drives which
+    /// model's store advance() downloads and commit() writes to
+    /// config.localModel.
+    @Published var pickedLocalModel: String = LocalModelCatalog.all
+        .first { RAMTier.current(for: $0) != .unsupported }?.checkpoint
+        ?? LocalModelCatalog.default.checkpoint
 
     // Auth-config state — duplicated from SettingsModel rather than
     // sharing because the wizard is a discrete one-shot flow that
@@ -463,10 +474,13 @@ private final class WizardModel: ObservableObject {
 private struct SetupWizardView: View {
     let onFinish: () -> Void
     /// Shared on-device cleanup model store for the DEFAULT catalog model.
-    /// Retained for back-compat; download()/state now flow through the
-    /// per-model `localModelStores` registry instead (looked up by whichever
-    /// model the user picks).
-    @ObservedObject var localModelStore: LocalModelStore
+    /// Retained ONLY as a defensive fallback reference (advance()'s registry
+    /// lookup `?? localModelStore`) — nothing in the view tree observes its
+    /// `.state`, so this is a plain `let`, not `@ObservedObject`: an
+    /// `@ObservedObject` here would re-evaluate the ENTIRE wizard body on
+    /// every download-progress tick of the default model, even while a
+    /// different model (or a different wizard step entirely) is on screen.
+    let localModelStore: LocalModelStore
     /// The full per-model on-device store registry — threaded to
     /// PickProviderStep (model sub-choice + download-on-advance) and DoneStep
     /// (status for whichever model was picked).
