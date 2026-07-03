@@ -930,9 +930,7 @@ struct ParleqApp {
             // one row per model with its own download/remove affordance.
             ParleqAppWindowController.shared.setLocalModelStore(localModelStore)
             ParleqAppWindowController.shared.setLocalModelStores(localModelStores)
-            // Task E extends SetupWizardController to take the full registry
-            // (localModelStores) too, for its per-model sub-choice.
-            let wizard = SetupWizardController(localModelStore: localModelStore)
+            let wizard = SetupWizardController(localModelStore: localModelStore, localModelStores: localModelStores)
             wizardBox.value = wizard
             // Sparkle auto-update controller. `startingUpdater: true`
             // arms Sparkle's standard background-check loop (default

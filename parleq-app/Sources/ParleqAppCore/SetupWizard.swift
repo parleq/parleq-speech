@@ -94,14 +94,23 @@ extension Notification.Name {
 /// Mirrors SettingsWindowController's pattern.
 @MainActor
 public final class SetupWizardController {
-    /// The shared on-device model store. Injected at construction so the
-    /// wizard's Done step can show live download progress and the pick-
-    /// provider step can trigger the download when the user chooses "local".
-    /// Same store instance that main.swift and LocalLLMProvider hold.
+    /// The shared on-device model store for the DEFAULT catalog model.
+    /// Injected at construction so the wizard's Done step can show live
+    /// download progress and the pick-provider step can trigger the download
+    /// when the user chooses "local". Same store instance that main.swift and
+    /// LocalLLMProvider hold for the currently-selected model.
     private let localModelStore: LocalModelStore
 
-    public init(localModelStore: LocalModelStore) {
+    /// The full per-model on-device store registry (one `LocalModelStore` per
+    /// `LocalModelCatalog.all` entry), so the pick-provider step's model
+    /// sub-choice and the Done step can show/download/remove whichever model
+    /// the user picks — not just the app's currently-selected one. Same
+    /// registry instance main.swift builds and hands to Settings.
+    private let localModelStores: [LocalModelStore]
+
+    public init(localModelStore: LocalModelStore, localModelStores: [LocalModelStore]) {
         self.localModelStore = localModelStore
+        self.localModelStores = localModelStores
     }
 
     private var window: NSWindow?
@@ -126,6 +135,7 @@ public final class SetupWizardController {
                 self?.window = nil
             },
             localModelStore: localModelStore,
+            localModelStores: localModelStores,
             permissionsOnly: permissionsOnly
         )
         let hosting = NSHostingController(rootView: view)
@@ -187,6 +197,11 @@ private final class WizardModel: ObservableObject {
             }
         }
     }
+
+    /// The on-device model checkpoint selected when pickedTier == "local".
+    /// Defaults to the catalog default (Gemma). Drives which model's store
+    /// advance() downloads and commit() writes to config.localModel.
+    @Published var pickedLocalModel: String = LocalModelCatalog.default.checkpoint
 
     // Auth-config state — duplicated from SettingsModel rather than
     // sharing because the wizard is a discrete one-shot flow that
@@ -301,6 +316,15 @@ private final class WizardModel: ObservableObject {
         }
 
         c.llmProvider = effectiveProvider
+
+        // On-device model choice — write the PICKED catalog checkpoint only
+        // when the user actually committed to the local tier. Leaving it
+        // untouched otherwise preserves a value the user may have set earlier
+        // via Settings (e.g. re-running the wizard and picking "cloud" this
+        // time shouldn't silently flip a previously-chosen on-device model).
+        if effectiveProvider == "local" {
+            c.localModel = pickedLocalModel
+        }
 
         // Reframe v2: the refinement type follows the cleanup choice. A
         // generative provider (cloud/local) enables Polished refinement, which
@@ -438,10 +462,15 @@ private final class WizardModel: ObservableObject {
 
 private struct SetupWizardView: View {
     let onFinish: () -> Void
-    /// Shared on-device cleanup model store. Observed for live download
-    /// state in DoneStep; download() is called here when the user picks the
-    /// on-device tier and advances past the pick-provider step.
+    /// Shared on-device cleanup model store for the DEFAULT catalog model.
+    /// Retained for back-compat; download()/state now flow through the
+    /// per-model `localModelStores` registry instead (looked up by whichever
+    /// model the user picks).
     @ObservedObject var localModelStore: LocalModelStore
+    /// The full per-model on-device store registry — threaded to
+    /// PickProviderStep (model sub-choice + download-on-advance) and DoneStep
+    /// (status for whichever model was picked).
+    let localModelStores: [LocalModelStore]
     /// #82: when true the wizard opens at the permissions step and finishing
     /// it just closes (no provider re-flow, no config reset). Used when a
     /// returning user's Accessibility was revoked.
@@ -449,9 +478,10 @@ private struct SetupWizardView: View {
     @StateObject private var model: WizardModel
 
     init(onFinish: @escaping () -> Void, localModelStore: LocalModelStore,
-         permissionsOnly: Bool = false) {
+         localModelStores: [LocalModelStore], permissionsOnly: Bool = false) {
         self.onFinish = onFinish
         self.localModelStore = localModelStore
+        self.localModelStores = localModelStores
         self.permissionsOnly = permissionsOnly
         _model = StateObject(wrappedValue:
             WizardModel(step: permissionsOnly ? .permissions : .welcome))
@@ -486,13 +516,13 @@ private struct SetupWizardView: View {
                     case .permissions:
                         PermissionsWizardStep()
                     case .pickProvider:
-                        PickProviderStep(model: model, localModelStore: localModelStore)
+                        PickProviderStep(model: model, localModelStores: localModelStores)
                     case .configureProvider:
                         ConfigureProviderStep(model: model)
                     case .advancedModel:
                         AdvancedModelStep(model: model)
                     case .done:
-                        DoneStep(model: model, localModelStore: localModelStore)
+                        DoneStep(model: model, localModelStores: localModelStores)
                     }
                 }
                 .padding(.horizontal, 28)
@@ -717,10 +747,14 @@ private struct SetupWizardView: View {
         case .pickProvider:
             let tier = model.pickedTier ?? "cloud"
             if tier == "local" {
-                // Kick off the model download now (idempotent — LocalModelStore.download()
-                // guards against re-entering when not in .notDownloaded state, so if the
-                // model is already .ready or .downloading this is a safe no-op).
-                localModelStore.download()
+                // Kick off the PICKED model's download now (idempotent —
+                // LocalModelStore.download() guards against re-entering when not
+                // in .notDownloaded state, so if that model is already .ready or
+                // .downloading this is a safe no-op). Falls back to the shared
+                // default-model store if the registry lookup somehow misses
+                // (defensive; the registry always contains every catalog model).
+                let store = localModelStores.first { $0.checkpoint == model.pickedLocalModel } ?? localModelStore
+                store.download()
                 // Local and none both skip configure + advanced (no cloud auth needed).
                 model.step = .done
             } else if tier == "none" {
@@ -790,7 +824,7 @@ private struct WelcomeStep: View {
 
 private struct PickProviderStep: View {
     @ObservedObject var model: WizardModel
-    @ObservedObject var localModelStore: LocalModelStore
+    let localModelStores: [LocalModelStore]
 
     // MARK: - Tier cards (top level)
 
@@ -800,7 +834,15 @@ private struct PickProviderStep: View {
         var blurb: String
     }
 
-    private var ramTier: RAMTier { RAMTier.current }
+    /// The on-device tier card itself is gated on whether ANY catalog model
+    /// clears its floor — a Mac that can only run the lighter Qwen model
+    /// (8 GB floor) must still be able to pick "On-device" so it can reach
+    /// the per-model sub-choice below and choose Qwen. Per-model gating (which
+    /// specific model is selectable) happens one level down, in
+    /// `localModelRow`.
+    private var allOnDeviceModelsUnsupported: Bool {
+        LocalModelCatalog.all.allSatisfy { RAMTier.current(for: $0) == .unsupported }
+    }
     /// Snapshotted once at view creation — `Config.load()` is file I/O and
     /// must not run per render. The pick-provider step doesn't hot-reload
     /// config while it's visible, so a once-per-view-instance value is fine.
@@ -824,12 +866,82 @@ private struct PickProviderStep: View {
     }
 
     private var localCardBlurb: String {
-        switch ramTier {
-        case .unsupported where !localAllowUnsupportedRAM:
-            return "Needs a Mac with 12 GB+ memory — the model alone uses ~6 GB while active."
-        default:
-            return "Runs entirely on this Mac. No account or API key. Uses about 6 GB of memory while cleaning up. ~4 GB one-time download."
+        if allOnDeviceModelsUnsupported && !localAllowUnsupportedRAM {
+            // Cite the LIGHTER model's floor — it's the one a borderline Mac
+            // might still miss, and the more actionable number to show here.
+            return "Needs a Mac with \(Int(LocalModelCatalog.qwen3_4B.ramFloorGB)) GB+ memory."
         }
+        return "Runs entirely on this Mac. No account or API key. Two models to choose from below."
+    }
+
+    // MARK: - On-device model sub-options (shown when tier == "local")
+
+    private func localModelRow(_ info: LocalModelInfo) -> some View {
+        let isPicked = model.pickedLocalModel == info.checkpoint
+        let ramTier = RAMTier.current(for: info)
+        let isUnsupported = ramTier == .unsupported && !localAllowUnsupportedRAM
+        return Button {
+            if !isUnsupported { model.pickedLocalModel = info.checkpoint }
+        } label: {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: isPicked ? "largecircle.fill.circle" : "circle")
+                    .foregroundStyle(isPicked ? SettingsView.brandAccent : Color.secondary)
+                    .font(.body)
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text(info.displayName)
+                            .font(.callout)
+                            .fontWeight(isPicked ? .semibold : .regular)
+                            .foregroundStyle(isUnsupported ? Color.secondary : Color.primary)
+                        Text(info.shortLabel)
+                            .font(.caption2)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Capsule().fill(Color.secondary.opacity(0.15)))
+                            .foregroundStyle(.secondary)
+                    }
+                    Text(info.whereItShines)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text("~\(formatGB(info.approxDownloadGB)) GB download · needs \(Int(info.ramFloorGB)) GB RAM")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                    if isUnsupported {
+                        Text("Needs a Mac with \(Int(info.ramFloorGB)) GB+ memory — the model alone uses ~\(formatGB(info.approxResidentGB)) GB while active.")
+                            .font(.caption2)
+                            .foregroundStyle(.orange)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else if ramTier == .cautioned {
+                        Text("On this Mac this can slow other memory-hungry apps; Parleq frees the memory after a few minutes of inactivity.")
+                            .font(.caption2)
+                            .foregroundStyle(.orange)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 7)
+                    .fill(isPicked
+                          ? SettingsView.brandAccent.opacity(0.10)
+                          : SettingsView.cardBackground)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 7)
+                    .stroke(isPicked
+                            ? SettingsView.brandAccent.opacity(0.45)
+                            : SettingsView.cardBorder,
+                            lineWidth: isPicked ? 1.0 : 0.5)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(isUnsupported)
+        .opacity(isUnsupported ? 0.55 : 1.0)
     }
 
     // MARK: - Cloud sub-provider options (shown when tier == "cloud")
@@ -864,6 +976,22 @@ private struct PickProviderStep: View {
                 }
             }
 
+            // On-device model sub-picker — revealed when the user picks "local".
+            if model.pickedTier == "local" {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Select a model:")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.leading, 4)
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(LocalModelCatalog.all) { info in
+                            localModelRow(info)
+                        }
+                    }
+                    .padding(.leading, 16)
+                }
+            }
+
             // Cloud sub-picker — revealed when the user picks "cloud".
             if model.pickedTier == "cloud" {
                 VStack(alignment: .leading, spacing: 6) {
@@ -886,7 +1014,7 @@ private struct PickProviderStep: View {
 
     private func tierCard(_ opt: TierOption) -> some View {
         let isLocalUnsupported = opt.id == "local"
-            && ramTier == .unsupported
+            && allOnDeviceModelsUnsupported
             && !localAllowUnsupportedRAM
         let isPicked = model.pickedTier == opt.id
 
@@ -909,13 +1037,10 @@ private struct PickProviderStep: View {
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.leading)
                         .fixedSize(horizontal: false, vertical: true)
-                    // Cautioned caption: appended for 16 GB Macs when not unsupported.
-                    if opt.id == "local" && ramTier == .cautioned {
-                        Text("On a 16 GB Mac this can slow other memory-hungry apps; Parleq frees the memory after a few minutes of inactivity.")
-                            .font(.caption)
-                            .foregroundStyle(.orange)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
+                    // Per-model RAM caution now lives in the model sub-choice
+                    // rows below (localModelRow) — each model has its own
+                    // floor/comfortable line, so a single tier-card caption
+                    // could no longer speak for both models.
                 }
                 Spacer(minLength: 0)
             }
@@ -1481,7 +1606,16 @@ private struct AdvancedModelStep: View {
 
 private struct DoneStep: View {
     @ObservedObject var model: WizardModel
-    @ObservedObject var localModelStore: LocalModelStore
+    let localModelStores: [LocalModelStore]
+
+    /// The catalog descriptor for whichever model the user picked (or the
+    /// default if the wizard never reached the local sub-choice).
+    private var pickedInfo: LocalModelInfo { LocalModelCatalog.model(for: model.pickedLocalModel) }
+    /// The registry store for the picked model — nil only before the registry
+    /// is injected (never in practice; see SetupWizardController.init).
+    private var pickedStore: LocalModelStore? {
+        localModelStores.first { $0.checkpoint == model.pickedLocalModel }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -1497,16 +1631,8 @@ private struct DoneStep: View {
 
             // On-device cleanup model download status — only shown when the
             // user picked the on-device tier.
-            if model.pickedTier == "local" {
-                onDeviceStatusRow
-                HStack(spacing: 0) {
-                    Text("Uses Google Gemma 4 (Apache 2.0). ")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Link("Learn more", destination: URL(string: "https://ai.google.dev/gemma/docs/gemma_4_license")!)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+            if model.pickedTier == "local", let store = pickedStore {
+                DoneStepOnDeviceStatus(info: pickedInfo, store: store)
             }
 
             Text("On first run after install, the speech model downloads in the background (~150 MB, 30–60 seconds). The menu-bar icon shows a download glyph until it's ready, then switches to a microphone. After that, dictations run locally — your audio never leaves the Mac.")
@@ -1520,10 +1646,33 @@ private struct DoneStep: View {
             Spacer()
         }
     }
+}
+
+/// The Done step's on-device status block for whichever model the user
+/// picked — split into its own view so it can `@ObservedObject` that ONE
+/// model's store (the store is chosen dynamically by `DoneStep`, so it can't
+/// itself be `@ObservedObject` on an array element).
+private struct DoneStepOnDeviceStatus: View {
+    let info: LocalModelInfo
+    @ObservedObject var store: LocalModelStore
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            onDeviceStatusRow
+            HStack(spacing: 0) {
+                Text("Uses \(info.licenseName). ")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Link("Learn more", destination: URL(string: info.licenseURL)!)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
 
     @ViewBuilder
     private var onDeviceStatusRow: some View {
-        switch localModelStore.state {
+        switch store.state {
         case .downloading(let progress):
             // Byte-accurate bar (see the Settings card note): the in-process
             // streaming downloader (#89) reports real within-file progress, so
@@ -1531,12 +1680,12 @@ private struct DoneStep: View {
             HStack(spacing: 10) {
                 ProgressView(value: progress)
                     .frame(maxWidth: 160)
-                Text("Downloading cleanup model… \(Int(progress * 100))%")
+                Text("Downloading \(info.displayName)… \(Int(progress * 100))%")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
                 Spacer()
-                Button("Cancel") { localModelStore.remove() }
+                Button("Cancel") { store.remove() }
                     .buttonStyle(.bordered)
             }
             Text("Dictation works without cleanup until the model finishes downloading.")
@@ -1546,7 +1695,7 @@ private struct DoneStep: View {
             HStack(spacing: 8) {
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundStyle(.green)
-                Text("On-device cleanup model ready.")
+                Text("\(info.displayName) ready.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -1560,8 +1709,8 @@ private struct DoneStep: View {
                         .foregroundStyle(.secondary)
                 }
                 Button("Retry download") {
-                    localModelStore.remove()
-                    localModelStore.download()
+                    store.remove()
+                    store.download()
                 }
                 .font(.callout)
                 Text("Dictation works without cleanup until the model downloads successfully.")

@@ -3746,21 +3746,24 @@ struct SettingsCaption: View {
 
 // MARK: - On-device cleanup status card
 
+/// Formats a descriptor GB value with one decimal, dropping the decimal when
+/// it's a whole number (e.g. 4.2 -> "4.2", 8 -> "8"). Shared by every
+/// on-device size string (Settings AND the Setup Wizard) so the catalog's raw
+/// Double values read naturally without each call site re-deriving format.
+func formatGB(_ value: Double) -> String {
+    value.truncatingRemainder(dividingBy: 1) == 0
+        ? String(Int(value))
+        : String(format: "%.1f", value)
+}
+
 /// Status card for the on-device (local) cleanup provider. Rendered in
 /// Settings → Cleanup when the user picks "On-device". Shows the model
 /// download state (with a Download / Remove button), a residency picker,
 /// and a RAM-tier note on cautioned or unsupported machines.
 ///
-/// `@ObservedObject var store` drives redraws on every state transition
-/// (download progress, .ready, .failed) without going through SettingsModel.
-/// Formats a descriptor GB value with one decimal, dropping the decimal when
-/// it's a whole number (e.g. 4.2 -> "4.2", 8 -> "8"). Shared by every
-/// on-device size string so the catalog's raw Double values read naturally.
-private func formatGB(_ value: Double) -> String {
-    value.truncatingRemainder(dividingBy: 1) == 0
-        ? String(Int(value))
-        : String(format: "%.1f", value)
-}
+/// Each row's `@ObservedObject var store` (in `LocalModelRow`) drives redraws
+/// on every state transition (download progress, .ready, .failed) without
+/// going through SettingsModel.
 
 /// On-device model list: one row per `LocalModelCatalog.all` entry (radio
 /// select + per-model download/remove), plus a shared residency picker and
