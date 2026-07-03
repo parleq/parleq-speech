@@ -383,6 +383,16 @@ public final class ParleqAppWindowController: NSObject {
         settingsModel.localModelStore = store
     }
 
+    /// Wire the full per-model on-device store registry (one `LocalModelStore`
+    /// per `LocalModelCatalog.all` entry) so the Settings → Cleanup on-device
+    /// card can render a row per model with its own live download state,
+    /// independent of which model is currently selected. Called from
+    /// `parleq-app/main.swift` at startup unconditionally, alongside
+    /// `setLocalModelStore`.
+    public func setLocalModelStores(_ stores: [LocalModelStore]) {
+        settingsModel.localModelStores = stores
+    }
+
     #if Concord
     /// Wire the voice-enrollment services so the Settings → Dictionary section
     /// can launch the enrollment wizard. Called from `main.swift` after ASR
