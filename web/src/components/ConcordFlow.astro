@@ -444,12 +444,12 @@ const glints: [number, number, number, number][] = [
           }
         });
 
-        // Narrated sequence, v2: a traveling COMET tells the story — the eye follows
-        // one bright pulse from "You speak" through the engine to "Parleq pastes",
-        // and the static art reacts as it passes (glyph flick → flare surge + engine
-        // brighten → arrival pop). No outer halos on the side cards: a halo on a big
-        // static rectangle reads as decoration, and the constant waist flares outshine
-        // it anyway. All synced to ONE clock.
+        // Narrated sequence, v3: the hero IS the product demo. Words appear in
+        // "You speak" at speaking pace, a white-hot comet carries them to the engine
+        // (flare surge, checkmarks tick in sequence), and the clean text FLOODS into
+        // "Parleq pastes" an order of magnitude faster than the speech — the speed
+        // asymmetry is the pitch. No outer halos on the side cards: a halo on a big
+        // static rectangle reads as decoration. All synced to ONE clock.
         const cards = stage as HTMLElement;
         const inCard = cards.querySelector<HTMLElement>('[data-flow-card="input"]');
         const engCard = cards.querySelector<HTMLElement>('[data-flow-card="engine"]');
@@ -461,6 +461,40 @@ const glints: [number, number, number, number][] = [
         const engBase = engCard ? engCard.style.boxShadow : '';
         const outBorderBase = outCard ? outCard.style.borderColor : '';
         if (pasted) pasted.style.transformOrigin = 'left center';
+
+        // Wrap each word of the transcript paragraphs in a span so the clock can
+        // reveal them one by one. Highlight tokens (u-tok / mk-tok) reveal as single
+        // units, keeping their underline/pill styling intact. Opacity-only reveals —
+        // the cards are fixed-height, so nothing can reflow. Runs ONLY inside the
+        // reduced-motion guard: static/no-JS visitors keep the full text untouched.
+        const wordUnits = (card: HTMLElement | null): HTMLElement[] => {
+          if (!card) return [];
+          const units: HTMLElement[] = [];
+          card.querySelectorAll('p').forEach((p) => {
+            [...p.childNodes].forEach((child) => {
+              if (child.nodeType === Node.TEXT_NODE) {
+                const frag = document.createDocumentFragment();
+                for (const part of (child.textContent ?? '').split(/(\s+)/)) {
+                  if (!part) continue;
+                  if (/^\s+$/.test(part)) frag.appendChild(document.createTextNode(part));
+                  else {
+                    const s = document.createElement('span');
+                    s.textContent = part;
+                    units.push(s);
+                    frag.appendChild(s);
+                  }
+                }
+                p.replaceChild(frag, child);
+              } else if (child.nodeType === Node.ELEMENT_NODE) {
+                units.push(child as HTMLElement);
+              }
+            });
+          });
+          return units;
+        };
+        const inWords = wordUnits(inCard);
+        const outWords = wordUnits(outCard);
+        const engItems = engCard ? [...engCard.querySelectorAll<HTMLElement>('li')] : [];
 
         // Comet: white-hot head + amber trail riding the hero amber line (fl-9 → fr-9).
         const cometPathL = svg.querySelector<SVGPathElement>(`#${CSS.escape(uid)}-fl-9`);
@@ -501,11 +535,25 @@ const glints: [number, number, number, number][] = [
         };
         // Linear 0→1 progress across [a,b], clamped.
         const span = (x: number, a: number, b: number) => Math.min(1, Math.max(0, (x - a) / (b - a)));
-        const PERIOD = 6.4;       // seconds per narrated cycle; story ends ~3.9s, rest is quiet
+        // The cycle: reset 0-0.25 → speak 0.3-4.8 (words at speaking pace) → comet
+        // 4.9-5.95 → engine ticks 5.95+ → comet 6.55-7.6 → paste FLOOD 7.6-8.15
+        // (~9x faster than the speech — that asymmetry is the message) → pop → rest.
+        const PERIOD = 11;
 
         const glowEng = (g: number) =>
           engCard && (engCard.style.boxShadow = g < 0.04 ? engBase
             : `${engBase}, 0 0 ${(26 * g).toFixed(0)}px ${(1.5 * g).toFixed(1)}px rgba(220,188,255,${(0.6 * g).toFixed(2)})`);
+
+        // Continuous word-reveal: unit i is fully visible once the phase index passes
+        // it, with a soft fractional edge — one loop, no per-word timers.
+        const reveal = (units: HTMLElement[], idx: number) => {
+          for (let i = 0; i < units.length; i++) {
+            units[i].style.opacity = String(Math.min(1, Math.max(0, idx - i)));
+          }
+        };
+        const showAll = (units: HTMLElement[], op: number) => {
+          for (const u of units) u.style.opacity = op.toFixed(2);
+        };
 
         let last = 0;
         let running = false;
@@ -515,20 +563,33 @@ const glints: [number, number, number, number][] = [
           // the IntersectionObserver restarts it when the art scrolls into view.
           if (!onScreen) { running = false; last = 0; return; }
           const t = (ts / 1000) % PERIOD;
-          // Story beats: speak (glyph flick) → comet L → surge/engine → comet R → arrival pop.
-          const glyphG = bump(t, 0.0, 0.9);
-          const sL = bump(t, 1.55, 2.0);
-          const engG = bump(t, 1.6, 2.6);
-          const sR = bump(t, 2.25, 2.7);
-          const outG = bump(t, 3.25, 3.9);
+          const sL = bump(t, 5.75, 6.2);
+          const engG = bump(t, 5.8, 6.9);
+          const sR = bump(t, 6.45, 6.95);
+          const outG = bump(t, 8.05, 8.7);
 
-          if (inGlyph) inGlyph.style.filter = glyphG < 0.03 ? ''
-            : `brightness(${(1 + 0.9 * glyphG).toFixed(2)}) drop-shadow(0 0 ${(6 * glyphG).toFixed(1)}px rgba(255,159,51,${(0.8 * glyphG).toFixed(2)}))`;
+          // Transcript reveals. During the rest phase everything stays readable;
+          // the first 250ms of the cycle fade it out for the next pass.
+          if (t < 0.25) {
+            const f = 1 - span(t, 0, 0.25);
+            showAll(inWords, f); showAll(outWords, f);
+            if (pasted) pasted.style.opacity = f.toFixed(2);
+          } else {
+            reveal(inWords, span(t, 0.3, 4.8) * (inWords.length + 1));
+            reveal(outWords, span(t, 7.6, 8.15) * (outWords.length + 1));
+            if (pasted) pasted.style.opacity = t < 8.05 ? '0' : '1';
+          }
 
-          if (t >= 0.7 && t < 1.75) {
-            placeComet(cometPathL, span(t, 0.7, 1.75), Math.min(1, 4 * bump(t, 0.7, 1.75)));
-          } else if (t >= 2.35 && t < 3.4) {
-            placeComet(cometPathR, span(t, 2.35, 3.4), Math.min(1, 4 * bump(t, 2.35, 3.4)));
+          // Waveform glyph shimmers while the words are being "spoken".
+          const speaking = bump(t, 0.3, 4.8);
+          const flick = speaking * (0.55 + 0.45 * (0.5 + 0.5 * Math.sin(ts / 1000 * 21)));
+          if (inGlyph) inGlyph.style.filter = flick < 0.05 ? ''
+            : `brightness(${(1 + 0.9 * flick).toFixed(2)}) drop-shadow(0 0 ${(6 * flick).toFixed(1)}px rgba(255,159,51,${(0.8 * flick).toFixed(2)}))`;
+
+          if (t >= 4.9 && t < 5.95) {
+            placeComet(cometPathL, span(t, 4.9, 5.95), Math.min(1, 4 * bump(t, 4.9, 5.95)));
+          } else if (t >= 6.55 && t < 7.6) {
+            placeComet(cometPathR, span(t, 6.55, 7.6), Math.min(1, 4 * bump(t, 6.55, 7.6)));
           } else {
             hideComet();
           }
@@ -536,6 +597,13 @@ const glints: [number, number, number, number][] = [
           if (surgeL) surgeL.setAttribute('opacity', (0.9 * sL).toFixed(2));
           if (surgeR) surgeR.setAttribute('opacity', (0.9 * sR).toFixed(2));
           glowEng(engG);
+
+          // Engine checkmarks tick fast-but-sequential while the words are "inside".
+          for (let i = 0; i < engItems.length; i++) {
+            const g = bump(t, 5.95 + i * 0.26, 5.95 + i * 0.26 + 0.5);
+            engItems[i].style.filter = g < 0.04 ? ''
+              : `brightness(${(1 + 0.9 * g).toFixed(2)}) drop-shadow(0 0 4px rgba(220,188,255,${(0.7 * g).toFixed(2)}))`;
+          }
 
           // Arrival: the output card's BORDER brightens (no outer halo) + "Pasted" pops once.
           if (outCard) outCard.style.borderColor = outG < 0.04 ? outBorderBase
@@ -546,8 +614,8 @@ const glints: [number, number, number, number][] = [
           }
 
           // Ambient rail dots brighten on the side the story is on.
-          const leftGain = 0.4 + 0.6 * bump(t, 0.4, 2.0);
-          const rightGain = 0.4 + 0.6 * bump(t, 2.3, 3.9);
+          const leftGain = 0.4 + 0.6 * bump(t, 0.3, 5.9);
+          const rightGain = 0.4 + 0.6 * bump(t, 6.5, 8.8);
           for (const d of dots) {
             d.phase = (d.phase + d.speed * dt) % 1;
             const pt = d.path.getPointAtLength(d.len * d.phase);
