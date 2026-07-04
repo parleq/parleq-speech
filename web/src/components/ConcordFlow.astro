@@ -34,8 +34,8 @@ const bloomIdx = new Set([3, 5, 6, 7, 8, 9, 10, 11, 13, 15]);
 // vary in brightness along their run — dash+offset puts 1-2 glints on each chosen line).
 // [line idx, dash length, gap, dashoffset]
 const glints: [number, number, number, number][] = [
-  [2, 12, 150, -34], [4, 9, 130, -68], [6, 14, 118, -52], [8, 12, 96, -30],
-  [9, 16, 104, -58], [11, 10, 140, -80], [13, 12, 126, -44], [15, 9, 148, -90],
+  [2, 12, 150, -34], [4, 9, 130, -68], [6, 14, 118, -52], [8, 10, 96, -18],
+  [9, 12, 104, -64], [11, 10, 140, -80], [13, 12, 126, -44], [15, 9, 148, -90],
 ];
 ---
 
@@ -136,6 +136,33 @@ const glints: [number, number, number, number][] = [
     <filter id={`${uid}-halo`} x="-30%" y="-120%" width="160%" height="340%">
       <feGaussianBlur stdDeviation="2.4"></feGaussianBlur>
     </filter>
+    <!-- just enough blur to melt the glint dash ends into their lines -->
+    <filter id={`${uid}-glintSoft`} x="-30%" y="-120%" width="160%" height="340%">
+      <feGaussianBlur stdDeviation="0.8"></feGaussianBlur>
+    </filter>
+    <!-- streak tail fades: the heavy waist streaks must die out BEFORE the side cards
+         (a round-capped blurred stroke ending on a card reads as a pasted-on lobe).
+         userSpaceOnUse: objectBoundingBox gradients collapse on horizontal lines. -->
+    <linearGradient id={`${uid}-gStreakAL`} gradientUnits="userSpaceOnUse" x1="166" y1="181" x2="231" y2="181">
+      <stop offset="0%" stop-color="#ffa63e" stop-opacity="0"></stop>
+      <stop offset="55%" stop-color="#ffa63e" stop-opacity="0.6"></stop>
+      <stop offset="100%" stop-color="#ffa63e" stop-opacity="1"></stop>
+    </linearGradient>
+    <linearGradient id={`${uid}-gStreakAR`} gradientUnits="userSpaceOnUse" x1="329" y1="181" x2="394" y2="181">
+      <stop offset="0%" stop-color="#ffa63e" stop-opacity="1"></stop>
+      <stop offset="45%" stop-color="#ffa63e" stop-opacity="0.6"></stop>
+      <stop offset="100%" stop-color="#ffa63e" stop-opacity="0"></stop>
+    </linearGradient>
+    <linearGradient id={`${uid}-gStreakRL`} gradientUnits="userSpaceOnUse" x1="172" y1="181" x2="231" y2="181">
+      <stop offset="0%" stop-color="#ff5a1f" stop-opacity="0"></stop>
+      <stop offset="55%" stop-color="#ff5a1f" stop-opacity="0.6"></stop>
+      <stop offset="100%" stop-color="#ff5a1f" stop-opacity="1"></stop>
+    </linearGradient>
+    <linearGradient id={`${uid}-gStreakRR`} gradientUnits="userSpaceOnUse" x1="329" y1="181" x2="388" y2="181">
+      <stop offset="0%" stop-color="#ff5a1f" stop-opacity="1"></stop>
+      <stop offset="45%" stop-color="#ff5a1f" stop-opacity="0.6"></stop>
+      <stop offset="100%" stop-color="#ff5a1f" stop-opacity="0"></stop>
+    </linearGradient>
     <!-- anisotropic blurs for the horizontal lens streaks at the waist -->
     <filter id={`${uid}-streakWide`} x="-60%" y="-1600%" width="220%" height="3300%">
       <feGaussianBlur stdDeviation="16 2.6"></feGaussianBlur>
@@ -261,18 +288,18 @@ const glints: [number, number, number, number][] = [
        waist — the "hot" signature of the prototype. Wide amber tail + tight white core,
        plus a dimmer secondary streak for asymmetry. -->
   <g class="cf-add" fill="none" stroke-linecap="round">
-    <path d="M164 181 H 231" stroke="#ff5a1f" stroke-width="8" filter={`url(#${uid}-streakWide)`} opacity="0.35"></path>
-    <path d="M329 181 H 396" stroke="#ff5a1f" stroke-width="8" filter={`url(#${uid}-streakWide)`} opacity="0.35"></path>
-    <path d="M158 181 H 231" stroke="#ffa63e" stroke-width="6" filter={`url(#${uid}-streakWide)`} opacity="1"></path>
-    <path d="M329 181 H 400" stroke="#ffa63e" stroke-width="6" filter={`url(#${uid}-streakWide)`} opacity="1"></path>
+    <path d="M172 181 H 231" stroke={`url(#${uid}-gStreakRL)`} stroke-width="8" filter={`url(#${uid}-streakWide)`} opacity="0.35"></path>
+    <path d="M329 181 H 388" stroke={`url(#${uid}-gStreakRR)`} stroke-width="8" filter={`url(#${uid}-streakWide)`} opacity="0.35"></path>
+    <path d="M166 181 H 231" stroke={`url(#${uid}-gStreakAL)`} stroke-width="6" filter={`url(#${uid}-streakWide)`} opacity="1"></path>
+    <path d="M329 181 H 394" stroke={`url(#${uid}-gStreakAR)`} stroke-width="6" filter={`url(#${uid}-streakWide)`} opacity="1"></path>
     <path d="M176 192 H 230" stroke="#ff9f33" stroke-width="2.6" filter={`url(#${uid}-streakWide)`} opacity="0.4"></path>
     <path d="M330 170 H 384" stroke="#ff9f33" stroke-width="2.6" filter={`url(#${uid}-streakWide)`} opacity="0.4"></path>
   </g>
   <!-- 6) GLINTS: static bright dashes riding the lines — frozen light pulses. The dash
        pattern exceeds each path's length, so offset selects 1-2 glints per line. -->
-  <g class="cf-add" fill="none" stroke-linecap="round">
-    {glints.map(([i, dash, gap, off]) => <path d={leftPaths[i]} stroke={amberIdx.has(i) ? '#ffd9a0' : '#e0c8ff'} stroke-width={weights[i] * 1.15} opacity="0.55" stroke-dasharray={`${dash} ${gap}`} stroke-dashoffset={off}></path>)}
-    {glints.map(([i, dash, gap, off]) => <path d={rightPaths[i]} stroke={amberIdx.has(i) ? '#ffd9a0' : '#e0c8ff'} stroke-width={weights[i] * 1.15} opacity="0.55" stroke-dasharray={`${dash} ${gap}`} stroke-dashoffset={off * 0.7}></path>)}
+  <g class="cf-add" fill="none" stroke-linecap="round" filter={`url(#${uid}-glintSoft)`}>
+    {glints.map(([i, dash, gap, off]) => <path d={leftPaths[i]} stroke={amberIdx.has(i) ? '#ffd9a0' : '#e0c8ff'} stroke-width={weights[i] * (amberIdx.has(i) ? 0.9 : 1.15)} opacity={amberIdx.has(i) ? 0.35 : 0.55} stroke-dasharray={`${dash} ${gap}`} stroke-dashoffset={off}></path>)}
+    {glints.map(([i, dash, gap, off]) => <path d={rightPaths[i]} stroke={amberIdx.has(i) ? '#ffd9a0' : '#e0c8ff'} stroke-width={weights[i] * (amberIdx.has(i) ? 0.9 : 1.15)} opacity={amberIdx.has(i) ? 0.35 : 0.55} stroke-dasharray={`${dash} ${gap}`} stroke-dashoffset={off * 0.7}></path>)}
   </g>
   <!-- 7) WAIST REFLECTIONS: faint horizontal ticks near the flare, like light catching a
        glossy surface below/above the beam. -->
