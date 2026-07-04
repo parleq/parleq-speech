@@ -1840,10 +1840,19 @@ private struct OverlayContent: View {
     }
     #if Concord
     /// Build the review text with the on-device corrector's changed spans
-    /// highlighted: each `CorrectionSpan.range` gets a soft amber background
-    /// tint + a brand-amber foreground, and a small superscript number badge is
-    /// inserted right after it (so the user can see which Option+digit reverts
-    /// it). Built as a single `AttributedString` so it wraps as one paragraph.
+    /// highlighted, and a small superscript number badge inserted right after
+    /// each one (so the user can see which Option+digit reverts it). Built as
+    /// a single `AttributedString` so it wraps as one paragraph.
+    ///
+    /// Two visual treatments, both carrying the same badge:
+    ///   - An ordinary correction (`span.isValidateConsidered == false`) gets
+    ///     a soft amber background tint + a brand-amber foreground — "this is
+    ///     a change Parleq made."
+    ///   - A borderline "considered" over-fire flag (`span.isValidateConsidered
+    ///     == true`, Feature A / Option A) gets a DOTTED amber underline
+    ///     instead — nothing was substituted (`original == replacement`), so a
+    ///     solid fill would misrepresent it as an edit. The dotted underline
+    ///     reads as "this is a call Parleq made, not a change Parleq made."
     ///
     /// Ranges are applied back-to-front so inserting the badge for an earlier
     /// span never invalidates the indices of a later one.
@@ -1860,9 +1869,15 @@ private struct OverlayContent: View {
                   let upper = AttributedString.Index(span.range.upperBound, within: attributed) else {
                 continue
             }
-            // Tint the replacement span.
-            attributed[lower..<upper].backgroundColor = amber.opacity(0.18)
-            attributed[lower..<upper].foregroundColor = amber
+            if span.isValidateConsidered {
+                // Considered over-fire flag: dotted underline, no fill.
+                attributed[lower..<upper].underlineStyle = Text.LineStyle(pattern: .dot, color: amber)
+                attributed[lower..<upper].foregroundColor = amber
+            } else {
+                // Ordinary correction: tint the replacement span.
+                attributed[lower..<upper].backgroundColor = amber.opacity(0.18)
+                attributed[lower..<upper].foregroundColor = amber
+            }
 
             // Insert a small superscript number badge right after the span.
             var badge = AttributedString("\(span.number)")
@@ -1876,21 +1891,44 @@ private struct OverlayContent: View {
 
     /// A compact legend under the review text: "⌥1 undo  ⌥2 undo …" so the user
     /// knows the Option+digit gesture and what each numbered span maps to.
+    /// When one or more spans are borderline "considered" over-fire flags
+    /// (Feature A), a second line explains the dotted-underline treatment and
+    /// points at its number(s) using the same "⌥N" notation as the line above
+    /// (rather than a circled-digit glyph, to stay visually consistent with
+    /// it).
     @ViewBuilder
     func correctionLegend(_ spans: [CorrectionSpan]) -> some View {
         let amber = SettingsView.brandAccent
-        HStack(spacing: 8) {
-            Image(systemName: "wand.and.stars")
-                .font(.system(size: 10))
-                .foregroundStyle(amber)
-            Text(spans.count == 1
-                 ? "1 on-device correction · ⌥1 to undo"
-                 : "\(spans.count) on-device corrections · ⌥1–⌥\(min(spans.count, 9)) to undo")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+        let consideredNumbers = spans.filter { $0.isValidateConsidered }.map(\.number)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Image(systemName: "wand.and.stars")
+                    .font(.system(size: 10))
+                    .foregroundStyle(amber)
+                Text(spans.count == 1
+                     ? "1 on-device correction · ⌥1 to undo"
+                     : "\(spans.count) on-device corrections · ⌥1–⌥\(min(spans.count, 9)) to undo")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+            .accessibilityLabel("On-device corrector changed \(spans.count) word\(spans.count == 1 ? "" : "s"); press Option and a number to undo a correction")
+
+            if !consideredNumbers.isEmpty {
+                let badges = consideredNumbers.map { "⌥\($0)" }.joined(separator: ", ")
+                HStack(spacing: 8) {
+                    Image(systemName: "questionmark.circle")
+                        .font(.system(size: 10))
+                        .foregroundStyle(amber)
+                    // Tunable copy — finalized during the maintainer's
+                    // real-voice walkthrough (Task 11).
+                    Text("\(badges) Parleq wasn't sure — press the number to fix")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+                .accessibilityLabel("Parleq flagged \(consideredNumbers.count) word\(consideredNumbers.count == 1 ? "" : "s") it wasn't sure about; press Option and a number to review and fix")
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityLabel("On-device corrector changed \(spans.count) word\(spans.count == 1 ? "" : "s"); press Option and a number to undo a correction")
     }
     #endif
 
