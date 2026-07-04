@@ -110,6 +110,29 @@ enum HarvestSpanLocator {
         return groups[wordIndex]
     }
 
+    /// Trigger (a′), Feature B: locate the raw-ASR group by TIME, not position or
+    /// text. The driving record's `[startSeconds, endSeconds]` window (the
+    /// acoustic gate's exact audio span) is matched against each group's own
+    /// `[startSeconds, endSeconds]` — drift-proof, since text edits/rescoring
+    /// never move a word's audio timing. Returns the index of the group with the
+    /// MAXIMUM overlap (seconds of intersection) with the window; nil when no
+    /// group overlaps at all (fail-safe: the caller skips the harvest rather
+    /// than pool a mislocated span).
+    static func locateByTime(startSeconds: Double, endSeconds: Double,
+                             groups: [GroupSpan]) -> Int? {
+        var bestIndex: Int?
+        var bestOverlap = 0.0
+        for (i, g) in groups.enumerated() {
+            let overlap = min(endSeconds, g.endSeconds) - max(startSeconds, g.startSeconds)
+            guard overlap > 0 else { continue }
+            if overlap > bestOverlap {
+                bestOverlap = overlap
+                bestIndex = i
+            }
+        }
+        return bestIndex
+    }
+
     /// The k-th (0-based `rawOrdinal`) group whose text core-matches `word`;
     /// nil when out of range.
     static func locate(groups: [GroupSpan], word: String, rawOrdinal: Int) -> GroupSpan? {

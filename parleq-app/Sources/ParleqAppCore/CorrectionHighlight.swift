@@ -47,6 +47,13 @@ struct CorrectionSpan: Equatable {
     /// PROVENANCE — shape inference alone misroutes when both the heard word
     /// and the term happen to be enrolled (RoboRev-7511).
     let reason: String?
+    /// The acoustic gate's exact audio-span timestamps for this edit, when the
+    /// driving `EditRecord` carries them (Feature B — timestamp-anchored
+    /// harvest). `nil` for edits with no gate provenance (deterministic
+    /// number/compound stages, older records) — the harvest falls back to the
+    /// positional locator in that case.
+    let startSeconds: Double?
+    let endSeconds: Double?
 
     /// True iff this span was produced by the acoustic gate's validation
     /// revert (the string Concord stamps on that edit — see spec fact 5).
@@ -130,7 +137,9 @@ enum CorrectionHighlight {
                 replacement: item.edit.replacement,
                 stage: item.edit.stage,
                 wordRange: item.edit.wordRange,
-                reason: item.edit.reason
+                reason: item.edit.reason,
+                startSeconds: item.edit.startSeconds,
+                endSeconds: item.edit.endSeconds
             )
         }
     }

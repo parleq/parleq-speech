@@ -142,6 +142,23 @@ public final class AppState {
         else { return nil }
         return (emb, matchCount)
     }
+
+    /// Feature B: locate + pool ONE word-span embedding by TIME — the driving
+    /// record's exact `[startSeconds, endSeconds]` gate window, matched against
+    /// the retained raw-ASR groups' own timings. Drift-proof: unlike the
+    /// positional/text-match locators above, this never depends on word order
+    /// or text surviving unchanged from cleanup to review. nil ⇒ no retained
+    /// diagnostics, or no group overlaps the window at all — the caller must
+    /// skip the harvest rather than fall back silently to a mislocated span.
+    private func harvestEmbeddingByTime(startSeconds: Double, endSeconds: Double) -> [Float]? {
+        guard let d = reviewDiagnostics, let features = d.encoderFeatures else { return nil }
+        let groups = VoiceprintCoordinator.groupSpans(from: d)
+        guard let idx = HarvestSpanLocator.locateByTime(
+            startSeconds: startSeconds, endSeconds: endSeconds, groups: groups)
+        else { return nil }
+        let g = groups[idx]
+        return features.pooledEmbedding(startSeconds: g.startSeconds, endSeconds: g.endSeconds)
+    }
     #endif
 
     /// The header engine badge (`overlay.model.cleanupMode`) for a FRESH cleanup
@@ -2109,6 +2126,11 @@ public final class AppState {
             // appears more than once. Without this the edit would fall back to
             // first-occurrence matching and could revert the wrong span.
             wordRange: span.wordRange,
+            // Preserve the gate's timestamps so a SECOND undo in the same
+            // review window can still anchor its harvest by time rather than
+            // falling back to positional matching (Feature B).
+            startSeconds: span.startSeconds,
+            endSeconds: span.endSeconds,
             // Preserve the provenance so heal-vs-harvest routing survives a
             // re-map (RoboRev-7511).
             reason: span.reason
@@ -2129,20 +2151,39 @@ public final class AppState {
     /// (kill-switch off, no retained acoustics, ordinal guard mismatch,
     /// un-poolable span) skips silently — a skipped harvest costs a future
     /// correction; a mislocated one poisons a template.
+    ///
+    /// Feature B: when the driving span carries the gate's exact timestamps,
+    /// locate the audio by TIME (drift-proof — doesn't depend on the shown
+    /// text/word-order surviving cleanup unchanged). Falls back to the
+    /// existing positional ordinal math for spans with no timestamps
+    /// (deterministic stages, older records). If timestamps are present but
+    /// `locateByTime` can't find an overlapping group, SKIP the harvest —
+    /// never fall through to positional matching in that case (never pool a
+    /// mislocated span).
     private func harvestNegativeFromUndo(span: CorrectionSpan, preText: String,
                                          preSpans: [CorrectionSpan]) {
         let cfg = Config.load().config
         guard cfg.voiceprintHarvestEnabled else { return }
-        guard let matchCount = groupMatchCount(for: span.original) else { return }
-        let allSpans = preSpans.map { (number: $0.number, original: $0.original) }
-        guard let ordinal = HarvestSpanLocator.rawOrdinalForUndo(
-            shownText: preText, spanRange: span.range, original: span.original,
-            allSpans: allSpans, spanNumber: span.number, groupMatchCount: matchCount)
-        else { return }                                    // consistency guard: skip silently
-        guard let hit = harvestEmbedding(word: span.original, rawOrdinal: ordinal) else { return }
+        let embedding: [Float]
+        if let start = span.startSeconds, let end = span.endSeconds {
+            guard let emb = harvestEmbeddingByTime(startSeconds: start, endSeconds: end) else {
+                log("voiceprint harvest: timestamp locate miss, skipped")   // count-only
+                return
+            }
+            embedding = emb
+        } else {
+            guard let matchCount = groupMatchCount(for: span.original) else { return }
+            let allSpans = preSpans.map { (number: $0.number, original: $0.original) }
+            guard let ordinal = HarvestSpanLocator.rawOrdinalForUndo(
+                shownText: preText, spanRange: span.range, original: span.original,
+                allSpans: allSpans, spanNumber: span.number, groupMatchCount: matchCount)
+            else { return }                                // consistency guard: skip silently
+            guard let hit = harvestEmbedding(word: span.original, rawOrdinal: ordinal) else { return }
+            embedding = hit.embedding
+        }
         voiceprint?.harvestNegative(termID: span.replacement,
                                     label: HarvestSpanLocator.core(span.original),
-                                    embedding: hit.embedding,
+                                    embedding: embedding,
                                     aliases: dictionaryAliases(forTerm: span.replacement),
                                     harvestEnabled: cfg.voiceprintHarvestEnabled)
     }
