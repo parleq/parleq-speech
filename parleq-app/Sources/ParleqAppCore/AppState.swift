@@ -1940,13 +1940,20 @@ public final class AppState {
     /// E in review → open the editor seeded with the current text. Cancels the
     /// auto-accept timer so it can't paste mid-edit; snapshots the pre-edit text
     /// for the corrections journal. No-op outside the review state.
-    private func enterEditMode() {
+    ///
+    /// `focusWordRange` (Task 7 — Feature A interaction): non-nil only when
+    /// entry was routed here from a ⌥+N undo on a "considered" over-fire flag
+    /// (`AppState.undoCorrection`), naming the flagged word's token range so
+    /// the editor can eventually focus/position there. Plain E-entry always
+    /// passes nil.
+    private func enterEditMode(focusWordRange: Range<Int>? = nil) {
         guard phase == .awaitingAccept, !overlay.model.editing else { return }
         cancelAutoAcceptTimer()
         editPreEditText = currentText
         overlay.model.editableText = currentText
+        overlay.model.editFocusWordRange = focusWordRange
         overlay.model.editing = true
-        log("in-place edit: entered")
+        log("in-place edit: entered\(focusWordRange != nil ? " (focus word)" : "")")
     }
 
     /// ⌘Return (accept=true) or ⌘S (accept=false). Applies the edited text,
@@ -1993,6 +2000,7 @@ public final class AppState {
         guard overlay.model.editing else { return }
         overlay.model.editing = false
         overlay.model.editableText = ""
+        overlay.model.editFocusWordRange = nil
         startAutoAcceptTimer()
         log("in-place edit: discarded")
     }
@@ -2031,110 +2039,112 @@ public final class AppState {
         }
     }
 
-    /// ⌥digit during review: revert the on-device corrector's edit numbered
-    /// `number` back to the original ASR text, update the visible + paste text,
-    /// re-map the remaining highlights, and feed the revert to the
-    /// CorrectionJournal (opt-in). Returns true iff a span at that number existed.
+    /// ⌥digit during review: either (a) revert the on-device corrector's edit
+    /// numbered `number` back to the original ASR text, update the visible +
+    /// paste text, re-map the remaining highlights, and feed the revert to
+    /// the CorrectionJournal (opt-in); or (b), Task 7 — when the span is a
+    /// borderline "considered" over-fire (`isValidateConsidered`), route into
+    /// the existing E-edit mode positioned at that word instead (a text
+    /// revert would be a silent no-op there: original == replacement). The
+    /// branch is decided by the pure `CorrectionHighlight.planUndo` so the
+    /// routing logic itself is unit-testable without a live AppState.
+    /// Returns true iff a span at that number existed and was actioned.
     private func undoCorrection(number: Int) -> Bool {
         guard phase == .awaitingAccept, !overlay.model.editing else { return false }
         let spans = overlay.model.correctionSpans
         guard let span = spans.first(where: { $0.number == number }) else { return false }
         // Snapshot the PRE-mutation overlay state for the harvest ordinal math
-        // (the revert below rewrites currentText and re-maps the spans).
+        // (a revert rewrites currentText and re-maps the spans).
         let preText = currentText
         let preSpans = spans
-        // Revert against the CURRENT text (currentText == model.text in review).
-        let reverted = CorrectionHighlight.revert(text: currentText, span: span)
-        guard reverted != currentText else { return false }
-        currentText = reverted
-        overlay.model.text = reverted
-        // Re-map the REMAINING corrections against the new text so their ranges
-        // + numbers stay valid (this span is gone; later ones renumber). Drop
-        // the reverted edit by matching identity on (original, replacement,
-        // stage) — the reverted span's replacement is no longer present anyway,
-        // so spans() naturally excludes it on the new text.
-        let remaining = spans
-            .filter { $0.number != number }
-            .map { editRecordFor($0) }
-        overlay.model.correctionSpans = CorrectionHighlight.spans(in: reverted, edits: remaining)
-        // Feed the revert to the learning journal as a correction signal (a real
-        // "this correction was wrong" event). Opt-in; no-op when disabled.
-        // In-memory only — CorrectionJournal never writes to disk.
-        let enabled = Config.load().config.learnFromCorrectionsEnabled
-        if enabled {
-            CorrectionJournal.shared.record(CorrectionRecord(
-                kind: .refine,
-                instruction: "undo on-device correction",
-                before: span.replacement,
-                after: span.original
-            ), enabled: enabled)
-        }
-        // Undoing a DICTIONARY-family correction is the clearest possible
-        // "this term over-fired on a real word" signal: the user just told us
-        // the canonical term (span.replacement) was wrong here and the word
-        // ASR actually heard (span.original) was right. If that term has no
-        // voiceprint yet, surface a one-shot nudge offering voice enrollment to
-        // disambiguate it. In-memory only (VoiceEnrollNudge never persists).
-        switch span.stage {
-        case .dictionary, .acousticDictionary, .sayAsPhrase:
-            let term = span.replacement
-            if let vp = voiceprint, span.stage == .dictionary, span.isValidateRevert,
-               vp.hasVoiceprint(span.original) {
-                // (a′) HEALING: PROVENANCE-confirmed — this span was produced by
-                // the acoustic gate's validation revert (term → confusable) and
-                // the user just restored the term. The newest harvested negative
-                // for (term: original, label: replacement) was wrong; remove it
-                // (or detach the label) via the same one-keystroke gesture that
-                // exposed it. Routing on span.isValidateRevert (not on which
-                // side has a voiceprint) keeps a normal over-fire between TWO
-                // enrolled terms on the harvest path (RoboRev-7511).
-                vp.healHarvestedNegative(termID: span.original,
-                                         label: HarvestSpanLocator.core(span.replacement))
-            } else if let vp = voiceprint, span.stage == .dictionary,
-                      !span.isValidateRevert, vp.hasVoiceprint(term) {
-                // (a) HARVEST: the user undid a dictionary over-fire on an ENROLLED
-                // term — the heard word (span.original) is a real in-context
-                // confusable. Pool its audio-span embedding from the retained
-                // review acoustics and attach it as a negative prototype.
-                harvestNegativeFromUndo(span: span, preText: preText, preSpans: preSpans)
-            } else if voiceprint != nil, !span.isValidateRevert,
-                      !(voiceprint?.hasVoiceprint(term) ?? false) {
-                // Unenrolled term: nudge toward voice enrollment (unchanged).
-                // A validate-revert never nudges — its replacement is the
-                // confusable word, not a term worth enrolling.
-                VoiceEnrollNudge.shared.suggest(term: term, confusedWith: span.original)
+        guard let action = CorrectionHighlight.planUndo(text: currentText, spans: spans, number: number)
+        else { return false }
+
+        switch action {
+        case .editAtWord(let remainingSpans, let focusWordRange):
+            // Task 7 (Feature A interaction): drop the flag + renumber the
+            // remainder (text is UNCHANGED — nothing to mutate), then enter
+            // the EXISTING E-edit mode positioned at that word. The user's
+            // replacement supplies the confusable label the negative-harvest
+            // needs; the harvest itself fires later through the existing
+            // E-edit trigger (harvestNegativesFromEdit in commitEdit), keyed
+            // off the considered record's timestamps (Feature B) — no new
+            // harvest path here. ⌥+N then cancel/no-change → discardEdit /
+            // an unchanged commitEdit simply dismiss the flag, no harvest.
+            overlay.model.correctionSpans = remainingSpans
+            enterEditMode(focusWordRange: focusWordRange)
+            log("on-device corrector: considered flag #\(number) -> edit-at-word")
+            return true
+
+        case .revert(let reverted, let remainingSpans):
+            currentText = reverted
+            overlay.model.text = reverted
+            overlay.model.correctionSpans = remainingSpans
+            // Feed the revert to the learning journal as a correction signal (a real
+            // "this correction was wrong" event). Opt-in; no-op when disabled.
+            // In-memory only — CorrectionJournal never writes to disk.
+            let enabled = Config.load().config.learnFromCorrectionsEnabled
+            if enabled {
+                CorrectionJournal.shared.record(CorrectionRecord(
+                    kind: .refine,
+                    instruction: "undo on-device correction",
+                    before: span.replacement,
+                    after: span.original
+                ), enabled: enabled)
             }
-        default:
-            break
+            // Undoing a DICTIONARY-family correction is the clearest possible
+            // "this term over-fired on a real word" signal: the user just told us
+            // the canonical term (span.replacement) was wrong here and the word
+            // ASR actually heard (span.original) was right. If that term has no
+            // voiceprint yet, surface a one-shot nudge offering voice enrollment to
+            // disambiguate it. In-memory only (VoiceEnrollNudge never persists).
+            switch span.stage {
+            case .dictionary, .acousticDictionary, .sayAsPhrase:
+                let term = span.replacement
+                if let vp = voiceprint, span.stage == .dictionary, span.isValidateRevert,
+                   vp.hasVoiceprint(span.original) {
+                    // (a′) HEALING: PROVENANCE-confirmed — this span was produced by
+                    // the acoustic gate's validation revert (term → confusable) and
+                    // the user just restored the term. The newest harvested negative
+                    // for (term: original, label: replacement) was wrong; remove it
+                    // (or detach the label) via the same one-keystroke gesture that
+                    // exposed it. Routing on span.isValidateRevert (not on which
+                    // side has a voiceprint) keeps a normal over-fire between TWO
+                    // enrolled terms on the harvest path (RoboRev-7511).
+                    vp.healHarvestedNegative(termID: span.original,
+                                             label: HarvestSpanLocator.core(span.replacement))
+                } else if let vp = voiceprint, span.stage == .dictionary,
+                          !span.isValidateRevert, vp.hasVoiceprint(term) {
+                    // (a) HARVEST: the user undid a dictionary over-fire on an ENROLLED
+                    // term — the heard word (span.original) is a real in-context
+                    // confusable. Pool its audio-span embedding from the retained
+                    // review acoustics and attach it as a negative prototype.
+                    harvestNegativeFromUndo(span: span, preText: preText, preSpans: preSpans)
+                } else if voiceprint != nil, !span.isValidateRevert,
+                          !(voiceprint?.hasVoiceprint(term) ?? false) {
+                    // Unenrolled term: nudge toward voice enrollment (unchanged).
+                    // A validate-revert never nudges — its replacement is the
+                    // confusable word, not a term worth enrolling.
+                    VoiceEnrollNudge.shared.suggest(term: term, confusedWith: span.original)
+                }
+            default:
+                break
+            }
+            // Re-arm the auto-accept timer (the undo is an interaction, like an edit).
+            startAutoAcceptTimer()
+            log("on-device corrector: reverted correction #\(number)")
+            return true
         }
-        // Re-arm the auto-accept timer (the undo is an interaction, like an edit).
-        startAutoAcceptTimer()
-        log("on-device corrector: reverted correction #\(number)")
-        return true
     }
 
     /// Reconstruct a minimal applied EditRecord from a highlight span, so the
-    /// surviving spans can be re-mapped against the post-revert text.
+    /// surviving spans can be re-mapped against the post-revert text. Shared
+    /// implementation lives in `CorrectionHighlight.editRecord(for:)` (kept
+    /// there so its wordRange/timestamps/reason round-trip is unit-testable
+    /// without an AppState instance); this stays as the call-site name used
+    /// throughout this file.
     private func editRecordFor(_ span: CorrectionSpan) -> EditRecord {
-        EditRecord(
-            stage: span.stage,
-            original: span.original,
-            replacement: span.replacement,
-            applied: true,
-            // Preserve the token anchor so a re-map (after undo / manual edit)
-            // still picks the right occurrence when the replacement string
-            // appears more than once. Without this the edit would fall back to
-            // first-occurrence matching and could revert the wrong span.
-            wordRange: span.wordRange,
-            // Preserve the gate's timestamps so a SECOND undo in the same
-            // review window can still anchor its harvest by time rather than
-            // falling back to positional matching (Feature B).
-            startSeconds: span.startSeconds,
-            endSeconds: span.endSeconds,
-            // Preserve the provenance so heal-vs-harvest routing survives a
-            // re-map (RoboRev-7511).
-            reason: span.reason
-        )
+        CorrectionHighlight.editRecord(for: span)
     }
 
     /// User-declared aliases for a dictionary term (fresh read, same source the
@@ -4181,6 +4191,7 @@ public final class AppState {
         // #85: clear any in-place edit state so it never leaks into the next session.
         overlay.model.editing = false
         overlay.model.editableText = ""
+        overlay.model.editFocusWordRange = nil
         editPreEditText = ""
         overlay.model.references = []
         overlay.model.pickedModelOverride = nil

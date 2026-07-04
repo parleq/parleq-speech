@@ -228,5 +228,65 @@ enum CorrectionHighlight {
         out.replaceSubrange(span.range, with: span.original)
         return out
     }
+
+    /// Reconstruct a minimal applied `EditRecord` from a surviving highlight
+    /// span, so a re-map (after an undo / manual edit) can re-anchor the
+    /// remaining spans against a new text snapshot. Single shared
+    /// implementation — `AppState.editRecordFor` delegates here so the
+    /// wordRange/timestamps/reason round-trip can't drift out of sync between
+    /// the two (RoboRev-7511 was exactly this class of bug: a dropped field on
+    /// re-map silently re-anchoring to the wrong occurrence).
+    static func editRecord(for span: CorrectionSpan) -> EditRecord {
+        EditRecord(
+            stage: span.stage,
+            original: span.original,
+            replacement: span.replacement,
+            applied: true,
+            wordRange: span.wordRange,
+            startSeconds: span.startSeconds,
+            endSeconds: span.endSeconds,
+            reason: span.reason
+        )
+    }
+
+    /// The plan for a ⌥+N undo gesture on the numbered span `number` (Task 7 —
+    /// Feature A interaction). Pure decision, no side effects: `AppState
+    /// .undoCorrection` computes this, then performs the corresponding
+    /// mutation. Kept pure/testable so the routing branch (ordinary revert vs.
+    /// considered-flag edit-at-word) doesn't need a live AppState/OverlayWindow
+    /// to exercise.
+    enum UndoAction: Equatable {
+        /// Ordinary correction: revert `replacement` back to `original` in the
+        /// text, and re-map the surviving spans against the reverted text.
+        case revert(newText: String, remainingSpans: [CorrectionSpan])
+        /// A borderline "considered" over-fire (`span.isValidateConsidered`):
+        /// `original == replacement`, so a text revert would be a silent
+        /// no-op. Instead: drop the flag + renumber the remainder (against the
+        /// UNCHANGED text — there is nothing to mutate), and signal that the
+        /// caller should enter the existing E-edit mode focused at
+        /// `focusWordRange` (the considered span's `wordRange`).
+        case editAtWord(remainingSpans: [CorrectionSpan], focusWordRange: Range<Int>?)
+    }
+
+    /// Decide what a ⌥+N undo on `number` should do against `text`/`spans`.
+    /// Returns `nil` when no span has that number, OR (ordinary-correction
+    /// path only) when reverting would be a no-op — both cases mean the
+    /// caller should treat the gesture as not having found anything to undo.
+    static func planUndo(text: String, spans: [CorrectionSpan], number: Int) -> UndoAction? {
+        guard let span = spans.first(where: { $0.number == number }) else { return nil }
+        let remainingEdits = spans
+            .filter { $0.number != number }
+            .map(editRecord(for:))
+
+        if span.isValidateConsidered {
+            let remaining = CorrectionHighlight.spans(in: text, edits: remainingEdits)
+            return .editAtWord(remainingSpans: remaining, focusWordRange: span.wordRange)
+        }
+
+        let reverted = CorrectionHighlight.revert(text: text, span: span)
+        guard reverted != text else { return nil }
+        let remaining = CorrectionHighlight.spans(in: reverted, edits: remainingEdits)
+        return .revert(newText: reverted, remainingSpans: remaining)
+    }
 }
 #endif

@@ -1224,6 +1224,16 @@ public final class OverlayModel: ObservableObject {
     /// left via ⌘S (save), ⌘Return (commit+accept), or Esc (discard).
     @Published var editing: Bool = false
     @Published var editableText: String = ""
+    /// Task 7 (Feature A interaction): word-index range (Concord token
+    /// indices) to focus once the editor gains focus, set only when edit mode
+    /// was entered by routing a ⌥+N undo on a "considered" over-fire flag
+    /// (`AppState.undoConsideredSpan` via `enterEditMode(focusWordRange:)`)
+    /// rather than by the plain E key. `nil` for an ordinary E-edit. Not yet
+    /// wired to the editor's cursor placement — SwiftUI's `TextEditor` has no
+    /// selection-range binding in use today — this is the seam for that
+    /// follow-up; for now it signals "this edit was opened at a specific
+    /// word."
+    @Published var editFocusWordRange: Range<Int>? = nil
 
     /// Correction highlights for the on-device "Lightweight" (Concord) tier:
     /// the spans Concord changed vs. the raw ASR, numbered 1..N in reading
