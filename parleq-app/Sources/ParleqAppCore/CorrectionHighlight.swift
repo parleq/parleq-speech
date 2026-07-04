@@ -71,17 +71,42 @@ struct CorrectionSpan: Equatable {
 /// Tunable constants for the on-device Concord correction surfacing that
 /// don't belong to Concord itself (app-side display/UX policy).
 enum LocalConcordConstants {
-    /// Borderline-margin threshold (nats) for surfacing a "considered"
-    /// acoustic-gate accept as an overlay flag (Feature A). A considered
-    /// record's `gateMargin` at or below this value is treated as "barely
-    /// accepted" — likely an over-fire worth flagging. Above it, the gate was
-    /// confident and the word stays unflagged.
+    /// Borderline-margin threshold for surfacing a "considered" acoustic-gate
+    /// accept as an overlay flag (Feature A). A considered record's
+    /// `gateMargin` at or below this value is treated as "barely accepted" —
+    /// likely an over-fire worth flagging. Above it, the gate was confident
+    /// and the word stays unflagged.
     ///
-    /// STARTING GUESS ONLY: this value has not yet been calibrated against
-    /// real voice data. It is a first guess pending calibration in a later
-    /// task (voiceprint-overfire-flag design, Task 8) against the
-    /// maintainer's real dictation via `VoiceprintSelfTestHarness`. Do not
-    /// treat this as a validated threshold.
+    /// SCALE: a "considered" record only exists on `VoiceprintGate`'s
+    /// `.validation` path (Concord already emitted the term; the gate is
+    /// deciding whether to revert it). That path's `margin` is a cosine-space
+    /// contrastive gap — `termSimilarity - worstNegativeSimilarity` — and it
+    /// only reaches `.accept` (vs. `.revert`) when
+    /// `margin >= -VoiceprintGate.defaultRevertMargin` (`-0.05`). So a
+    /// "considered" record's margin realistically spans roughly `[-0.05, 1]`:
+    /// values near the bottom of that range are barely-confident accepts,
+    /// values near the top are unambiguous. `0.15` sits just above that floor
+    /// — comfortably wider than the `0.05` no-revert band so it also catches
+    /// accepts hovering just past it, but not so wide it flags a genuinely
+    /// confident match.
+    ///
+    /// STARTING GUESS, NOT YET CALIBRATED: `0.15` is a first-guess pick, not
+    /// data-fit. As of this writing there is no readily available margin
+    /// distribution to fit against — the flywheel corpus
+    /// (`~/.parleq/flywheel/manifest.jsonl`) records dictionary-stage
+    /// CTC-vs-CTC log-odds, not acoustic-gate `gateMargin`/`acoustic-validate
+    /// considered` records (grep for both came back empty), and
+    /// `VoiceprintSelfTestHarnessTests` exercises one binary Keavi/kiwi
+    /// accept-reject pair rather than a margin sweep across many
+    /// accepts/over-fires. This value is meant to be tuned during the
+    /// maintainer's real-voice walkthrough (voiceprint-overfire-flag design,
+    /// Task 8/8.1) once real "considered" margins are visible in the overlay.
+    ///
+    /// HOW TO TUNE: raise it to flag MORE considered-accepts as borderline
+    /// (catches more real over-fires, but also more false positives on
+    /// genuinely-fine words); lower it to flag FEWER (fewer false positives,
+    /// but risks missing real over-fires whose margin sat above the new,
+    /// tighter cutoff).
     static let consideredBorderlineMargin: Double = 0.15
 
     /// Single shared predicate for "this considered-over-fire EditRecord is
