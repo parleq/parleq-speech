@@ -2071,9 +2071,11 @@ public final class AppState {
             // the EXISTING E-edit mode positioned at that word. The user's
             // replacement supplies the confusable label the negative-harvest
             // needs; the harvest itself fires later through the existing
-            // E-edit trigger (harvestNegativesFromEdit in commitEdit), keyed
-            // off the considered record's timestamps (Feature B) — no new
-            // harvest path here. ⌥+N then cancel/no-change → discardEdit /
+            // E-edit trigger (harvestNegativesFromEdit in commitEdit), which
+            // locates the edited word POSITIONALLY (with its own fail-safe
+            // count guard) — no new harvest path here. (Feature B's timestamp
+            // anchoring protects the applied-revert undo trigger, not this
+            // E-edit path.) ⌥+N then cancel/no-change → discardEdit /
             // an unchanged commitEdit simply dismiss the flag, no harvest.
             overlay.model.correctionSpans = remainingSpans
             enterEditMode(focusWordRange: focusWordRange)
