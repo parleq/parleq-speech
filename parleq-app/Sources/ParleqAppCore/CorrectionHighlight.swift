@@ -58,6 +58,31 @@ struct CorrectionSpan: Equatable {
     /// True iff this span was produced by the acoustic gate's validation
     /// revert (the string Concord stamps on that edit — see spec fact 5).
     var isValidateRevert: Bool { reason == "acoustic-validate revert" }
+
+    /// True iff this span is a "considered" over-fire (Feature A): the
+    /// acoustic gate kept the emitted term but only barely — surfaced ONLY
+    /// when the gate's margin is borderline (see `LocalConcordConstants
+    /// .consideredBorderlineMargin`). `applied` is `false` for these records
+    /// (nothing was substituted); the span exists purely to flag the word
+    /// for the user to review.
+    var isValidateConsidered: Bool { reason == "acoustic-validate considered" }
+}
+
+/// Tunable constants for the on-device Concord correction surfacing that
+/// don't belong to Concord itself (app-side display/UX policy).
+enum LocalConcordConstants {
+    /// Borderline-margin threshold (nats) for surfacing a "considered"
+    /// acoustic-gate accept as an overlay flag (Feature A). A considered
+    /// record's `gateMargin` at or below this value is treated as "barely
+    /// accepted" — likely an over-fire worth flagging. Above it, the gate was
+    /// confident and the word stays unflagged.
+    ///
+    /// STARTING GUESS ONLY: this value has not yet been calibrated against
+    /// real voice data. It is a first guess pending calibration in a later
+    /// task (voiceprint-overfire-flag design, Task 8) against the
+    /// maintainer's real dictation via `VoiceprintSelfTestHarness`. Do not
+    /// treat this as a validated threshold.
+    static let consideredBorderlineMargin: Double = 0.15
 }
 
 enum CorrectionHighlight {
@@ -77,14 +102,24 @@ enum CorrectionHighlight {
     ///   - A `replacement` not present at all (a later/manual edit rewrote it): dropped — no
     ///     crash, no bogus range; the rest still map and stay correctly numbered.
     ///
-    /// Only `applied == true` edits with a non-empty `replacement` participate.
-    /// Empty-replacement edits (pure deletions) have no visible span to mark.
+    /// Participating edits are either (a) `applied == true` with a non-empty
+    /// `replacement` (empty-replacement edits are pure deletions with no
+    /// visible span to mark), or (b) a "considered" over-fire (Feature A:
+    /// `reason == "acoustic-validate considered"`, `applied == false`,
+    /// `replacement == original`) whose gate margin is borderline — see
+    /// `LocalConcordConstants.consideredBorderlineMargin`. A missing margin
+    /// (`nil`) fails SAFE (never surfaces): `?? .infinity` guarantees it
+    /// can't be `<=` the threshold.
     static func spans(in text: String, edits: [EditRecord]) -> [CorrectionSpan] {
         // Stable order: by wordRange (reading order); ties and nil-ranges keep EMISSION order
         // (Concord emits left-to-right), so the deterministic number/compound edits — which have
         // no wordRange — stay correctly sequenced for the cursor below.
         let applied = edits
-            .filter { $0.applied && !$0.replacement.isEmpty }
+            .filter {
+                ($0.applied && !$0.replacement.isEmpty)
+                    || ($0.reason == "acoustic-validate considered"
+                        && ($0.gateMargin ?? .infinity) <= LocalConcordConstants.consideredBorderlineMargin)
+            }
             .enumerated()
             .sorted { lhs, rhs in
                 let l = lhs.element.wordRange?.lowerBound ?? Int.max

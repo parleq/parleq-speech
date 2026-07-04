@@ -118,14 +118,21 @@ public final class ConcordCleanupProvider: LLMProvider, @unchecked Sendable {
         lastEdits = edits
     }
 
-    /// The APPLIED edits from the most recent cleanup call, for the overlay
+    /// The APPLIED edits from the most recent cleanup call, plus any
+    /// borderline "considered" over-fires (Feature A — see
+    /// `LocalConcordConstants.consideredBorderlineMargin`), for the overlay
     /// highlight + per-correction-undo feature. Read by AppState after a
     /// cleanup completes; empty after a refine (or before any cleanup).
     /// Returns a copy under the lock — does NOT clear, so a re-read (e.g. a
-    /// second consumer) is safe; the next cleanup overwrites it.
+    /// second consumer) is safe; the next cleanup overwrites it. A missing
+    /// margin fails SAFE (never admitted) via the `?? .infinity` fallback.
     public func appliedEditsForOverlay() -> [EditRecord] {
         lock.lock(); defer { lock.unlock() }
-        return lastEdits.filter { $0.applied }
+        return lastEdits.filter {
+            $0.applied
+                || ($0.reason == "acoustic-validate considered"
+                    && ($0.gateMargin ?? .infinity) <= LocalConcordConstants.consideredBorderlineMargin)
+        }
     }
 
     // Per-utterance call context: the BARE ASR transcript (framing-independent)

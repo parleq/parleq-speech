@@ -135,6 +135,60 @@ final class CorrectionHighlightTests: XCTestCase {
         XCTAssertTrue(spans.isEmpty)
     }
 
+    // MARK: Task 6 — margin-gated "considered" over-fire surfacing
+
+    func testConsideredEditBelowThresholdSurfacesFlaggedSpan() {
+        // Feature A: a "considered" record (applied: false, replacement == original,
+        // non-empty) with a BORDERLINE (small) gate margin must surface as a span
+        // flagged isValidateConsidered, even though `applied` is false.
+        let text = "the confusable word"
+        let considered = EditRecord(
+            stage: .dictionary, original: "confusable", replacement: "confusable",
+            applied: false, gateDecision: "accept",
+            gateMargin: LocalConcordConstants.consideredBorderlineMargin - 0.01,
+            wordRange: 1..<2, reason: "acoustic-validate considered")
+        let spans = CorrectionHighlight.spans(in: text, edits: [considered])
+        XCTAssertEqual(spans.count, 1)
+        XCTAssertTrue(spans[0].isValidateConsidered)
+        XCTAssertEqual(spans[0].reason, "acoustic-validate considered")
+        XCTAssertEqual(slice(text, spans[0]), "confusable")
+    }
+
+    func testConsideredEditAboveThresholdDoesNotSurface() {
+        // A confident accept (large margin) is NOT borderline — must NOT surface,
+        // even though it shares the "considered" reason string.
+        let text = "the confusable word"
+        let considered = EditRecord(
+            stage: .dictionary, original: "confusable", replacement: "confusable",
+            applied: false, gateDecision: "accept",
+            gateMargin: LocalConcordConstants.consideredBorderlineMargin + 0.01,
+            wordRange: 1..<2, reason: "acoustic-validate considered")
+        let spans = CorrectionHighlight.spans(in: text, edits: [considered])
+        XCTAssertTrue(spans.isEmpty)
+    }
+
+    func testConsideredEditWithNilMarginDoesNotSurface() {
+        // No margin at all (shouldn't happen for a real considered record, but
+        // the `?? .infinity` fallback must fail SAFE — never surface without a
+        // margin to gate on).
+        let text = "the confusable word"
+        let considered = EditRecord(
+            stage: .dictionary, original: "confusable", replacement: "confusable",
+            applied: false, gateDecision: "accept", gateMargin: nil,
+            wordRange: 1..<2, reason: "acoustic-validate considered")
+        let spans = CorrectionHighlight.spans(in: text, edits: [considered])
+        XCTAssertTrue(spans.isEmpty)
+    }
+
+    func testOrdinaryAppliedEditIsUnaffectedByConsideredWidening() {
+        // A normal applied correction (no gate provenance at all) must still
+        // surface exactly as before, and must NOT be flagged as considered.
+        let text = "I love Parleq for dictation"
+        let spans = CorrectionHighlight.spans(in: text, edits: [edit("parlay", "Parleq")])
+        XCTAssertEqual(spans.count, 1)
+        XCTAssertFalse(spans[0].isValidateConsidered)
+    }
+
     func testEmptyReplacementIsIgnored() {
         // Pure deletions have no visible span to mark.
         let text = "hello world"
