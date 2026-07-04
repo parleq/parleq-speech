@@ -491,8 +491,20 @@ public final class VoiceprintCoordinator: ObservableObject {
             modelVersion: BundledASREngine.voiceprintEncoderIdentity)
 
         let termKey = Self.norm(term)
+        // Only propose an alias/confusable from a clip whose span SURVIVED the
+        // enroll quality gate. `result.droppedIndices` are original positions
+        // into `embeddings`/`heardTokens` (parallel arrays, appended together
+        // per usable clip above) that the leave-one-out cosine gate judged
+        // outliers (or non-finite/wrong-dim). A mis-localized span — e.g. ASR
+        // clipping the term's onset so `groups[slot]` shifts to a neighbor word
+        // like "is" — is exactly such an outlier, so skipping dropped clips
+        // suppresses the bogus confusable the voiceprint centroid already
+        // excludes. Prevents nonsensical confusable proposals + wasted
+        // negative-carrier enrollment steps.
+        let droppedClips = Set(result.droppedIndices)
         var seen = Set<String>(); var aliases: [String] = []
-        for t in heardTokens where t != termKey && !t.isEmpty && !seen.contains(t) {
+        for (i, t) in heardTokens.enumerated()
+        where !droppedClips.contains(i) && t != termKey && !t.isEmpty && !seen.contains(t) {
             seen.insert(t); aliases.append(t)
         }
         log("[voiceprint] built term=\(termID) clips=\(embeddings.count) survivingMeanSelfSim=\(String(format: "%.3f", result.survivingMeanSelfSim)) lowQuality=\(result.template.lowQuality) aliases=\(aliases.count) (not committed)")
