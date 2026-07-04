@@ -772,6 +772,17 @@ public struct Config: Sendable {
     /// clips on-device. Default false; set true on explicit user consent in
     /// the clip-storage consent UI.
     public var voiceClipStorageConsented: Bool
+    /// Kill-switch for correction-time negative auto-harvest: when the user
+    /// undoes a dictionary-term over-fire (per-correction undo, or an E-edit
+    /// changing an enrolled term back to a common word), Parleq pools the
+    /// corrected word's audio-span embedding and attaches it as a negative
+    /// prototype to that term's voiceprint. Default ON — harvesting is the
+    /// feature's entire value and only activates for terms the user explicitly
+    /// enrolled under biometric consent. User/MDM-disable-able (fail-closed,
+    /// same resolver as `voiceprintClipStorageEnabled`). No new consent flag:
+    /// harvest is the same embeddings-not-audio data class the enrollment
+    /// consent already governs (see SECURITY_REVIEW §5.4).
+    public var voiceprintHarvestEnabled: Bool
     /// Count cap on the correction journal. nil = unlimited (default).
     /// 0 = disable journal entirely (compliance lever; nothing written,
     /// existing file removed) — same semantics as the transcript-history
@@ -924,6 +935,7 @@ public struct Config: Sendable {
         voiceEnrollmentEnabled: true,
         voiceprintClipStorageEnabled: true,
         voiceClipStorageConsented: false,
+        voiceprintHarvestEnabled: true,
         learnedCorrectionsMaxEntries: nil,
         learnedCorrectionsRetentionHours: nil,
         transformPresetsEnabled: true,
@@ -1071,6 +1083,18 @@ public struct Config: Sendable {
         if clipResult.managed {
             c.voiceprintClipStorageEnabled = clipResult.value
             managedKeys.insert("voiceprintClipStorageEnabled")
+        }
+        // voiceprintHarvestEnabled (Bool) — kill-switch for correction-time
+        // negative auto-harvest (FAIL CLOSED, same truth table as the clip-
+        // storage kill-switch above): only an explicit managed true enables
+        // harvesting; a present-but-malformed forced value disables it.
+        let harvestResult = ManagedConfig.resolveClipStorage(
+            present: ManagedConfig.managedValuePresent(forKey: "voiceprintHarvestEnabled"),
+            parsed: ManagedConfig.managedBool(forKey: "voiceprintHarvestEnabled")
+        )
+        if harvestResult.managed {
+            c.voiceprintHarvestEnabled = harvestResult.value
+            managedKeys.insert("voiceprintHarvestEnabled")
         }
         // autoUpdateEnabled is Sparkle-side only; we still record managedKeys
         // so UpdatesView can show the lock indicator.
@@ -1967,6 +1991,9 @@ public struct Config: Sendable {
             if let v = features["voice_clip_storage_consented"] as? Bool {
                 c.voiceClipStorageConsented = v
             }
+            if let v = features["voiceprint_harvest_enabled"] as? Bool {
+                c.voiceprintHarvestEnabled = v
+            }
             if let v = features["learned_corrections_max_entries"] as? Int, v >= 0 {
                 c.learnedCorrectionsMaxEntries = v
             }
@@ -2238,6 +2265,7 @@ public struct Config: Sendable {
             "voice_enrollment_enabled": config.voiceEnrollmentEnabled,
             "voiceprint_clip_storage_enabled": config.voiceprintClipStorageEnabled,
             "voice_clip_storage_consented": config.voiceClipStorageConsented,
+            "voiceprint_harvest_enabled": config.voiceprintHarvestEnabled,
             "transform_presets_enabled": config.transformPresetsEnabled,
         ]
         if let v = config.transcriptHistoryMaxEntries { featuresDict["transcript_history_max_entries"] = v }
@@ -2560,6 +2588,13 @@ public struct Config: Sendable {
         // Clip-storage consent is never MDM-managed (consent can't be
         // admin-granted); always written through, like the enrollment consent.
         featuresDict["voice_clip_storage_consented"] = config.voiceClipStorageConsented
+        // voiceprintHarvestEnabled — MDM-managed kill-switch (fail-closed). Don't
+        // let the MDM-overlaid value clobber the user's stored preference.
+        if !config.managedKeys.contains("voiceprintHarvestEnabled") {
+            featuresDict["voiceprint_harvest_enabled"] = config.voiceprintHarvestEnabled
+        } else if let existing = existingFeatures["voiceprint_harvest_enabled"] {
+            featuresDict["voiceprint_harvest_enabled"] = existing
+        }
         if !config.managedKeys.contains("learnedCorrectionsMaxEntries") {
             if let v = config.learnedCorrectionsMaxEntries {
                 featuresDict["learned_corrections_max_entries"] = v

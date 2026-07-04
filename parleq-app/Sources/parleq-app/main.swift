@@ -1496,12 +1496,48 @@ struct ParleqApp {
                         // Enrollment-audio persistence: raw WAV clips for future
                         // re-derivation across encoder changes. Set before loadPersisted.
                         coordinator.audioPersistence = EnrollmentAudioStore()
+                        // Harvested-negatives persistence: correction-harvested
+                        // negative-prototype rings (embeddings only, same shared
+                        // device key). Set BEFORE loadPersisted so the rings load
+                        // with the templates.
+                        coordinator.harvestPersistence = EncryptedHarvestStore()
                         // SI-2: the clip-storage kill-switch erase now fires
                         // UNCONDITIONALLY at the top of this MainActor block (7034),
                         // covering every launch path (custom endpoint / load failure),
                         // so no per-coordinator enforce call is needed here.
                         stateBox.value?.voiceprint = coordinator
                         coordinator.loadPersisted()
+                        // 0.41.0 negative-harvest upgrade notice: tell EXISTING
+                        // enrollees ONCE that corrections now refine their
+                        // voiceprints (a new embedding source vs. enrollment clips),
+                        // pointing at the off-switch — new enrollees get this on the
+                        // enrollment consent card instead. Pure gating lives in
+                        // HarvestRefinementNotice.decide; `.wait` leaves the flag
+                        // unset so a launch where the wizard or the per-app-modes
+                        // notice is up (don't stack modals) simply retries next time.
+                        if !UserDefaults.standard.bool(forKey: HarvestRefinementNotice.seenKey) {
+                            switch HarvestRefinementNotice.decide(
+                                wizardCompleted: config.wizardCompleted,
+                                showingWizard: LaunchPermissions.shouldShowWizardAtLaunch(
+                                    wizardCompleted: config.wizardCompleted,
+                                    accessibilityGranted: LaunchPermissions.accessibilityGranted),
+                                perAppNoticeSeen: UserDefaults.standard.bool(forKey: PerAppModesNotice.seenKey),
+                                hasEnrolledVoiceprints: !coordinator.enrolledTermIDs.isEmpty) {
+                            case .show:
+                                // Set the seen flag only AFTER the user dismisses the
+                                // alert (match PerAppModesNotice): onReadyChanged can
+                                // fire seconds into the session, so a quit during the
+                                // load→show window must not silently consume the notice.
+                                DispatchQueue.main.async {
+                                    HarvestRefinementNotice.show()
+                                    UserDefaults.standard.set(true, forKey: HarvestRefinementNotice.seenKey)
+                                }
+                            case .markSeenSilently:
+                                UserDefaults.standard.set(true, forKey: HarvestRefinementNotice.seenKey)
+                            case .wait:
+                                break
+                            }
+                        }
                         // Auto-migrate any voiceprints parked under an unknown encoder
                         // stamp by re-deriving them from the stored enrollment audio
                         // under the CURRENT encoder. Non-destructive (R1/SI-1): bails

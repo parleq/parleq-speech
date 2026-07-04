@@ -181,6 +181,14 @@ public final class VoiceprintCoordinator: ObservableObject {
     /// nil → in-memory only. Set by main.swift after the coordinator is wired.
     public var audioPersistence: EnrollmentAudioPersistence?
 
+    /// Harvested-negatives persistence backend (`~/.parleq/harvested-negatives.enc`).
+    /// nil → in-memory only. Set by main.swift BEFORE `loadPersisted()`.
+    public var harvestPersistence: HarvestedNegativePersistence?
+
+    /// In-memory cache of the harvested-negative rings (loaded in `loadPersisted`,
+    /// mutated by harvest/heal/clear/wipe, persisted best-effort on each mutation).
+    private var harvested = HarvestedNegatives()
+
     /// Templates loaded from the blob that could NOT be kept in the store
     /// (unknown encoder stamp) but are non-empty and therefore potentially
     /// migratable. Populated by `loadPersisted`; consumed by a future migration
@@ -270,6 +278,35 @@ public final class VoiceprintCoordinator: ObservableObject {
             }
         }
         log("[voiceprint] loadPersisted: loaded=\(loaded.count) kept=\(kept) pending=\(pendingMigration.count) current-model=\(current)")
+
+        // Load harvested-negative rings (best-effort). A ring whose encoder stamp is
+        // neither current nor legacy-compatible is DROPPED — embeddings can't cross
+        // feature spaces, and (deliberately, for privacy) there is no stored audio to
+        // re-derive harvests from; they regenerate from real usage. Like the template
+        // load above, a failed/partial load never writes back here (writes happen only
+        // on the next harvest mutation). Counts only in the log — labels are
+        // dictation-derived text and are NEVER logged.
+        harvested = HarvestedNegatives()
+        if let harvestPersistence, let loadedRings = try? harvestPersistence.load() {
+            var keptRings = HarvestedNegatives()
+            var droppedRings = 0
+            for (term, labelRings) in loadedRings.rings {
+                for (key, ring) in labelRings {
+                    let ringCompatible = (ring.modelVersion == current
+                        || BundledASREngine.legacyCompatibleStamps.contains(ring.modelVersion))
+                    if ringCompatible {
+                        keptRings.rings[term, default: [:]][key] = ring
+                    } else {
+                        droppedRings += 1
+                    }
+                }
+            }
+            harvested = keptRings
+            if droppedRings > 0 {
+                log("[voiceprint] harvest: dropped \(droppedRings) stale-encoder ring(s) at load")
+            }
+        }
+
         onStoreChanged?()   // install gate; do NOT persist (SI-1)
     }
 
@@ -334,12 +371,21 @@ public final class VoiceprintCoordinator: ObservableObject {
             pendingMigration.remove(at: idx)
             if needsReEnrollCount > 0 { needsReEnrollCount -= 1 }
         }
+        // Harvested rings are voiceprint-derived: deleting the voiceprint deletes
+        // its rings too ("deleted with the voiceprint" — the consent-copy promise).
+        // save(empty) removes the file per the persistence contract.
+        if harvested.rings.removeValue(forKey: termID) != nil {
+            try? harvestPersistence?.save(harvested)
+        }
         notifyStoreChanged()
     }
     /// Forget every voiceprint ("delete all my voiceprints").
     public func removeAll() {
         store.removeAll()
         try? audioPersistence?.deleteAll()
+        // Harvested rings go with the voiceprints (same biometric-derived class).
+        harvested = HarvestedNegatives()
+        try? harvestPersistence?.deleteAll()
         // 7086: clear pendingMigration before persisting so "delete all" does
         // not rewrite the inert templates back to disk via the active ∪ pending
         // union in notifyStoreChanged.
@@ -485,7 +531,21 @@ public final class VoiceprintCoordinator: ObservableObject {
     /// voiceprint is stored AND persisted to disk (via `notifyStoreChanged`).
     /// Called from the wizard's Save, so nothing biometric lands on disk before
     /// the user explicitly commits.
+    ///
+    /// Re-enrollment re-attach: when this term has harvested-negative rings, the
+    /// committed (enrollment-derived) template is first MERGED with them — each
+    /// ring's `enrollmentPrototype` is refreshed from the new template's own
+    /// negatives (or nil) and the label centroids recomputed — so a wizard re-run
+    /// never silently discards harvests. Internal harvest/heal paths bypass this
+    /// merge via `commitResolved` (their template already reflects the rings;
+    /// merging again would double-count the harvested centroid as a prototype).
     public func commit(_ template: VoiceprintTemplate) {
+        commitResolved(mergingHarvests(into: template))
+    }
+
+    /// The underlying upsert + pending-migration cleanup + persist/gate-reinstall.
+    /// `template` must already reflect the harvested rings (or have none).
+    private func commitResolved(_ template: VoiceprintTemplate) {
         store.upsert(template)
         // 7036(b): if this term was awaiting re-enrollment (un-migratable under
         // the current encoder), the user just re-enrolled it — drop it from the
@@ -496,6 +556,202 @@ public final class VoiceprintCoordinator: ObservableObject {
             if needsReEnrollCount > 0 { needsReEnrollCount -= 1 }
         }
         notifyStoreChanged()
+    }
+
+    // MARK: - Correction-time negative harvest (bounded per-label rings)
+
+    /// True iff `v` is a non-empty, all-finite vector of the template's dimension
+    /// (mirrors Concord's internal `VoiceprintMath.isUsable` + the dim filter that
+    /// `withNegative` applies — checked HERE so a silent `withNegative` no-op can't
+    /// masquerade as a successful attach).
+    private static func isUsableEmbedding(_ v: [Float], dim: Int) -> Bool {
+        !v.isEmpty && v.count == dim && v.allSatisfy { $0.isFinite }
+    }
+
+    /// The phonetic-confusability gate (zero-junk): the label must SOUND like the
+    /// term (DoubleMetaphone primary agreement — the same test the dictionary stage
+    /// gates on), OR be a user-declared alias, OR already carry a negative prototype
+    /// (enrollment-declared confusable). A semantic correction ("Claude" →
+    /// "assistant") fails this and can never poison the template.
+    private static func phoneticallyConfusable(label: String, term: String,
+                                               aliases: [String],
+                                               existing: some Collection<String>) -> Bool {
+        let l = label.lowercased()
+        if aliases.contains(where: { $0.lowercased() == l }) { return true }
+        if existing.contains(where: { $0.lowercased() == l }) { return true }
+        let lp = DoubleMetaphone.encode(label).primary
+        let tp = DoubleMetaphone.encode(term).primary
+        return !lp.isEmpty && lp == tp
+    }
+
+    /// Remove any negative stored under a DIFFERENT casing of `key` (e.g. a
+    /// wizard-enrolled "Cloud" when harvesting under "cloud"). Without this, the
+    /// old casing would survive as a shadow negative and the gate would see the
+    /// enrollment prototype twice. Returns the template unchanged when no stale
+    /// casing exists.
+    private static func strippingStaleCasings(of key: String,
+                                              from template: VoiceprintTemplate) -> VoiceprintTemplate {
+        let cleaned = template.negatives.filter { $0.key == key || $0.key.lowercased() != key }
+        guard cleaned.count != template.negatives.count else { return template }
+        return VoiceprintTemplate(termID: template.termID, voiceprint: template.voiceprint,
+                                  negatives: cleaned, dim: template.dim,
+                                  lowQuality: template.lowQuality,
+                                  modelVersion: template.modelVersion)
+    }
+
+    /// The centroid raw material for a ring: enrollment prototype (if any) + the
+    /// harvested embeddings. `withNegative` pools the centroid internally.
+    private static func material(for ring: HarvestRing) -> [[Float]] {
+        (ring.enrollmentPrototype.map { [$0] } ?? []) + ring.embeddings
+    }
+
+    /// Merge a (fresh, enrollment-derived) template with this term's harvested
+    /// rings: refresh each ring's `enrollmentPrototype` from the NEW template's
+    /// own negatives (case-insensitive; nil when the wizard didn't enroll that
+    /// confusable), recompute each label centroid, and persist the refreshed
+    /// rings. Returns the template unchanged when the term has no rings.
+    private func mergingHarvests(into template: VoiceprintTemplate) -> VoiceprintTemplate {
+        guard var labelRings = harvested.rings[template.termID], !labelRings.isEmpty else {
+            return template
+        }
+        var result = template
+        for (key, var ring) in labelRings {
+            let proto = template.negatives.first { $0.key.lowercased() == key }?.value
+            ring.enrollmentPrototype = proto
+            labelRings[key] = ring
+            result = Self.strippingStaleCasings(of: key, from: result)
+            result = result.withNegative(label: key, embeddings: Self.material(for: ring))
+        }
+        harvested.rings[template.termID] = labelRings
+        try? harvestPersistence?.save(harvested)
+        return result
+    }
+
+    /// Per-label harvested-ring sizes for a term (Settings/verification surface;
+    /// also the test seam for the load-time stamp check). Empty when none.
+    public func harvestedRingCounts(termID: String) -> [String: Int] {
+        (harvested.rings[termID] ?? [:]).mapValues { $0.embeddings.count }
+    }
+
+    /// Validate + append a correction-harvested embedding to the (termID, label)
+    /// ring, recompute the label centroid (enrollment prototype included), and
+    /// commit the updated template (upsert + persist + gate re-install).
+    /// Labels are normalized to lowercase ring keys; the label is dictation-derived
+    /// text and is NEVER logged (term name + counts only, existing practice).
+    @discardableResult
+    public func harvestNegative(termID: String, label: String, embedding: [Float],
+                                aliases: [String] = [], harvestEnabled: Bool) -> HarvestOutcome {
+        guard harvestEnabled else { return .rejected(.disabled) }
+        guard let template = store.template(for: termID) else { return .rejected(.noTemplate) }
+        guard !label.isEmpty, !label.contains(" "), label.allSatisfy({ $0.isLetter }) else {
+            return .rejected(.multiWordLabel)
+        }
+        // Self-label guard (RoboRev-7505): a label that normalizes to the term
+        // itself (case-only / punctuation-only correction) would pass the
+        // DoubleMetaphone gate trivially and attach the TERM's own audio as a
+        // negative — poisoning the voiceprint into rejecting true matches.
+        // Same letters-only lowercase normalization as the gate's slot key.
+        guard label.lowercased().filter({ $0.isLetter })
+                != termID.lowercased().filter({ $0.isLetter }) else {
+            return .rejected(.selfLabel)
+        }
+        guard Self.isUsableEmbedding(embedding, dim: template.dim) else {
+            return .rejected(.unusableEmbedding)
+        }
+        guard Self.phoneticallyConfusable(label: label, term: termID, aliases: aliases,
+                                          existing: template.negatives.keys) else {
+            return .rejected(.phoneticMismatch)
+        }
+        let key = label.lowercased()
+        // Enrollment may have stored the negative under a mixed-case label — look
+        // the prototype up case-insensitively (snapshot BEFORE the first harvest).
+        var ring = harvested.rings[termID]?[key]
+            ?? HarvestRing(enrollmentPrototype: template.negatives.first {
+                               $0.key.lowercased() == key
+                           }?.value,
+                           modelVersion: BundledASREngine.voiceprintEncoderIdentity)
+        ring.embeddings.append(embedding)
+        if ring.embeddings.count > HarvestPolicy.maxPerLabel {
+            ring.embeddings.removeFirst(ring.embeddings.count - HarvestPolicy.maxPerLabel)
+        }
+        harvested.rings[termID, default: [:]][key] = ring
+        let base = Self.strippingStaleCasings(of: key, from: template)
+        let updated = base.withNegative(label: key, embeddings: Self.material(for: ring))
+        commitResolved(updated)   // upsert + persist + gate re-install
+        try? harvestPersistence?.save(harvested)
+        log("[voiceprint] harvest: negative attached for '\(termID)' (ring \(ring.embeddings.count)/\(HarvestPolicy.maxPerLabel))")
+        return .attached(ringCount: ring.embeddings.count)
+    }
+
+    /// Remove the NEWEST harvested embedding for (termID, label) — the healing
+    /// gesture for a mistaken harvest (the user undid a gate revert). Recomputes
+    /// the label centroid from what remains; when nothing remains the label falls
+    /// back to its enrollment prototype, or is DETACHED entirely (template rebuilt
+    /// without it — `withNegative` cannot remove).
+    @discardableResult
+    public func healHarvestedNegative(termID: String, label: String) -> HarvestOutcome {
+        let key = label.lowercased()
+        guard let template = store.template(for: termID) else { return .rejected(.noTemplate) }
+        guard var ring = harvested.rings[termID]?[key], !ring.embeddings.isEmpty else {
+            return .rejected(.nothingToHeal)
+        }
+        ring.embeddings.removeLast()
+        let base = Self.strippingStaleCasings(of: key, from: template)
+        let updated: VoiceprintTemplate
+        if ring.embeddings.isEmpty {
+            // Empty ring is pruned (a future first-harvest re-snapshots the
+            // prototype from the template, which we restore/detach right here).
+            harvested.rings[termID]?.removeValue(forKey: key)
+            if harvested.rings[termID]?.isEmpty == true {
+                harvested.rings.removeValue(forKey: termID)
+            }
+            if let proto = ring.enrollmentPrototype {
+                updated = base.withNegative(label: key, embeddings: [proto])
+            } else {
+                var negs = base.negatives
+                negs.removeValue(forKey: key)
+                updated = VoiceprintTemplate(termID: base.termID, voiceprint: base.voiceprint,
+                                             negatives: negs, dim: base.dim,
+                                             lowQuality: base.lowQuality,
+                                             modelVersion: base.modelVersion)
+            }
+        } else {
+            harvested.rings[termID]?[key] = ring
+            updated = base.withNegative(label: key, embeddings: Self.material(for: ring))
+        }
+        commitResolved(updated)
+        try? harvestPersistence?.save(harvested)
+        log("[voiceprint] harvest: healed '\(termID)' (ring \(ring.embeddings.count)/\(HarvestPolicy.maxPerLabel))")
+        return .healed(ringCount: ring.embeddings.count)
+    }
+
+    /// Remove every harvested ring and restore each affected template's labels to
+    /// enrollment prototypes only (or detach harvest-only labels). The kill-switch
+    /// toggle-off "also clear refinements" offer calls this.
+    public func clearAllHarvests() {
+        var restoredTerms = 0
+        for (termID, labelRings) in harvested.rings {
+            guard var template = store.template(for: termID) else { continue }
+            for (key, ring) in labelRings {
+                template = Self.strippingStaleCasings(of: key, from: template)
+                if let proto = ring.enrollmentPrototype {
+                    template = template.withNegative(label: key, embeddings: [proto])
+                } else {
+                    var negs = template.negatives
+                    negs.removeValue(forKey: key)
+                    template = VoiceprintTemplate(termID: template.termID,
+                                                  voiceprint: template.voiceprint,
+                                                  negatives: negs, dim: template.dim,
+                                                  lowQuality: template.lowQuality,
+                                                  modelVersion: template.modelVersion)
+                }
+            }
+            commitResolved(template)
+            restoredTerms += 1
+        }
+        harvested = HarvestedNegatives()
+        try? harvestPersistence?.deleteAll()
+        log("[voiceprint] harvest: cleared all harvested negatives (\(restoredTerms) term(s) restored)")
     }
 
     // MARK: - Encoder-change migration (non-destructive, quality-gated; SI-1)
@@ -549,6 +805,11 @@ public final class VoiceprintCoordinator: ObservableObject {
     ///   keeps the inert ones (old stamp) and never collapses to `save([])`.
     /// Logging is COUNT-ONLY (no term text, no audio, no embeddings).
     public func migrateIfNeeded(transcribe: (Data) async throws -> ASRResult?) async {
+        // Harvested-negative rings need no handling here: loadPersisted already
+        // dropped every ring whose encoder stamp is neither current nor
+        // legacy-compatible, so any surviving ring is in the SAME feature space a
+        // migrated template is re-derived under (spec D5 — "stale rings are
+        // dropped in the same pass" happens at load, before this runs).
         guard !pendingMigration.isEmpty, let audioPersistence else { return }
         let audioMap: [String: [StoredEnrollmentClip]]
         do {
@@ -764,6 +1025,23 @@ public final class VoiceprintCoordinator: ObservableObject {
     /// accept/reject. A term with no voiceprint — or a span it cannot locate/pool — yields
     /// `.noOpinion`, so the engine behaves exactly as if no gate were present (the gate only ever
     /// REMOVES an over-fire it can confirm; it never introduces new harm).
+    /// Raw-ASR word-group spans with the gate's normalized text (letters-only,
+    /// lowercased) — the SHARED span source for the gate, enrollment's
+    /// localizedSpan machinery, and the correction-time harvest, so all three
+    /// resolve a word to the exact same audio span (same `wordGroups(from:)`
+    /// grouping, same normalizer that fills `SpanEmbedding.normalizedText`).
+    nonisolated static func groupSpans(from diagnostics: ASRDiagnostics) -> [HarvestSpanLocator.GroupSpan] {
+        let timings = diagnostics.tokenTimings.map {
+            TokenTiming(token: $0.token, tokenId: $0.tokenId,
+                        startTime: $0.startTime, endTime: $0.endTime, confidence: $0.confidence)
+        }
+        return VoiceprintDemo.wordGroups(from: timings).map {
+            HarvestSpanLocator.GroupSpan(text: $0.text.lowercased().filter { $0.isLetter },
+                                         startSeconds: $0.startSeconds,
+                                         endSeconds: $0.endSeconds)
+        }
+    }
+
     nonisolated static func buildGate(diagnostics: ASRDiagnostics?,
                                       store: VoiceprintStore,
                                       gate: VoiceprintGate) -> AcousticGate? {
@@ -772,20 +1050,19 @@ public final class VoiceprintCoordinator: ObservableObject {
         guard store.count > 0 else { return nil }
         guard let diagnostics, let features = diagnostics.encoderFeatures else { return nil }
 
-        let timings = diagnostics.tokenTimings.map {
-            TokenTiming(token: $0.token, tokenId: $0.tokenId,
-                        startTime: $0.startTime, endTime: $0.endTime, confidence: $0.confidence)
-        }
-        let wordGroups = VoiceprintDemo.wordGroups(from: timings)
+        // Shared span source (see groupSpans). Texts arrive pre-normalized;
+        // concatenating normalized texts equals normalizing the concatenation
+        // (the normalizer is a per-character letter filter), so the window
+        // spans below are byte-identical to the pre-refactor construction.
+        let groups = Self.groupSpans(from: diagnostics)
         var singleWordSpans: [SpanEmbedding] = []
         var windowSpans: [SpanEmbedding] = []
 
         // Single-word spans (original behavior — preserved in full).
-        for (i, g) in wordGroups.enumerated() {
+        for (i, g) in groups.enumerated() {
             guard let emb = features.pooledEmbedding(
                 startSeconds: g.startSeconds, endSeconds: g.endSeconds) else { continue }
-            let normalized = g.text.lowercased().filter { $0.isLetter }
-            singleWordSpans.append(SpanEmbedding(normalizedText: normalized, groupIndex: i,
+            singleWordSpans.append(SpanEmbedding(normalizedText: g.text, groupIndex: i,
                                                   startSeconds: g.startSeconds, endSeconds: g.endSeconds,
                                                   embedding: emb))
         }
@@ -795,24 +1072,22 @@ public final class VoiceprintCoordinator: ObservableObject {
         // concatenated normalizedText, e.g. "kiv", would produce spurious .contains matches).
         // `max(0, …)`: an aborted/empty dictation yields 0 word groups, making `count - 1` negative
         // and `0..<(-1)` a fatal "lowerBound <= upperBound" trap. Clamp to an empty range instead.
-        for i in 0..<max(0, wordGroups.count - 1) {
-            let first = wordGroups[i], second = wordGroups[i + 1]
+        for i in 0..<max(0, groups.count - 1) {
+            let first = groups[i], second = groups[i + 1]
             guard let emb = features.pooledEmbedding(
                 startSeconds: first.startSeconds, endSeconds: second.endSeconds) else { continue }
-            let normalized = (first.text + second.text).lowercased().filter { $0.isLetter }
-            windowSpans.append(SpanEmbedding(normalizedText: normalized, groupIndex: i,
+            windowSpans.append(SpanEmbedding(normalizedText: first.text + second.text, groupIndex: i,
                                               startSeconds: first.startSeconds, endSeconds: second.endSeconds,
                                               embedding: emb))
         }
 
         // Adjacent 3-word windows.
-        for i in 0..<max(0, wordGroups.count - 2) {   // max(0,…): same empty-dictation guard as above
-            let first = wordGroups[i], last = wordGroups[i + 2]
+        for i in 0..<max(0, groups.count - 2) {   // max(0,…): same empty-dictation guard as above
+            let first = groups[i], last = groups[i + 2]
             guard let emb = features.pooledEmbedding(
                 startSeconds: first.startSeconds, endSeconds: last.endSeconds) else { continue }
-            let normalized = (wordGroups[i].text + wordGroups[i + 1].text + wordGroups[i + 2].text)
-                .lowercased().filter { $0.isLetter }
-            windowSpans.append(SpanEmbedding(normalizedText: normalized, groupIndex: i,
+            windowSpans.append(SpanEmbedding(normalizedText: groups[i].text + groups[i + 1].text + groups[i + 2].text,
+                                              groupIndex: i,
                                               startSeconds: first.startSeconds, endSeconds: last.endSeconds,
                                               embedding: emb))
         }

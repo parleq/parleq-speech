@@ -4,6 +4,14 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.41.0] - Unreleased
+
+Voiceprints that learn from your corrections.
+
+### Added
+
+- **Voice enrollment now improves itself from your corrections.** If an enrolled term occasionally fires by mistake on a similar-sounding everyday word, correcting it — either by undoing the correction or editing the word back by hand — teaches that term's voiceprint from the corrected word's sound, so the same over-fire stops happening. No re-enrollment needed, and fully on-device: only an encrypted voice embedding is stored (never audio), it never leaves your Mac, and it's deleted along with the voiceprint. On by default for enrolled terms, with a "Refine voiceprints from corrections" switch in Settings → Dictionary; undoing a wrong refinement backs it out automatically.
+
 ## [0.40.0] - Unreleased
 
 Per-app cleanup, a clearer cleanup model, and more on-device corrections.

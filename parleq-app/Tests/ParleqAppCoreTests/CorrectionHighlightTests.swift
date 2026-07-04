@@ -23,6 +23,27 @@ final class CorrectionHighlightTests: XCTestCase {
 
     // MARK: spans()
 
+    func testReasonProvenanceCarriedIntoSpan() {
+        // RoboRev-7511: heal-vs-harvest routing needs the acoustic gate's revert
+        // provenance, not shape inference. The reason string must survive the
+        // EditRecord -> CorrectionSpan mapping (and the editRecordFor round-trip
+        // preserves it on re-maps).
+        let text = "the cloud provider"
+        let revert = EditRecord(stage: .dictionary, original: "Claude", replacement: "cloud",
+                                applied: true, reason: "acoustic-validate revert")
+        let normal = EditRecord(stage: .dictionary, original: "parlay", replacement: "provider",
+                                applied: true)
+        let spans = CorrectionHighlight.spans(in: text, edits: [revert, normal])
+        XCTAssertEqual(spans.count, 2)
+        let revertSpan = spans.first { $0.replacement == "cloud" }
+        let normalSpan = spans.first { $0.replacement == "provider" }
+        XCTAssertEqual(revertSpan?.reason, "acoustic-validate revert")
+        XCTAssertTrue(revertSpan?.isValidateRevert ?? false)
+        XCTAssertNil(normalSpan?.reason)
+        XCTAssertFalse(normalSpan?.isValidateRevert ?? true)
+    }
+
+
     func testAnchorsToWordRangeNotEarlierUnchangedOccurrence() {
         // RoboRev aaba4e2 Medium: "API api" with the 2nd token edited (api->API) -> "API API",
         // wordRange 1..<2. Must anchor to the EDITED (second) occurrence, not the unchanged first,
