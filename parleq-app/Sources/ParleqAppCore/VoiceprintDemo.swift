@@ -805,11 +805,23 @@ public final class VoiceprintCoordinator: ObservableObject {
     ///   keeps the inert ones (old stamp) and never collapses to `save([])`.
     /// Logging is COUNT-ONLY (no term text, no audio, no embeddings).
     public func migrateIfNeeded(transcribe: (Data) async throws -> ASRResult?) async {
-        // Harvested-negative rings need no handling here: loadPersisted already
-        // dropped every ring whose encoder stamp is neither current nor
-        // legacy-compatible, so any surviving ring is in the SAME feature space a
-        // migrated template is re-derived under (spec D5 — "stale rings are
-        // dropped in the same pass" happens at load, before this runs).
+        // Harvested-negative rings need no handling here for STAMP DROPPING:
+        // loadPersisted already dropped every ring whose encoder stamp is
+        // neither current nor legacy-compatible, so any surviving ring is in
+        // the SAME feature space a migrated template is re-derived under
+        // (spec D5 — "stale rings are dropped in the same pass" happens at
+        // load, before this runs). What this does NOT do: unlike the wizard's
+        // `commit()` (which runs `mergingHarvests` before storing), the
+        // migrated template below is installed WITHOUT merging any surviving
+        // ring for its termID. In the rare double-encoder-transition case
+        // (the TEMPLATE's stamp needed migration but its RING's stamp was
+        // already current/legacy-compatible), the ring's harvested centroid
+        // is temporarily unreflected in the freshly-migrated template. The
+        // ring itself is untouched on disk and re-applies lazily — the next
+        // `harvestNegative` / `healHarvestedNegative` call for that
+        // (termID, label), or the next wizard re-enroll (`commit` →
+        // `mergingHarvests`), both re-read `harvested.rings[termID]` fresh
+        // and recompute the centroid. Self-heals; no data loss.
         guard !pendingMigration.isEmpty, let audioPersistence else { return }
         let audioMap: [String: [StoredEnrollmentClip]]
         do {
