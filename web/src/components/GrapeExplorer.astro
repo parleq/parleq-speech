@@ -250,18 +250,32 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
       <filter id="flareStreak" x="-60%" y="-900%" width="220%" height="1900%">
         <feGaussianBlur stdDeviation="5 1" />
       </filter>
-      <linearGradient id="flareTail" x1="168" y1="0" x2="196" y2="0" gradientUnits="userSpaceOnUse">
-        <stop offset="0%" stop-color="#e9d5ff" stop-opacity="0" />
-        <stop offset="22%" stop-color="#e9d5ff" stop-opacity=".85" />
-        <stop offset="100%" stop-color="#e9d5ff" stop-opacity="0" />
+      <!-- tails run PARALLEL over the dark card and all stop at ONE hard cutoff
+           (x=194): fade in crossing the edge, constant brightness across the dark run,
+           butt-capped ends on a shared vertical — reads as strands sliding behind a
+           panel seam (the prototype's trick). Lavender ones GLOW lavender on black. -->
+      <linearGradient id="flareTailLav" x1="168" y1="0" x2="194" y2="0" gradientUnits="userSpaceOnUse">
+        <stop offset="0%" stop-color="#cfa9ff" stop-opacity="0" />
+        <stop offset="24%" stop-color="#cfa9ff" stop-opacity=".92" />
+        <stop offset="100%" stop-color="#cfa9ff" stop-opacity=".95" />
       </linearGradient>
-      <linearGradient id="flareTailWarm" x1="168" y1="0" x2="199" y2="0" gradientUnits="userSpaceOnUse">
+      <linearGradient id="flareTailWarm" x1="168" y1="0" x2="194" y2="0" gradientUnits="userSpaceOnUse">
         <stop offset="0%" stop-color="#ffd590" stop-opacity="0" />
-        <stop offset="18%" stop-color="#ffd590" stop-opacity=".9" />
-        <stop offset="100%" stop-color="#ffd590" stop-opacity="0" />
+        <stop offset="22%" stop-color="#ffd590" stop-opacity=".95" />
+        <stop offset="100%" stop-color="#ffd590" stop-opacity="1" />
       </linearGradient>
-      <filter id="flareTailSoft" x="-20%" y="-300%" width="140%" height="700%">
-        <feGaussianBlur stdDeviation=".5" />
+      <linearGradient id="flareTailLavGlow" x1="168" y1="0" x2="191" y2="0" gradientUnits="userSpaceOnUse">
+        <stop offset="0%" stop-color="#a855f7" stop-opacity="0" />
+        <stop offset="26%" stop-color="#a855f7" stop-opacity=".6" />
+        <stop offset="100%" stop-color="#a855f7" stop-opacity=".65" />
+      </linearGradient>
+      <linearGradient id="flareTailWarmGlow" x1="168" y1="0" x2="191" y2="0" gradientUnits="userSpaceOnUse">
+        <stop offset="0%" stop-color="#fb923c" stop-opacity="0" />
+        <stop offset="26%" stop-color="#fb923c" stop-opacity=".55" />
+        <stop offset="100%" stop-color="#fb923c" stop-opacity=".6" />
+      </linearGradient>
+      <filter id="flareTailGlowBlur" x="-25%" y="-400%" width="150%" height="900%">
+        <feGaussianBlur stdDeviation="1.9" />
       </filter>
     </defs>
     <!-- colored haze pocket: cluster exit + amber mid-bundle (normal blend — saturated
@@ -354,15 +368,26 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
     <ellipse cx="173" cy="102" rx="13" ry="58" fill="url(#flareViolet)" opacity=".62" />
     <ellipse cx="172" cy="102" rx="16" ry="9" fill="url(#flareAmber)" />
     <ellipse cx="174" cy="102" rx="11" ry="5.5" fill="url(#flareWhite)" />
-    <g fill="none" stroke-linecap="round" filter="url(#flareTailSoft)">
-      <path d="M169 98.4 C 176 98, 181 97.7, 186 97.5" stroke="url(#flareTail)" stroke-width=".9" />
-      <path d="M169 101.3 C 178 100.9, 186 100.7, 193 100.4" stroke="url(#flareTail)" stroke-width="1.1" />
-      <path d="M169 102.4 C 177 102.3, 184 102.2, 190 102.1" stroke="url(#flareTailWarm)" stroke-width="1.2" />
-      <path d="M169 103.9 C 178 104, 188 104.2, 196 104.5" stroke="url(#flareTailWarm)" stroke-width="1.3" />
-      <path d="M169 104.7 C 178 104.9, 186 105.2, 194 105.6" stroke="url(#flareTailWarm)" stroke-width="1.6" />
-      <path d="M170 106 C 175 106.2, 179 106.4, 183 106.6" stroke="url(#flareTail)" stroke-width=".8" />
-      <path d="M169 108.1 C 176 108.4, 182 108.8, 188 109.3" stroke="url(#flareTail)" stroke-width=".9" />
-      <path d="M170 110.3 C 175 110.6, 180 111, 184 111.5" stroke="url(#flareTail)" stroke-width=".8" />
+    <!-- lavender/amber GLOW underlay: blurred wider copies so the strands visibly glow
+         against the black; stops just short of the cutoff so the blur tail dies at it -->
+    <g fill="none" stroke-linecap="butt" filter="url(#flareTailGlowBlur)">
+      <path d="M169 97.8 H 191" stroke="url(#flareTailLavGlow)" stroke-width="2.4" />
+      <path d="M169 100.6 H 191" stroke="url(#flareTailLavGlow)" stroke-width="2.8" />
+      <path d="M169 102.4 H 191" stroke="url(#flareTailWarmGlow)" stroke-width="3" />
+      <path d="M169 104.2 H 191" stroke="url(#flareTailWarmGlow)" stroke-width="3.6" />
+      <path d="M169 106 H 191" stroke="url(#flareTailWarmGlow)" stroke-width="2.8" />
+      <path d="M169 108 H 191" stroke="url(#flareTailLavGlow)" stroke-width="2.6" />
+      <path d="M169 110.2 H 191" stroke="url(#flareTailLavGlow)" stroke-width="2.2" />
+    </g>
+    <!-- crisp PARALLEL tails, butt caps, all ending on the SAME vertical (x=194) -->
+    <g fill="none" stroke-linecap="butt">
+      <path d="M169 97.8 H 194" stroke="url(#flareTailLav)" stroke-width=".95" />
+      <path d="M169 100.6 H 194" stroke="url(#flareTailLav)" stroke-width="1.15" />
+      <path d="M169 102.4 H 194" stroke="url(#flareTailWarm)" stroke-width="1.2" />
+      <path d="M169 104.2 H 194" stroke="url(#flareTailWarm)" stroke-width="1.55" />
+      <path d="M169 106 H 194" stroke="url(#flareTailWarm)" stroke-width="1.1" />
+      <path d="M169 108 H 194" stroke="url(#flareTailLav)" stroke-width="1" />
+      <path d="M169 110.2 H 194" stroke="url(#flareTailLav)" stroke-width=".85" />
     </g>
     <path d="M158 102 H 181" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" filter="url(#flareStreak)" opacity=".9" />
     <g class="flow-sparks">
