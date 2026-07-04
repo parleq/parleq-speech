@@ -13,7 +13,9 @@ const { uid = 'cf' } = Astro.props;
 // 18 lines, NON-UNIFORM convergence: tight/overlapping near the center, wider at the edges.
 // inY = origin at the box; endY = where each line meets the engine (hand-tuned, non-uniform).
 const inY  = [74, 86, 99, 112, 125, 138, 150, 162, 174, 186, 198, 210, 222, 235, 248, 261, 274, 287];
-const endY = [161, 165, 168, 171, 174, 176, 178, 179, 180, 181, 182, 184, 186, 189, 192, 195, 199, 203];
+// endY[7]/endY[10] are deliberately swapped relative to their neighbors so the two
+// outer amber lines CROSS mid-run — the prototype's bundle is braided, not combed.
+const endY = [161, 165, 168, 171, 174, 176, 178, 182, 180, 181, 179, 184, 186, 189, 192, 195, 199, 203];
 // Lines END at the box edge (x=162 / x=398), not inside it.
 const leftPaths = inY.map((y, i) => `M162 ${y} C 182 ${y}, 198 ${endY[i]}, 228 ${endY[i]}`);
 const rightPaths = inY.map((y, i) => `M332 ${endY[i]} C 362 ${endY[i]}, 378 ${y}, 398 ${y}`);
@@ -138,6 +140,12 @@ const bloomIdx = new Set([3, 5, 6, 7, 8, 9, 10, 11, 13, 15]);
     <filter id={`${uid}-cardGlow`} x="-60%" y="-60%" width="220%" height="220%">
       <feGaussianBlur stdDeviation="7"></feGaussianBlur>
     </filter>
+    <!-- fine white noise: screen-blended at ~5% it dithers the radial-gradient banding
+         out of the haze and gives the field the prototype bitmap's grain -->
+    <filter id={`${uid}-grain`} x="0%" y="0%" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="2" stitchTiles="stitch"></feTurbulence>
+      <feColorMatrix type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0.4 0.4 0.4 0 0"></feColorMatrix>
+    </filter>
     <!-- volumetric field gradients: a violet haze that fills the convergence zone, a hot
          amber core hugging the waist, and a white-hot kernel at the card edge -->
     <radialGradient id={`${uid}-fieldViolet`}>
@@ -159,8 +167,9 @@ const bloomIdx = new Set([3, 5, 6, 7, 8, 9, 10, 11, 13, 15]);
     </radialGradient>
     <!-- soft radial glows for the on-line accent dots (white-hot core → line hue → transparent) -->
     <radialGradient id={`${uid}-dotWarm`}>
-      <stop offset="0%" stop-color="#fff3df" stop-opacity="1"></stop>
-      <stop offset="42%" stop-color="#ffb04d" stop-opacity="0.85"></stop>
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="1"></stop>
+      <stop offset="28%" stop-color="#fff3df" stop-opacity="0.95"></stop>
+      <stop offset="55%" stop-color="#ffb04d" stop-opacity="0.6"></stop>
       <stop offset="100%" stop-color="#ff9f33" stop-opacity="0"></stop>
     </radialGradient>
     <radialGradient id={`${uid}-dotViolet`}>
@@ -179,12 +188,10 @@ const bloomIdx = new Set([3, 5, 6, 7, 8, 9, 10, 11, 13, 15]);
     <ellipse cx="340" cy="181" rx="78" ry="98" fill={`url(#${uid}-fieldViolet)`} opacity="0.85"></ellipse>
     <ellipse cx="206" cy="181" rx="100" ry="21" fill={`url(#${uid}-fieldAmber)`}></ellipse>
     <ellipse cx="354" cy="181" rx="100" ry="21" fill={`url(#${uid}-fieldAmber)`}></ellipse>
-    <ellipse cx="227" cy="181" rx="17" ry="46" fill={`url(#${uid}-fieldAmber)`} opacity="0.85"></ellipse>
-    <ellipse cx="333" cy="181" rx="17" ry="46" fill={`url(#${uid}-fieldAmber)`} opacity="0.85"></ellipse>
+    <ellipse cx="227" cy="181" rx="17" ry="36" fill={`url(#${uid}-fieldAmber)`} opacity="0.65"></ellipse>
+    <ellipse cx="333" cy="181" rx="17" ry="36" fill={`url(#${uid}-fieldAmber)`} opacity="0.65"></ellipse>
     <ellipse cx="224" cy="181" rx="40" ry="11" fill={`url(#${uid}-fieldWhite)`}></ellipse>
     <ellipse cx="336" cy="181" rx="40" ry="11" fill={`url(#${uid}-fieldWhite)`}></ellipse>
-    <ellipse cx="227" cy="181" rx="15" ry="5.5" fill={`url(#${uid}-fieldWhite)`}></ellipse>
-    <ellipse cx="333" cy="181" rx="15" ry="5.5" fill={`url(#${uid}-fieldWhite)`}></ellipse>
   </g>
 
   <!-- CARD BACKLIGHT: the prototype's Concord card is hard-backlit — a bright lavender
@@ -238,16 +245,48 @@ const bloomIdx = new Set([3, 5, 6, 7, 8, 9, 10, 11, 13, 15]);
        waist — the "hot" signature of the prototype. Wide amber tail + tight white core,
        plus a dimmer secondary streak for asymmetry. -->
   <g class="cf-add" fill="none" stroke-linecap="round">
-    <path d="M118 181 H 231" stroke="#ff5a1f" stroke-width="8" filter={`url(#${uid}-streakWide)`} opacity="0.35"></path>
-    <path d="M329 181 H 442" stroke="#ff5a1f" stroke-width="8" filter={`url(#${uid}-streakWide)`} opacity="0.35"></path>
-    <path d="M138 181 H 231" stroke="#ffa63e" stroke-width="6" filter={`url(#${uid}-streakWide)`} opacity="1"></path>
-    <path d="M168 181 H 231" stroke="#ffffff" stroke-width="3" filter={`url(#${uid}-streakCore)`} opacity="1"></path>
-    <path d="M329 181 H 422" stroke="#ffa63e" stroke-width="6" filter={`url(#${uid}-streakWide)`} opacity="1"></path>
-    <path d="M329 181 H 392" stroke="#ffffff" stroke-width="3" filter={`url(#${uid}-streakCore)`} opacity="1"></path>
+    <path d="M164 181 H 231" stroke="#ff5a1f" stroke-width="8" filter={`url(#${uid}-streakWide)`} opacity="0.35"></path>
+    <path d="M329 181 H 396" stroke="#ff5a1f" stroke-width="8" filter={`url(#${uid}-streakWide)`} opacity="0.35"></path>
+    <path d="M158 181 H 231" stroke="#ffa63e" stroke-width="6" filter={`url(#${uid}-streakWide)`} opacity="1"></path>
+    <path d="M329 181 H 400" stroke="#ffa63e" stroke-width="6" filter={`url(#${uid}-streakWide)`} opacity="1"></path>
     <path d="M176 192 H 230" stroke="#ff9f33" stroke-width="2.6" filter={`url(#${uid}-streakWide)`} opacity="0.4"></path>
     <path d="M330 170 H 384" stroke="#ff9f33" stroke-width="2.6" filter={`url(#${uid}-streakWide)`} opacity="0.4"></path>
   </g>
+  <!-- grain on top of the field/lines (under the HTML cards) -->
+  <rect width="560" height="360" filter={`url(#${uid}-grain)`} opacity="0.05" class="cf-screen"></rect>
   <!-- (on-line accent dots are added by the script so they sit exactly on the curves) -->
+</svg>
+
+<!-- OVERLAY: the white-hot core of each flare, rendered ABOVE the cards (z-4) so the
+     blaze visibly bleeds over the engine card's border like the prototype, instead of
+     hard-stopping in a vertical seam at the opaque card edge. Kept narrow so card text
+     stays legible. -->
+<svg class="absolute inset-0 z-[4] h-full w-full pointer-events-none" viewBox="0 0 560 360" preserveAspectRatio="none" aria-hidden="true">
+  <defs>
+    <filter id={`${uid}-oStreakCore`} x="-40%" y="-900%" width="180%" height="1900%">
+      <feGaussianBlur stdDeviation="6 1.1"></feGaussianBlur>
+    </filter>
+    <radialGradient id={`${uid}-oWhite`}>
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="1"></stop>
+      <stop offset="40%" stop-color="#ffe4b8" stop-opacity="0.65"></stop>
+      <stop offset="100%" stop-color="#ffd9a0" stop-opacity="0"></stop>
+    </radialGradient>
+    <radialGradient id={`${uid}-oAmberCap`}>
+      <stop offset="0%" stop-color="#ffc078" stop-opacity="0.85"></stop>
+      <stop offset="55%" stop-color="#ff8c1f" stop-opacity="0.3"></stop>
+      <stop offset="100%" stop-color="#ff8c1f" stop-opacity="0"></stop>
+    </radialGradient>
+  </defs>
+  <g class="cf-add">
+    <ellipse cx="224.5" cy="181" rx="12" ry="6" fill={`url(#${uid}-oAmberCap)`} opacity="0.8"></ellipse>
+    <ellipse cx="335.5" cy="181" rx="12" ry="6" fill={`url(#${uid}-oAmberCap)`} opacity="0.8"></ellipse>
+    <ellipse cx="224.5" cy="181" rx="9" ry="4.2" fill={`url(#${uid}-oWhite)`}></ellipse>
+    <ellipse cx="335.5" cy="181" rx="9" ry="4.2" fill={`url(#${uid}-oWhite)`}></ellipse>
+    <g fill="none" stroke-linecap="round">
+      <path d="M190 181 H 228" stroke="#ffffff" stroke-width="2.6" filter={`url(#${uid}-oStreakCore)`} opacity="0.95"></path>
+      <path d="M332 181 H 370" stroke="#ffffff" stroke-width="2.6" filter={`url(#${uid}-oStreakCore)`} opacity="0.95"></path>
+    </g>
+  </g>
 </svg>
 
 <style>
@@ -279,17 +318,17 @@ const bloomIdx = new Set([3, 5, 6, 7, 8, 9, 10, 11, 13, 15]);
       // as the line locally glowing (not a superimposed dot). t=0 is the box on the left / engine on
       // the right. The amber lines carry ember beads at intervals like the prototype.
       const accents = [
-        { id: `${uid}-fl-8`, t: 0,    kind: 'warm',   r: 3.5 },  // box terminator (orange line)
-        { id: `${uid}-fl-9`, t: 0.34, kind: 'warm',   r: 2.8 },  // ember beads along the hero amber line
-        { id: `${uid}-fl-9`, t: 0.62, kind: 'warm',   r: 3.6 },
-        { id: `${uid}-fl-9`, t: 0.84, kind: 'warm',   r: 4.4 },
-        { id: `${uid}-fl-7`, t: 0.55, kind: 'warm',   r: 2.4 },
-        { id: `${uid}-fl-3`, t: 0.52, kind: 'violet', r: 3.2 },  // mid-line violet
-        { id: `${uid}-fl-13`, t: 0.58, kind: 'violet', r: 2.6 }, // mid-line violet
-        { id: `${uid}-fr-9`, t: 0.2,  kind: 'warm',   r: 4.2 },  // mirrored embers, hottest near the card
-        { id: `${uid}-fr-9`, t: 0.48, kind: 'warm',   r: 3.2 },
-        { id: `${uid}-fr-10`, t: 0.66, kind: 'warm',  r: 2.6 },
-        { id: `${uid}-fr-4`, t: 0.55, kind: 'violet', r: 2.8 },  // mid-line violet
+        { id: `${uid}-fl-8`, t: 0,    kind: 'warm',   r: 2.6 },  // box terminator (orange line)
+        { id: `${uid}-fl-9`, t: 0.34, kind: 'warm',   r: 2.0 },  // ember beads along the hero amber line
+        { id: `${uid}-fl-9`, t: 0.62, kind: 'warm',   r: 2.6 },
+        { id: `${uid}-fl-9`, t: 0.84, kind: 'warm',   r: 3.0 },
+        { id: `${uid}-fl-7`, t: 0.55, kind: 'warm',   r: 1.8 },
+        { id: `${uid}-fl-3`, t: 0.52, kind: 'violet', r: 2.6 },  // mid-line violet
+        { id: `${uid}-fl-13`, t: 0.58, kind: 'violet', r: 2.2 }, // mid-line violet
+        { id: `${uid}-fr-9`, t: 0.2,  kind: 'warm',   r: 3.0 },  // mirrored embers, hottest near the card
+        { id: `${uid}-fr-9`, t: 0.48, kind: 'warm',   r: 2.4 },
+        { id: `${uid}-fr-10`, t: 0.66, kind: 'warm',  r: 2.0 },
+        { id: `${uid}-fr-4`, t: 0.55, kind: 'violet', r: 2.4 },  // mid-line violet
       ];
       const aGroup = document.createElementNS(NS, 'g');
       aGroup.style.mixBlendMode = 'screen';
