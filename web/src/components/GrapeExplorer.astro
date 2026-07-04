@@ -1243,7 +1243,9 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
     #explorer[data-tab="howitworks"] { align-items: start; }
     #explorer[data-tab="howitworks"] .demo-stack { margin-top: 7.5rem; }
   }
-  #explorer[data-tab="howitworks"] .flow-lines { top: 96px; }
+  /* (No flow-lines top override for the howitworks tab: the cluster sits at the SAME
+     y on every tab — measured identical .bunch tops — so the old top:96px shift from a
+     previous layout left the ribbon 58px too high on the grapes.) */
 
   /* SPIKE: interactive Reference Windows demo. The dark .rw-card is the "example";
      the coachmark + pager sit below it on the light section bg. */
