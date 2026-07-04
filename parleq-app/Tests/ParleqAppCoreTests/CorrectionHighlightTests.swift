@@ -154,6 +154,20 @@ final class CorrectionHighlightTests: XCTestCase {
         XCTAssertEqual(slice(text, spans[0]), "confusable")
     }
 
+    func testConsideredEditAtExactThresholdSurfaces() {
+        // The condition is `<=`, so a margin exactly AT the threshold is a
+        // reachable, must-surface boundary case (RoboRev finding).
+        let text = "the confusable word"
+        let considered = EditRecord(
+            stage: .dictionary, original: "confusable", replacement: "confusable",
+            applied: false, gateDecision: "accept",
+            gateMargin: LocalConcordConstants.consideredBorderlineMargin,
+            wordRange: 1..<2, reason: "acoustic-validate considered")
+        let spans = CorrectionHighlight.spans(in: text, edits: [considered])
+        XCTAssertEqual(spans.count, 1)
+        XCTAssertTrue(spans[0].isValidateConsidered)
+    }
+
     func testConsideredEditAboveThresholdDoesNotSurface() {
         // A confident accept (large margin) is NOT borderline — must NOT surface,
         // even though it shares the "considered" reason string.

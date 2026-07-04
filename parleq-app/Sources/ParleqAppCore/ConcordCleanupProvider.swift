@@ -128,11 +128,7 @@ public final class ConcordCleanupProvider: LLMProvider, @unchecked Sendable {
     /// margin fails SAFE (never admitted) via the `?? .infinity` fallback.
     public func appliedEditsForOverlay() -> [EditRecord] {
         lock.lock(); defer { lock.unlock() }
-        return lastEdits.filter {
-            $0.applied
-                || ($0.reason == "acoustic-validate considered"
-                    && ($0.gateMargin ?? .infinity) <= LocalConcordConstants.consideredBorderlineMargin)
-        }
+        return lastEdits.filter { $0.applied || LocalConcordConstants.isBorderlineConsidered($0) }
     }
 
     // Per-utterance call context: the BARE ASR transcript (framing-independent)

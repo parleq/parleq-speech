@@ -83,6 +83,17 @@ enum LocalConcordConstants {
     /// maintainer's real dictation via `VoiceprintSelfTestHarness`. Do not
     /// treat this as a validated threshold.
     static let consideredBorderlineMargin: Double = 0.15
+
+    /// Single shared predicate for "this considered-over-fire EditRecord is
+    /// borderline enough to surface" — used by both `CorrectionHighlight
+    /// .spans(in:edits:)` and `ConcordCleanupProvider.appliedEditsForOverlay`
+    /// so the two admission checks can't drift out of sync. A missing
+    /// `gateMargin` fails SAFE (never surfaces) via the `?? .infinity`
+    /// fallback.
+    static func isBorderlineConsidered(_ edit: EditRecord) -> Bool {
+        edit.reason == "acoustic-validate considered"
+            && (edit.gateMargin ?? .infinity) <= consideredBorderlineMargin
+    }
 }
 
 enum CorrectionHighlight {
@@ -117,8 +128,7 @@ enum CorrectionHighlight {
         let applied = edits
             .filter {
                 ($0.applied && !$0.replacement.isEmpty)
-                    || ($0.reason == "acoustic-validate considered"
-                        && ($0.gateMargin ?? .infinity) <= LocalConcordConstants.consideredBorderlineMargin)
+                    || LocalConcordConstants.isBorderlineConsidered($0)
             }
             .enumerated()
             .sorted { lhs, rhs in
