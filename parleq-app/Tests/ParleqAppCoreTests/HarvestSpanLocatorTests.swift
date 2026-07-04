@@ -104,72 +104,59 @@ final class HarvestSpanLocatorTests: XCTestCase {
         XCTAssertEqual(ordinal, 1)
     }
 
-    // MARK: - Trigger (b): rawOrdinalForEdit
-
-    func test_edit_no_substitution_spans_ordinal_zero() {
-        // Before: "ask Claude about the cloud" — "Claude" (word 1) was ASR-emitted
-        // verbatim (no substitution spans). Its raw-emitted ordinal is 0.
-        let before = "ask Claude about the cloud"
-        let ordinal = HarvestSpanLocator.rawOrdinalForEdit(
-            beforeText: before, wordIndex: 1, term: "Claude",
-            substitutionSpanStarts: [], substitutionSpanTotal: 0,
-            groupMatchCount: 1)
-        XCTAssertEqual(ordinal, 0)
-    }
-
-    func test_edit_substitution_span_before_decrements_ordinal() {
-        // Before: "Claude says ask Claude now" — word 0 is a substitution span
-        // (cloud → Claude, NOT ASR-emitted); word 3 is the emitted term the user
-        // edits. Raw groups contain "Claude" once ⇒ ordinal 0.
-        let before = "Claude says ask Claude now"
-        let ordinal = HarvestSpanLocator.rawOrdinalForEdit(
-            beforeText: before, wordIndex: 3, term: "Claude",
-            substitutionSpanStarts: [before.startIndex], substitutionSpanTotal: 1,
-            groupMatchCount: 1)
-        XCTAssertEqual(ordinal, 0)
-    }
-
-    func test_edit_wordIndex_inside_substitution_span_returns_nil() {
-        // The edited occurrence IS a substitution span — its audio is the heard
-        // confusable, not the emitted term. Trigger (a) covers it via undo.
-        let before = "Claude says hello"
-        let ordinal = HarvestSpanLocator.rawOrdinalForEdit(
-            beforeText: before, wordIndex: 0, term: "Claude",
-            substitutionSpanStarts: [before.startIndex], substitutionSpanTotal: 1,
-            groupMatchCount: 0)
-        XCTAssertNil(ordinal)
-    }
-
-    func test_edit_guard_mismatch_returns_nil() {
-        let before = "ask Claude about the cloud"
-        let ordinal = HarvestSpanLocator.rawOrdinalForEdit(
-            beforeText: before, wordIndex: 1, term: "Claude",
-            substitutionSpanStarts: [], substitutionSpanTotal: 0,
-            groupMatchCount: 2)   // raw groups disagree (expected 1)
-        XCTAssertNil(ordinal, "count mismatch ⇒ skip harvest (zero-junk)")
-    }
-
-    func test_edit_word_not_matching_term_returns_nil() {
-        let before = "ask Claude about the cloud"
-        let ordinal = HarvestSpanLocator.rawOrdinalForEdit(
-            beforeText: before, wordIndex: 0, term: "Claude",   // word 0 is "ask"
-            substitutionSpanStarts: [], substitutionSpanTotal: 0,
-            groupMatchCount: 1)
-        XCTAssertNil(ordinal)
-    }
-
-    func test_edit_out_of_range_wordIndex_returns_nil() {
-        let before = "ask Claude"
-        XCTAssertNil(HarvestSpanLocator.rawOrdinalForEdit(
-            beforeText: before, wordIndex: 9, term: "Claude",
-            substitutionSpanStarts: [], substitutionSpanTotal: 0, groupMatchCount: 1))
-    }
-
-    // MARK: - locate()
+    // MARK: - Trigger (b): editedGroup (position-based)
 
     private func group(_ text: String, _ start: Double, _ end: Double) -> HarvestSpanLocator.GroupSpan {
         HarvestSpanLocator.GroupSpan(text: text, startSeconds: start, endSeconds: end)
     }
+
+    func test_edit_locates_group_by_position_even_when_text_was_rescored() {
+        // THE BUG REPRO. LocalASR CTC vocab-rescore rewrote the TEXT (cloud→Claude)
+        // but the raw token timings keep the acoustically-heard "cloud". The cleaned
+        // before-text has "Claude" at word 1; the raw groups have "cloud" at index 1.
+        // Locating BY POSITION must return the heard-"cloud" span (the audio the user
+        // actually spoke) — text-matching "Claude" against the raw groups finds
+        // nothing, which is exactly the failure this fix corrects.
+        let groups = [group("the", 0.0, 0.1), group("cloud", 0.1, 0.5),
+                      group("provider", 0.5, 0.9), group("bills", 0.9, 1.1),
+                      group("monthly", 1.1, 1.5)]
+        let before = "The Claude provider bills monthly"
+        XCTAssertEqual(
+            HarvestSpanLocator.editedGroup(groups: groups, beforeText: before, wordIndex: 1),
+            groups[1],
+            "must pool the heard 'cloud' span by position, not text-match 'Claude'")
+    }
+
+    func test_edit_literal_token_emit_also_located_by_position() {
+        // The ASR literally emitted the term in TOKENS (timings carry "Claude").
+        // Position-based location still returns the right span — the audio the user
+        // is correcting — with no special-casing.
+        let groups = [group("ask", 0.0, 0.2), group("Claude", 0.2, 0.6),
+                      group("please", 0.6, 0.9)]
+        let before = "ask Claude please"
+        XCTAssertEqual(
+            HarvestSpanLocator.editedGroup(groups: groups, beforeText: before, wordIndex: 1),
+            groups[1])
+    }
+
+    func test_edit_position_count_mismatch_returns_nil() {
+        // A count-changing stage (rescore merge "e to e"→"e2e", or Concord
+        // dedup/compound/number) broke the 1:1 position mapping ⇒ skip (zero-junk).
+        let groups = [group("e", 0.0, 0.2), group("to", 0.2, 0.3), group("e", 0.3, 0.5)]
+        let before = "e2e rocks"   // 2 cleaned words vs 3 raw groups
+        XCTAssertNil(
+            HarvestSpanLocator.editedGroup(groups: groups, beforeText: before, wordIndex: 0),
+            "raw-group count ≠ before-word count ⇒ skip harvest (zero-junk)")
+    }
+
+    func test_edit_position_out_of_range_returns_nil() {
+        let groups = [group("the", 0.0, 0.1), group("cloud", 0.1, 0.5)]
+        let before = "the Claude"
+        XCTAssertNil(HarvestSpanLocator.editedGroup(groups: groups, beforeText: before, wordIndex: 5))
+        XCTAssertNil(HarvestSpanLocator.editedGroup(groups: groups, beforeText: before, wordIndex: -1))
+    }
+
+    // MARK: - locate()
 
     func test_locate_returns_kth_matching_group() {
         let groups = [group("the", 0.0, 0.1), group("cloud", 0.1, 0.5),

@@ -84,44 +84,30 @@ enum HarvestSpanLocator {
         return ordinal
     }
 
-    /// Trigger (b): the raw-EMITTED ordinal of the term at word index `wordIndex`
-    /// in `beforeText` (the pre-edit shown text).
-    /// - `substitutionSpanStarts`: `range.lowerBound` of every correction span whose
-    ///   REPLACEMENT core-matches the term — those occurrences were substituted in,
-    ///   NOT ASR-emitted, so they are subtracted. The indices MUST index into
-    ///   `beforeText` (capture spans BEFORE any post-edit remap — RoboRev-7484).
-    /// - Returns nil when `wordIndex` falls inside a substitution span (that audio
-    ///   is the heard confusable; trigger (a) covers it via undo).
+    /// Trigger (b): the raw word-group for the E-edited word at `wordIndex` (index
+    /// into the whitespace-split `beforeText`, the pre-edit shown text), located
+    /// BY POSITION.
     ///
-    /// `ordinal = coreMatchesBefore(wordIndex) − substitutionSpanStartsBefore`.
-    /// Guard: `groupMatchCount == coreMatchTotal − substitutionSpanTotal`.
-    static func rawOrdinalForEdit(beforeText: String, wordIndex: Int, term: String,
-                                  substitutionSpanStarts: [String.Index],
-                                  substitutionSpanTotal: Int,
-                                  groupMatchCount: Int) -> Int? {
-        let target = core(term)
-        guard !target.isEmpty else { return nil }
+    /// Why position, not text: the over-fire that put the term into `beforeText` may
+    /// have been a LocalASR CTC vocab-rescore that rewrote the TEXT only (cloud→Claude)
+    /// while leaving the raw token timings on the acoustically-heard confusable. So the
+    /// group at the corrected position carries the HEARD word — exactly the audio we
+    /// want as the negative — and text-matching the term against the raw groups would
+    /// find nothing. (This also handles a Concord dictionary substitution and a literal
+    /// token-level emit uniformly: every in-place stage preserves word ORDER, so the
+    /// corrected position maps straight to its group.)
+    ///
+    /// Zero-junk guard: the raw group count MUST equal the `beforeText` word count.
+    /// A count-changing stage (rescore merge like "e to e"→"e2e", or Concord
+    /// dedup/compound/number normalization) breaks the 1:1 position mapping — return
+    /// nil and let the caller skip. A skipped harvest costs a future correction; a
+    /// mislocated one poisons a template.
+    static func editedGroup(groups: [GroupSpan], beforeText: String,
+                            wordIndex: Int) -> GroupSpan? {
         let words = wordsWithRanges(beforeText)
-        guard wordIndex >= 0, wordIndex < words.count else { return nil }
-        let edited = words[wordIndex]
-        guard core(edited.word) == target else { return nil }
-        // The edited occurrence must not itself be a substituted-in span.
-        if substitutionSpanStarts.contains(where: {
-            $0 >= edited.range.lowerBound && $0 < edited.range.upperBound
-        }) {
-            return nil
-        }
-        var coreBefore = 0
-        var coreTotal = 0
-        for (i, w) in words.enumerated() where core(w.word) == target {
-            coreTotal += 1
-            if i < wordIndex { coreBefore += 1 }
-        }
-        let subsBefore = substitutionSpanStarts.filter { $0 < edited.range.lowerBound }.count
-        guard groupMatchCount == coreTotal - substitutionSpanTotal else { return nil }
-        let ordinal = coreBefore - subsBefore
-        guard ordinal >= 0, ordinal < groupMatchCount else { return nil }
-        return ordinal
+        guard groups.count == words.count else { return nil }
+        guard wordIndex >= 0, wordIndex < groups.count else { return nil }
+        return groups[wordIndex]
     }
 
     /// The k-th (0-based `rawOrdinal`) group whose text core-matches `word`;
