@@ -1,11 +1,7 @@
-Parleq 0.40.0
+Parleq 0.41.0
 
-Per-app cleanup, a clearer cleanup model, and more on-device corrections.
+Voiceprints that learn from your corrections.
 
-Parleq now tailors how much cleanup each app gets: terminals, code editors, and spreadsheets default to fast on-device tidy-up with no rewriting, while chat and email get fuller polished cleanup — and you can override any app or suggest a per-app tone.
+If you've enrolled a voiceprint for a name or term and it occasionally fires on a similar-sounding everyday word, Parleq now learns from your fix. Correct it once — by undoing the correction or editing the word back by hand — and Parleq refines that term's voiceprint from the corrected word's sound, so the same mistake stops recurring. No re-enrollment needed.
 
-Settings are clearer, too. Cleanup and Refinement are each a simple choice — Raw, Instant (on-device), or Polished (cloud or on-device model) — sharing one Polished-provider picker. That makes setups like "keep everyday cleanup fast and on-device, but use the cloud when I give a follow-up command" easy to configure, and switching between them no longer needs a restart when the engine is already running.
-
-On-device ("Lightweight") cleanup gained two more corrections: a/an agreement ("a issue" → "an issue", "a API" → "an API") and collapsing accidental doubled words ("the the"), alongside the existing to/two/too homophone fix — all fully on-device, no rewriting.
-
-Also: Dictionary and Presets are now top-level, Usage folds into Stats, and a rare tail-drop that could lose the last word or two of a dictation is fixed.
+It's fully on-device and private: only an encrypted voice embedding is stored (never audio), it never leaves your Mac, and it's deleted along with the voiceprint. The feature is on by default for enrolled terms, with a "Refine voiceprints from corrections" switch in Settings → Dictionary, and undoing a wrong refinement backs it out automatically.
