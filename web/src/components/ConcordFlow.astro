@@ -9,8 +9,7 @@ const { uid = 'cf' } = Astro.props;
 // converging LOOSELY across the engine's left edge (spread), with a gentle S-wave.
 // Two-angle S-curve: the line leaves the box at a LOW angle (cp1 horizontal at the
 // box), bends SHARPLY through the middle, then runs nearly PARALLEL into the card
-// (cp2 horizontal at the card) — not one smooth arc. Glow comes from the lines' own
-// bloom (bright + bunched near the card), not a background gradient.
+// (cp2 horizontal at the card) — not one smooth arc.
 // 18 lines, NON-UNIFORM convergence: tight/overlapping near the center, wider at the edges.
 // inY = origin at the box; endY = where each line meets the engine (hand-tuned, non-uniform).
 const inY  = [74, 86, 99, 112, 125, 138, 150, 162, 174, 186, 198, 210, 222, 235, 248, 261, 274, 287];
@@ -24,94 +23,140 @@ const rightPaths = inY.map((y, i) => `M332 ${endY[i]} C 362 ${endY[i]}, 378 ${y}
 const amberIdx = new Set([7, 8, 9, 10]);
 const fadeIdx = new Set([0, 17]);          // outermost lines fade out before reaching the box
 const weights = [0.7, 0.95, 0.8, 1.1, 0.85, 1.2, 1.0, 1.25, 1.3, 1.9, 1.25, 1.1, 0.85, 1.2, 0.75, 1.0, 0.7, 0.9];
-const glowAt: Record<number, number> = { 3: 0.5, 6: 0.6, 7: 0.8, 8: 0.7, 9: 1, 10: 0.85, 13: 0.5 };
+// Tip-glow strength per line — broader + hotter than the old confined set so the
+// convergence reads as an accumulating light source, not a decoration.
+const glowAt: Record<number, number> = { 2: 0.4, 3: 0.55, 5: 0.5, 6: 0.65, 7: 0.85, 8: 0.8, 9: 1, 10: 0.9, 11: 0.6, 13: 0.55, 15: 0.4 };
+// Bloom "energy" pass: which lines carry the wide multi-scale bloom near the card.
+const bloomIdx = new Set([3, 5, 6, 7, 8, 9, 10, 11, 13, 15]);
 ---
 
 <svg class="concord-flow absolute inset-0 z-0 h-full w-full" viewBox="0 0 560 360" preserveAspectRatio="none" aria-hidden="true" data-concord-flow={uid}>
   <defs>
-    <!-- SHARP line gradients: visible-but-dim along the length, saturated near Concord -->
-    <!-- The LINE itself color-shifts amber/lavender → white-hot at the tip. No blur on
-         these, so the color change has NO halo around it — just the line changing color. -->
+    <!-- SHARP line gradients: visible-but-dim along the length, saturating EARLY (from
+         ~40%) so the hot zone reads as a third of the run, like the prototype — not a
+         12px tip. The LINE itself color-shifts amber/lavender → white-hot at the tip. -->
     <linearGradient id={`${uid}-gAmber`} x1="0" y1="0" x2="1" y2="0">
       <stop offset="0%" stop-color="var(--flow-voice)" stop-opacity="0.5"></stop>
-      <stop offset="48%" stop-color="#e8830a" stop-opacity="0.62"></stop>
-      <stop offset="80%" stop-color="#ff9f33" stop-opacity="0.95"></stop>
-      <stop offset="93%" stop-color="#ffd590" stop-opacity="1"></stop>
+      <stop offset="40%" stop-color="#e8830a" stop-opacity="0.68"></stop>
+      <stop offset="68%" stop-color="#ff9f33" stop-opacity="0.95"></stop>
+      <stop offset="88%" stop-color="#ffd590" stop-opacity="1"></stop>
       <stop offset="100%" stop-color="#ffffff" stop-opacity="1"></stop>
     </linearGradient>
     <!-- neon violet (brighter/more saturated than the muted grape used elsewhere) → white tip -->
     <linearGradient id={`${uid}-gLav`} x1="0" y1="0" x2="1" y2="0">
       <stop offset="0%" stop-color="#7c3aed" stop-opacity="0.55"></stop>
-      <stop offset="48%" stop-color="#9d5cf5" stop-opacity="0.68"></stop>
-      <stop offset="80%" stop-color="#c18bff" stop-opacity="0.95"></stop>
-      <stop offset="93%" stop-color="#e8d6ff" stop-opacity="1"></stop>
+      <stop offset="40%" stop-color="#9d5cf5" stop-opacity="0.72"></stop>
+      <stop offset="68%" stop-color="#c18bff" stop-opacity="0.95"></stop>
+      <stop offset="88%" stop-color="#e8d6ff" stop-opacity="1"></stop>
       <stop offset="100%" stop-color="#ffffff" stop-opacity="1"></stop>
     </linearGradient>
     <linearGradient id={`${uid}-gOutA`} x1="0" y1="0" x2="1" y2="0">
       <stop offset="0%" stop-color="#ffffff" stop-opacity="1"></stop>
-      <stop offset="7%" stop-color="#ffd590" stop-opacity="1"></stop>
-      <stop offset="20%" stop-color="#ff9f33" stop-opacity="0.95"></stop>
-      <stop offset="52%" stop-color="#e8830a" stop-opacity="0.62"></stop>
+      <stop offset="12%" stop-color="#ffd590" stop-opacity="1"></stop>
+      <stop offset="32%" stop-color="#ff9f33" stop-opacity="0.95"></stop>
+      <stop offset="60%" stop-color="#e8830a" stop-opacity="0.68"></stop>
       <stop offset="100%" stop-color="var(--flow-voice)" stop-opacity="0.5"></stop>
     </linearGradient>
     <linearGradient id={`${uid}-gOutL`} x1="0" y1="0" x2="1" y2="0">
       <stop offset="0%" stop-color="#ffffff" stop-opacity="1"></stop>
-      <stop offset="7%" stop-color="#e8d6ff" stop-opacity="1"></stop>
-      <stop offset="20%" stop-color="#c18bff" stop-opacity="0.95"></stop>
-      <stop offset="52%" stop-color="#9d5cf5" stop-opacity="0.68"></stop>
+      <stop offset="12%" stop-color="#e8d6ff" stop-opacity="1"></stop>
+      <stop offset="32%" stop-color="#c18bff" stop-opacity="0.95"></stop>
+      <stop offset="60%" stop-color="#9d5cf5" stop-opacity="0.72"></stop>
       <stop offset="100%" stop-color="#7c3aed" stop-opacity="0.55"></stop>
     </linearGradient>
-    <!-- GLOW underlay gradients: warm/fiery, SATURATED, transparent until near Concord.
-         One warm hue for all glow lines + screen blending → converging glows ADD to a
-         hot orange core instead of graying out. -->
-    <!-- Confined glow: transparent until ~85% (≈ last 12px before the box), then a small
-         white-hot bloom RIGHT at the box only — for the few main lines. -->
+    <!-- GLOW gradients: warm/fiery, SATURATED, ramping over the last ~35% (the
+         prototype's hot zone is a third of the run, not a tip highlight). -->
     <linearGradient id={`${uid}-gGlowWarm`} x1="0" y1="0" x2="1" y2="0">
       <stop offset="0%" stop-color="#ff9f33" stop-opacity="0"></stop>
-      <stop offset="85%" stop-color="#ff9f33" stop-opacity="0"></stop>
-      <stop offset="94%" stop-color="#ffe0a8" stop-opacity="0.8"></stop>
+      <stop offset="62%" stop-color="#ff9f33" stop-opacity="0"></stop>
+      <stop offset="82%" stop-color="#ff9330" stop-opacity="0.55"></stop>
+      <stop offset="94%" stop-color="#ffe0a8" stop-opacity="0.9"></stop>
       <stop offset="100%" stop-color="#ffffff" stop-opacity="1"></stop>
     </linearGradient>
     <linearGradient id={`${uid}-gGlowWarmOut`} x1="0" y1="0" x2="1" y2="0">
       <stop offset="0%" stop-color="#ffffff" stop-opacity="1"></stop>
-      <stop offset="6%" stop-color="#ffe0a8" stop-opacity="0.8"></stop>
-      <stop offset="15%" stop-color="#ff9f33" stop-opacity="0"></stop>
+      <stop offset="6%" stop-color="#ffe0a8" stop-opacity="0.9"></stop>
+      <stop offset="18%" stop-color="#ff9330" stop-opacity="0.55"></stop>
+      <stop offset="38%" stop-color="#ff9f33" stop-opacity="0"></stop>
       <stop offset="100%" stop-color="#ff9f33" stop-opacity="0"></stop>
     </linearGradient>
     <!-- fade variants: transparent at the box, so these lines fade IN after the box edge -->
     <linearGradient id={`${uid}-gLavFade`} x1="0" y1="0" x2="1" y2="0">
       <stop offset="0%" stop-color="#7c3aed" stop-opacity="0"></stop>
       <stop offset="26%" stop-color="#9d5cf5" stop-opacity="0.5"></stop>
-      <stop offset="80%" stop-color="#c18bff" stop-opacity="0.92"></stop>
-      <stop offset="93%" stop-color="#e8d6ff" stop-opacity="1"></stop>
+      <stop offset="72%" stop-color="#c18bff" stop-opacity="0.92"></stop>
+      <stop offset="90%" stop-color="#e8d6ff" stop-opacity="1"></stop>
       <stop offset="100%" stop-color="#ffffff" stop-opacity="1"></stop>
     </linearGradient>
     <linearGradient id={`${uid}-gOutLFade`} x1="0" y1="0" x2="1" y2="0">
       <stop offset="0%" stop-color="#ffffff" stop-opacity="1"></stop>
-      <stop offset="7%" stop-color="#e8d6ff" stop-opacity="1"></stop>
-      <stop offset="20%" stop-color="#c18bff" stop-opacity="0.92"></stop>
+      <stop offset="10%" stop-color="#e8d6ff" stop-opacity="1"></stop>
+      <stop offset="28%" stop-color="#c18bff" stop-opacity="0.92"></stop>
       <stop offset="74%" stop-color="#9d5cf5" stop-opacity="0.5"></stop>
       <stop offset="100%" stop-color="#7c3aed" stop-opacity="0"></stop>
     </linearGradient>
-    <!-- neon-violet confined glow for the purple lines -->
+    <!-- neon-violet glow for the purple lines, same widened ramp -->
     <linearGradient id={`${uid}-gGlowViolet`} x1="0" y1="0" x2="1" y2="0">
       <stop offset="0%" stop-color="#a64dff" stop-opacity="0"></stop>
-      <stop offset="85%" stop-color="#a64dff" stop-opacity="0"></stop>
-      <stop offset="94%" stop-color="#dcbcff" stop-opacity="0.8"></stop>
+      <stop offset="62%" stop-color="#a64dff" stop-opacity="0"></stop>
+      <stop offset="82%" stop-color="#b36bff" stop-opacity="0.5"></stop>
+      <stop offset="94%" stop-color="#dcbcff" stop-opacity="0.9"></stop>
       <stop offset="100%" stop-color="#ffffff" stop-opacity="1"></stop>
     </linearGradient>
     <linearGradient id={`${uid}-gGlowVioletOut`} x1="0" y1="0" x2="1" y2="0">
       <stop offset="0%" stop-color="#ffffff" stop-opacity="1"></stop>
-      <stop offset="6%" stop-color="#dcbcff" stop-opacity="0.8"></stop>
-      <stop offset="15%" stop-color="#a64dff" stop-opacity="0"></stop>
+      <stop offset="6%" stop-color="#dcbcff" stop-opacity="0.9"></stop>
+      <stop offset="18%" stop-color="#b36bff" stop-opacity="0.5"></stop>
+      <stop offset="38%" stop-color="#a64dff" stop-opacity="0"></stop>
       <stop offset="100%" stop-color="#a64dff" stop-opacity="0"></stop>
     </linearGradient>
-    <!-- small, tight bloom (only acts on the already-confined glow strokes) -->
-    <filter id={`${uid}-lineGlow`} x="-80%" y="-300%" width="260%" height="700%">
-      <feGaussianBlur stdDeviation="2.4" result="wide"></feGaussianBlur>
-      <feGaussianBlur stdDeviation="0.9" result="tight"></feGaussianBlur>
-      <feMerge><feMergeNode in="wide"></feMergeNode><feMergeNode in="tight"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge>
+    <!-- multi-scale bloom: three stacked gaussians (tight/mid/wide) merged — real light
+         bloom has long soft tails; a single small blur reads as a fuzzy line instead. -->
+    <filter id={`${uid}-bloom`} x="-60%" y="-250%" width="220%" height="600%">
+      <feGaussianBlur stdDeviation="1.6" result="b1"></feGaussianBlur>
+      <feGaussianBlur stdDeviation="6" result="b2"></feGaussianBlur>
+      <feGaussianBlur stdDeviation="14" result="b3"></feGaussianBlur>
+      <feMerge>
+        <feMergeNode in="b3"></feMergeNode>
+        <feMergeNode in="b2"></feMergeNode>
+        <feMergeNode in="b1"></feMergeNode>
+      </feMerge>
     </filter>
+    <!-- soft full-length halo for every line (the prototype's lines carry a glow their
+         whole run, not just at the tip) -->
+    <filter id={`${uid}-halo`} x="-30%" y="-120%" width="160%" height="340%">
+      <feGaussianBlur stdDeviation="2.4"></feGaussianBlur>
+    </filter>
+    <!-- anisotropic blurs for the horizontal lens streaks at the waist -->
+    <filter id={`${uid}-streakWide`} x="-60%" y="-1600%" width="220%" height="3300%">
+      <feGaussianBlur stdDeviation="16 2.6"></feGaussianBlur>
+    </filter>
+    <filter id={`${uid}-streakCore`} x="-40%" y="-900%" width="180%" height="1900%">
+      <feGaussianBlur stdDeviation="6 1.1"></feGaussianBlur>
+    </filter>
+    <!-- soft isotropic blur for the card's backlight ring -->
+    <filter id={`${uid}-cardGlow`} x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="7"></feGaussianBlur>
+    </filter>
+    <!-- volumetric field gradients: a violet haze that fills the convergence zone, a hot
+         amber core hugging the waist, and a white-hot kernel at the card edge -->
+    <radialGradient id={`${uid}-fieldViolet`}>
+      <stop offset="0%" stop-color="#b06dff" stop-opacity="0.48"></stop>
+      <stop offset="38%" stop-color="#8b46f0" stop-opacity="0.2"></stop>
+      <stop offset="70%" stop-color="#6a2ecf" stop-opacity="0.06"></stop>
+      <stop offset="100%" stop-color="#6a2ecf" stop-opacity="0"></stop>
+    </radialGradient>
+    <radialGradient id={`${uid}-fieldAmber`}>
+      <stop offset="0%" stop-color="#ffc078" stop-opacity="0.95"></stop>
+      <stop offset="30%" stop-color="#ff8c1f" stop-opacity="0.55"></stop>
+      <stop offset="62%" stop-color="#ff5a1f" stop-opacity="0.18"></stop>
+      <stop offset="100%" stop-color="#ff5a1f" stop-opacity="0"></stop>
+    </radialGradient>
+    <radialGradient id={`${uid}-fieldWhite`}>
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="1"></stop>
+      <stop offset="40%" stop-color="#ffe4b8" stop-opacity="0.65"></stop>
+      <stop offset="100%" stop-color="#ffd9a0" stop-opacity="0"></stop>
+    </radialGradient>
     <!-- soft radial glows for the on-line accent dots (white-hot core → line hue → transparent) -->
     <radialGradient id={`${uid}-dotWarm`}>
       <stop offset="0%" stop-color="#fff3df" stop-opacity="1"></stop>
@@ -124,18 +169,95 @@ const glowAt: Record<number, number> = { 3: 0.5, 6: 0.6, 7: 0.8, 8: 0.7, 9: 1, 1
       <stop offset="100%" stop-color="#a64dff" stop-opacity="0"></stop>
     </radialGradient>
   </defs>
-  <!-- Confined glow: a NON-UNIFORM subset of lines, last ~12px at the box, varied strength, screen-blended -->
-  <g fill="none" filter={`url(#${uid}-lineGlow)`} stroke-linecap="round" style="mix-blend-mode: screen;">
-    {leftPaths.map((d, i) => (glowAt[i] ? <path d={d} stroke={amberIdx.has(i) ? `url(#${uid}-gGlowWarm)` : `url(#${uid}-gGlowViolet)`} stroke-width="3" opacity={glowAt[i]}></path> : null))}
-    {rightPaths.map((d, i) => (glowAt[i] ? <path d={d} stroke={amberIdx.has(i) ? `url(#${uid}-gGlowWarmOut)` : `url(#${uid}-gGlowVioletOut)`} stroke-width="3" opacity={glowAt[i]}></path> : null))}
+
+  <!-- 1) VOLUMETRIC FIELD (bottom): the prototype's glow is mostly a filled light field
+       between the lines, not per-stroke decoration. Ellipses hug each card edge; additive
+       blending lets the amber core burn through the violet haze. -->
+  <g class="cf-add">
+    <ellipse cx="280" cy="180" rx="88" ry="122" fill={`url(#${uid}-fieldViolet)`} opacity="0.5"></ellipse>
+    <ellipse cx="220" cy="181" rx="78" ry="98" fill={`url(#${uid}-fieldViolet)`} opacity="0.85"></ellipse>
+    <ellipse cx="340" cy="181" rx="78" ry="98" fill={`url(#${uid}-fieldViolet)`} opacity="0.85"></ellipse>
+    <ellipse cx="206" cy="181" rx="100" ry="21" fill={`url(#${uid}-fieldAmber)`}></ellipse>
+    <ellipse cx="354" cy="181" rx="100" ry="21" fill={`url(#${uid}-fieldAmber)`}></ellipse>
+    <ellipse cx="227" cy="181" rx="17" ry="46" fill={`url(#${uid}-fieldAmber)`} opacity="0.85"></ellipse>
+    <ellipse cx="333" cy="181" rx="17" ry="46" fill={`url(#${uid}-fieldAmber)`} opacity="0.85"></ellipse>
+    <ellipse cx="224" cy="181" rx="40" ry="11" fill={`url(#${uid}-fieldWhite)`}></ellipse>
+    <ellipse cx="336" cy="181" rx="40" ry="11" fill={`url(#${uid}-fieldWhite)`}></ellipse>
+    <ellipse cx="227" cy="181" rx="15" ry="5.5" fill={`url(#${uid}-fieldWhite)`}></ellipse>
+    <ellipse cx="333" cy="181" rx="15" ry="5.5" fill={`url(#${uid}-fieldWhite)`}></ellipse>
   </g>
-  <!-- SHARP crisp lines on top (NO blur): orange-center / violet-outer, varied weights, some fade before the box -->
+
+  <!-- CARD BACKLIGHT: the prototype's Concord card is hard-backlit — a bright lavender
+       ring hugging the card footprint, blurred into a halo. Sits under the HTML card
+       (z-[3]) so only the spill past its edges is visible. -->
+  <g class="cf-add" fill="none">
+    <rect x="222" y="94" width="116" height="174" rx="20" stroke="#b78aff" stroke-width="9" opacity="0.5" filter={`url(#${uid}-cardGlow)`}></rect>
+    <rect x="223" y="95" width="114" height="172" rx="19" stroke="#e6d4ff" stroke-width="3" opacity="0.45" filter={`url(#${uid}-cardGlow)`}></rect>
+  </g>
+
+  <!-- SPARKLE SPECKS: static bokeh dust around the flare (the prototype's field is
+       littered with tiny hot points). Same radial fills as the accent dots. -->
+  <g class="cf-screen">
+    <circle cx="196" cy="168" r="1.6" fill={`url(#${uid}-dotWarm)`} opacity="0.9"></circle>
+    <circle cx="176" cy="188" r="1.1" fill={`url(#${uid}-dotWarm)`} opacity="0.8"></circle>
+    <circle cx="209" cy="196" r="1.3" fill={`url(#${uid}-dotWarm)`} opacity="0.85"></circle>
+    <circle cx="158" cy="172" r="0.9" fill={`url(#${uid}-dotViolet)`} opacity="0.8"></circle>
+    <circle cx="188" cy="148" r="1.0" fill={`url(#${uid}-dotViolet)`} opacity="0.75"></circle>
+    <circle cx="215" cy="158" r="1.8" fill={`url(#${uid}-dotWarm)`} opacity="0.95"></circle>
+    <circle cx="204" cy="214" r="1.0" fill={`url(#${uid}-dotViolet)`} opacity="0.7"></circle>
+    <circle cx="352" cy="170" r="1.5" fill={`url(#${uid}-dotWarm)`} opacity="0.9"></circle>
+    <circle cx="371" cy="190" r="1.2" fill={`url(#${uid}-dotWarm)`} opacity="0.85"></circle>
+    <circle cx="388" cy="166" r="0.9" fill={`url(#${uid}-dotViolet)`} opacity="0.8"></circle>
+    <circle cx="345" cy="200" r="1.7" fill={`url(#${uid}-dotWarm)`} opacity="0.9"></circle>
+    <circle cx="402" cy="196" r="1.0" fill={`url(#${uid}-dotViolet)`} opacity="0.7"></circle>
+    <circle cx="362" cy="148" r="1.1" fill={`url(#${uid}-dotViolet)`} opacity="0.75"></circle>
+  </g>
+
+  <!-- 2) BLOOM ENERGY PASS: thick saturated copies of the hot zone, multi-scale blurred,
+       additive — converging strokes genuinely ADD to white the way overexposed light does. -->
+  <g class="cf-add" fill="none" filter={`url(#${uid}-bloom)`} stroke-linecap="round">
+    {leftPaths.map((d, i) => (bloomIdx.has(i) ? <path d={d} stroke={amberIdx.has(i) ? `url(#${uid}-gGlowWarm)` : `url(#${uid}-gGlowViolet)`} stroke-width={amberIdx.has(i) ? 3.2 : 2.4} opacity={glowAt[i] ?? 0.5}></path> : null))}
+    {rightPaths.map((d, i) => (bloomIdx.has(i) ? <path d={d} stroke={amberIdx.has(i) ? `url(#${uid}-gGlowWarmOut)` : `url(#${uid}-gGlowVioletOut)`} stroke-width={amberIdx.has(i) ? 3.2 : 2.4} opacity={glowAt[i] ?? 0.5}></path> : null))}
+  </g>
+
+  <!-- 3) FULL-LENGTH HALO: a soft blurred copy of every line so each carries a glow along
+       its whole run (visible in the prototype even far from the card). -->
+  <g class="cf-screen" fill="none" filter={`url(#${uid}-halo)`} stroke-linecap="round" opacity="0.6">
+    {leftPaths.map((d, i) => <path d={d} stroke={fadeIdx.has(i) ? `url(#${uid}-gLavFade)` : amberIdx.has(i) ? `url(#${uid}-gAmber)` : `url(#${uid}-gLav)`} stroke-width={weights[i] * 2.4}></path>)}
+    {rightPaths.map((d, i) => <path d={d} stroke={fadeIdx.has(i) ? `url(#${uid}-gOutLFade)` : amberIdx.has(i) ? `url(#${uid}-gOutA)` : `url(#${uid}-gOutL)`} stroke-width={weights[i] * 2.4}></path>)}
+  </g>
+
+  <!-- 4) SHARP crisp lines on top (NO blur): orange-center / violet-outer, varied weights,
+       some fade before the box -->
   <g fill="none" stroke-linecap="round">
     {leftPaths.map((d, i) => <path id={`${uid}-fl-${i}`} d={d} stroke={fadeIdx.has(i) ? `url(#${uid}-gLavFade)` : amberIdx.has(i) ? `url(#${uid}-gAmber)` : `url(#${uid}-gLav)`} stroke-width={weights[i]} opacity={amberIdx.has(i) ? 0.95 : 0.82}></path>)}
     {rightPaths.map((d, i) => <path id={`${uid}-fr-${i}`} d={d} stroke={fadeIdx.has(i) ? `url(#${uid}-gOutLFade)` : amberIdx.has(i) ? `url(#${uid}-gOutA)` : `url(#${uid}-gOutL)`} stroke-width={weights[i]} opacity={amberIdx.has(i) ? 0.95 : 0.82}></path>)}
   </g>
+
+  <!-- 5) LENS STREAKS (top): the white-hot horizontal flare hugging the card edge at the
+       waist — the "hot" signature of the prototype. Wide amber tail + tight white core,
+       plus a dimmer secondary streak for asymmetry. -->
+  <g class="cf-add" fill="none" stroke-linecap="round">
+    <path d="M118 181 H 231" stroke="#ff5a1f" stroke-width="8" filter={`url(#${uid}-streakWide)`} opacity="0.35"></path>
+    <path d="M329 181 H 442" stroke="#ff5a1f" stroke-width="8" filter={`url(#${uid}-streakWide)`} opacity="0.35"></path>
+    <path d="M138 181 H 231" stroke="#ffa63e" stroke-width="6" filter={`url(#${uid}-streakWide)`} opacity="1"></path>
+    <path d="M168 181 H 231" stroke="#ffffff" stroke-width="3" filter={`url(#${uid}-streakCore)`} opacity="1"></path>
+    <path d="M329 181 H 422" stroke="#ffa63e" stroke-width="6" filter={`url(#${uid}-streakWide)`} opacity="1"></path>
+    <path d="M329 181 H 392" stroke="#ffffff" stroke-width="3" filter={`url(#${uid}-streakCore)`} opacity="1"></path>
+    <path d="M176 192 H 230" stroke="#ff9f33" stroke-width="2.6" filter={`url(#${uid}-streakWide)`} opacity="0.4"></path>
+    <path d="M330 170 H 384" stroke="#ff9f33" stroke-width="2.6" filter={`url(#${uid}-streakWide)`} opacity="0.4"></path>
+  </g>
   <!-- (on-line accent dots are added by the script so they sit exactly on the curves) -->
 </svg>
+
+<style>
+  /* True additive light accumulation where supported (Chrome/Safari); screen elsewhere
+     (Firefox lacks plus-lighter) — degrades to "bright" instead of "hot", never to broken. */
+  .cf-add, .cf-screen { mix-blend-mode: screen; }
+  @supports (mix-blend-mode: plus-lighter) {
+    .cf-add { mix-blend-mode: plus-lighter; }
+  }
+</style>
 
 <script>
   (() => {
@@ -155,12 +277,18 @@ const glowAt: Record<number, number> = { 3: 0.5, 6: 0.6, 7: 0.8, 8: 0.7, 9: 1, 1
 
       // STATIC on-line accents — soft radial glows the SAME hue as the line, brightened, so they read
       // as the line locally glowing (not a superimposed dot). t=0 is the box on the left / engine on
-      // the right. A couple sit at the box edge (terminators); the rest are mid-line.
+      // the right. The amber lines carry ember beads at intervals like the prototype.
       const accents = [
-        { id: `${uid}-fl-8`, t: 0,    kind: 'warm',   r: 3.5 },  // box terminator (orange line) — smaller
+        { id: `${uid}-fl-8`, t: 0,    kind: 'warm',   r: 3.5 },  // box terminator (orange line)
+        { id: `${uid}-fl-9`, t: 0.34, kind: 'warm',   r: 2.8 },  // ember beads along the hero amber line
+        { id: `${uid}-fl-9`, t: 0.62, kind: 'warm',   r: 3.6 },
+        { id: `${uid}-fl-9`, t: 0.84, kind: 'warm',   r: 4.4 },
+        { id: `${uid}-fl-7`, t: 0.55, kind: 'warm',   r: 2.4 },
         { id: `${uid}-fl-3`, t: 0.52, kind: 'violet', r: 3.2 },  // mid-line violet
         { id: `${uid}-fl-13`, t: 0.58, kind: 'violet', r: 2.6 }, // mid-line violet
-        { id: `${uid}-fr-9`, t: 0.5,  kind: 'warm',   r: 2.6 },  // mid-line orange — smaller
+        { id: `${uid}-fr-9`, t: 0.2,  kind: 'warm',   r: 4.2 },  // mirrored embers, hottest near the card
+        { id: `${uid}-fr-9`, t: 0.48, kind: 'warm',   r: 3.2 },
+        { id: `${uid}-fr-10`, t: 0.66, kind: 'warm',  r: 2.6 },
         { id: `${uid}-fr-4`, t: 0.55, kind: 'violet', r: 2.8 },  // mid-line violet
       ];
       const aGroup = document.createElementNS(NS, 'g');
