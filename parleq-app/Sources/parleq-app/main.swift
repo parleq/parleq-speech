@@ -1524,8 +1524,14 @@ struct ParleqApp {
                                 perAppNoticeSeen: UserDefaults.standard.bool(forKey: PerAppModesNotice.seenKey),
                                 hasEnrolledVoiceprints: !coordinator.enrolledTermIDs.isEmpty) {
                             case .show:
-                                UserDefaults.standard.set(true, forKey: HarvestRefinementNotice.seenKey)
-                                DispatchQueue.main.async { HarvestRefinementNotice.show() }
+                                // Set the seen flag only AFTER the user dismisses the
+                                // alert (match PerAppModesNotice): onReadyChanged can
+                                // fire seconds into the session, so a quit during the
+                                // load→show window must not silently consume the notice.
+                                DispatchQueue.main.async {
+                                    HarvestRefinementNotice.show()
+                                    UserDefaults.standard.set(true, forKey: HarvestRefinementNotice.seenKey)
+                                }
                             case .markSeenSilently:
                                 UserDefaults.standard.set(true, forKey: HarvestRefinementNotice.seenKey)
                             case .wait:
