@@ -1963,6 +1963,10 @@ public final class AppState {
         guard phase == .awaitingAccept, overlay.model.editing else { return }
         let edited = overlay.model.editableText
         overlay.model.editing = false
+        // RoboRev (7609): discardEdit and the session-reset block both clear
+        // this; commit must too, or a ⌥+N -> edit -> ⌘S save leaves the prior
+        // considered span's word range stale for the next (plain-E) edit.
+        overlay.model.editFocusWordRange = nil
         if edited != editPreEditText {
             currentText = edited
             overlay.model.text = edited
