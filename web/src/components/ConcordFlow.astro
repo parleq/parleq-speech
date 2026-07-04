@@ -416,9 +416,23 @@ const glints: [number, number, number, number][] = [
         aGroup.appendChild(c);
       }
 
+      const toggle = document.querySelector<HTMLButtonElement>(`[data-flow-toggle="${uid}"]`);
+      if (reduce.matches) toggle?.setAttribute('hidden', '');
+
       if (!reduce.matches && stage) {
         let onScreen = true;
-        new IntersectionObserver((es) => { onScreen = es[0].isIntersecting; if (onScreen) start(); }, { threshold: 0.15 }).observe(stage);
+        let paused = false;
+        new IntersectionObserver((es) => { onScreen = es[0].isIntersecting; if (onScreen && !paused) start(); }, { threshold: 0.15 }).observe(stage);
+        if (toggle) {
+          const icons = toggle.querySelectorAll<SVGElement>('[data-icon]');
+          toggle.addEventListener('click', () => {
+            paused = !paused;
+            toggle.setAttribute('aria-pressed', String(paused));
+            toggle.setAttribute('aria-label', paused ? 'Play the dictation demo' : 'Pause the dictation demo');
+            icons.forEach((ic) => ic.toggleAttribute('hidden', (ic.dataset.icon === 'pause') === paused));
+            if (!paused && onScreen) start();
+          });
+        }
         const railIds = [
           `${uid}-fl-2`, `${uid}-fl-9`, `${uid}-fl-14`, `${uid}-fl-16`,
           `${uid}-fr-5`, `${uid}-fr-9`, `${uid}-fr-13`, `${uid}-fr-16`,
@@ -537,8 +551,9 @@ const glints: [number, number, number, number][] = [
         const span = (x: number, a: number, b: number) => Math.min(1, Math.max(0, (x - a) / (b - a)));
         // The cycle: reset 0-0.25 → speak 0.3-4.8 (words at speaking pace) → comet
         // 4.9-5.95 → engine ticks 5.95+ → comet 6.55-7.6 → paste FLOOD 7.6-8.15
-        // (~9x faster than the speech — that asymmetry is the message) → pop → rest.
-        const PERIOD = 11;
+        // (~9x faster than the speech — that asymmetry is the message) → pop → a long
+        // readable rest (~4.8s) so the pasted result can actually be read.
+        const PERIOD = 13.5;
 
         const glowEng = (g: number) =>
           engCard && (engCard.style.boxShadow = g < 0.04 ? engBase
@@ -557,12 +572,17 @@ const glints: [number, number, number, number][] = [
 
         let last = 0;
         let running = false;
+        // Accumulated story clock (not wall time): pausing freezes the phase exactly
+        // where it is, and play resumes from there. Also means the story starts at
+        // the beginning when the page loads, instead of at a random phase.
+        let clock = 0;
         const frame = (ts: number) => {
           const dt = last ? (ts - last) / 1000 : 0; last = ts;
-          // Stop the rAF chain while off-screen (incl. the hidden mobile hero);
-          // the IntersectionObserver restarts it when the art scrolls into view.
-          if (!onScreen) { running = false; last = 0; return; }
-          const t = (ts / 1000) % PERIOD;
+          // Stop the rAF chain while off-screen (incl. the hidden mobile hero) or
+          // paused; the observer / play button restart it.
+          if (!onScreen || paused) { running = false; last = 0; return; }
+          clock = (clock + dt) % PERIOD;
+          const t = clock;
           const sL = bump(t, 5.75, 6.2);
           const engG = bump(t, 5.8, 6.9);
           const sR = bump(t, 6.45, 6.95);
