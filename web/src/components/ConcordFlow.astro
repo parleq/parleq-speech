@@ -30,6 +30,13 @@ const weights = [0.7, 0.95, 0.8, 1.1, 0.85, 1.2, 1.0, 1.25, 1.3, 1.9, 1.25, 1.1,
 const glowAt: Record<number, number> = { 2: 0.4, 3: 0.55, 5: 0.5, 6: 0.65, 7: 0.85, 8: 0.8, 9: 1, 10: 0.9, 11: 0.6, 13: 0.55, 15: 0.4 };
 // Bloom "energy" pass: which lines carry the wide multi-scale bloom near the card.
 const bloomIdx = new Set([3, 5, 6, 7, 8, 9, 10, 11, 13, 15]);
+// Static glint dashes: short bright segments frozen mid-line (the prototype's filaments
+// vary in brightness along their run — dash+offset puts 1-2 glints on each chosen line).
+// [line idx, dash length, gap, dashoffset]
+const glints: [number, number, number, number][] = [
+  [2, 12, 150, -34], [4, 9, 130, -68], [6, 14, 118, -52], [8, 12, 96, -30],
+  [9, 16, 104, -58], [11, 10, 140, -80], [13, 12, 126, -44], [15, 9, 148, -90],
+];
 ---
 
 <svg class="concord-flow absolute inset-0 z-0 h-full w-full" viewBox="0 0 560 360" preserveAspectRatio="none" aria-hidden="true" data-concord-flow={uid}>
@@ -46,10 +53,10 @@ const bloomIdx = new Set([3, 5, 6, 7, 8, 9, 10, 11, 13, 15]);
     </linearGradient>
     <!-- neon violet (brighter/more saturated than the muted grape used elsewhere) → white tip -->
     <linearGradient id={`${uid}-gLav`} x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#7c3aed" stop-opacity="0.55"></stop>
-      <stop offset="40%" stop-color="#9d5cf5" stop-opacity="0.72"></stop>
-      <stop offset="68%" stop-color="#c18bff" stop-opacity="0.95"></stop>
-      <stop offset="88%" stop-color="#e8d6ff" stop-opacity="1"></stop>
+      <stop offset="0%" stop-color="#7c3aed" stop-opacity="0.6"></stop>
+      <stop offset="40%" stop-color="#8f46f5" stop-opacity="0.8"></stop>
+      <stop offset="68%" stop-color="#b06dff" stop-opacity="0.95"></stop>
+      <stop offset="88%" stop-color="#dcbcff" stop-opacity="1"></stop>
       <stop offset="100%" stop-color="#ffffff" stop-opacity="1"></stop>
     </linearGradient>
     <linearGradient id={`${uid}-gOutA`} x1="0" y1="0" x2="1" y2="0">
@@ -61,10 +68,10 @@ const bloomIdx = new Set([3, 5, 6, 7, 8, 9, 10, 11, 13, 15]);
     </linearGradient>
     <linearGradient id={`${uid}-gOutL`} x1="0" y1="0" x2="1" y2="0">
       <stop offset="0%" stop-color="#ffffff" stop-opacity="1"></stop>
-      <stop offset="12%" stop-color="#e8d6ff" stop-opacity="1"></stop>
-      <stop offset="32%" stop-color="#c18bff" stop-opacity="0.95"></stop>
-      <stop offset="60%" stop-color="#9d5cf5" stop-opacity="0.72"></stop>
-      <stop offset="100%" stop-color="#7c3aed" stop-opacity="0.55"></stop>
+      <stop offset="12%" stop-color="#dcbcff" stop-opacity="1"></stop>
+      <stop offset="32%" stop-color="#b06dff" stop-opacity="0.95"></stop>
+      <stop offset="60%" stop-color="#8f46f5" stop-opacity="0.8"></stop>
+      <stop offset="100%" stop-color="#7c3aed" stop-opacity="0.6"></stop>
     </linearGradient>
     <!-- GLOW gradients: warm/fiery, SATURATED, ramping over the last ~35% (the
          prototype's hot zone is a third of the run, not a tip highlight). -->
@@ -148,10 +155,18 @@ const bloomIdx = new Set([3, 5, 6, 7, 8, 9, 10, 11, 13, 15]);
     </filter>
     <!-- volumetric field gradients: a violet haze that fills the convergence zone, a hot
          amber core hugging the waist, and a white-hot kernel at the card edge -->
+    <!-- normal-blend dark pool painted FIRST: locally deepens the panel behind the art
+         (the prototype sits in a near-black nebula pocket; screen/plus-lighter layers can
+         only add light, so the floor has to be darkened before the light goes on) -->
+    <radialGradient id={`${uid}-fieldDark`}>
+      <stop offset="0%" stop-color="#100722" stop-opacity="0.5"></stop>
+      <stop offset="55%" stop-color="#100722" stop-opacity="0.32"></stop>
+      <stop offset="100%" stop-color="#100722" stop-opacity="0"></stop>
+    </radialGradient>
     <radialGradient id={`${uid}-fieldViolet`}>
-      <stop offset="0%" stop-color="#b06dff" stop-opacity="0.48"></stop>
-      <stop offset="38%" stop-color="#8b46f0" stop-opacity="0.2"></stop>
-      <stop offset="70%" stop-color="#6a2ecf" stop-opacity="0.06"></stop>
+      <stop offset="0%" stop-color="#b06dff" stop-opacity="0.38"></stop>
+      <stop offset="38%" stop-color="#8b46f0" stop-opacity="0.12"></stop>
+      <stop offset="70%" stop-color="#6a2ecf" stop-opacity="0.03"></stop>
       <stop offset="100%" stop-color="#6a2ecf" stop-opacity="0"></stop>
     </radialGradient>
     <radialGradient id={`${uid}-fieldAmber`}>
@@ -182,10 +197,11 @@ const bloomIdx = new Set([3, 5, 6, 7, 8, 9, 10, 11, 13, 15]);
   <!-- 1) VOLUMETRIC FIELD (bottom): the prototype's glow is mostly a filled light field
        between the lines, not per-stroke decoration. Ellipses hug each card edge; additive
        blending lets the amber core burn through the violet haze. -->
+  <ellipse cx="280" cy="181" rx="165" ry="165" fill={`url(#${uid}-fieldDark)`}></ellipse>
   <g class="cf-add">
-    <ellipse cx="280" cy="180" rx="88" ry="122" fill={`url(#${uid}-fieldViolet)`} opacity="0.5"></ellipse>
-    <ellipse cx="220" cy="181" rx="78" ry="98" fill={`url(#${uid}-fieldViolet)`} opacity="0.85"></ellipse>
-    <ellipse cx="340" cy="181" rx="78" ry="98" fill={`url(#${uid}-fieldViolet)`} opacity="0.85"></ellipse>
+    <ellipse cx="280" cy="180" rx="88" ry="122" fill={`url(#${uid}-fieldViolet)`} opacity="0.35"></ellipse>
+    <ellipse cx="222" cy="181" rx="70" ry="86" fill={`url(#${uid}-fieldViolet)`} opacity="0.55"></ellipse>
+    <ellipse cx="338" cy="181" rx="70" ry="86" fill={`url(#${uid}-fieldViolet)`} opacity="0.55"></ellipse>
     <ellipse cx="206" cy="181" rx="100" ry="21" fill={`url(#${uid}-fieldAmber)`}></ellipse>
     <ellipse cx="354" cy="181" rx="100" ry="21" fill={`url(#${uid}-fieldAmber)`}></ellipse>
     <ellipse cx="227" cy="181" rx="17" ry="36" fill={`url(#${uid}-fieldAmber)`} opacity="0.65"></ellipse>
@@ -229,7 +245,7 @@ const bloomIdx = new Set([3, 5, 6, 7, 8, 9, 10, 11, 13, 15]);
 
   <!-- 3) FULL-LENGTH HALO: a soft blurred copy of every line so each carries a glow along
        its whole run (visible in the prototype even far from the card). -->
-  <g class="cf-screen" fill="none" filter={`url(#${uid}-halo)`} stroke-linecap="round" opacity="0.6">
+  <g class="cf-screen" fill="none" filter={`url(#${uid}-halo)`} stroke-linecap="round" opacity="0.38">
     {leftPaths.map((d, i) => <path d={d} stroke={fadeIdx.has(i) ? `url(#${uid}-gLavFade)` : amberIdx.has(i) ? `url(#${uid}-gAmber)` : `url(#${uid}-gLav)`} stroke-width={weights[i] * 2.4}></path>)}
     {rightPaths.map((d, i) => <path d={d} stroke={fadeIdx.has(i) ? `url(#${uid}-gOutLFade)` : amberIdx.has(i) ? `url(#${uid}-gOutA)` : `url(#${uid}-gOutL)`} stroke-width={weights[i] * 2.4}></path>)}
   </g>
@@ -251,6 +267,22 @@ const bloomIdx = new Set([3, 5, 6, 7, 8, 9, 10, 11, 13, 15]);
     <path d="M329 181 H 400" stroke="#ffa63e" stroke-width="6" filter={`url(#${uid}-streakWide)`} opacity="1"></path>
     <path d="M176 192 H 230" stroke="#ff9f33" stroke-width="2.6" filter={`url(#${uid}-streakWide)`} opacity="0.4"></path>
     <path d="M330 170 H 384" stroke="#ff9f33" stroke-width="2.6" filter={`url(#${uid}-streakWide)`} opacity="0.4"></path>
+  </g>
+  <!-- 6) GLINTS: static bright dashes riding the lines — frozen light pulses. The dash
+       pattern exceeds each path's length, so offset selects 1-2 glints per line. -->
+  <g class="cf-add" fill="none" stroke-linecap="round">
+    {glints.map(([i, dash, gap, off]) => <path d={leftPaths[i]} stroke={amberIdx.has(i) ? '#ffd9a0' : '#e0c8ff'} stroke-width={weights[i] * 1.15} opacity="0.55" stroke-dasharray={`${dash} ${gap}`} stroke-dashoffset={off}></path>)}
+    {glints.map(([i, dash, gap, off]) => <path d={rightPaths[i]} stroke={amberIdx.has(i) ? '#ffd9a0' : '#e0c8ff'} stroke-width={weights[i] * 1.15} opacity="0.55" stroke-dasharray={`${dash} ${gap}`} stroke-dashoffset={off * 0.7}></path>)}
+  </g>
+  <!-- 7) WAIST REFLECTIONS: faint horizontal ticks near the flare, like light catching a
+       glossy surface below/above the beam. -->
+  <g class="cf-add" fill="none" stroke-linecap="round">
+    <path d="M184 196 H 214" stroke="#ffb04d" stroke-width="1.2" filter={`url(#${uid}-streakCore)`} opacity="0.22"></path>
+    <path d="M196 205 H 218" stroke="#ffffff" stroke-width="1" filter={`url(#${uid}-streakCore)`} opacity="0.14"></path>
+    <path d="M190 168 H 212" stroke="#ffffff" stroke-width="1" filter={`url(#${uid}-streakCore)`} opacity="0.12"></path>
+    <path d="M344 194 H 372" stroke="#ffb04d" stroke-width="1.2" filter={`url(#${uid}-streakCore)`} opacity="0.22"></path>
+    <path d="M340 207 H 362" stroke="#ffffff" stroke-width="1" filter={`url(#${uid}-streakCore)`} opacity="0.13"></path>
+    <path d="M348 170 H 368" stroke="#ffffff" stroke-width="1" filter={`url(#${uid}-streakCore)`} opacity="0.12"></path>
   </g>
   <!-- grain on top of the field/lines (under the HTML cards) -->
   <rect width="560" height="360" filter={`url(#${uid}-grain)`} opacity="0.05" class="cf-screen"></rect>
