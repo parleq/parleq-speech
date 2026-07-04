@@ -207,5 +207,14 @@ final class HarvestSpanLocatorTests: XCTestCase {
             HarvestSpanLocator.locateByTime(startSeconds: 0.4, endSeconds: 0.85, groups: groups),
             2)
     }
+
+    func test_locateByTime_equal_overlap_ties_break_to_lowest_index() {
+        // Window [0.3, 0.7] overlaps group 0 ("cloud", 0.1–0.5) by 0.2s and
+        // group 1 ("provider", 0.5–0.9) by 0.2s — exact tie, lowest index wins.
+        let groups = [group("cloud", 0.1, 0.5), group("provider", 0.5, 0.9)]
+        XCTAssertEqual(
+            HarvestSpanLocator.locateByTime(startSeconds: 0.3, endSeconds: 0.7, groups: groups),
+            0, "equal overlap ⇒ deterministic tie-break to the lowest index")
+    }
 }
 #endif

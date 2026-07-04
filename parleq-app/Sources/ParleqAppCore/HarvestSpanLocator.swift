@@ -117,7 +117,10 @@ enum HarvestSpanLocator {
     /// never move a word's audio timing. Returns the index of the group with the
     /// MAXIMUM overlap (seconds of intersection) with the window; nil when no
     /// group overlaps at all (fail-safe: the caller skips the harvest rather
-    /// than pool a mislocated span).
+    /// than pool a mislocated span). Ties (equal overlap seconds) are broken
+    /// by LOWEST index — deterministic, though in practice unreachable for
+    /// gate-sourced windows (the gate's span is drawn from one specific
+    /// group's own timing, so that group always strictly dominates).
     static func locateByTime(startSeconds: Double, endSeconds: Double,
                              groups: [GroupSpan]) -> Int? {
         var bestIndex: Int?

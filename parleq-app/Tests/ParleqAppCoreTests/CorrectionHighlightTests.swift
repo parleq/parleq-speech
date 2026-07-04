@@ -90,6 +90,33 @@ final class CorrectionHighlightTests: XCTestCase {
         XCTAssertEqual(CorrectionHighlight.revert(text: text, span: spans2[0]), "API api")
     }
 
+    func testTimestampsSurviveRemapAfterUndoOrEdit() {
+        // Feature B (Task 5): startSeconds/endSeconds must survive the same
+        // EditRecord -> CorrectionSpan -> editRecordFor round-trip as
+        // wordRange/reason above. If AppState.editRecordFor silently dropped
+        // them, a SECOND undo in the same review window would silently fall
+        // back to positional matching with no indication.
+        let text = "the Claude provider"
+        let gated = EditRecord(stage: .dictionary, original: "cloud", replacement: "Claude",
+                               applied: true, wordRange: 1..<2,
+                               startSeconds: 0.5, endSeconds: 0.9)
+        let spans1 = CorrectionHighlight.spans(in: text, edits: [gated])
+        XCTAssertEqual(spans1[0].startSeconds, 0.5, "span must carry the edit's startSeconds")
+        XCTAssertEqual(spans1[0].endSeconds, 0.9, "span must carry the edit's endSeconds")
+
+        // Reconstruct exactly like AppState.editRecordFor (preserving timestamps).
+        let reconstructed = spans1.map {
+            EditRecord(stage: $0.stage, original: $0.original,
+                       replacement: $0.replacement, applied: true, wordRange: $0.wordRange,
+                       startSeconds: $0.startSeconds, endSeconds: $0.endSeconds,
+                       reason: $0.reason)
+        }
+        XCTAssertEqual(reconstructed[0].startSeconds, 0.5,
+                       "timestamps must survive the editRecordFor re-map round-trip")
+        XCTAssertEqual(reconstructed[0].endSeconds, 0.9,
+                       "timestamps must survive the editRecordFor re-map round-trip")
+    }
+
     func testSingleAppliedEditMapsToItsRange() {
         let text = "I love Parleq for dictation"
         let spans = CorrectionHighlight.spans(in: text, edits: [edit("parlay", "Parleq")])
