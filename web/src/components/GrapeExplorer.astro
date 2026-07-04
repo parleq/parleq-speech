@@ -168,22 +168,44 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
            Fade-OUT past x≈171: the demo card's dark surface is the z-2 BACKPLATE (the
            z-12 card itself is transparent), so strand tails render on the dark panel —
            they carry over the edge with staggered ends and die out before the text. -->
+      <!-- strands stay faintly visible from x≈20 (riding over the grape faces like the
+           prototype's), build through the run, and fade out past the card edge -->
       <linearGradient id="flowLav" x1="0" y1="0" x2="192" y2="0" gradientUnits="userSpaceOnUse">
         <stop offset="0%" stop-color="#7c3aed" stop-opacity="0" />
-        <stop offset="28%" stop-color="#7c3aed" stop-opacity=".05" />
-        <stop offset="49%" stop-color="#8f46f5" stop-opacity=".62" />
+        <stop offset="10%" stop-color="#7c3aed" stop-opacity=".16" />
+        <stop offset="45%" stop-color="#8f46f5" stop-opacity=".55" />
         <stop offset="76%" stop-color="#a855f7" stop-opacity=".95" />
         <stop offset="89%" stop-color="#e9d5ff" stop-opacity="1" />
         <stop offset="100%" stop-color="#ffffff" stop-opacity="0" />
       </linearGradient>
       <linearGradient id="flowWarm" x1="0" y1="0" x2="192" y2="0" gradientUnits="userSpaceOnUse">
         <stop offset="0%" stop-color="#b45309" stop-opacity="0" />
-        <stop offset="28%" stop-color="#b45309" stop-opacity=".05" />
-        <stop offset="52%" stop-color="#f59e0b" stop-opacity=".7" />
+        <stop offset="10%" stop-color="#d97706" stop-opacity=".2" />
+        <stop offset="50%" stop-color="#f59e0b" stop-opacity=".7" />
         <stop offset="78%" stop-color="#fb923c" stop-opacity=".95" />
         <stop offset="89%" stop-color="#ffd590" stop-opacity="1" />
         <stop offset="100%" stop-color="#ffffff" stop-opacity="0" />
       </linearGradient>
+      <!-- the grape-connected gold strands: fully visible from the lit grape's arc,
+           riding OVER the cluster (the svg stacks above the bunch — here that's the
+           point, matching the prototype's gold threads across the grape faces) -->
+      <linearGradient id="flowWarmDeep" x1="-10" y1="0" x2="192" y2="0" gradientUnits="userSpaceOnUse">
+        <stop offset="0%" stop-color="#fbbf24" stop-opacity="0" />
+        <stop offset="7%" stop-color="#f59e0b" stop-opacity=".8" />
+        <stop offset="45%" stop-color="#f59e0b" stop-opacity=".85" />
+        <stop offset="78%" stop-color="#fb923c" stop-opacity=".95" />
+        <stop offset="89%" stop-color="#ffd590" stop-opacity="1" />
+        <stop offset="100%" stop-color="#ffffff" stop-opacity="0" />
+      </linearGradient>
+      <radialGradient id="dotEmber">
+        <stop offset="0%" stop-color="#ffffff" stop-opacity="1" />
+        <stop offset="30%" stop-color="#fff3df" stop-opacity=".95" />
+        <stop offset="60%" stop-color="#ffb04d" stop-opacity=".55" />
+        <stop offset="100%" stop-color="#ff9f33" stop-opacity="0" />
+      </radialGradient>
+      <filter id="bloomFire" x="-20%" y="-160%" width="140%" height="420%">
+        <feGaussianBlur stdDeviation="3.5" />
+      </filter>
       <linearGradient id="flowPulse" x1="0" y1="0" x2="1" y2="0">
         <stop offset="0%" stop-color="#ffffff" stop-opacity="0" />
         <stop offset="24%" stop-color="#e9d5ff" stop-opacity=".4" />
@@ -211,8 +233,8 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
         <feGaussianBlur stdDeviation="7 5" />
       </filter>
       <radialGradient id="flareViolet" cx="50%" cy="50%" r="50%">
-        <stop offset="0%" stop-color="#c084fc" stop-opacity=".85" />
-        <stop offset="55%" stop-color="#a855f7" stop-opacity=".32" />
+        <stop offset="0%" stop-color="#c084fc" stop-opacity=".6" />
+        <stop offset="45%" stop-color="#a855f7" stop-opacity=".2" />
         <stop offset="100%" stop-color="#a855f7" stop-opacity="0" />
       </radialGradient>
       <radialGradient id="flareAmber" cx="50%" cy="50%" r="50%">
@@ -227,6 +249,19 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
       </radialGradient>
       <filter id="flareStreak" x="-60%" y="-900%" width="220%" height="1900%">
         <feGaussianBlur stdDeviation="5 1" />
+      </filter>
+      <linearGradient id="flareTail" x1="168" y1="0" x2="196" y2="0" gradientUnits="userSpaceOnUse">
+        <stop offset="0%" stop-color="#e9d5ff" stop-opacity="0" />
+        <stop offset="22%" stop-color="#e9d5ff" stop-opacity=".85" />
+        <stop offset="100%" stop-color="#e9d5ff" stop-opacity="0" />
+      </linearGradient>
+      <linearGradient id="flareTailWarm" x1="168" y1="0" x2="199" y2="0" gradientUnits="userSpaceOnUse">
+        <stop offset="0%" stop-color="#ffd590" stop-opacity="0" />
+        <stop offset="18%" stop-color="#ffd590" stop-opacity=".9" />
+        <stop offset="100%" stop-color="#ffd590" stop-opacity="0" />
+      </linearGradient>
+      <filter id="flareTailSoft" x="-20%" y="-300%" width="140%" height="700%">
+        <feGaussianBlur stdDeviation=".5" />
       </filter>
     </defs>
     <!-- colored haze pocket: cluster exit + amber mid-bundle (normal blend — saturated
@@ -249,26 +284,48 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
       <path d="M18 122 C 70 126, 110 110, 140 104 C 156 101, 168 106, 178 107" />
       <path d="M20 138 C 72 143, 108 118, 140 107 C 156 102, 168 109, 178 110" />
     </g>
+    <!-- FIRE BLOOM: warm halo around the gold core (the hero's heat, light-bg dialect —
+         blurred saturated amber, not added white) -->
+    <g class="flow-fire" filter="url(#bloomFire)" fill="none" stroke-linecap="round">
+      <path d="M6 58 C 46 62, 92 78, 130 92 C 152 99, 164 101, 174 102.5" stroke="url(#flowWarmDeep)" stroke-width="3.4" opacity=".4" />
+      <path d="M8 104 C 64 106, 108 101, 140 101 C 158 101, 168 104, 174 104.5" stroke="url(#flowWarm)" stroke-width="3.2" opacity=".45" />
+      <path d="M-2 88 C 60 87, 104 94, 138 98 C 156 100, 166 102.5, 174 103.5" stroke="url(#flowWarm)" stroke-width="2.6" opacity=".35" />
+    </g>
     <!-- 16 strands, braided: crossings mid-run (4↔3, 6↔5, A4↔A3, 9↔8), pinch at the
          card edge, tails carrying over the dark backplate with STAGGERED ends (uniform
          ends read as a zipper of white caps against the dark panel) -->
     <g class="flow-sharp">
-      <path class="flow-line flow-line-lav flow-edge" d="M12 12 C 68 12, 100 54, 130 78 C 150 93, 164 96, 177 96.5" />
-      <path class="flow-line flow-line-lav flow-thin" d="M6 26 C 64 24, 96 62, 128 84 C 148 97, 162 98, 183 98.5" />
-      <path class="flow-line flow-line-lav" d="M-4 44 C 58 44, 98 72, 132 88 C 150 95, 164 100, 189 101.5" />
-      <path class="flow-line flow-line-lav flow-thread" d="M22 60 C 74 60, 104 80, 134 92 C 152 99, 166 102, 180 103.2" />
-      <path class="flow-line flow-line-warm flow-thread" d="M10 70 C 66 68, 104 86, 136 94 C 154 98, 166 101, 186 102.3" />
-      <path class="flow-line flow-line-lav" d="M-10 78 C 54 78, 100 90, 136 96 C 154 99, 166 104, 182 105.2" />
-      <path class="flow-line flow-line-warm" d="M-2 88 C 60 87, 104 94, 138 98 C 156 100, 166 102.5, 191 104" />
-      <path class="flow-line flow-line-lav flow-thin" d="M14 96 C 66 97, 108 98, 138 100 C 156 101, 166 105, 179 106" />
-      <path class="flow-line flow-line-warm flow-hot" d="M8 104 C 64 106, 108 101, 140 101 C 158 101, 168 104, 188 104.8" />
-      <path class="flow-line flow-line-lav flow-thread" d="M-6 118 C 60 120, 104 108, 138 103 C 156 100.5, 166 107, 184 108.3" />
-      <path class="flow-line flow-line-warm" d="M18 122 C 70 126, 110 110, 140 104 C 156 101, 168 106, 190 107.5" />
-      <path class="flow-line flow-line-warm flow-thread" d="M0 132 C 58 136, 110 114, 142 106 C 158 102, 168 108, 181 108.8" />
-      <path class="flow-line flow-line-lav" d="M20 138 C 72 143, 108 118, 140 107 C 156 102, 168 109, 187 110.5" />
-      <path class="flow-line flow-line-lav flow-thread" d="M2 150 C 66 155, 114 121, 144 108 C 160 100, 170 112, 179 113" />
-      <path class="flow-line flow-line-lav flow-thin" d="M44 158 C 92 164, 116 128, 144 111 C 158 102, 168 111, 185 112.7" />
-      <path class="flow-line flow-line-lav flow-thin flow-edge" d="M52 172 C 100 176, 122 136, 148 115 C 162 104, 170 113, 178 114" />
+      <path class="flow-line flow-line-lav flow-edge" d="M12 12 C 68 12, 100 54, 130 78 C 150 93, 164 96, 175 96.5" />
+      <path class="flow-line flow-line-lav flow-thin" d="M6 26 C 64 24, 96 62, 128 84 C 148 97, 162 98, 175 98.3" />
+      <path class="flow-line flow-line-lav" d="M-4 44 C 58 44, 98 72, 132 88 C 150 95, 164 100, 174 101.2" />
+      <path class="flow-line flow-line-lav flow-thread" d="M22 60 C 74 60, 104 80, 134 92 C 152 99, 166 102, 174 103" />
+      <path class="flow-line flow-line-warm flow-thread" d="M10 70 C 66 68, 104 86, 136 94 C 154 98, 166 101, 175 102.2" />
+      <path class="flow-line flow-line-lav" d="M-10 78 C 54 78, 100 90, 136 96 C 154 99, 166 104, 174 105" />
+      <path class="flow-line flow-line-warm" d="M-2 88 C 60 87, 104 94, 138 98 C 156 100, 166 102.5, 175 103.8" />
+      <path class="flow-line flow-line-lav flow-thin" d="M14 96 C 66 97, 108 98, 138 100 C 156 101, 166 105, 174 105.8" />
+      <path class="flow-line flow-line-warm flow-hot" d="M8 104 C 64 106, 108 101, 140 101 C 158 101, 168 104, 175 104.6" />
+      <path class="flow-line flow-line-lav flow-thread" d="M-6 118 C 60 120, 104 108, 138 103 C 156 100.5, 166 107, 174 108" />
+      <path class="flow-line flow-line-warm" d="M18 122 C 70 126, 110 110, 140 104 C 156 101, 168 106, 175 107.3" />
+      <path class="flow-line flow-line-warm flow-thread" d="M0 132 C 58 136, 110 114, 142 106 C 158 102, 168 108, 174 108.6" />
+      <path class="flow-line flow-line-lav" d="M20 138 C 72 143, 108 118, 140 107 C 156 102, 168 109, 175 110.2" />
+      <path class="flow-line flow-line-lav flow-thread" d="M2 150 C 66 155, 114 121, 144 108 C 160 100, 170 112, 175 112.8" />
+      <path class="flow-line flow-line-lav flow-thin" d="M44 158 C 92 164, 116 128, 144 111 C 158 102, 168 111, 174 112.4" />
+      <path class="flow-line flow-line-lav flow-thin flow-edge" d="M52 172 C 100 176, 122 136, 148 115 C 162 104, 170 113, 174 113.8" />
+      <!-- gold threads from the lit grape: start on its right arc and ride over the
+           cluster into the bundle, like the prototype's grape-connected strands -->
+      <path class="flow-line flow-warm-deep" d="M2 42 C 40 48, 90 70, 128 88 C 150 97, 164 100, 174 101.5" stroke-width="1.25" />
+      <path class="flow-line flow-warm-deep" d="M6 58 C 46 62, 92 78, 130 92 C 152 99, 164 101, 174 102.5" stroke-width="1.7" />
+      <path class="flow-line flow-warm-deep" d="M0 74 C 40 78, 92 88, 132 96 C 152 100, 164 102, 174 103.2" stroke-width="1.1" />
+    </g>
+    <!-- EMBERS: white-hot beads riding the gold strands (fiery, matches the hero) -->
+    <g class="flow-embers">
+      <circle cx="48" cy="63.5" r="1.7" fill="url(#dotEmber)" />
+      <circle cx="94" cy="79.5" r="2.3" fill="url(#dotEmber)" />
+      <circle cx="131" cy="92.5" r="2.9" fill="url(#dotEmber)" />
+      <circle cx="156" cy="99.8" r="2.1" fill="url(#dotEmber)" />
+      <circle cx="70" cy="104.8" r="1.8" fill="url(#dotEmber)" />
+      <circle cx="120" cy="101.4" r="2.5" fill="url(#dotEmber)" />
+      <circle cx="90" cy="70.5" r="1.5" fill="url(#dotEmber)" />
     </g>
     <!-- static sparkles along the bundle -->
     <g class="flow-sparks">
@@ -284,17 +341,35 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
       <path d="M8 104 C 64 106, 108 101, 140 101 C 158 101, 168 104, 178 104.5" />
       <path d="M18 122 C 70 126, 110 110, 140 104 C 156 101, 168 106, 178 107" />
     </g>
-    <!-- ENTRY FLARE at the card edge: the dark surface here is the z-2 backplate (the
-         z-12 demo card is transparent), so this renders on the dark panel while staying
-         safely UNDER the card's text. White-hot works here because the backdrop is dark. -->
-    <g class="flow-flare-g">
-      <ellipse cx="173" cy="102" rx="9" ry="44" fill="url(#flareViolet)" />
-      <ellipse cx="172" cy="102" rx="16" ry="9" fill="url(#flareAmber)" />
-      <ellipse cx="174" cy="102" rx="11" ry="5.5" fill="url(#flareWhite)" />
-      <path d="M158 102 H 181" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" filter="url(#flareStreak)" opacity=".9" />
+  </svg>
+  <!-- ENTRY FLARE + CARRY-OVER TAILS, in an overlay ABOVE the demo card (z-13 > z-12).
+       Needed for tab parity: the Cleanup/Refine demo cards are transparent (the z-2
+       backplate paints their dark surface, under the base svg), but the How-it-works
+       walkthrough cards have SOLID backgrounds — without the overlay their edge cuts
+       the ribbon dead at the border. The overlay also floats the burst OVER the card's
+       crisp left edge, so no hard line slices through the glow. Tails end well short
+       of card text (x<196 vs text at x≈195+ inset). Gradients/filters resolve from the
+       base svg's defs — inline svgs share the document id namespace. -->
+  <svg class="flow-lines flow-flare" viewBox="0 0 464 190" preserveAspectRatio="none" aria-hidden="true">
+    <ellipse cx="173" cy="102" rx="13" ry="58" fill="url(#flareViolet)" opacity=".62" />
+    <ellipse cx="172" cy="102" rx="16" ry="9" fill="url(#flareAmber)" />
+    <ellipse cx="174" cy="102" rx="11" ry="5.5" fill="url(#flareWhite)" />
+    <g fill="none" stroke-linecap="round" filter="url(#flareTailSoft)">
+      <path d="M169 98.4 C 176 98, 181 97.7, 186 97.5" stroke="url(#flareTail)" stroke-width=".9" />
+      <path d="M169 101.3 C 178 100.9, 186 100.7, 193 100.4" stroke="url(#flareTail)" stroke-width="1.1" />
+      <path d="M169 102.4 C 177 102.3, 184 102.2, 190 102.1" stroke="url(#flareTailWarm)" stroke-width="1.2" />
+      <path d="M169 103.9 C 178 104, 188 104.2, 196 104.5" stroke="url(#flareTailWarm)" stroke-width="1.3" />
+      <path d="M169 104.7 C 178 104.9, 186 105.2, 194 105.6" stroke="url(#flareTailWarm)" stroke-width="1.6" />
+      <path d="M170 106 C 175 106.2, 179 106.4, 183 106.6" stroke="url(#flareTail)" stroke-width=".8" />
+      <path d="M169 108.1 C 176 108.4, 182 108.8, 188 109.3" stroke="url(#flareTail)" stroke-width=".9" />
+      <path d="M170 110.3 C 175 110.6, 180 111, 184 111.5" stroke="url(#flareTail)" stroke-width=".8" />
+    </g>
+    <path d="M158 102 H 181" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" filter="url(#flareStreak)" opacity=".9" />
+    <g class="flow-sparks">
       <circle cx="166" cy="93" r="1.2" fill="#ffffff" opacity=".9" />
       <circle cx="178" cy="99.5" r="1" fill="#ffe9c9" opacity=".85" />
       <circle cx="169" cy="112" r="1.1" fill="#e9d5ff" opacity=".85" />
+      <circle cx="184" cy="103.6" r=".9" fill="#ffffff" opacity=".8" />
     </g>
   </svg>
 
@@ -832,6 +907,8 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
   }
   .flow-line-lav { stroke: url(#flowLav); }
   .flow-line-warm { stroke: url(#flowWarm); stroke-width: 1.6; opacity: .98; }
+  .flow-warm-deep { stroke: url(#flowWarmDeep); opacity: .98; }
+  .flow-flare { z-index: 13; }   /* above the demo card — flare + tails carry over its edge */
   .flow-thin { stroke-width: 1; opacity: .8; }
   .flow-thread { stroke-width: .85; opacity: .72; }
   .flow-edge { opacity: .5; }
@@ -850,6 +927,7 @@ const DEFAULT_SELECTED_ID = defaultGrape.id;
   }
   .flow-runners path:nth-child(2) { stroke-width: 5.3; }
   .flow-sharp .flow-hot,
+  .flow-sharp .flow-warm-deep,
   .flow-sharp .flow-line-warm + .flow-line-warm {
     filter:
       drop-shadow(0 0 3px rgba(255, 213, 144, .72))
