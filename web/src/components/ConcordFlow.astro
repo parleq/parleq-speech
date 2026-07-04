@@ -355,6 +355,10 @@ const glints: [number, number, number, number][] = [
       <path d="M190 181 H 228" stroke="#ffffff" stroke-width="2.6" filter={`url(#${uid}-oStreakCore)`} opacity="0.95"></path>
       <path d="M332 181 H 370" stroke="#ffffff" stroke-width="2.6" filter={`url(#${uid}-oStreakCore)`} opacity="0.95"></path>
     </g>
+    <!-- flare SURGES: normally invisible; the narration script flashes each as the
+         comet dives into / re-emerges from the engine card -->
+    <ellipse id={`${uid}-surgeL`} cx="225" cy="181" rx="26" ry="10" fill={`url(#${uid}-oWhite)`} opacity="0"></ellipse>
+    <ellipse id={`${uid}-surgeR`} cx="335" cy="181" rx="26" ry="10" fill={`url(#${uid}-oWhite)`} opacity="0"></ellipse>
   </g>
 </svg>
 
@@ -440,31 +444,68 @@ const glints: [number, number, number, number][] = [
           }
         });
 
-        // Narrated sequence: a cycle clock pulses the flow left→engine→right so the eye reads
-        // "speak → cleanup → paste". Cards glow in turn; the inactive side dims to an ambient
-        // baseline (never fully off — keeps the flow alive). All synced to ONE clock.
+        // Narrated sequence, v2: a traveling COMET tells the story — the eye follows
+        // one bright pulse from "You speak" through the engine to "Parleq pastes",
+        // and the static art reacts as it passes (glyph flick → flare surge + engine
+        // brighten → arrival pop). No outer halos on the side cards: a halo on a big
+        // static rectangle reads as decoration, and the constant waist flares outshine
+        // it anyway. All synced to ONE clock.
         const cards = stage as HTMLElement;
         const inCard = cards.querySelector<HTMLElement>('[data-flow-card="input"]');
         const engCard = cards.querySelector<HTMLElement>('[data-flow-card="engine"]');
         const outCard = cards.querySelector<HTMLElement>('[data-flow-card="output"]');
+        const inGlyph = inCard?.querySelector<SVGElement>('svg');
+        const pasted = outCard?.querySelector<HTMLElement>('div.inline-flex');
+        const surgeL = cards.querySelector<SVGElement>(`#${CSS.escape(uid)}-surgeL`);
+        const surgeR = cards.querySelector<SVGElement>(`#${CSS.escape(uid)}-surgeR`);
         const engBase = engCard ? engCard.style.boxShadow : '';
-        for (const el of [inCard, outCard]) if (el) el.style.transition = 'box-shadow 360ms ease';
-        if (engCard) engCard.style.transition = 'box-shadow 280ms ease';
+        const outBorderBase = outCard ? outCard.style.borderColor : '';
+        if (pasted) pasted.style.transformOrigin = 'left center';
+
+        // Comet: white-hot head + amber trail riding the hero amber line (fl-9 → fr-9).
+        const cometPathL = svg.querySelector<SVGPathElement>(`#${CSS.escape(uid)}-fl-9`);
+        const cometPathR = svg.querySelector<SVGPathElement>(`#${CSS.escape(uid)}-fr-9`);
+        const cometSpec = [
+          { r: 2.6, fill: '#ffffff', lag: 0 },
+          { r: 2.1, fill: '#ffe9c9', lag: 0.045 },
+          { r: 1.7, fill: '#ffd590', lag: 0.09 },
+          { r: 1.3, fill: '#ffb04d', lag: 0.14 },
+          { r: 0.9, fill: '#ff9f33', lag: 0.2 },
+        ];
+        const comet = cometSpec.map((s) => {
+          const c = document.createElementNS(NS, 'circle');
+          c.setAttribute('r', String(s.r));
+          c.setAttribute('fill', s.fill);
+          c.setAttribute('opacity', '0');
+          c.style.filter = `drop-shadow(0 0 ${(3 + s.r).toFixed(1)}px #ffb04d)`;
+          c.style.mixBlendMode = 'screen';
+          svg.appendChild(c);
+          return { c, lag: s.lag };
+        });
+        const placeComet = (path: SVGPathElement | null, u: number, vis: number) => {
+          if (!path) return;
+          const len = path.getTotalLength();
+          for (const p of comet) {
+            const q = Math.min(1, Math.max(0, u - p.lag));
+            const pt = path.getPointAtLength(len * q);
+            p.c.setAttribute('cx', String(pt.x)); p.c.setAttribute('cy', String(pt.y));
+            p.c.setAttribute('opacity', vis.toFixed(2));
+          }
+        };
+        const hideComet = () => { for (const p of comet) p.c.setAttribute('opacity', '0'); };
+
         // Smooth 0→1→0 bump over [a,b].
         const bump = (x: number, a: number, b: number) => {
           if (x < a || x > b) return 0;
           return Math.sin(Math.PI * ((x - a) / (b - a)));
         };
-        const PERIOD = 6.4;       // seconds per narrated cycle
-        const glowIn = (g: number) =>
-          inCard && (inCard.style.boxShadow = g < 0.04 ? 'none'
-            : `0 0 ${(18 * g).toFixed(0)}px -2px rgba(255,159,51,${(0.5 * g).toFixed(2)})`);
-        const glowOut = (g: number) =>
-          outCard && (outCard.style.boxShadow = g < 0.04 ? 'none'
-            : `0 0 ${(18 * g).toFixed(0)}px -2px rgba(193,139,255,${(0.5 * g).toFixed(2)})`);
+        // Linear 0→1 progress across [a,b], clamped.
+        const span = (x: number, a: number, b: number) => Math.min(1, Math.max(0, (x - a) / (b - a)));
+        const PERIOD = 6.4;       // seconds per narrated cycle; story ends ~3.9s, rest is quiet
+
         const glowEng = (g: number) =>
           engCard && (engCard.style.boxShadow = g < 0.04 ? engBase
-            : `${engBase}, 0 0 ${(34 * g).toFixed(0)}px ${(2 * g).toFixed(0)}px rgba(220,188,255,${(0.7 * g).toFixed(2)})`);
+            : `${engBase}, 0 0 ${(26 * g).toFixed(0)}px ${(1.5 * g).toFixed(1)}px rgba(220,188,255,${(0.6 * g).toFixed(2)})`);
 
         let last = 0;
         let running = false;
@@ -474,13 +515,39 @@ const glints: [number, number, number, number][] = [
           // the IntersectionObserver restarts it when the art scrolls into view.
           if (!onScreen) { running = false; last = 0; return; }
           const t = (ts / 1000) % PERIOD;
-          // windows within the cycle: in-wave, engine handoff, out-wave, rest.
-          const inG = bump(t, 0.0, 2.4);
-          const engG = bump(t, 2.0, 3.1);
-          const outG = bump(t, 2.7, 5.1);
-          const leftGain = 0.4 + 0.6 * inG;    // active side brightens, idle side ~0.4
-          const rightGain = 0.4 + 0.6 * outG;
-          glowIn(inG); glowEng(engG); glowOut(outG);
+          // Story beats: speak (glyph flick) → comet L → surge/engine → comet R → arrival pop.
+          const glyphG = bump(t, 0.0, 0.9);
+          const sL = bump(t, 1.55, 2.0);
+          const engG = bump(t, 1.6, 2.6);
+          const sR = bump(t, 2.25, 2.7);
+          const outG = bump(t, 3.25, 3.9);
+
+          if (inGlyph) inGlyph.style.filter = glyphG < 0.03 ? ''
+            : `brightness(${(1 + 0.9 * glyphG).toFixed(2)}) drop-shadow(0 0 ${(6 * glyphG).toFixed(1)}px rgba(255,159,51,${(0.8 * glyphG).toFixed(2)}))`;
+
+          if (t >= 0.7 && t < 1.75) {
+            placeComet(cometPathL, span(t, 0.7, 1.75), Math.min(1, 4 * bump(t, 0.7, 1.75)));
+          } else if (t >= 2.35 && t < 3.4) {
+            placeComet(cometPathR, span(t, 2.35, 3.4), Math.min(1, 4 * bump(t, 2.35, 3.4)));
+          } else {
+            hideComet();
+          }
+
+          if (surgeL) surgeL.setAttribute('opacity', (0.9 * sL).toFixed(2));
+          if (surgeR) surgeR.setAttribute('opacity', (0.9 * sR).toFixed(2));
+          glowEng(engG);
+
+          // Arrival: the output card's BORDER brightens (no outer halo) + "Pasted" pops once.
+          if (outCard) outCard.style.borderColor = outG < 0.04 ? outBorderBase
+            : `color-mix(in srgb, #c9a6ff ${Math.round(70 * outG)}%, ${outBorderBase || 'transparent'})`;
+          if (pasted) {
+            pasted.style.transform = outG < 0.03 ? '' : `scale(${(1 + 0.07 * outG).toFixed(3)})`;
+            pasted.style.filter = outG < 0.03 ? '' : `brightness(${(1 + 0.45 * outG).toFixed(2)})`;
+          }
+
+          // Ambient rail dots brighten on the side the story is on.
+          const leftGain = 0.4 + 0.6 * bump(t, 0.4, 2.0);
+          const rightGain = 0.4 + 0.6 * bump(t, 2.3, 3.9);
           for (const d of dots) {
             d.phase = (d.phase + d.speed * dt) % 1;
             const pt = d.path.getPointAtLength(d.len * d.phase);
