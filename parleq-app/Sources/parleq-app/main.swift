@@ -1507,6 +1507,31 @@ struct ParleqApp {
                         // so no per-coordinator enforce call is needed here.
                         stateBox.value?.voiceprint = coordinator
                         coordinator.loadPersisted()
+                        // 0.41.0 negative-harvest upgrade notice: tell EXISTING
+                        // enrollees ONCE that corrections now refine their
+                        // voiceprints (a new embedding source vs. enrollment clips),
+                        // pointing at the off-switch — new enrollees get this on the
+                        // enrollment consent card instead. Pure gating lives in
+                        // HarvestRefinementNotice.decide; `.wait` leaves the flag
+                        // unset so a launch where the wizard or the per-app-modes
+                        // notice is up (don't stack modals) simply retries next time.
+                        if !UserDefaults.standard.bool(forKey: HarvestRefinementNotice.seenKey) {
+                            switch HarvestRefinementNotice.decide(
+                                wizardCompleted: config.wizardCompleted,
+                                showingWizard: LaunchPermissions.shouldShowWizardAtLaunch(
+                                    wizardCompleted: config.wizardCompleted,
+                                    accessibilityGranted: LaunchPermissions.accessibilityGranted),
+                                perAppNoticeSeen: UserDefaults.standard.bool(forKey: PerAppModesNotice.seenKey),
+                                hasEnrolledVoiceprints: !coordinator.enrolledTermIDs.isEmpty) {
+                            case .show:
+                                UserDefaults.standard.set(true, forKey: HarvestRefinementNotice.seenKey)
+                                DispatchQueue.main.async { HarvestRefinementNotice.show() }
+                            case .markSeenSilently:
+                                UserDefaults.standard.set(true, forKey: HarvestRefinementNotice.seenKey)
+                            case .wait:
+                                break
+                            }
+                        }
                         // Auto-migrate any voiceprints parked under an unknown encoder
                         // stamp by re-deriving them from the stored enrollment audio
                         // under the CURRENT encoder. Non-destructive (R1/SI-1): bails
