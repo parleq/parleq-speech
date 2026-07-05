@@ -67,6 +67,24 @@ final class CleanupReframeMigrationTests: XCTestCase {
         XCTAssertTrue(c.hasPolishedProvider)
     }
 
+    func test_polished_provider_is_local_when_refine_is_local_with_empty_model() throws {
+        // Regression (persistence bug): the on-device Polished provider must
+        // STICK across a config round-trip. The local model is centralized in
+        // `llm.local.model`, so `refine.model` is legitimately empty — which
+        // used to drop the whole refine tier at parse and revert Polished to a
+        // cloud default on restart. polishedProvider must resolve to "local"
+        // and its model must mirror the centralized local model.
+        let c = try parse(#"""
+        {"llm":{"provider":"concord","model":"","refine":{"provider":"local","model":""},
+                "local":{"model":"mlx-community/Qwen3-4B-Instruct-2507-4bit"}}}
+        """#)
+        XCTAssertEqual(c.polishedProvider, "local")
+        XCTAssertTrue(c.hasPolishedProvider)
+        XCTAssertFalse(c.polishedModel?.isEmpty ?? true)
+        XCTAssertEqual(c.polishedModel, c.localModel)
+        XCTAssertEqual(c.refinementType, .polished)
+    }
+
     func test_polished_provider_nil_for_bare_concord_and_none() {
         XCTAssertNil(config(provider: "concord").polishedProvider)
         XCTAssertFalse(config(provider: "concord").hasPolishedProvider)

@@ -1929,8 +1929,16 @@ public struct Config: Sendable {
                let model = refine["model"] as? String {
                 let tp = provider.trimmingCharacters(in: .whitespacesAndNewlines)
                 let tm = model.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !tp.isEmpty && !tm.isEmpty {
-                    c.refineModel = ModelIdentifier(provider: tp, model: tm)
+                // The on-device provider centralizes its model in `llm.local.model`
+                // (parsed above into `c.localModel`), so `refine.model` is legitimately
+                // EMPTY when the Polished tier is on-device. Sourcing the model from
+                // `c.localModel` here keeps `refineModel` non-nil so `polishedProvider`
+                // resolves to "local" and the setting sticks across restarts — without
+                // this, an empty `refine.model` dropped the whole refine tier and the
+                // Polished provider silently reverted to a cloud default.
+                let resolvedModel = (tm.isEmpty && tp == "local") ? c.localModel : tm
+                if !tp.isEmpty && !resolvedModel.isEmpty {
+                    c.refineModel = ModelIdentifier(provider: tp, model: resolvedModel)
                 }
             }
             // Reframe v2: the global refinement TYPE. When present it is
