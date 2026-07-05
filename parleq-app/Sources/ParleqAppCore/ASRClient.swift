@@ -117,13 +117,26 @@ public struct ASRDiagnostics: Codable, Sendable {
     /// serialized into the flywheel contribution record on disk (compliance #1/#2).
     public let encoderFeatures: EncoderFeatureSequence?
 
+    /// The utterance's raw 16 kHz mono Float32 samples — the SAME decoded buffer
+    /// LocalASR already produced for transcription. Used by the voiceprint
+    /// acoustic gate (`VoiceprintReencoder.contextFreeEmbedding`) to re-encode a
+    /// gated word's own audio in a fixed canonical context, instead of pooling a
+    /// context-contaminated whole-utterance encoder span. Memory-only: EXCLUDED
+    /// from Codable (like `encoderFeatures`) so it never reaches the on-disk
+    /// flywheel contribution record (compliance #1/#2) — this is a transient,
+    /// in-process acoustic buffer, not a persisted artifact. `nil` on the
+    /// external HTTP ASR path (which never decodes samples in-process) and for
+    /// any diagnostics constructed without it (back-compat default).
+    public let utteranceSamples: [Float]?
+
     public init(
         confidence: Float,
         durationSec: Double,
         processingSec: Double,
         tokenTimings: [ASRTokenTiming],
         replacements: [VocabReplacement],
-        encoderFeatures: EncoderFeatureSequence? = nil
+        encoderFeatures: EncoderFeatureSequence? = nil,
+        utteranceSamples: [Float]? = nil
     ) {
         self.confidence = confidence
         self.durationSec = durationSec
@@ -131,10 +144,11 @@ public struct ASRDiagnostics: Codable, Sendable {
         self.tokenTimings = tokenTimings
         self.replacements = replacements
         self.encoderFeatures = encoderFeatures
+        self.utteranceSamples = utteranceSamples
     }
 
-    // encoderFeatures is intentionally omitted from coding (not Codable, and
-    // never persisted). Decoding produces nil; encoding writes only the
+    // encoderFeatures/utteranceSamples are intentionally omitted from coding
+    // (not persisted). Decoding produces nil for both; encoding writes only the
     // metadata fields the flywheel record needs.
     private enum CodingKeys: String, CodingKey {
         case confidence, durationSec, processingSec, tokenTimings, replacements
@@ -148,6 +162,7 @@ public struct ASRDiagnostics: Codable, Sendable {
         tokenTimings = try c.decode([ASRTokenTiming].self, forKey: .tokenTimings)
         replacements = try c.decode([VocabReplacement].self, forKey: .replacements)
         encoderFeatures = nil
+        utteranceSamples = nil
     }
 
     public func encode(to encoder: Encoder) throws {

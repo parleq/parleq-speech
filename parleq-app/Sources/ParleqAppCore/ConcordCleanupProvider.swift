@@ -89,16 +89,18 @@ public final class ConcordCleanupProvider: LLMProvider, @unchecked Sendable {
     // baseline. The factory captures only Sendable value types (the enrolled voiceprint snapshot),
     // so it runs safely here off the MainActor. Set-once (not per-utterance) so there is nothing to
     // drain on a skipped turn.
-    private var _gateFactory: (@Sendable (ASRDiagnostics?) -> AcousticGate?)?
+    private var _gateFactory: (@Sendable (ASRDiagnostics?) async -> AcousticGate?)?
 
     /// Install (or clear) the acoustic-gate factory. Called by AppState once the voiceprint demo is
-    /// armed; nil disables enforcement.
-    public func setEnrollmentGateFactory(_ factory: (@Sendable (ASRDiagnostics?) -> AcousticGate?)?) {
+    /// armed; nil disables enforcement. ASYNC: building the gate may re-encode a handful of
+    /// store-relevant word spans (context-free canonical-context re-encode — see
+    /// `VoiceprintReencoder` / `VoiceprintDemo.buildGate`), each a real encoder pass.
+    public func setEnrollmentGateFactory(_ factory: (@Sendable (ASRDiagnostics?) async -> AcousticGate?)?) {
         lock.lock(); defer { lock.unlock() }
         _gateFactory = factory
     }
 
-    private func gateFactory() -> (@Sendable (ASRDiagnostics?) -> AcousticGate?)? {
+    private func gateFactory() -> (@Sendable (ASRDiagnostics?) async -> AcousticGate?)? {
         lock.lock(); defer { lock.unlock() }
         return _gateFactory
     }
@@ -206,7 +208,7 @@ public final class ConcordCleanupProvider: LLMProvider, @unchecked Sendable {
         let policies = takePolicies()
         // Build this utterance's acoustic gate from its diagnostics (enrollment enforce mode). nil
         // → byte-identical baseline behavior.
-        let acousticGate = gateFactory().flatMap { $0(diagnostics) }
+        let acousticGate = await gateFactory()?(diagnostics)
 
         let result = acousticGate.map {
             engine.clean(transcript: transcript, tokens: tokens, dictionary: dict, acousticGate: $0,

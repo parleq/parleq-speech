@@ -355,7 +355,12 @@ public final class LocalASR {
             // nil unless the voiceprint demo armed encoder-feature capture
             // (PARLEQ_VOICEPRINT_DEMO=1). Excluded from Codable, so it never
             // reaches the on-disk flywheel record.
-            encoderFeatures: asrResult.encoderFeatures
+            encoderFeatures: asrResult.encoderFeatures,
+            // The same decoded 16k mono samples used for transcription above —
+            // feeds the voiceprint acoustic gate's context-free re-encode
+            // (VoiceprintReencoder). Memory-only; excluded from Codable, so it
+            // never reaches the on-disk flywheel record either.
+            utteranceSamples: samples
         )
         return (finalText, diagnostics)
     }
@@ -377,6 +382,16 @@ public final class LocalASR {
         let wavEnd = min(wavStart + 8 + Int(chunkSize), data.count)
         let wavBytes = data.subdata(in: wavStart..<wavEnd)
         guard let samples = Self.wavToFloatSamples(wavBytes) else { return nil }
+        return try await asr.transcribeFull(samples: samples)
+    }
+
+    /// Voice-enrollment demo only (PARLEQ_VOICEPRINT_DEMO=1): same as
+    /// `transcribeRawForVoiceprint(wav:)` but skips WAV parsing entirely,
+    /// for callers that already hold raw Float32 samples (e.g. a
+    /// canonical-context re-encode buffer assembled in memory rather than
+    /// read from a WAV container). Bypasses the CTC vocab rescorer for the
+    /// same reason as the WAV-based sibling.
+    public func transcribeSamplesForVoiceprint(samples: [Float]) async throws -> ASRResult? {
         return try await asr.transcribeFull(samples: samples)
     }
 
@@ -606,7 +621,13 @@ public enum BundledASREngine {
     /// `fluidAudioVersion` (the FluidAudio package tag) so that package-level bumps
     /// that do NOT change the encoder (runtime fixes, CTC updates, etc.) do NOT
     /// silently invalidate every user's enrolled voiceprints.
-    public static let voiceprintEncoderIdentity = "parakeet-tdt-0.6b-v3"
+    // `-ctxfree.1`: the voiceprint embedding DERIVATION changed (2026-07-04) from
+    // whole-utterance pooled encoder frames to a CONTEXT-FREE per-word re-encode
+    // (VoiceprintReencoder — fixes cross-word contamination). Old-space embeddings
+    // are NOT comparable to new-space ones, so this bump parks pre-fix templates for
+    // re-derivation (migrateIfNeeded, from stored enrollment audio). Do NOT add the
+    // old stamp to legacyCompatibleStamps — that would compare across spaces.
+    public static let voiceprintEncoderIdentity = "parakeet-tdt-0.6b-v3-ctxfree.1"
 
     /// Voiceprint template stamps that are KNOWN to have been produced by the same
     /// Parakeet encoder graph as `voiceprintEncoderIdentity`. Templates carrying any

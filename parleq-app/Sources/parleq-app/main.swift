@@ -1517,6 +1517,15 @@ struct ParleqApp {
                         // device key). Set BEFORE loadPersisted so the rings load
                         // with the templates.
                         coordinator.harvestPersistence = EncryptedHarvestStore()
+                        // Samples-based transcribe handle for the context-free canonical-
+                        // context re-encode (VoiceprintReencoder). Set BEFORE assigning to
+                        // AppState so `enforcementGateFactory` (called from the didSet)
+                        // captures it. Same `local` LocalASR instance every other voiceprint
+                        // transcribe closure here uses — the encoder is shared, only the
+                        // WAV-vs-samples entry point differs.
+                        coordinator.transcribe = { [weak local] samples in
+                            try? await local?.transcribeSamplesForVoiceprint(samples: samples)
+                        }
                         // SI-2: the clip-storage kill-switch erase now fires
                         // UNCONDITIONALLY at the top of this MainActor block (7034),
                         // covering every launch path (custom endpoint / load failure),

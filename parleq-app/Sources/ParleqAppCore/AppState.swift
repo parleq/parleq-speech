@@ -80,7 +80,7 @@ public final class AppState {
     /// constructing a full `AppState`, which would require a live `NSPanel`).
     /// Installs the factory on each provider that is actually a `ConcordCleanupProvider`.
     static func installEnrollmentGate(
-        _ factory: @escaping @Sendable (ASRDiagnostics?) -> AcousticGate?,
+        _ factory: @escaping @Sendable (ASRDiagnostics?) async -> AcousticGate?,
         on providers: [(any LLMProvider)?]
     ) {
         for provider in providers {
@@ -129,7 +129,17 @@ public final class AppState {
 
     /// Locate + pool ONE word-span embedding from the retained features
     /// (in-memory mean-pooling, microseconds). nil ⇒ skip harvest silently.
-    private func harvestEmbedding(word: String, rawOrdinal: Int) -> (embedding: [Float], matchCount: Int)? {
+    ///
+    /// PREFERS the context-free canonical-context re-encode (`VoiceprintReencoder`)
+    /// over the whole-utterance pooled embedding, so a harvested negative lands in
+    /// the SAME embedding space as the migrated templates + served candidates
+    /// (see `VoiceprintReencoder`'s header + `VoiceprintDemo.localizedSpan`/`buildGate`,
+    /// the serving/enrollment precedents this mirrors). Falls back to the pooled
+    /// embedding when no retained samples or transcribe handle is available, or the
+    /// re-encode itself returns nil — keeping harvest functional either way. `async`
+    /// only because the re-encode re-runs the encoder; the located span / ordinal
+    /// math above is unchanged.
+    private func harvestEmbedding(word: String, rawOrdinal: Int) async -> (embedding: [Float], matchCount: Int)? {
         guard let d = reviewDiagnostics, let features = d.encoderFeatures else { return nil }
         let groups = VoiceprintCoordinator.groupSpans(from: d)
         let target = HarvestSpanLocator.core(word)
@@ -137,6 +147,13 @@ public final class AppState {
         let matchCount = groups.filter { HarvestSpanLocator.core($0.text) == target }.count
         guard let g = HarvestSpanLocator.locate(groups: groups, word: word, rawOrdinal: rawOrdinal)
         else { return nil }
+
+        if let samples = d.utteranceSamples, !samples.isEmpty, let transcribeSamples = voiceprint?.transcribe,
+           let ctxFree = await VoiceprintReencoder.contextFreeEmbedding(
+               utteranceSamples: samples, startSec: g.startSeconds, endSec: g.endSeconds,
+               transcribe: transcribeSamples) {
+            return (ctxFree, matchCount)
+        }
         guard let emb = features.pooledEmbedding(startSeconds: g.startSeconds,
                                                  endSeconds: g.endSeconds)
         else { return nil }
@@ -150,13 +167,24 @@ public final class AppState {
     /// or text surviving unchanged from cleanup to review. nil ⇒ no retained
     /// diagnostics, or no group overlaps the window at all — the caller must
     /// skip the harvest rather than fall back silently to a mislocated span.
-    private func harvestEmbeddingByTime(startSeconds: Double, endSeconds: Double) -> [Float]? {
+    ///
+    /// Same context-free re-encode preference (with pooled-embedding fallback) as
+    /// `harvestEmbedding` above — see that doc comment. Only the embedding SOURCE
+    /// changes; the by-time locate is untouched.
+    private func harvestEmbeddingByTime(startSeconds: Double, endSeconds: Double) async -> [Float]? {
         guard let d = reviewDiagnostics, let features = d.encoderFeatures else { return nil }
         let groups = VoiceprintCoordinator.groupSpans(from: d)
         guard let idx = HarvestSpanLocator.locateByTime(
             startSeconds: startSeconds, endSeconds: endSeconds, groups: groups)
         else { return nil }
         let g = groups[idx]
+
+        if let samples = d.utteranceSamples, !samples.isEmpty, let transcribeSamples = voiceprint?.transcribe,
+           let ctxFree = await VoiceprintReencoder.contextFreeEmbedding(
+               utteranceSamples: samples, startSec: g.startSeconds, endSec: g.endSeconds,
+               transcribe: transcribeSamples) {
+            return ctxFree
+        }
         return features.pooledEmbedding(startSeconds: g.startSeconds, endSeconds: g.endSeconds)
     }
     #endif
@@ -1987,7 +2015,18 @@ public final class AppState {
             // direction (a vocab-rescore/biasing emitted the term with no ⌥-undoable
             // span, so this edit is the only correction surface).
             #if Concord
-            harvestNegativesFromEdit(before: editPreEditText, after: edited)
+            // `commitEdit` itself stays synchronous (called from a keypress-handled
+            // closure), so the harvest — which now awaits a context-free re-encode
+            // pass per replacement — runs in a fire-and-forget Task, same
+            // @MainActor-inheriting pattern used for the undo harvest above. Snapshot
+            // the pre-edit text into a local first: `self?.editPreEditText` inside the
+            // closure would require an explicit-self spelling anyway, and a local
+            // pins the exact value driving this edit (matches `recordInPlaceEdit`
+            // just above, which reads it synchronously at the same point).
+            let preEditSnapshot = editPreEditText
+            Task { @MainActor [weak self] in
+                await self?.harvestNegativesFromEdit(before: preEditSnapshot, after: edited)
+            }
             #endif
         }
         log("in-place edit: \(accept ? "commit+accept" : "save")")
@@ -2125,7 +2164,14 @@ public final class AppState {
                     // term — the heard word (span.original) is a real in-context
                     // confusable. Pool its audio-span embedding from the retained
                     // review acoustics and attach it as a negative prototype.
-                    harvestNegativeFromUndo(span: span, preText: preText, preSpans: preSpans)
+                    //
+                    // `undoCorrection` must return its Bool synchronously (it's a
+                    // keypress-handled result), so the harvest — which now awaits a
+                    // context-free re-encode pass — runs in a fire-and-forget Task,
+                    // same @MainActor-inheriting pattern used elsewhere in this file.
+                    Task { @MainActor [weak self] in
+                        await self?.harvestNegativeFromUndo(span: span, preText: preText, preSpans: preSpans)
+                    }
                 } else if voiceprint != nil, !span.isValidateRevert,
                           !(voiceprint?.hasVoiceprint(term) ?? false) {
                     // Unenrolled term: nudge toward voice enrollment (unchanged).
@@ -2177,12 +2223,12 @@ public final class AppState {
     /// never fall through to positional matching in that case (never pool a
     /// mislocated span).
     private func harvestNegativeFromUndo(span: CorrectionSpan, preText: String,
-                                         preSpans: [CorrectionSpan]) {
+                                         preSpans: [CorrectionSpan]) async {
         let cfg = Config.load().config
         guard cfg.voiceprintHarvestEnabled else { return }
         let embedding: [Float]
         if let start = span.startSeconds, let end = span.endSeconds {
-            guard let emb = harvestEmbeddingByTime(startSeconds: start, endSeconds: end) else {
+            guard let emb = await harvestEmbeddingByTime(startSeconds: start, endSeconds: end) else {
                 log("voiceprint harvest: timestamp locate miss, skipped")   // count-only
                 return
             }
@@ -2194,7 +2240,7 @@ public final class AppState {
                 shownText: preText, spanRange: span.range, original: span.original,
                 allSpans: allSpans, spanNumber: span.number, groupMatchCount: matchCount)
             else { return }                                // consistency guard: skip silently
-            guard let hit = harvestEmbedding(word: span.original, rawOrdinal: ordinal) else { return }
+            guard let hit = await harvestEmbedding(word: span.original, rawOrdinal: ordinal) else { return }
             embedding = hit.embedding
         }
         voiceprint?.harvestNegative(termID: span.replacement,
@@ -2211,13 +2257,21 @@ public final class AppState {
     /// edited word index — which carries whatever the recognizer HEARD there, even
     /// when a LocalASR vocab-rescore rewrote the visible text term-side), and the
     /// count-consistency guard inside `editedGroup` skips on any word-count change.
-    private func harvestNegativesFromEdit(before: String, after: String) {
+    ///
+    /// Same context-free re-encode preference (with pooled-embedding fallback) as
+    /// `harvestEmbedding`/`harvestEmbeddingByTime` above — see their doc comments and
+    /// `VoiceprintReencoder`'s header. Only the embedding SOURCE changes; the
+    /// `editedGroup` located span / word-count guard is untouched. `async` only
+    /// because the re-encode re-runs the encoder.
+    private func harvestNegativesFromEdit(before: String, after: String) async {
         let cfg = Config.load().config
         guard cfg.voiceprintHarvestEnabled, let vp = voiceprint else { return }
         guard let d = reviewDiagnostics, let features = d.encoderFeatures else { return }
         guard let replacements = EditDiff.singleWordReplacements(before: before, after: after),
               !replacements.isEmpty else { return }
         let groups = VoiceprintCoordinator.groupSpans(from: d)
+        let samples = d.utteranceSamples
+        let transcribeSamples = voiceprint?.transcribe
         for r in replacements {
             let termCore = HarvestSpanLocator.core(r.before)
             guard !termCore.isEmpty,
@@ -2229,13 +2283,21 @@ public final class AppState {
             // (text-only rewrite), a Concord dictionary substitution, or a literal
             // token-level emit. The guard inside skips on any word-count change.
             guard let g = HarvestSpanLocator.editedGroup(groups: groups, beforeText: before,
-                                                         wordIndex: r.wordIndex),
-                  let emb = features.pooledEmbedding(startSeconds: g.startSeconds,
-                                                     endSeconds: g.endSeconds)
+                                                         wordIndex: r.wordIndex)
             else { continue }
+            var emb: [Float]?
+            if let samples, !samples.isEmpty, let transcribeSamples {
+                emb = await VoiceprintReencoder.contextFreeEmbedding(
+                    utteranceSamples: samples, startSec: g.startSeconds, endSec: g.endSeconds,
+                    transcribe: transcribeSamples)
+            }
+            if emb == nil {
+                emb = features.pooledEmbedding(startSeconds: g.startSeconds, endSeconds: g.endSeconds)
+            }
+            guard let embedding = emb else { continue }
             vp.harvestNegative(termID: termID,
                                label: HarvestSpanLocator.core(r.after),
-                               embedding: emb,
+                               embedding: embedding,
                                aliases: dictionaryAliases(forTerm: termID),
                                harvestEnabled: cfg.voiceprintHarvestEnabled)
         }
