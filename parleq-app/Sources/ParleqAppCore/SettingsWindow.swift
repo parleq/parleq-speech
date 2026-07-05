@@ -1688,6 +1688,10 @@ struct SettingsView: View {
     /// sidebar row, the restart banner, and primary buttons.
     /// Exposed (non-private) so the Setup Wizard can reuse it.
     static let brandAccent = Color(red: 0xd9 / 255.0, green: 0x77 / 255.0, blue: 0x06 / 255.0)
+    /// Distinct color for borderline "considered" over-fire flags (Feature A):
+    /// a blue that reads clearly apart from the amber of real corrections, so a
+    /// dotted-underline flag says "a call I made" rather than "a change I made".
+    static let consideredAccent = Color(red: 0x3b / 255.0, green: 0x82 / 255.0, blue: 0xf6 / 255.0)
 
     /// Sidebar background — a slightly warmer / cooler tone than
     /// the detail pane so the two columns read as distinct surfaces

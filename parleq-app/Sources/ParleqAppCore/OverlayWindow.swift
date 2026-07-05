@@ -1870,18 +1870,22 @@ private struct OverlayContent: View {
                 continue
             }
             if span.isValidateConsidered {
-                // Considered over-fire flag: dotted underline, no fill.
-                attributed[lower..<upper].underlineStyle = Text.LineStyle(pattern: .dot, color: amber)
-                attributed[lower..<upper].foregroundColor = amber
+                // Considered over-fire flag: dotted underline in a DISTINCT blue
+                // (not the solid amber of a real correction) — "a call I made,
+                // not a change I made". Reads clearly apart from corrections.
+                let flag = SettingsView.consideredAccent
+                attributed[lower..<upper].underlineStyle = Text.LineStyle(pattern: .dot, color: flag)
+                attributed[lower..<upper].foregroundColor = flag
             } else {
                 // Ordinary correction: tint the replacement span.
                 attributed[lower..<upper].backgroundColor = amber.opacity(0.18)
                 attributed[lower..<upper].foregroundColor = amber
             }
 
-            // Insert a small superscript number badge right after the span.
+            // Insert a small superscript number badge right after the span —
+            // blue for a considered flag, amber for an ordinary correction.
             var badge = AttributedString("\(span.number)")
-            badge.foregroundColor = amber
+            badge.foregroundColor = span.isValidateConsidered ? SettingsView.consideredAccent : amber
             badge.font = .system(size: 9, weight: .bold)
             badge.baselineOffset = 6
             attributed.insert(badge, at: upper)
@@ -1918,7 +1922,7 @@ private struct OverlayContent: View {
                 HStack(spacing: 8) {
                     Image(systemName: "questionmark.circle")
                         .font(.system(size: 10))
-                        .foregroundStyle(amber)
+                        .foregroundStyle(SettingsView.consideredAccent)
                     // Tunable copy — finalized during the maintainer's
                     // real-voice walkthrough (Task 11).
                     Text("\(badges) Parleq wasn't sure — press the number to fix")
