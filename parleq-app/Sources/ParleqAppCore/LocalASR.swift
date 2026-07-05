@@ -372,16 +372,7 @@ public final class LocalASR {
     /// only the token timings + encoder features, not the cleaned transcript.
     /// Returns nil for a malformed WAV. Not used on the normal dictation path.
     public func transcribeRawForVoiceprint(wav data: Data) async throws -> ASRResult? {
-        guard let wavStart = Self.findRIFFOffset(in: data),
-              wavStart + 12 <= data.count else {
-            return nil
-        }
-        let chunkSize = data
-            .subdata(in: (wavStart + 4)..<(wavStart + 8))
-            .withUnsafeBytes { UInt32(littleEndian: $0.load(as: UInt32.self)) }
-        let wavEnd = min(wavStart + 8 + Int(chunkSize), data.count)
-        let wavBytes = data.subdata(in: wavStart..<wavEnd)
-        guard let samples = Self.wavToFloatSamples(wavBytes) else { return nil }
+        guard let samples = Self.decodeWavSamples(data) else { return nil }
         return try await asr.transcribeFull(samples: samples)
     }
 
@@ -412,6 +403,27 @@ public final class LocalASR {
     private var loadGeneration: UInt64 = 0
 
     // MARK: - WAV decoding
+
+    /// Decode a raw WAV `Data` buffer to Float32 samples: scan for the RIFF
+    /// header (robust to any leading prefix), honor its chunk length, then
+    /// convert the PCM body via `wavToFloatSamples`. Centralizes the
+    /// RIFF-scan → subdata → float pattern that the voiceprint decode callers
+    /// (`transcribeRawForVoiceprint`, `VoiceprintCoordinator.decodeWavSamples`,
+    /// and the contamination harness) share, so they can't drift. Prefer this
+    /// over calling `wavToFloatSamples` on raw file bytes, which assumes a
+    /// fixed 44-byte header with no RIFF scan. nil on a malformed/short buffer.
+    public static func decodeWavSamples(_ data: Data) -> [Float]? {
+        guard let wavStart = findRIFFOffset(in: data),
+              wavStart + 12 <= data.count else {
+            return nil
+        }
+        let chunkSize = data
+            .subdata(in: (wavStart + 4)..<(wavStart + 8))
+            .withUnsafeBytes { UInt32(littleEndian: $0.load(as: UInt32.self)) }
+        let wavEnd = min(wavStart + 8 + Int(chunkSize), data.count)
+        let wavBytes = data.subdata(in: wavStart..<wavEnd)
+        return wavToFloatSamples(wavBytes)
+    }
 
     /// Read a 16-bit mono 16 kHz WAV body and return Float32 samples
     /// in [-1.0, 1.0]. Strips the 44-byte WAV header. WAV samples

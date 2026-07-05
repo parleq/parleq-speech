@@ -451,15 +451,7 @@ public final class VoiceprintCoordinator: ObservableObject {
     /// any other WAV buffer in this app) decode the same way. nil on a malformed
     /// buffer.
     private static func decodeWavSamples(_ data: Data) -> [Float]? {
-        guard let wavStart = LocalASR.findRIFFOffset(in: data), wavStart + 12 <= data.count else {
-            return nil
-        }
-        let chunkSize = data
-            .subdata(in: (wavStart + 4)..<(wavStart + 8))
-            .withUnsafeBytes { UInt32(littleEndian: $0.load(as: UInt32.self)) }
-        let wavEnd = min(wavStart + 8 + Int(chunkSize), data.count)
-        let wavBytes = data.subdata(in: wavStart..<wavEnd)
-        return LocalASR.wavToFloatSamples(wavBytes)
+        return LocalASR.decodeWavSamples(data)
     }
 
     /// Index of the carrier word holding `term` (its first sub-word for a

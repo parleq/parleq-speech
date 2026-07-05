@@ -130,7 +130,7 @@ final class VoiceprintContextContaminationTests: XCTestCase {
         func cleanedText(for url: URL) async throws -> String? {
             guard let data = try? Data(contentsOf: url),
                   let asrResult = try await asr.transcribeRawForVoiceprint(wav: data),
-                  let samples = LocalASR.wavToFloatSamples(data)
+                  let samples = LocalASR.decodeWavSamples(data)
             else { return nil }
 
             let diagnostics = ASRDiagnostics(
