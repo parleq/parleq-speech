@@ -62,6 +62,12 @@ public enum ManagedConfig {
         // styled cleanup to a specific cloud provider+model.
         "refineProvider",
         "refineModel",
+        // Refinement TYPE pin (raw/instant/polished). Independent of the
+        // refine provider/model pins above: those choose WHICH provider a
+        // Polished refinement uses, this pins whether refinement is Polished
+        // (cloud) at all. A pinned "none" cleanup also force-downgrades
+        // Polished refinement to Raw (fail-closed zero-cloud egress).
+        "refinementType",
         // Phase 3 — operational policy
         "sparkleUpdateFeedURL",
         "loggingMode",
@@ -331,6 +337,34 @@ public enum ManagedConfig {
         }
         // Managed: enabled ONLY when explicitly true; malformed → fail CLOSED.
         return (value: parsed == true, managed: true)
+    }
+
+    /// Fail-closed refinement-type resolution under a zero-cloud cleanup
+    /// lockdown. Since the 0.40.0 reframe, Cleanup and Refinement are
+    /// INDEPENDENT — a "none" (Raw) cleanup no longer implies zero cloud egress,
+    /// because Polished refinement still sends voice-refine turns to a cloud
+    /// provider. Polished is the ONLY cloud refinement type (Raw and Instant run
+    /// on-device). So when the cleanup provider is PINNED to "none" (an explicit
+    /// no-transcript-egress lockdown), a Polished refinement must be forced down
+    /// to Raw to keep the egress guarantee — mirroring the no-processing posture
+    /// of a "none" cleanup.
+    ///
+    /// Pure truth table (independent of the CFPreferences MDM channel, like
+    /// `resolveClipStorage`) so the security-critical decision is unit-tested
+    /// directly. Returns the effective refinement type and whether the rule
+    /// engaged (→ the caller marks `refinementType` managed so the UI locks it
+    /// and the audit shows it as managed).
+    ///
+    /// - `cleanupPinnedNone`: the cleanup provider is MDM-pinned to "none".
+    /// - `refinement`: the refinement type resolved so far (user value or an
+    ///   explicit `refinementType` pin).
+    public static func resolveRefinementUnderPinnedNoneCleanup(
+        cleanupPinnedNone: Bool, refinement: TargetMode
+    ) -> (type: TargetMode, forced: Bool) {
+        if cleanupPinnedNone && refinement == .polished {
+            return (type: .raw, forced: true)
+        }
+        return (type: refinement, forced: false)
     }
 
     /// Returns the MDM-managed non-negative Int for `key`, or nil

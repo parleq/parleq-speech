@@ -2123,8 +2123,15 @@ struct SettingsView: View {
                         .pickerStyle(.segmented)
                         .labelsHidden()
                         .frame(maxWidth: 320)
-                        .disabled(model.managedKeys.contains("refineProvider"))
-                        if model.managedKeys.contains("refineProvider") {
+                        // The refinement TYPE is locked only when the dedicated
+                        // `refinementType` key is managed — pinned directly, or
+                        // force-downgraded to Raw by a pinned "none" cleanup
+                        // (fail-closed zero-cloud egress). Pinning just
+                        // `refineProvider` fixes WHICH provider a Polished
+                        // refinement uses, not whether refinement is Polished, so
+                        // it no longer disables this picker.
+                        .disabled(model.managedKeys.contains("refinementType"))
+                        if model.managedKeys.contains("refinementType") {
                             ManagedIndicator(isManaged: true)
                         }
                     }
