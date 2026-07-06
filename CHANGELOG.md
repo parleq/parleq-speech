@@ -4,6 +4,27 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.42.0] - Unreleased
+
+Choose your on-device model, and voiceprints that hold up in real sentences.
+
+### Added
+
+- **Choose your on-device cleanup model.** The on-device LLM tier now offers two models: **Gemma 4 E4B** (the default — best quality, ~4 GB download, 12 GB+ RAM) and the lighter **Qwen3-4B** (~2.4 GB download, 8 GB+ RAM), which brings full on-device LLM cleanup to 8 GB Macs. Pick one under Settings → Cleanup → Provider → On-device, or in the setup wizard. Both run entirely on your Mac — no API key, no cloud, no network boundary for your transcript.
+- **Borderline voiceprint over-fires are flagged for a one-tap fix.** When the acoustic gate keeps an enrolled term with only low confidence, the review overlay marks it with a distinct dotted underline; pressing its number (⌥+N) opens edit-at-word so you can correct it — which also teaches that term's voiceprint from the correction.
+- **Curated cleanup defaults are now visible and overridable.** The review overlay shows when an app's cleanup mode came from a built-in default rather than your global choice (terminals, code editors, and spreadsheets default to fast on-device cleanup so your commands and code aren't sent to an LLM). Settings → App behaviors labels each app's source ("Parleq default" vs "Your setting") and lists the recommended defaults with a one-click override.
+
+### Fixed
+
+- **Enrolled terms hold up in real sentences.** An enrolled term that sounds like an everyday word — e.g. "Keavi" vs "kiwi" — is no longer wrongly reverted when you say it in a sentence that also contains the similar word. The acoustic gate now judges each word from its own audio rather than the whole utterance, so a "kiwi" elsewhere in the sentence can't drag your "Keavi" the wrong way.
+- **On-device model names display cleanly and correctly.** The overlay badge and model picker now show the clean model name (e.g. "Gemma 4 E4B") matching the model that's actually running — not a raw checkpoint id or a stale selection after you switch models. Cloud model versions keep their version dots ("2.5 Flash").
+- **The on-device Polished provider setting now persists** across restart when the cleanup tier is on-device.
+- **A post-pause punctuation quirk no longer inflates a word's audio span**, a cause of voiceprint false-reverts on longer dictations.
+
+### Changed
+
+- Concord correction engine updated to 0.5.1 (over-fire "considered" records + acoustic-gate time spans + gap-aware span alignment).
+
 ## [0.41.0] - Unreleased
 
 Voiceprints that learn from your corrections.
