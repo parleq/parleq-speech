@@ -4488,7 +4488,7 @@ public final class AppState {
             isRefine: isRefine,
             override: overlay.model.pickedModelOverride
         )
-        let cleanupId = ModelIdentifier(provider: config.llmProvider, model: config.llmModel)
+        let cleanupId = config.cleanupDisplayIdentifier
 
         // Cleanup tier — most common path.
         if resolved == cleanupId {

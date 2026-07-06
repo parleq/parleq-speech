@@ -2860,7 +2860,7 @@ private struct OverlayContent: View {
             isRefine: styled,
             override: model.pickedModelOverride
         )
-        let cleanupId = ModelIdentifier(provider: cfg.llmProvider, model: cfg.llmModel)
+        let cleanupId = cfg.cleanupDisplayIdentifier
         var ids: [ModelIdentifier] = [cleanupId]
         if let ctx = cfg.contextModel, ctx != cleanupId {
             ids.append(ctx)

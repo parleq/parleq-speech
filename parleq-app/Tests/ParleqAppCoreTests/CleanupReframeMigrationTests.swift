@@ -335,4 +335,94 @@ final class CleanupReframeMigrationTests: XCTestCase {
             XCTAssertFalse(Config.isGenerativeProvider(p), p)
         }
     }
+
+    // MARK: - cleanupDisplayIdentifier (stale on-device model badge/picker bug)
+
+    /// The badge/picker display identifier for an on-device cleanup provider
+    /// must come from the authoritative on-device selection (`localModel`),
+    /// NOT the stale `llmModel` left over from a prior cloud provider (which
+    /// the runtime provider-build path in main.swift already ignores on the
+    /// local path).
+    func test_cleanupDisplayIdentifier_local_uses_localModel_not_stale_llmModel() {
+        var c = config(provider: "local", model: "gemini-2.5-flash")
+        c.localModel = LocalModelCatalog.qwen3_4B.checkpoint
+        let id = c.cleanupDisplayIdentifier
+        XCTAssertEqual(id.provider, "local")
+        XCTAssertEqual(id.model, LocalModelCatalog.qwen3_4B.checkpoint)
+        XCTAssertNotEqual(id.model, c.llmModel)
+    }
+
+    /// For every cloud provider, cleanupDisplayIdentifier is just llmModel —
+    /// unchanged behavior.
+    func test_cleanupDisplayIdentifier_cloud_is_llmModel() {
+        for p in ["gemini", "vertex", "bedrock", "bedrock-bearer", "azure", "openai"] {
+            let c = config(provider: p, model: "some-model")
+            XCTAssertEqual(c.cleanupDisplayIdentifier, ModelIdentifier(provider: p, model: "some-model"), p)
+        }
+    }
+
+    /// modelForInvocation's resolved identifier for a plain local cleanup
+    /// (no references, no refine) must likewise carry the on-device
+    /// selection, not a stale llmModel — this is what actually feeds the
+    /// overlay's ModelBadge.
+    func test_modelForInvocation_local_cleanup_uses_localModel() {
+        var c = config(provider: "local", model: "gemini-2.5-flash")
+        c.localModel = LocalModelCatalog.qwen3_4B.checkpoint
+        let resolved = c.modelForInvocation(hasReferences: false)
+        XCTAssertEqual(resolved, ModelIdentifier(provider: "local", model: LocalModelCatalog.qwen3_4B.checkpoint))
+    }
+
+    // MARK: - Fix 3: llm.model / llm.local.model anti-recurrence at save time
+
+    /// Once the cleanup provider is on-device, saving must sync `llm.model`
+    /// on disk to the current `llm.local.model` selection — so the two
+    /// fields can't diverge (the divergence is exactly what caused the
+    /// stale badge/picker bug in the first place). A stale on-disk
+    /// `llm.model` from a prior cloud provider gets corrected on the next
+    /// save.
+    func test_mergeForSave_local_provider_syncs_llmModel_to_localModel() throws {
+        var c = config(provider: "local", model: "gemini-2.5-flash")
+        c.localModel = LocalModelCatalog.qwen3_4B.checkpoint
+        let dict = Config.mergeForSave(c, existing: [:])
+        let llm = try XCTUnwrap(dict["llm"] as? [String: Any])
+        XCTAssertEqual(llm["model"] as? String, LocalModelCatalog.qwen3_4B.checkpoint)
+
+        // Round-trips: re-parsing the saved dict keeps llm.model and
+        // llm.local.model coherent.
+        let reparsed = Config.parse(fromDictionary: dict)
+        XCTAssertEqual(reparsed.llmModel, LocalModelCatalog.qwen3_4B.checkpoint)
+        XCTAssertEqual(reparsed.localModel, LocalModelCatalog.qwen3_4B.checkpoint)
+    }
+
+    /// A stale on-disk `llm.model` (from before switching to the on-device
+    /// provider) is corrected by the very next save — the divergence does
+    /// not persist across saves.
+    func test_mergeForSave_local_provider_corrects_stale_ondisk_llmModel() throws {
+        var c = config(provider: "local")
+        c.localModel = LocalModelCatalog.qwen3_4B.checkpoint
+        let existing: [String: Any] = [
+            "llm": ["mode": "default", "provider": "local", "model": "gemini-2.5-flash"],
+        ]
+        let dict = Config.mergeForSave(c, existing: existing)
+        let llm = try XCTUnwrap(dict["llm"] as? [String: Any])
+        XCTAssertEqual(llm["model"] as? String, LocalModelCatalog.qwen3_4B.checkpoint)
+    }
+
+    /// A cloud provider's model is untouched by the local-sync rule.
+    func test_mergeForSave_cloud_provider_model_unaffected() throws {
+        let c = config(provider: "vertex", model: "gemini-2.5-pro")
+        let dict = Config.mergeForSave(c, existing: [:])
+        let llm = try XCTUnwrap(dict["llm"] as? [String: Any])
+        XCTAssertEqual(llm["model"] as? String, "gemini-2.5-pro")
+    }
+
+    /// serializeToDictionary (the single-source-of-truth full serializer)
+    /// applies the same local-sync rule.
+    func test_serializeToDictionary_local_provider_syncs_llmModel_to_localModel() throws {
+        var c = config(provider: "local", model: "gemini-2.5-flash")
+        c.localModel = LocalModelCatalog.qwen3_4B.checkpoint
+        let dict = Config.serializeToDictionary(c)
+        let llm = try XCTUnwrap(dict["llm"] as? [String: Any])
+        XCTAssertEqual(llm["model"] as? String, LocalModelCatalog.qwen3_4B.checkpoint)
+    }
 }

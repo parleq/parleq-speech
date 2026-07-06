@@ -145,6 +145,14 @@ extension ModelIdentifier {
             default:        return provider.prefix(1).uppercased() + provider.dropFirst()
             }
         }
+        // On-device models are identified by a raw HF checkpoint id
+        // (e.g. "mlx-community/Qwen3-4B-Instruct-2507-4bit"). Humanizing that
+        // string (prefix-strip + title-case below) produces noise like
+        // "Mlx Community/Qwen3 4B Instruct 2507 4bit" — use the catalog's
+        // curated `displayName` instead ("Qwen3-4B").
+        if provider.lowercased() == "local" {
+            return LocalModelCatalog.model(for: model).displayName
+        }
         // Strip known provider prefixes so the badge reads
         // "2.5 Flash" (not "gemini-2.5-flash") or "Sonnet 4-5"
         // (not "claude-sonnet-4-5").
@@ -156,10 +164,11 @@ extension ModelIdentifier {
                 break
             }
         }
-        // Replace remaining hyphens/dots with spaces then title-case.
+        // Replace remaining hyphens with spaces then title-case. Dots are
+        // left alone so version numbers survive ("gemini-2.5-flash" →
+        // "2.5 Flash", not "2 5 Flash").
         let spaced = stripped
             .replacingOccurrences(of: "-", with: " ")
-            .replacingOccurrences(of: ".", with: " ")
         return spaced
             .split(separator: " ")
             .map { $0.prefix(1).uppercased() + $0.dropFirst() }
@@ -1798,7 +1807,7 @@ public struct Config: Sendable {
             || managedKeys.contains("contextModel")
             || managedKeys.contains("contextAllowedModels")
         if contextTierManaged {
-            let cleanupId = ModelIdentifier(provider: c.llmProvider, model: c.llmModel)
+            let cleanupId = c.cleanupDisplayIdentifier
             let contextId = ModelIdentifier(provider: contextProvider, model: contextModelName)
             c.contextModel = (contextId == cleanupId) ? nil : contextId
         }
@@ -1811,7 +1820,7 @@ public struct Config: Sendable {
         // so pinning just the provider snaps the model to that provider's
         // curated default.
         let currentRefineProvider = c.refineModel?.provider ?? (c.contextModel?.provider ?? c.llmProvider)
-        let currentRefineModel    = c.refineModel?.model    ?? (c.contextModel?.model    ?? c.llmModel)
+        let currentRefineModel    = c.refineModel?.model    ?? (c.contextModel?.model    ?? c.cleanupDisplayIdentifier.model)
         var refineProvider = currentRefineProvider
         var refineModelName = currentRefineModel
 
@@ -1834,7 +1843,7 @@ public struct Config: Sendable {
         let refineTierManaged = managedKeys.contains("refineProvider")
             || managedKeys.contains("refineModel")
         if refineTierManaged {
-            let cleanupId = ModelIdentifier(provider: c.llmProvider, model: c.llmModel)
+            let cleanupId = c.cleanupDisplayIdentifier
             let refineId  = ModelIdentifier(provider: refineProvider, model: refineModelName)
             // nil when the pin resolves back to the cleanup tier (= "same
             // as cleanup"); otherwise the explicit refine identifier.
@@ -2367,7 +2376,13 @@ public struct Config: Sendable {
         var llm: [String: Any] = [
             "mode": config.llmMode,
             "provider": config.llmProvider,
-            "model": config.llmModel,
+            // Anti-recurrence for the stale-badge bug: when the cleanup
+            // provider is on-device, `llm.model` on disk must mirror the
+            // authoritative on-device selection (`llm.local.model` /
+            // `config.localModel`) rather than whatever cloud model id was
+            // last selected before switching to local. A cloud provider's
+            // model is untouched.
+            "model": config.llmProvider == "local" ? config.localModel : config.llmModel,
         ]
         if !config.llmTuning.isDefault {
             llm["tuning"] = Self.serializeLLMTuning(config.llmTuning)
@@ -2681,9 +2696,14 @@ public struct Config: Sendable {
         } ?? false
         let preserveModelOnDisk = modelPinned
             || (providerPinned && !modelAllowlist && onDiskModelForeign)
+        // Anti-recurrence for the stale-badge bug (same rule as
+        // serializeLLMSection): outside the MDM-preservation cases above,
+        // an on-device cleanup provider writes `llm.model` from the
+        // authoritative `config.localModel`, not the possibly-stale
+        // `config.llmModel`, so the two fields can't diverge on disk.
         let llmModelToWrite: String = preserveModelOnDisk
             ? ((existingLLM["model"] as? String) ?? config.llmModel)
-            : config.llmModel
+            : (llmProviderToWrite == "local" ? config.localModel : config.llmModel)
         // Feature-toggle values: for unmanaged keys, write the current
         // in-memory value. For MDM-managed keys, carry forward the
         // existing on-disk value (if any) so removing the MDM profile
@@ -3121,6 +3141,26 @@ private func configLogStderr(_ message: String) {
 }
 
 extension Config {
+    /// The cleanup model IDENTIFIER for DISPLAY (badge/picker) and for
+    /// internal tier-identity comparisons. For the on-device provider the
+    /// authoritative model is `localModel` (the user's on-device selection,
+    /// which the runtime provider-build path in main.swift already reads via
+    /// `selectedLocalModel.checkpoint`) — NOT the stale `llmModel`, which the
+    /// runtime ignores on the local path and which main.swift's own comment
+    /// calls out as ignored. For every other (cloud) provider `llmModel` IS
+    /// the authoritative model, so this is just `llmModel`.
+    ///
+    /// Before this existed, several call sites built
+    /// `ModelIdentifier(provider: llmProvider, model: llmModel)` directly,
+    /// which silently showed/compared against a stale cloud model id after
+    /// switching the on-device model (`llmModel` doesn't get updated when
+    /// `localModel` changes). Use this instead of that pattern anywhere a
+    /// "the cleanup identifier" value is needed.
+    public var cleanupDisplayIdentifier: ModelIdentifier {
+        ModelIdentifier(provider: llmProvider,
+                         model: llmProvider == "local" ? selectedLocalModel.checkpoint : llmModel)
+    }
+
     /// Resolve which model should service a dictation given the
     /// current state. Priority (highest first):
     ///   1. `override`  — the in-overlay ModelPicker's explicit pick.
@@ -3144,7 +3184,7 @@ extension Config {
         override: ModelIdentifier? = nil
     ) -> ModelIdentifier {
         if let override { return override }
-        let cleanupId = ModelIdentifier(provider: llmProvider, model: llmModel)
+        let cleanupId = cleanupDisplayIdentifier
         // Cleanup disabled ("none") is a GLOBAL off switch. The Context tier
         // is a sub-feature of cleanup, so when the user has opted out of
         // cleanup entirely, reference-aware turns must NOT route to a
@@ -3217,8 +3257,11 @@ extension Config {
     }
 
     /// The model paired with `polishedProvider` (nil when none is configured).
+    /// Uses `cleanupDisplayIdentifier` rather than `llmModel` directly so a
+    /// local cleanup provider resolves to the authoritative on-device
+    /// selection (`localModel`), not a stale cloud model id.
     public var polishedModel: String? {
-        if Config.isGenerativeProvider(llmProvider) { return llmModel }
+        if Config.isGenerativeProvider(llmProvider) { return cleanupDisplayIdentifier.model }
         if let rm = refineModel, Config.isGenerativeProvider(rm.provider) { return rm.model }
         return nil
     }
