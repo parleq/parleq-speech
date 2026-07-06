@@ -764,7 +764,7 @@ public struct Config: Sendable {
         return AppBehavior(mode: mode, presetID: presetID)
     }
 
-    // Shared resolver behind behaviorForApp: returns (mode, source); trimmed must be non-empty (callers guard). Curated .polished downgrades to global when cleanup isn't Polished.
+    // Shared resolver behind behaviorForApp: returns (mode, source); trimmed non-empty (callers guard). Raw cleanup skips curated defaults entirely (only explicit overrides lift an app out); curated .polished downgrades to global when cleanup isn't Polished.
     private func resolveMode(for trimmed: String) -> (mode: TargetMode, source: ModeSource) {
         if let override = appBehaviors[trimmed]?.mode {
             return (override, .override)
