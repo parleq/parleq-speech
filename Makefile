@@ -445,7 +445,12 @@ release: release-precheck dmg
 	echo ""; \
 	echo "==> Committing + pushing appcast update to main..."; \
 	PRE_COMMIT_SHA=$$(git rev-parse HEAD); \
-	sed -i '' "s|^## \[$$VERSION\] - Unreleased|## [$$VERSION] - $$(date -u +%Y-%m-%d)|" "$(CHANGELOG)"; \
+	RELEASE_DATE=$$(date -u +%Y-%m-%d); \
+	sed -i '' "s|^## \[$$VERSION\] - Unreleased|## [$$VERSION] - $$RELEASE_DATE|" "$(CHANGELOG)"; \
+	grep -q "^## \[$$VERSION\] - $$RELEASE_DATE" "$(CHANGELOG)" || { \
+		echo "ERROR: CHANGELOG dating failed for v$$VERSION — the '## [$$VERSION] - Unreleased' entry is missing or already dated. Fix $(CHANGELOG) and retry."; \
+		exit 1; \
+	}; \
 	git add "$(APPCAST)" "$(CHANGELOG)"; \
 	git commit -m "release: v$$VERSION — appcast entry + CHANGELOG date"; \
 	if ! git push; then \
