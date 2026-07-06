@@ -443,7 +443,7 @@ public final class VoiceprintCoordinator: ObservableObject {
     }
 
     /// Letters-only lowercase normalization (matches the gate's slot key).
-    private static func norm(_ s: String) -> String { s.lowercased().filter { $0.isLetter } }
+    nonisolated private static func norm(_ s: String) -> String { s.lowercased().filter { $0.isLetter } }
 
     /// Decode a raw WAV `Data` buffer to Float32 samples, scanning for the RIFF
     /// header first — mirrors `LocalASR.transcribeRawForVoiceprint`'s decode so
@@ -463,6 +463,61 @@ public final class VoiceprintCoordinator: ObservableObject {
         return words.firstIndex { norm($0) == needle }
     }
 
+    /// Locate the RANGE of fresh-transcription word-groups that `term` occupies,
+    /// given the enrollment `carrierText` the user read.
+    ///
+    /// A bare word index (`termSlotIndex` applied straight onto the fresh groups)
+    /// assumes the term still occupies exactly ONE group in the fresh
+    /// transcription. That holds for ordinary names, but breaks for a term the
+    /// current encoder splits into a different number of groups — acronyms/digits
+    /// re-transcribe as spelled-out words ("E2E" → "E to E"), so the stale index
+    /// points at just the first sub-word (or drifts entirely) → the pooled span
+    /// is wrong → migration re-derivation fails the quality bar → the term is
+    /// parked for manual re-enroll. This ANCHORS on the carrier words surrounding
+    /// the term instead: everything between the last matched pre-term word and the
+    /// first matched post-term word is the term's span, however many groups the
+    /// encoder produced for it.
+    ///
+    /// Anchoring is greedy and order-preserving, so repeated anchor words resolve
+    /// to the correct occurrence by sequence (preserving the "is"-confusable
+    /// positional fix). If anchoring can't complete (a carrier word around the
+    /// term didn't transcribe), it falls back to the old single-slot behavior —
+    /// graceful degradation, never worse than the pre-fix path. Returns nil when
+    /// the term isn't in the carrier or the span is empty.
+    nonisolated static func termGroupRange(term: String, in carrierText: String,
+                                           groups: [VoiceprintDemo.WordGroup]) -> Range<Int>? {
+        let carrierWords = carrierText.split(separator: " ").map { norm(String($0)) }
+        let termWords = term.split(separator: " ").map { norm(String($0)) }.filter { !$0.isEmpty }
+        guard let firstTerm = termWords.first,
+              let k = carrierWords.firstIndex(of: firstTerm) else { return nil }
+        let freshNorm = groups.map { norm($0.text) }
+
+        // Fallback = the pre-fix behavior: the carrier index as a single fresh
+        // slot. Used verbatim when anchoring can't complete.
+        func fallback() -> Range<Int>? {
+            (k >= 0 && k < groups.count) ? k..<(k + 1) : nil
+        }
+
+        let postStart = min(k + max(termWords.count, 1), carrierWords.count)
+        let preWords = Array(carrierWords[0..<k])
+        let postWords = Array(carrierWords[postStart...])
+
+        // Forward-anchor the pre-term carrier words onto the fresh groups.
+        var lo = 0
+        for w in preWords {
+            guard let idx = freshNorm[lo...].firstIndex(of: w) else { return fallback() }
+            lo = idx + 1
+        }
+        // Backward-anchor the post-term carrier words from the tail inward.
+        var hi = groups.count
+        for w in postWords.reversed() {
+            guard let idx = freshNorm[..<hi].lastIndex(of: w) else { return fallback() }
+            hi = idx
+        }
+        guard lo < hi, hi <= groups.count else { return fallback() }
+        return lo..<hi
+    }
+
     /// Pool the embedding of the word at `slotIndex` in a transcribed clip, plus
     /// the (normalized) token FluidAudio produced there. nil when the clip yields
     /// no features or the slot is out of range.
@@ -475,25 +530,31 @@ public final class VoiceprintCoordinator: ObservableObject {
     /// carrier can't be decoded to samples or no samples-based `transcribe` handle
     /// is wired (`self.transcribe`), keeping enrollment functional either way.
     private func localizedSpan(
-        wav: Data, slotIndex: Int,
+        wav: Data, term: String, carrierText: String,
         transcribe: (Data) async throws -> ASRResult?
     ) async -> (embedding: [Float], heard: String)? {
         guard let result = try? await transcribe(wav),
               let timings = result.tokenTimings,
               let features = result.encoderFeatures else { return nil }
         let groups = VoiceprintDemo.wordGroups(from: timings)
-        guard slotIndex >= 0, slotIndex < groups.count else { return nil }
-        let g = groups[slotIndex]
-        let heard = Self.norm(g.text)
+        // Text-anchored alignment: resolve the FULL group range the term occupies
+        // in this transcription, so an acronym/digit term the encoder split into
+        // more groups than the carrier held ("E2E" → "E to E") still pools the
+        // right audio instead of a single mis-indexed sub-word.
+        guard let range = Self.termGroupRange(term: term, in: carrierText, groups: groups),
+              !range.isEmpty else { return nil }
+        let startSeconds = groups[range.lowerBound].startSeconds
+        let endSeconds = groups[range.upperBound - 1].endSeconds
+        let heard = Self.norm(range.map { groups[$0].text }.joined())
 
         if let samples = Self.decodeWavSamples(wav), let transcribeSamples = self.transcribe,
            let ctxFree = await VoiceprintReencoder.contextFreeEmbedding(
-               utteranceSamples: samples, startSec: g.startSeconds, endSec: g.endSeconds,
+               utteranceSamples: samples, startSec: startSeconds, endSec: endSeconds,
                transcribe: transcribeSamples) {
             return (ctxFree, heard)
         }
         guard let emb = features.pooledEmbedding(
-            startSeconds: g.startSeconds, endSeconds: g.endSeconds) else { return nil }
+            startSeconds: startSeconds, endSeconds: endSeconds) else { return nil }
         return (emb, heard)
     }
 
@@ -512,8 +573,8 @@ public final class VoiceprintCoordinator: ObservableObject {
         var embeddings: [[Float]] = []
         var heardTokens: [String] = []
         for clip in carriers {
-            guard let slot = Self.termSlotIndex(term: term, in: clip.carrierText) else { continue }
-            guard let span = await localizedSpan(wav: clip.wav, slotIndex: slot, transcribe: transcribe)
+            guard let span = await localizedSpan(wav: clip.wav, term: term,
+                                                 carrierText: clip.carrierText, transcribe: transcribe)
             else { continue }
             embeddings.append(span.embedding)
             heardTokens.append(span.heard)
@@ -563,8 +624,8 @@ public final class VoiceprintCoordinator: ObservableObject {
     ) async -> VoiceprintTemplate {
         var embeddings: [[Float]] = []
         for clip in carriers {
-            guard let slot = Self.termSlotIndex(term: label, in: clip.carrierText) else { continue }
-            guard let span = await localizedSpan(wav: clip.wav, slotIndex: slot, transcribe: transcribe)
+            guard let span = await localizedSpan(wav: clip.wav, term: label,
+                                                 carrierText: clip.carrierText, transcribe: transcribe)
             else { continue }
             embeddings.append(span.embedding)
         }

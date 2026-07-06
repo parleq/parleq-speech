@@ -65,6 +65,27 @@ final class VoiceprintMigrationTests: XCTestCase {
         return { _ in result }
     }
 
+    /// A stub `transcribe` whose transcription SPLITS an acronym term the way the
+    /// real encoder does: the carrier held "E2E" as one word, but the ASR hears
+    /// "E to E" (3 groups). Every span pools the same constant embedding so the
+    /// enroller's self-similarity gate passes — the ONLY thing that can fail
+    /// re-derivation here is mis-localizing the term span, which is exactly the
+    /// bug under test. Carrier "E2E works" → fresh groups [E, to, E, works].
+    private func acronymTranscribe() -> (Data) async throws -> ASRResult? {
+        let timings: [TokenTiming] = [
+            TokenTiming(token: " E",     tokenId: 1, startTime: 0.00, endTime: 0.30, confidence: 1),
+            TokenTiming(token: " to",    tokenId: 2, startTime: 0.40, endTime: 0.60, confidence: 1),
+            TokenTiming(token: " E",     tokenId: 3, startTime: 0.70, endTime: 1.00, confidence: 1),
+            TokenTiming(token: " works", tokenId: 4, startTime: 1.10, endTime: 1.60, confidence: 1),
+        ]
+        let frames = Array(repeating: [Float](arrayLiteral: 1, 0, 0, 0), count: 40)
+        let window = EncoderFeatureSequence.Window(frames: frames, globalFrameOffset: 0)
+        let features = EncoderFeatureSequence(windows: [window], hiddenSize: 4, secondsPerFrame: 0.08)
+        let result = ASRResult(text: "E to E works", confidence: 1, duration: 1.6, processingTime: 0.1,
+                               tokenTimings: timings, encoderFeatures: features)
+        return { _ in result }
+    }
+
     private func positiveClip(carrier: String, n: UInt8) -> StoredEnrollmentClip {
         StoredEnrollmentClip(wav: Data([n]), carrierText: carrier, role: .positive, negativeLabel: nil)
     }
@@ -136,6 +157,34 @@ final class VoiceprintMigrationTests: XCTestCase {
 
         // pendingMigration retains only the inert ones.
         XCTAssertEqual(Set(c.pendingMigration.map { $0.termID }), ["Bee", "Cee"])
+    }
+
+    // MARK: - Acronym/digit term re-derives instead of parking (item 2)
+
+    /// An acronym term ("E2E") whose enrollment carriers held it as one word but
+    /// which the current encoder re-transcribes as several ("E to E"). Before the
+    /// text-anchored span alignment, the stale carrier word index pointed at a
+    /// single wrong sub-word → the pooled span mis-located → re-derivation failed
+    /// → the term was PARKED. It must now migrate cleanly.
+    func test_acronym_term_re_derives_and_is_not_parked() async {
+        let audio: [String: [StoredEnrollmentClip]] = [
+            "E2E": [
+                positiveClip(carrier: "E2E works", n: 1),
+                positiveClip(carrier: "E2E works", n: 2),
+                positiveClip(carrier: "E2E works", n: 3),
+            ],
+        ]
+        let (c, spy, _) = makeCoordinator(pending: ["E2E"], audio: .success(audio))
+
+        await c.migrateIfNeeded(transcribe: acronymTranscribe())
+
+        XCTAssertTrue(c.hasVoiceprint("E2E"), "acronym term re-derived into the active store")
+        XCTAssertEqual(c.template(for: "E2E")?.modelVersion, BundledASREngine.voiceprintEncoderIdentity,
+                       "carries the current encoder stamp")
+        XCTAssertEqual(c.needsReEnrollCount, 0, "acronym term no longer parked for re-enroll")
+        XCTAssertTrue(c.pendingMigration.isEmpty, "nothing left inert")
+        XCTAssertEqual(spy.saveCallCount, 1, "one save for the migrated term")
+        XCTAssertEqual(spy.deletedCount, 0)
     }
 
     // MARK: - Audio load throws → bail, no save, no deleteAll, pending retained (R1/SI-1)
