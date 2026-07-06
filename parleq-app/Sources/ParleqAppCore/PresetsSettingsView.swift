@@ -474,7 +474,7 @@ struct PresetsSettingsView: View {
 
     /// internal (not private) so the "Recommended defaults" disclosure rows
     /// can reuse the same icon-resolution logic as the editable app rows.
-    func appIcon(for bundleID: String) -> NSImage? {
+    private func appIcon(for bundleID: String) -> NSImage? {
         guard let url = NSWorkspace.shared.urlForApplication(
             withBundleIdentifier: bundleID) else { return nil }
         return NSWorkspace.shared.icon(forFile: url.path)
@@ -482,7 +482,7 @@ struct PresetsSettingsView: View {
 
     /// internal (not private) so the "Recommended defaults" disclosure rows
     /// can reuse the same display-name resolution as the editable app rows.
-    func resolvedAppName(for bundleID: String) -> String {
+    private func resolvedAppName(for bundleID: String) -> String {
         if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) {
             let name = (Bundle(url: url)?.object(forInfoDictionaryKey: "CFBundleDisplayName")
                         as? String)
