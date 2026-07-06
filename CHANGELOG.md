@@ -4,6 +4,19 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.43.0] - Unreleased
+
+Voiceprints that carry over on their own, and tighter enterprise controls.
+
+### Added
+
+- **A managed control for refinement.** IT admins can now pin the refinement mode (Raw / on-device Instant / cloud Polished) via a `refinementType` managed-configuration key. And pinning cleanup to "none" for a zero-cloud-egress lockdown now automatically forces refinement off the cloud too — since the 0.40.0 split made cleanup and refinement independent, "Raw cleanup" alone no longer guaranteed no transcript left the Mac; this closes that gap. See the [managed configuration guide](https://parleq.app/docs/managed-configuration/).
+
+### Fixed
+
+- **Enrolled acronyms and initialisms carry over across speech-model updates.** When a speech-model change requires your voiceprints to be rebuilt, a term the model now spells out differently (e.g. "E2E" heard as "E to E") is re-derived correctly from your stored enrollment audio instead of being set aside for manual re-enrollment.
+- **A clearer signal when a voice term does need re-enrolling.** If a term genuinely can't be carried over, the menu-bar icon's menu now shows a persistent "a voice term needs re-enrolling" item (click it to jump to the Dictionary), so you find out without having to open Settings.
+
 ## [0.42.0] - 2026-07-06
 
 Choose your on-device model, and voiceprints that hold up in real sentences.
