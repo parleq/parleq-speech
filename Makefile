@@ -31,6 +31,7 @@ SOURCE_INFO_PLIST := $(APP_DIR)/Resources/Info.plist
 # first line against SOURCE_INFO_PLIST's CFBundleShortVersionString
 # before doing anything destructive.
 RELEASE_NOTES     := RELEASE_NOTES.txt
+CHANGELOG         := CHANGELOG.md
 APPCAST           := web/public/appcast.xml
 INSTALL_DEST      := /Applications/Parleq.app
 CODESIGN_IDENTITY :=
@@ -444,8 +445,9 @@ release: release-precheck dmg
 	echo ""; \
 	echo "==> Committing + pushing appcast update to main..."; \
 	PRE_COMMIT_SHA=$$(git rev-parse HEAD); \
-	git add "$(APPCAST)"; \
-	git commit -m "release: appcast entry for v$$VERSION"; \
+	sed -i '' "s|^## \[$$VERSION\] - Unreleased|## [$$VERSION] - $$(date -u +%Y-%m-%d)|" "$(CHANGELOG)"; \
+	git add "$(APPCAST)" "$(CHANGELOG)"; \
+	git commit -m "release: v$$VERSION — appcast entry + CHANGELOG date"; \
 	if ! git push; then \
 		echo ""; \
 		echo "ERROR: git push failed. The appcast commit is local-only."; \
