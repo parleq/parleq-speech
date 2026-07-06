@@ -470,6 +470,23 @@ public struct AppBehavior: Equatable, Codable, Sendable {
     }
 }
 
+/// WHY a paste target's cleanup mode resolved the way it did — display-only,
+/// never consulted for routing. Mirrors `Config.behaviorForApp`'s branches
+/// exactly (see `Config.resolveMode(for:)`, the single shared implementation).
+public enum ModeSource: Equatable, Sendable {
+    /// An explicit `appBehaviors` override for this bundle ID.
+    case override
+    /// A `CuratedAppDefaults` entry actually took effect.
+    case curated
+    /// No override/curation applied — the app is on the user's global
+    /// `cleanupType`. Also covers: nil/empty bundle ID, cleanup globally Raw
+    /// (curated defaults skipped), and the curated-Polished-downgrade edge
+    /// (a curated `.polished` app when the user's cleanup isn't itself
+    /// Polished — the curation did NOT take effect, so the resolved mode is
+    /// just the global default).
+    case global
+}
+
 public struct Config: Sendable {
     public var hotkeyBinding: String
     /// #84: raw `hotkey.gestures` map (gesture key → action token) for the
@@ -729,35 +746,60 @@ public struct Config: Sendable {
         guard let bundleID else { return AppBehavior(mode: cleanupType) }
         let trimmed = bundleID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return AppBehavior(mode: cleanupType) }
-        // Mode: explicit override → curated default → global cleanup type.
-        //   • "none" (cleanupType == .raw): curated defaults are skipped
-        //     entirely — a user who opted out of cleanup keeps Raw everywhere;
-        //     only an explicit override lifts them out.
-        //   • A curated `.polished` upgrade is applied ONLY when the user's
-        //     CLEANUP is itself Polished (cleanupType == .polished). Otherwise
-        //     it falls back to the user's cleanup type. This is load-bearing:
-        //     a concord (Instant) cleanup user who configured a cloud provider
-        //     for REFINEMENT has a non-nil `polishedProvider`, so without this
-        //     guard curated comms/email/browser apps would route their CLEANUP
-        //     to the refinement provider — cloud — even though the user chose
-        //     on-device cleanup. Curated `.instant` always applies (on-device
-        //     is always available); explicit overrides are always honored.
-        let mode: TargetMode
-        if let override = appBehaviors[trimmed]?.mode {
-            mode = override
-        } else if cleanupType == .raw {
-            mode = .raw
-        } else if let curated = CuratedAppDefaults.mode(for: trimmed) {
-            mode = (curated == .polished && cleanupType != .polished) ? cleanupType : curated
-        } else {
-            mode = cleanupType
-        }
+        let (mode, _) = resolveMode(for: trimmed)
         // Preset is sourced from presetForApp — the single source of truth
         // (`presetAppDefaults`) plus the MDM gate — so the two maps can never
         // drift. Only Polished carries a preset; suggested tones are never
         // auto-applied.
         let presetID = mode == .polished ? presetForApp(trimmed)?.id : nil
         return AppBehavior(mode: mode, presetID: presetID)
+    }
+
+    /// The single shared branch logic behind `behaviorForApp` — resolves both
+    /// the effective `TargetMode` AND *why* it resolved that way. `trimmed`
+    /// must already be a non-empty, whitespace-trimmed bundle ID (callers
+    /// handle the nil/empty case themselves, since they resolve to different
+    /// public shapes — `AppBehavior` vs `ModeSource`).
+    ///
+    /// Mode: explicit override → curated default → global cleanup type.
+    ///   • "none" (cleanupType == .raw): curated defaults are skipped
+    ///     entirely — a user who opted out of cleanup keeps Raw everywhere;
+    ///     only an explicit override lifts them out.
+    ///   • A curated `.polished` upgrade is applied ONLY when the user's
+    ///     CLEANUP is itself Polished (cleanupType == .polished). Otherwise
+    ///     it falls back to the user's cleanup type. This is load-bearing:
+    ///     a concord (Instant) cleanup user who configured a cloud provider
+    ///     for REFINEMENT has a non-nil `polishedProvider`, so without this
+    ///     guard curated comms/email/browser apps would route their CLEANUP
+    ///     to the refinement provider — cloud — even though the user chose
+    ///     on-device cleanup. Curated `.instant` always applies (on-device
+    ///     is always available); explicit overrides are always honored.
+    private func resolveMode(for trimmed: String) -> (mode: TargetMode, source: ModeSource) {
+        if let override = appBehaviors[trimmed]?.mode {
+            return (override, .override)
+        } else if cleanupType == .raw {
+            return (.raw, .global)
+        } else if let curated = CuratedAppDefaults.mode(for: trimmed) {
+            if curated == .polished && cleanupType != .polished {
+                // Downgrade edge: the curation did NOT take effect — the
+                // resolved mode is just the user's global cleanup type.
+                return (cleanupType, .global)
+            }
+            return (curated, .curated)
+        } else {
+            return (cleanupType, .global)
+        }
+    }
+
+    /// WHY the paste target's cleanup mode resolved the way it did — display
+    /// only (e.g. an overlay/Settings hint). Mirrors `behaviorForApp`'s
+    /// branches exactly via the shared `resolveMode(for:)` helper; never
+    /// consulted by routing.
+    public func modeSource(for bundleID: String?) -> ModeSource {
+        guard let bundleID else { return .global }
+        let trimmed = bundleID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return .global }
+        return resolveMode(for: trimmed).source
     }
 
     /// Model to use when references are attached to a dictation.

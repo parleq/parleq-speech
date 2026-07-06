@@ -1343,6 +1343,16 @@ public final class OverlayModel: ObservableObject {
     /// A status label reflecting an automatic choice — never a selector.
     @Published var cleanupMode: TargetMode?
 
+    /// WHY `cleanupMode` resolved the way it did, set alongside it by AppState
+    /// (`Config.modeSource(for:)`) — display-only transparency, never consulted
+    /// for routing. `appName` is the paste target's display name when known,
+    /// nil otherwise (renders as generic "app default" copy). Populated only
+    /// for a fresh cleanup dispatch; cleared to nil everywhere `cleanupMode`
+    /// resets to nil. Drives a small secondary hint next to the EngineBadge
+    /// when `source == .curated` — i.e. "this app is on Instant/Raw because of
+    /// a curated default, not your global cleanup choice."
+    @Published var cleanupModeSource: (source: ModeSource, appName: String?)?
+
     /// Name of the transform preset currently being applied by a
     /// manual chip tap; drives the cleaning-state status line
     /// ("Applying <name>…"). Set in AppState.runPreset(id:) right
@@ -2223,6 +2233,13 @@ private struct OverlayContent: View {
             // panel past the visible screen on long transcripts).
             headerStrip
 
+            // Curated-default transparency hint (Task 1b): only when the
+            // header shows the EngineBadge (Instant/Raw) AND that mode came
+            // from a curated per-app default rather than an explicit
+            // override or the user's global cleanup choice. Tells the user
+            // WHY this app isn't following their global setting.
+            curatedModeHint
+
             // Error / permission banner (only when a message is set).
             errorBanner
 
@@ -2746,6 +2763,31 @@ private struct OverlayContent: View {
                 .menuIndicator(.hidden)
                 .accessibilityLabel("Add reference")
             }
+        }
+    }
+
+    /// Curated-default transparency hint (Task 1b): a small secondary line
+    /// under the header explaining why this dictation is on the EngineBadge
+    /// (Instant/Raw) path when that came from a curated per-app default —
+    /// not the user's global cleanup choice and not an explicit override
+    /// (those don't need explaining, so they render nothing here). Deliberately
+    /// muted (secondary/tertiary, no accent color) — it's a "why", not a call
+    /// to action; tapping the EngineBadge itself remains the only affordance.
+    @ViewBuilder
+    private var curatedModeHint: some View {
+        if let modeInfo = model.cleanupModeSource,
+           modeInfo.source == .curated,
+           model.cleanupMode == .instant || model.cleanupMode == .raw {
+            let copy = modeInfo.appName.map { "\($0) default" } ?? "app default"
+            HStack(spacing: 4) {
+                Image(systemName: "info.circle")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.tertiary)
+                Text(copy)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+            }
+            .accessibilityLabel("Cleanup mode set by \(copy)")
         }
     }
 

@@ -2965,6 +2965,7 @@ public final class AppState {
         overlay.model.appliedPresetName = nil
         overlay.model.activeTransformName = nil
         overlay.model.cleanupMode = nil
+        overlay.model.cleanupModeSource = nil
         lastCleanupFailed = false
         // 0.14.0 PR 4 (#219): clear last-pass timings so a previous
         // dictation's measurements don't leak into this entry if
@@ -3709,6 +3710,15 @@ public final class AppState {
                 // Engine badge for the header.
                 self?.overlay.model.cleanupMode = AppState.engineBadge(
                     for: effectiveMode, hasInstantProvider: hasInstant)
+                // Curated-default transparency hint (Task 1b): WHY the badge
+                // above resolved the way it did — display only, mirrors
+                // behaviorForApp via Config.modeSource, never consulted for
+                // routing. appName is best-effort (nil bundle → generic
+                // "app default" copy in the overlay).
+                self?.overlay.model.cleanupModeSource = (
+                    source: loadedConfig.modeSource(for: targetBundleID),
+                    appName: targetBundleID.map { LearnedStore.appDisplayName($0) }
+                )
                 // When imageReferenceEnabled is false, downgrade any
                 // image-mode references to text mode for prompt-building.
                 // The reference chips in the overlay still show the
@@ -4201,6 +4211,7 @@ public final class AppState {
         overlay.model.appliedPresetName = nil
         overlay.model.activeTransformName = nil
         overlay.model.cleanupMode = nil
+        overlay.model.cleanupModeSource = nil
         lastCleanupFailed = false
         pendingContribution = nil
         #if Concord

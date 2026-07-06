@@ -221,6 +221,45 @@ final class CleanupReframeMigrationTests: XCTestCase {
         XCTAssertEqual(c.behaviorForApp("com.apple.Terminal").mode, .instant)
     }
 
+    // MARK: - modeSource (mirrors behaviorForApp's branches; display only)
+
+    func test_modeSource_override_wins() {
+        var c = config(provider: "none")
+        c.appBehaviors = ["com.example.app": AppBehavior(mode: .polished)]
+        XCTAssertEqual(c.modeSource(for: "com.example.app"), .override)
+    }
+
+    func test_modeSource_curated_instant_applies_under_global_polished() {
+        // iTerm2 is curated Instant; global cleanup is Polished (gemini), so
+        // the curation actually takes effect.
+        let c = config(provider: "gemini", model: "gemini-2.5-flash")
+        XCTAssertEqual(c.behaviorForApp("com.googlecode.iterm2").mode, .instant)
+        XCTAssertEqual(c.modeSource(for: "com.googlecode.iterm2"), .curated)
+    }
+
+    func test_modeSource_unmapped_app_is_global() {
+        let c = config(provider: "gemini", model: "gemini-2.5-flash")
+        XCTAssertEqual(c.modeSource(for: "com.example.unmapped"), .global)
+    }
+
+    func test_modeSource_global_raw_even_for_curated_app() {
+        // Global cleanup is Raw ("none") — curated defaults are skipped
+        // entirely, so even a curated app resolves to .global, not .curated.
+        let c = config(provider: "none")
+        XCTAssertEqual(c.behaviorForApp("com.googlecode.iterm2").mode, .raw)
+        XCTAssertEqual(c.modeSource(for: "com.googlecode.iterm2"), .global)
+    }
+
+    func test_modeSource_curated_polished_downgrade_edge_is_global() {
+        // com.apple.mail is curated .polished, but the user's global cleanup
+        // is Instant (concord) — the curation does NOT take effect (resolved
+        // mode falls back to the global Instant), so the source is .global,
+        // not .curated.
+        let c = config(provider: "concord")
+        XCTAssertEqual(c.behaviorForApp("com.apple.mail").mode, .instant)
+        XCTAssertEqual(c.modeSource(for: "com.apple.mail"), .global)
+    }
+
     func test_concord_refine_routes_to_shared_polished_provider() {
         // The maintainer's path: a refine / re-clean for a concord-cleanup user
         // resolves to their shared Polished provider (vertex), not concord.
