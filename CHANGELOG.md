@@ -4,7 +4,7 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
-## [0.42.0] - Unreleased
+## [0.42.0] - 2026-07-06
 
 Choose your on-device model, and voiceprints that hold up in real sentences.
 
