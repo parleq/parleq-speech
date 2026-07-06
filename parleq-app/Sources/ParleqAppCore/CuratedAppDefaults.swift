@@ -41,6 +41,26 @@ public enum CuratedAppDefaults {
         curated[bundleID]?.tone
     }
 
+    /// Every curated (bundleID, mode, suggested tone) entry, for UI discovery
+    /// surfaces (the Settings "Recommended defaults" disclosure). Sorted
+    /// deterministically: mode (Instant, then Polished, then Raw — Raw is
+    /// unused today but kept for future-proofing), then bundle ID.
+    ///
+    /// Deliberately excludes the `com.jetbrains.*` PREFIX rule handled in
+    /// `mode(for:)` — a prefix isn't a concrete bundle ID and can't be listed
+    /// as one row. No behavior change to `mode(for:)`/`suggestedTone(for:)`.
+    public static var all: [(bundleID: String, mode: TargetMode, tone: SuggestedTone?)] {
+        let modeOrder: [TargetMode: Int] = [.instant: 0, .polished: 1, .raw: 2]
+        return curated
+            .map { (bundleID: $0.key, mode: $0.value.mode, tone: $0.value.tone) }
+            .sorted { lhs, rhs in
+                let lhsOrder = modeOrder[lhs.mode] ?? 99
+                let rhsOrder = modeOrder[rhs.mode] ?? 99
+                if lhsOrder != rhsOrder { return lhsOrder < rhsOrder }
+                return lhs.bundleID < rhs.bundleID
+            }
+    }
+
     // MARK: - The map
 
     private struct Curation {
