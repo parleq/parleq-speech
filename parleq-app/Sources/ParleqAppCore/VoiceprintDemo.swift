@@ -504,12 +504,14 @@ public final class VoiceprintCoordinator: ObservableObject {
         let freshNorm = groups.map { norm($0.text) }
 
         // Fallback = the pre-fix behavior: the carrier index as a single fresh
-        // slot. Used verbatim when anchoring can't complete.
+        // slot. Used verbatim when anchoring can't complete. (`k` is a
+        // firstIndex result, so it's always >= 0.)
         func fallback() -> Range<Int>? {
-            (k >= 0 && k < groups.count) ? k..<(k + 1) : nil
+            k < groups.count ? k..<(k + 1) : nil
         }
 
-        let postStart = min(k + max(termWords.count, 1), carrierWords.count)
+        // `termWords.count >= 1` (termWords.first was unwrapped above).
+        let postStart = min(k + termWords.count, carrierWords.count)
         let preWords = Array(carrierWords[0..<k])
         let postWords = Array(carrierWords[postStart...])
 

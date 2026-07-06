@@ -79,6 +79,24 @@ final class VoiceprintSpanAlignmentTests: XCTestCase {
                            fresh: ["Alpha", "is", "here"]))
     }
 
+    func test_multiword_term_first_word_repeated_anchors_on_first_occurrence() {
+        // KNOWN LIMITATION (pre-existing — `termSlotIndex` had it too): `k`
+        // anchors on the FIRST occurrence of the term's leading word in the
+        // carrier, so a multi-word term whose first word also appears earlier
+        // ("the answer" in "the question and the answer") locks onto the wrong
+        // occurrence. Documented here so a future contributor doesn't "fix" it in
+        // a way that regresses the common single-occurrence cases. Parleq's
+        // enrollment carriers are controlled prompts where the term appears once,
+        // so this doesn't bite in practice.
+        //   carrier words: [the, question, and, the, answer]; term "the answer"
+        //   → k = 0 (first "the"), termWords.count = 2, postStart = 2,
+        //     preWords = [], postWords = [and, the, answer]
+        //   fresh: [the, question, and, the, answer]
+        //   backward-anchor answer→4, the→3, and→2 ⇒ hi = 2, lo = 0 ⇒ 0..<2
+        XCTAssertEqual(range(term: "the answer", carrier: "the question and the answer",
+                             fresh: ["the", "question", "and", "the", "answer"]), 0..<2)
+    }
+
     func test_missing_pre_anchor_falls_back_to_slot_index() {
         // "foo" didn't transcribe, so forward anchoring can't complete; the
         // fallback reproduces the old slot behavior (carrier index 1 → fresh

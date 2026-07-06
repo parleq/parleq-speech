@@ -1566,9 +1566,10 @@ struct ParleqApp {
                         // Surface parked-term "needs re-enroll" in the menu bar,
                         // persistently and without requiring the user to open
                         // Settings. Wired BEFORE migration so the didSet callback
-                        // catches the count migration sets; the explicit set after
-                        // migrateIfNeeded covers the launch-ordering case and any
-                        // count already present from loadPersisted.
+                        // catches the count migrateIfNeeded sets; the explicit set
+                        // after migrateIfNeeded is a belt-and-suspenders sync of
+                        // the final count (the didSet doesn't fire when the count
+                        // stays 0, and covers any wiring-order edge case).
                         coordinator.onReEnrollCountChanged = { [weak menuBox] count in
                             menuBox?.value?.setReEnrollCount(count)
                         }
