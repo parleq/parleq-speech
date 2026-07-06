@@ -363,7 +363,7 @@ public enum LocalModelCatalog {
         ramFloorGB: 12, ramComfortableGB: 24,
         idleUnloadMinutesCautioned: 3, idleUnloadMinutesComfortable: 30,
         maxTokens: 1024, contextLength: 8192,
-        licenseName: "Google Gemma (Gemma Terms of Use)",
+        licenseName: "Google Gemma (Apache 2.0)",
         licenseURL: "https://ai.google.dev/gemma/terms")
 
     public static let qwen3_4B = LocalModelInfo(

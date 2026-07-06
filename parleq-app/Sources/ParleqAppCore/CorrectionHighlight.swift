@@ -77,18 +77,13 @@ enum LocalConcordConstants {
     /// likely an over-fire worth flagging. Above it, the gate was confident
     /// and the word stays unflagged.
     ///
-    /// SCALE: a "considered" record only exists on `VoiceprintGate`'s
-    /// `.validation` path (Concord already emitted the term; the gate is
-    /// deciding whether to revert it). That path's `margin` is a cosine-space
-    /// contrastive gap — `termSimilarity - worstNegativeSimilarity` — and it
-    /// only reaches `.accept` (vs. `.revert`) when
-    /// `margin >= -VoiceprintGate.defaultRevertMargin` (`-0.05`). So a
-    /// "considered" record's margin realistically spans roughly `[-0.05, 1]`:
-    /// values near the bottom of that range are barely-confident accepts,
-    /// values near the top are unambiguous. `0.15` sits just above that floor
-    /// — comfortably wider than the `0.05` no-revert band so it also catches
-    /// accepts hovering just past it, but not so wide it flags a genuinely
-    /// confident match.
+    /// SCALE: a "considered" record only exists when the acoustic gate ACCEPTED
+    /// a term rather than reverting it. `gateMargin` is a gate-internal
+    /// confidence value where lower = a barely-confident accept; `0.15` sits
+    /// just above the gate's no-revert floor — wide enough to catch accepts
+    /// hovering just past it, but not so wide it flags a genuinely confident
+    /// match. (The exact gate-margin definition and revert threshold are
+    /// engine internals — see the correction engine's own docs.)
     ///
     /// STARTING GUESS, NOT YET CALIBRATED: `0.15` is a first-guess pick, not
     /// data-fit. As of this writing there is no readily available margin
