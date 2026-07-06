@@ -57,6 +57,19 @@ final class CleanupReframeMigrationTests: XCTestCase {
         XCTAssertTrue(c.hasPolishedProvider)
     }
 
+    /// RoboRev follow-up: `polishedModel` for a "local" cleanup provider must
+    /// resolve to the authoritative on-device selection (`localModel`), not
+    /// the stale `llmModel` — explicit coverage for the `isGenerativeProvider`
+    /// branch of `polishedModel` (which `cleanupType`'s "local" case in
+    /// `test_cleanupType_cloud_is_polished` exercises but does not assert on).
+    func test_polished_provider_is_cleanup_when_cleanup_is_local() {
+        var c = config(provider: "local", model: "gemini-2.5-flash")
+        c.localModel = LocalModelCatalog.qwen3_4B.checkpoint
+        XCTAssertEqual(c.polishedProvider, "local")
+        XCTAssertEqual(c.polishedModel, LocalModelCatalog.qwen3_4B.checkpoint)
+        XCTAssertTrue(c.hasPolishedProvider)
+    }
+
     func test_polished_provider_falls_to_refine_when_cleanup_is_concord() {
         // The maintainer's shape: concord cleanup + vertex refine → the shared
         // Polished provider is vertex (from refineModel).
@@ -424,5 +437,46 @@ final class CleanupReframeMigrationTests: XCTestCase {
         let dict = Config.serializeToDictionary(c)
         let llm = try XCTUnwrap(dict["llm"] as? [String: Any])
         XCTAssertEqual(llm["model"] as? String, LocalModelCatalog.qwen3_4B.checkpoint)
+    }
+
+    // MARK: - RoboRev follow-up: MDM refine-tier "same as cleanup" comparison
+    // for a local cleanup provider (Config.swift's applyManagedOverlay
+    // refineTierManaged block, mirrored here per the ManagedConfigTests.swift
+    // convention of simulating the private applyManagedOverlay logic inline —
+    // it reads real /Library/Managed Preferences, which a unit test can't
+    // fake). Before cleanupDisplayIdentifier existed, this block's
+    // `currentRefineModel` fallback and `cleanupId` both read raw `llmModel`;
+    // this test pins that both now consistently resolve through
+    // `cleanupDisplayIdentifier` (i.e. `localModel`) for a "local" cleanup
+    // provider, so an MDM refine-tier pin that resolves back to "local"
+    // correctly collapses to "same as cleanup" (nil), not a spurious mismatch
+    // caused by comparing a stale llmModel against the corrected value.
+    func test_mdm_refineTierManaged_local_cleanup_resolves_same_as_cleanup() {
+        var c = config(provider: "local", model: "gemini-2.5-flash") // stale leftover cloud id
+        c.localModel = LocalModelCatalog.qwen3_4B.checkpoint
+
+        // Mirrors Config.swift's currentRefineModel/currentRefineProvider
+        // fallback chain (refineModel ?? contextModel ?? cleanup) when
+        // neither refineModel nor contextModel is set.
+        let currentRefineProvider = c.refineModel?.provider ?? (c.contextModel?.provider ?? c.llmProvider)
+        let currentRefineModel    = c.refineModel?.model    ?? (c.contextModel?.model    ?? c.cleanupDisplayIdentifier.model)
+        XCTAssertEqual(currentRefineModel, LocalModelCatalog.qwen3_4B.checkpoint,
+                       "the refine-tier fallback must resolve to localModel, not the stale llmModel")
+
+        // An admin pin of refineProvider="local" with the tier otherwise
+        // unmanaged: refineProvider/refineModelName stay at the current
+        // (fallback) values computed above.
+        let refineProvider = currentRefineProvider
+        let refineModelName = currentRefineModel
+
+        // Mirrors the refineTierManaged block: cleanupId must be the SAME
+        // corrected identifier as the fallback above, or a "local" refine
+        // pin that resolves back to the cleanup provider would incorrectly
+        // NOT collapse to nil.
+        let cleanupId = c.cleanupDisplayIdentifier
+        let refineId  = ModelIdentifier(provider: refineProvider, model: refineModelName)
+        let resolvedRefineModel: ModelIdentifier? = (refineId == cleanupId) ? nil : refineId
+        XCTAssertNil(resolvedRefineModel,
+                     "a refine pin that resolves back to the local cleanup provider must collapse to nil (same as cleanup)")
     }
 }
