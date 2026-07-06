@@ -1224,6 +1224,16 @@ public final class OverlayModel: ObservableObject {
     /// left via ⌘S (save), ⌘Return (commit+accept), or Esc (discard).
     @Published var editing: Bool = false
     @Published var editableText: String = ""
+    /// Task 7 (Feature A interaction): word-index range (Concord token
+    /// indices) to focus once the editor gains focus, set only when edit mode
+    /// was entered by routing a ⌥+N undo on a "considered" over-fire flag
+    /// (`AppState.undoCorrection` via `enterEditMode(focusWordRange:)`)
+    /// rather than by the plain E key. `nil` for an ordinary E-edit. Not yet
+    /// wired to the editor's cursor placement — SwiftUI's `TextEditor` has no
+    /// selection-range binding in use today — this is the seam for that
+    /// follow-up; for now it signals "this edit was opened at a specific
+    /// word."
+    @Published var editFocusWordRange: Range<Int>? = nil
 
     /// Correction highlights for the on-device "Lightweight" (Concord) tier:
     /// the spans Concord changed vs. the raw ASR, numbered 1..N in reading
@@ -1332,6 +1342,16 @@ public final class OverlayModel: ObservableObject {
     /// `.polished` and nil fall through to the normal interactive model badge.
     /// A status label reflecting an automatic choice — never a selector.
     @Published var cleanupMode: TargetMode?
+
+    /// WHY `cleanupMode` resolved the way it did, set alongside it by AppState
+    /// (`Config.modeSource(for:)`) — display-only transparency, never consulted
+    /// for routing. `appName` is the paste target's display name when known,
+    /// nil otherwise (renders as generic "app default" copy). Populated only
+    /// for a fresh cleanup dispatch; cleared to nil everywhere `cleanupMode`
+    /// resets to nil. Drives a small secondary hint next to the EngineBadge
+    /// when `source == .curated` — i.e. "this app is on Instant/Raw because of
+    /// a curated default, not your global cleanup choice."
+    @Published var cleanupModeSource: (source: ModeSource, appName: String?)?
 
     /// Name of the transform preset currently being applied by a
     /// manual chip tap; drives the cleaning-state status line
@@ -1830,10 +1850,19 @@ private struct OverlayContent: View {
     }
     #if Concord
     /// Build the review text with the on-device corrector's changed spans
-    /// highlighted: each `CorrectionSpan.range` gets a soft amber background
-    /// tint + a brand-amber foreground, and a small superscript number badge is
-    /// inserted right after it (so the user can see which Option+digit reverts
-    /// it). Built as a single `AttributedString` so it wraps as one paragraph.
+    /// highlighted, and a small superscript number badge inserted right after
+    /// each one (so the user can see which Option+digit reverts it). Built as
+    /// a single `AttributedString` so it wraps as one paragraph.
+    ///
+    /// Two visual treatments, both carrying the same badge:
+    ///   - An ordinary correction (`span.isValidateConsidered == false`) gets
+    ///     a soft amber background tint + a brand-amber foreground — "this is
+    ///     a change Parleq made."
+    ///   - A borderline "considered" over-fire flag (`span.isValidateConsidered
+    ///     == true`, Feature A / Option A) gets a DOTTED amber underline
+    ///     instead — nothing was substituted (`original == replacement`), so a
+    ///     solid fill would misrepresent it as an edit. The dotted underline
+    ///     reads as "this is a call Parleq made, not a change Parleq made."
     ///
     /// Ranges are applied back-to-front so inserting the badge for an earlier
     /// span never invalidates the indices of a later one.
@@ -1850,13 +1879,23 @@ private struct OverlayContent: View {
                   let upper = AttributedString.Index(span.range.upperBound, within: attributed) else {
                 continue
             }
-            // Tint the replacement span.
-            attributed[lower..<upper].backgroundColor = amber.opacity(0.18)
-            attributed[lower..<upper].foregroundColor = amber
+            if span.isValidateConsidered {
+                // Considered over-fire flag: dotted underline in a DISTINCT blue
+                // (not the solid amber of a real correction) — "a call I made,
+                // not a change I made". Reads clearly apart from corrections.
+                let flag = SettingsView.consideredAccent
+                attributed[lower..<upper].underlineStyle = Text.LineStyle(pattern: .dot, color: flag)
+                attributed[lower..<upper].foregroundColor = flag
+            } else {
+                // Ordinary correction: tint the replacement span.
+                attributed[lower..<upper].backgroundColor = amber.opacity(0.18)
+                attributed[lower..<upper].foregroundColor = amber
+            }
 
-            // Insert a small superscript number badge right after the span.
+            // Insert a small superscript number badge right after the span —
+            // blue for a considered flag, amber for an ordinary correction.
             var badge = AttributedString("\(span.number)")
-            badge.foregroundColor = amber
+            badge.foregroundColor = span.isValidateConsidered ? SettingsView.consideredAccent : amber
             badge.font = .system(size: 9, weight: .bold)
             badge.baselineOffset = 6
             attributed.insert(badge, at: upper)
@@ -1866,21 +1905,44 @@ private struct OverlayContent: View {
 
     /// A compact legend under the review text: "⌥1 undo  ⌥2 undo …" so the user
     /// knows the Option+digit gesture and what each numbered span maps to.
+    /// When one or more spans are borderline "considered" over-fire flags
+    /// (Feature A), a second line explains the dotted-underline treatment and
+    /// points at its number(s) using the same "⌥N" notation as the line above
+    /// (rather than a circled-digit glyph, to stay visually consistent with
+    /// it).
     @ViewBuilder
     func correctionLegend(_ spans: [CorrectionSpan]) -> some View {
         let amber = SettingsView.brandAccent
-        HStack(spacing: 8) {
-            Image(systemName: "wand.and.stars")
-                .font(.system(size: 10))
-                .foregroundStyle(amber)
-            Text(spans.count == 1
-                 ? "1 on-device correction · ⌥1 to undo"
-                 : "\(spans.count) on-device corrections · ⌥1–⌥\(min(spans.count, 9)) to undo")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+        let consideredNumbers = spans.filter { $0.isValidateConsidered }.map(\.number)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Image(systemName: "wand.and.stars")
+                    .font(.system(size: 10))
+                    .foregroundStyle(amber)
+                Text(spans.count == 1
+                     ? "1 on-device correction · ⌥1 to undo"
+                     : "\(spans.count) on-device corrections · ⌥1–⌥\(min(spans.count, 9)) to undo")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+            .accessibilityLabel("On-device corrector changed \(spans.count) word\(spans.count == 1 ? "" : "s"); press Option and a number to undo a correction")
+
+            if !consideredNumbers.isEmpty {
+                let badges = consideredNumbers.map { "⌥\($0)" }.joined(separator: ", ")
+                HStack(spacing: 8) {
+                    Image(systemName: "questionmark.circle")
+                        .font(.system(size: 10))
+                        .foregroundStyle(SettingsView.consideredAccent)
+                    // Tunable copy — finalized during the maintainer's
+                    // real-voice walkthrough (Task 11).
+                    Text("\(badges) Parleq wasn't sure — press the number to fix")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+                .accessibilityLabel("Parleq flagged \(consideredNumbers.count) word\(consideredNumbers.count == 1 ? "" : "s") it wasn't sure about; press Option and a number to review and fix")
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityLabel("On-device corrector changed \(spans.count) word\(spans.count == 1 ? "" : "s"); press Option and a number to undo a correction")
     }
     #endif
 
@@ -2170,6 +2232,13 @@ private struct OverlayContent: View {
             // so every chrome row we add risks pushing the top of the
             // panel past the visible screen on long transcripts).
             headerStrip
+
+            // Curated-default transparency hint (Task 1b): only when the
+            // header shows the EngineBadge (Instant/Raw) AND that mode came
+            // from a curated per-app default rather than an explicit
+            // override or the user's global cleanup choice. Tells the user
+            // WHY this app isn't following their global setting.
+            curatedModeHint
 
             // Error / permission banner (only when a message is set).
             errorBanner
@@ -2697,6 +2766,31 @@ private struct OverlayContent: View {
         }
     }
 
+    /// Curated-default transparency hint (Task 1b): a small secondary line
+    /// under the header explaining why this dictation is on the EngineBadge
+    /// (Instant/Raw) path when that came from a curated per-app default —
+    /// not the user's global cleanup choice and not an explicit override
+    /// (those don't need explaining, so they render nothing here). Deliberately
+    /// muted (secondary/tertiary, no accent color) — it's a "why", not a call
+    /// to action; tapping the EngineBadge itself remains the only affordance.
+    @ViewBuilder
+    private var curatedModeHint: some View {
+        if let modeInfo = model.cleanupModeSource,
+           modeInfo.source == .curated,
+           model.cleanupMode == .instant {
+            let copy = modeInfo.appName.map { "\($0) default" } ?? "app default"
+            HStack(spacing: 4) {
+                Image(systemName: "info.circle")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.tertiary)
+                Text(copy)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+            }
+            .accessibilityLabel("Cleanup mode set by \(copy)")
+        }
+    }
+
     /// Feature-toggle snapshot read once per body evaluation.
     /// Gates which overlay affordances are visible. Kept in a struct
     /// so we pay the Config.load() disk-read cost exactly once per body
@@ -2766,7 +2860,7 @@ private struct OverlayContent: View {
             isRefine: styled,
             override: model.pickedModelOverride
         )
-        let cleanupId = ModelIdentifier(provider: cfg.llmProvider, model: cfg.llmModel)
+        let cleanupId = cfg.cleanupDisplayIdentifier
         var ids: [ModelIdentifier] = [cleanupId]
         if let ctx = cfg.contextModel, ctx != cleanupId {
             ids.append(ctx)

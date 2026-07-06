@@ -104,7 +104,7 @@ public final class LocalLLMProvider: LLMProvider, Sendable {
         let params: GenerateParameters = {
             var p = GenerateParameters()
             p.temperature = 0
-            p.maxTokens = LocalModelDefaults.maxTokens
+            p.maxTokens = LocalModelCatalog.model(for: model).maxTokens
             return p
         }()
 

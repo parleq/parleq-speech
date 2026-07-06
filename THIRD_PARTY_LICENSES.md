@@ -26,7 +26,7 @@ copy for users who want a clickable view.
 | Components embedded inside SwiftPM dependencies | 5 | 1× MIT (llhttp, inside swift-nio); 1× zlib-style (ed25519-sparkle, inside Sparkle); 2× 2-clause BSD (bsdiff inside Sparkle, fastcluster inside FluidAudio); 1× Apache-2.0 (VBx, inside FluidAudio) |
 | Vendored source in-tree | 1 | MIT — `VendoredGemma4Text.swift` (copied from mlx-swift-lm; see [Embedded components](#embedded-components) below) |
 | Apple system frameworks | n/a | Bundled with macOS — no attribution required |
-| Run-time downloaded model weights | 3 | See [Model weights](#model-weights) below |
+| Run-time downloaded model weights | 4 | See [Model weights](#model-weights) below |
 
 Total unique top-level third-party packages bundled in the .app: **36**.
 
@@ -253,15 +253,16 @@ intended use is permitted.** Personal use and the local-only
 inference path Parleq exercises today are uncontroversial; broader
 redistribution is not.
 
-### On-device cleanup model (user-initiated download)
+### On-device cleanup models (user-initiated download)
 
 | Model | Used for | Source | Approx size |
 |---|---|---|---|
-| Gemma 4 E4B (QAT 4-bit, MLX) | On-device LLM cleanup — the `local` provider option | https://huggingface.co/mlx-community/gemma-4-E4B-it-qat-4bit | ~4 GB download; ~6 GB resident |
+| Gemma 4 E4B (QAT 4-bit, MLX) | On-device LLM cleanup — the default `local` provider model | https://huggingface.co/mlx-community/gemma-4-E4B-it-qat-4bit | ~4 GB download; ~6 GB resident |
+| Qwen3-4B Instruct 2507 (4-bit, MLX) | On-device LLM cleanup — user-selectable lower-RAM `local` model | https://huggingface.co/mlx-community/Qwen3-4B-Instruct-2507-4bit | ~2.2 GB download; ~3 GB resident |
 
-This model is **NOT shipped inside the .app** — it is downloaded at user
+These models are **NOT shipped inside the .app** — they are downloaded at user
 request (via Settings or the Setup Wizard) when the user selects the
-on-device cleanup option, and is stored at
+on-device cleanup option and picks a model, and are stored at
 `~/Library/Application Support/Parleq/models/`. Blocking the
 `huggingface.co` download leaves all cloud-provider and "no cleanup"
 modes fully functional.
@@ -278,6 +279,15 @@ Hugging Face, so the model license binds the user's machine, not
 Parleq's release artifact. Apache 2.0 permits personal and commercial
 use with attribution; review the license at
 https://ai.google.dev/gemma/docs/gemma_4_license before redistribution.
+
+**License (Qwen).** `Qwen3-4B-Instruct-2507` is released by Alibaba Cloud
+under the **Apache License 2.0** (stated on the model card). The
+`mlx-community/Qwen3-4B-Instruct-2507-4bit` quantized conversion derives from
+that base model and carries the same Apache 2.0 designation. As with Gemma,
+the weights are not redistributed inside the .app — the user downloads them
+directly from Hugging Face, so the model license binds the user's machine, not
+Parleq's release artifact. Apache 2.0 permits personal and commercial use with
+attribution; review the model card before redistribution.
 
 ---
 

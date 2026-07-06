@@ -80,7 +80,7 @@ public final class AppState {
     /// constructing a full `AppState`, which would require a live `NSPanel`).
     /// Installs the factory on each provider that is actually a `ConcordCleanupProvider`.
     static func installEnrollmentGate(
-        _ factory: @escaping @Sendable (ASRDiagnostics?) -> AcousticGate?,
+        _ factory: @escaping @Sendable (ASRDiagnostics?) async -> AcousticGate?,
         on providers: [(any LLMProvider)?]
     ) {
         for provider in providers {
@@ -129,7 +129,17 @@ public final class AppState {
 
     /// Locate + pool ONE word-span embedding from the retained features
     /// (in-memory mean-pooling, microseconds). nil ⇒ skip harvest silently.
-    private func harvestEmbedding(word: String, rawOrdinal: Int) -> (embedding: [Float], matchCount: Int)? {
+    ///
+    /// PREFERS the context-free canonical-context re-encode (`VoiceprintReencoder`)
+    /// over the whole-utterance pooled embedding, so a harvested negative lands in
+    /// the SAME embedding space as the migrated templates + served candidates
+    /// (see `VoiceprintReencoder`'s header + `VoiceprintDemo.localizedSpan`/`buildGate`,
+    /// the serving/enrollment precedents this mirrors). Falls back to the pooled
+    /// embedding when no retained samples or transcribe handle is available, or the
+    /// re-encode itself returns nil — keeping harvest functional either way. `async`
+    /// only because the re-encode re-runs the encoder; the located span / ordinal
+    /// math above is unchanged.
+    private func harvestEmbedding(word: String, rawOrdinal: Int) async -> (embedding: [Float], matchCount: Int)? {
         guard let d = reviewDiagnostics, let features = d.encoderFeatures else { return nil }
         let groups = VoiceprintCoordinator.groupSpans(from: d)
         let target = HarvestSpanLocator.core(word)
@@ -137,10 +147,45 @@ public final class AppState {
         let matchCount = groups.filter { HarvestSpanLocator.core($0.text) == target }.count
         guard let g = HarvestSpanLocator.locate(groups: groups, word: word, rawOrdinal: rawOrdinal)
         else { return nil }
+
+        if let samples = d.utteranceSamples, !samples.isEmpty, let transcribeSamples = voiceprint?.transcribe,
+           let ctxFree = await VoiceprintReencoder.contextFreeEmbedding(
+               utteranceSamples: samples, startSec: g.startSeconds, endSec: g.endSeconds,
+               transcribe: transcribeSamples) {
+            return (ctxFree, matchCount)
+        }
         guard let emb = features.pooledEmbedding(startSeconds: g.startSeconds,
                                                  endSeconds: g.endSeconds)
         else { return nil }
         return (emb, matchCount)
+    }
+
+    /// Feature B: locate + pool ONE word-span embedding by TIME — the driving
+    /// record's exact `[startSeconds, endSeconds]` gate window, matched against
+    /// the retained raw-ASR groups' own timings. Drift-proof: unlike the
+    /// positional/text-match locators above, this never depends on word order
+    /// or text surviving unchanged from cleanup to review. nil ⇒ no retained
+    /// diagnostics, or no group overlaps the window at all — the caller must
+    /// skip the harvest rather than fall back silently to a mislocated span.
+    ///
+    /// Same context-free re-encode preference (with pooled-embedding fallback) as
+    /// `harvestEmbedding` above — see that doc comment. Only the embedding SOURCE
+    /// changes; the by-time locate is untouched.
+    private func harvestEmbeddingByTime(startSeconds: Double, endSeconds: Double) async -> [Float]? {
+        guard let d = reviewDiagnostics, let features = d.encoderFeatures else { return nil }
+        let groups = VoiceprintCoordinator.groupSpans(from: d)
+        guard let idx = HarvestSpanLocator.locateByTime(
+            startSeconds: startSeconds, endSeconds: endSeconds, groups: groups)
+        else { return nil }
+        let g = groups[idx]
+
+        if let samples = d.utteranceSamples, !samples.isEmpty, let transcribeSamples = voiceprint?.transcribe,
+           let ctxFree = await VoiceprintReencoder.contextFreeEmbedding(
+               utteranceSamples: samples, startSec: g.startSeconds, endSec: g.endSeconds,
+               transcribe: transcribeSamples) {
+            return ctxFree
+        }
+        return features.pooledEmbedding(startSeconds: g.startSeconds, endSeconds: g.endSeconds)
     }
     #endif
 
@@ -1923,13 +1968,20 @@ public final class AppState {
     /// E in review → open the editor seeded with the current text. Cancels the
     /// auto-accept timer so it can't paste mid-edit; snapshots the pre-edit text
     /// for the corrections journal. No-op outside the review state.
-    private func enterEditMode() {
+    ///
+    /// `focusWordRange` (Task 7 — Feature A interaction): non-nil only when
+    /// entry was routed here from a ⌥+N undo on a "considered" over-fire flag
+    /// (`AppState.undoCorrection`), naming the flagged word's token range so
+    /// the editor can eventually focus/position there. Plain E-entry always
+    /// passes nil.
+    private func enterEditMode(focusWordRange: Range<Int>? = nil) {
         guard phase == .awaitingAccept, !overlay.model.editing else { return }
         cancelAutoAcceptTimer()
         editPreEditText = currentText
         overlay.model.editableText = currentText
+        overlay.model.editFocusWordRange = focusWordRange
         overlay.model.editing = true
-        log("in-place edit: entered")
+        log("in-place edit: entered\(focusWordRange != nil ? " (focus word)" : "")")
     }
 
     /// ⌘Return (accept=true) or ⌘S (accept=false). Applies the edited text,
@@ -1939,6 +1991,10 @@ public final class AppState {
         guard phase == .awaitingAccept, overlay.model.editing else { return }
         let edited = overlay.model.editableText
         overlay.model.editing = false
+        // discardEdit and the session-reset block both clear this; commit
+        // must too, or a ⌥+N -> edit -> ⌘S save leaves the prior considered
+        // span's word range stale for the next (plain-E) edit.
+        overlay.model.editFocusWordRange = nil
         if edited != editPreEditText {
             currentText = edited
             overlay.model.text = edited
@@ -1959,7 +2015,18 @@ public final class AppState {
             // direction (a vocab-rescore/biasing emitted the term with no ⌥-undoable
             // span, so this edit is the only correction surface).
             #if Concord
-            harvestNegativesFromEdit(before: editPreEditText, after: edited)
+            // `commitEdit` itself stays synchronous (called from a keypress-handled
+            // closure), so the harvest — which now awaits a context-free re-encode
+            // pass per replacement — runs in a fire-and-forget Task, same
+            // @MainActor-inheriting pattern used for the undo harvest above. Snapshot
+            // the pre-edit text into a local first: `self?.editPreEditText` inside the
+            // closure would require an explicit-self spelling anyway, and a local
+            // pins the exact value driving this edit (matches `recordInPlaceEdit`
+            // just above, which reads it synchronously at the same point).
+            let preEditSnapshot = editPreEditText
+            Task { @MainActor [weak self] in
+                await self?.harvestNegativesFromEdit(before: preEditSnapshot, after: edited)
+            }
             #endif
         }
         log("in-place edit: \(accept ? "commit+accept" : "save")")
@@ -1976,6 +2043,7 @@ public final class AppState {
         guard overlay.model.editing else { return }
         overlay.model.editing = false
         overlay.model.editableText = ""
+        overlay.model.editFocusWordRange = nil
         startAutoAcceptTimer()
         log("in-place edit: discarded")
     }
@@ -2014,105 +2082,121 @@ public final class AppState {
         }
     }
 
-    /// ⌥digit during review: revert the on-device corrector's edit numbered
-    /// `number` back to the original ASR text, update the visible + paste text,
-    /// re-map the remaining highlights, and feed the revert to the
-    /// CorrectionJournal (opt-in). Returns true iff a span at that number existed.
+    /// ⌥digit during review: either (a) revert the on-device corrector's edit
+    /// numbered `number` back to the original ASR text, update the visible +
+    /// paste text, re-map the remaining highlights, and feed the revert to
+    /// the CorrectionJournal (opt-in); or (b), Task 7 — when the span is a
+    /// borderline "considered" over-fire (`isValidateConsidered`), route into
+    /// the existing E-edit mode positioned at that word instead (a text
+    /// revert would be a silent no-op there: original == replacement). The
+    /// branch is decided by the pure `CorrectionHighlight.planUndo` so the
+    /// routing logic itself is unit-testable without a live AppState.
+    /// Returns true iff a span at that number existed and was actioned.
     private func undoCorrection(number: Int) -> Bool {
         guard phase == .awaitingAccept, !overlay.model.editing else { return false }
         let spans = overlay.model.correctionSpans
         guard let span = spans.first(where: { $0.number == number }) else { return false }
         // Snapshot the PRE-mutation overlay state for the harvest ordinal math
-        // (the revert below rewrites currentText and re-maps the spans).
+        // (a revert rewrites currentText and re-maps the spans).
         let preText = currentText
         let preSpans = spans
-        // Revert against the CURRENT text (currentText == model.text in review).
-        let reverted = CorrectionHighlight.revert(text: currentText, span: span)
-        guard reverted != currentText else { return false }
-        currentText = reverted
-        overlay.model.text = reverted
-        // Re-map the REMAINING corrections against the new text so their ranges
-        // + numbers stay valid (this span is gone; later ones renumber). Drop
-        // the reverted edit by matching identity on (original, replacement,
-        // stage) — the reverted span's replacement is no longer present anyway,
-        // so spans() naturally excludes it on the new text.
-        let remaining = spans
-            .filter { $0.number != number }
-            .map { editRecordFor($0) }
-        overlay.model.correctionSpans = CorrectionHighlight.spans(in: reverted, edits: remaining)
-        // Feed the revert to the learning journal as a correction signal (a real
-        // "this correction was wrong" event). Opt-in; no-op when disabled.
-        // In-memory only — CorrectionJournal never writes to disk.
-        let enabled = Config.load().config.learnFromCorrectionsEnabled
-        if enabled {
-            CorrectionJournal.shared.record(CorrectionRecord(
-                kind: .refine,
-                instruction: "undo on-device correction",
-                before: span.replacement,
-                after: span.original
-            ), enabled: enabled)
-        }
-        // Undoing a DICTIONARY-family correction is the clearest possible
-        // "this term over-fired on a real word" signal: the user just told us
-        // the canonical term (span.replacement) was wrong here and the word
-        // ASR actually heard (span.original) was right. If that term has no
-        // voiceprint yet, surface a one-shot nudge offering voice enrollment to
-        // disambiguate it. In-memory only (VoiceEnrollNudge never persists).
-        switch span.stage {
-        case .dictionary, .acousticDictionary, .sayAsPhrase:
-            let term = span.replacement
-            if let vp = voiceprint, span.stage == .dictionary, span.isValidateRevert,
-               vp.hasVoiceprint(span.original) {
-                // (a′) HEALING: PROVENANCE-confirmed — this span was produced by
-                // the acoustic gate's validation revert (term → confusable) and
-                // the user just restored the term. The newest harvested negative
-                // for (term: original, label: replacement) was wrong; remove it
-                // (or detach the label) via the same one-keystroke gesture that
-                // exposed it. Routing on span.isValidateRevert (not on which
-                // side has a voiceprint) keeps a normal over-fire between TWO
-                // enrolled terms on the harvest path (RoboRev-7511).
-                vp.healHarvestedNegative(termID: span.original,
-                                         label: HarvestSpanLocator.core(span.replacement))
-            } else if let vp = voiceprint, span.stage == .dictionary,
-                      !span.isValidateRevert, vp.hasVoiceprint(term) {
-                // (a) HARVEST: the user undid a dictionary over-fire on an ENROLLED
-                // term — the heard word (span.original) is a real in-context
-                // confusable. Pool its audio-span embedding from the retained
-                // review acoustics and attach it as a negative prototype.
-                harvestNegativeFromUndo(span: span, preText: preText, preSpans: preSpans)
-            } else if voiceprint != nil, !span.isValidateRevert,
-                      !(voiceprint?.hasVoiceprint(term) ?? false) {
-                // Unenrolled term: nudge toward voice enrollment (unchanged).
-                // A validate-revert never nudges — its replacement is the
-                // confusable word, not a term worth enrolling.
-                VoiceEnrollNudge.shared.suggest(term: term, confusedWith: span.original)
+        guard let action = CorrectionHighlight.planUndo(text: currentText, spans: spans, number: number)
+        else { return false }
+
+        switch action {
+        case .editAtWord(let remainingSpans, let focusWordRange):
+            // Task 7 (Feature A interaction): drop the flag + renumber the
+            // remainder (text is UNCHANGED — nothing to mutate), then enter
+            // the EXISTING E-edit mode positioned at that word. The user's
+            // replacement supplies the confusable label the negative-harvest
+            // needs; the harvest itself fires later through the existing
+            // E-edit trigger (harvestNegativesFromEdit in commitEdit), which
+            // locates the edited word POSITIONALLY (with its own fail-safe
+            // count guard) — no new harvest path here. (Feature B's timestamp
+            // anchoring protects the applied-revert undo trigger, not this
+            // E-edit path.) ⌥+N then cancel/no-change → discardEdit /
+            // an unchanged commitEdit simply dismiss the flag, no harvest.
+            overlay.model.correctionSpans = remainingSpans
+            enterEditMode(focusWordRange: focusWordRange)
+            log("on-device corrector: considered flag #\(number) -> edit-at-word")
+            return true
+
+        case .revert(let reverted, let remainingSpans):
+            currentText = reverted
+            overlay.model.text = reverted
+            overlay.model.correctionSpans = remainingSpans
+            // Feed the revert to the learning journal as a correction signal (a real
+            // "this correction was wrong" event). Opt-in; no-op when disabled.
+            // In-memory only — CorrectionJournal never writes to disk.
+            let enabled = Config.load().config.learnFromCorrectionsEnabled
+            if enabled {
+                CorrectionJournal.shared.record(CorrectionRecord(
+                    kind: .refine,
+                    instruction: "undo on-device correction",
+                    before: span.replacement,
+                    after: span.original
+                ), enabled: enabled)
             }
-        default:
-            break
+            // Undoing a DICTIONARY-family correction is the clearest possible
+            // "this term over-fired on a real word" signal: the user just told us
+            // the canonical term (span.replacement) was wrong here and the word
+            // ASR actually heard (span.original) was right. If that term has no
+            // voiceprint yet, surface a one-shot nudge offering voice enrollment to
+            // disambiguate it. In-memory only (VoiceEnrollNudge never persists).
+            switch span.stage {
+            case .dictionary, .acousticDictionary, .sayAsPhrase:
+                let term = span.replacement
+                if let vp = voiceprint, span.stage == .dictionary, span.isValidateRevert,
+                   vp.hasVoiceprint(span.original) {
+                    // (a′) HEALING: PROVENANCE-confirmed — this span was produced by
+                    // the acoustic gate's validation revert (term → confusable) and
+                    // the user just restored the term. The newest harvested negative
+                    // for (term: original, label: replacement) was wrong; remove it
+                    // (or detach the label) via the same one-keystroke gesture that
+                    // exposed it. Routing on span.isValidateRevert (not on which
+                    // side has a voiceprint) keeps a normal over-fire between TWO
+                    // enrolled terms on the harvest path (RoboRev-7511).
+                    vp.healHarvestedNegative(termID: span.original,
+                                             label: HarvestSpanLocator.core(span.replacement))
+                } else if let vp = voiceprint, span.stage == .dictionary,
+                          !span.isValidateRevert, vp.hasVoiceprint(term) {
+                    // (a) HARVEST: the user undid a dictionary over-fire on an ENROLLED
+                    // term — the heard word (span.original) is a real in-context
+                    // confusable. Pool its audio-span embedding from the retained
+                    // review acoustics and attach it as a negative prototype.
+                    //
+                    // `undoCorrection` must return its Bool synchronously (it's a
+                    // keypress-handled result), so the harvest — which now awaits a
+                    // context-free re-encode pass — runs in a fire-and-forget Task,
+                    // same @MainActor-inheriting pattern used elsewhere in this file.
+                    Task { @MainActor [weak self] in
+                        await self?.harvestNegativeFromUndo(span: span, preText: preText, preSpans: preSpans)
+                    }
+                } else if voiceprint != nil, !span.isValidateRevert,
+                          !(voiceprint?.hasVoiceprint(term) ?? false) {
+                    // Unenrolled term: nudge toward voice enrollment (unchanged).
+                    // A validate-revert never nudges — its replacement is the
+                    // confusable word, not a term worth enrolling.
+                    VoiceEnrollNudge.shared.suggest(term: term, confusedWith: span.original)
+                }
+            default:
+                break
+            }
+            // Re-arm the auto-accept timer (the undo is an interaction, like an edit).
+            startAutoAcceptTimer()
+            log("on-device corrector: reverted correction #\(number)")
+            return true
         }
-        // Re-arm the auto-accept timer (the undo is an interaction, like an edit).
-        startAutoAcceptTimer()
-        log("on-device corrector: reverted correction #\(number)")
-        return true
     }
 
     /// Reconstruct a minimal applied EditRecord from a highlight span, so the
-    /// surviving spans can be re-mapped against the post-revert text.
+    /// surviving spans can be re-mapped against the post-revert text. Shared
+    /// implementation lives in `CorrectionHighlight.editRecord(for:)` (kept
+    /// there so its wordRange/timestamps/reason round-trip is unit-testable
+    /// without an AppState instance); this stays as the call-site name used
+    /// throughout this file.
     private func editRecordFor(_ span: CorrectionSpan) -> EditRecord {
-        EditRecord(
-            stage: span.stage,
-            original: span.original,
-            replacement: span.replacement,
-            applied: true,
-            // Preserve the token anchor so a re-map (after undo / manual edit)
-            // still picks the right occurrence when the replacement string
-            // appears more than once. Without this the edit would fall back to
-            // first-occurrence matching and could revert the wrong span.
-            wordRange: span.wordRange,
-            // Preserve the provenance so heal-vs-harvest routing survives a
-            // re-map (RoboRev-7511).
-            reason: span.reason
-        )
+        CorrectionHighlight.editRecord(for: span)
     }
 
     /// User-declared aliases for a dictionary term (fresh read, same source the
@@ -2129,20 +2213,39 @@ public final class AppState {
     /// (kill-switch off, no retained acoustics, ordinal guard mismatch,
     /// un-poolable span) skips silently — a skipped harvest costs a future
     /// correction; a mislocated one poisons a template.
+    ///
+    /// Feature B: when the driving span carries the gate's exact timestamps,
+    /// locate the audio by TIME (drift-proof — doesn't depend on the shown
+    /// text/word-order surviving cleanup unchanged). Falls back to the
+    /// existing positional ordinal math for spans with no timestamps
+    /// (deterministic stages, older records). If timestamps are present but
+    /// `locateByTime` can't find an overlapping group, SKIP the harvest —
+    /// never fall through to positional matching in that case (never pool a
+    /// mislocated span).
     private func harvestNegativeFromUndo(span: CorrectionSpan, preText: String,
-                                         preSpans: [CorrectionSpan]) {
+                                         preSpans: [CorrectionSpan]) async {
         let cfg = Config.load().config
         guard cfg.voiceprintHarvestEnabled else { return }
-        guard let matchCount = groupMatchCount(for: span.original) else { return }
-        let allSpans = preSpans.map { (number: $0.number, original: $0.original) }
-        guard let ordinal = HarvestSpanLocator.rawOrdinalForUndo(
-            shownText: preText, spanRange: span.range, original: span.original,
-            allSpans: allSpans, spanNumber: span.number, groupMatchCount: matchCount)
-        else { return }                                    // consistency guard: skip silently
-        guard let hit = harvestEmbedding(word: span.original, rawOrdinal: ordinal) else { return }
+        let embedding: [Float]
+        if let start = span.startSeconds, let end = span.endSeconds {
+            guard let emb = await harvestEmbeddingByTime(startSeconds: start, endSeconds: end) else {
+                log("voiceprint harvest: timestamp locate miss, skipped")   // count-only
+                return
+            }
+            embedding = emb
+        } else {
+            guard let matchCount = groupMatchCount(for: span.original) else { return }
+            let allSpans = preSpans.map { (number: $0.number, original: $0.original) }
+            guard let ordinal = HarvestSpanLocator.rawOrdinalForUndo(
+                shownText: preText, spanRange: span.range, original: span.original,
+                allSpans: allSpans, spanNumber: span.number, groupMatchCount: matchCount)
+            else { return }                                // consistency guard: skip silently
+            guard let hit = await harvestEmbedding(word: span.original, rawOrdinal: ordinal) else { return }
+            embedding = hit.embedding
+        }
         voiceprint?.harvestNegative(termID: span.replacement,
                                     label: HarvestSpanLocator.core(span.original),
-                                    embedding: hit.embedding,
+                                    embedding: embedding,
                                     aliases: dictionaryAliases(forTerm: span.replacement),
                                     harvestEnabled: cfg.voiceprintHarvestEnabled)
     }
@@ -2154,13 +2257,21 @@ public final class AppState {
     /// edited word index — which carries whatever the recognizer HEARD there, even
     /// when a LocalASR vocab-rescore rewrote the visible text term-side), and the
     /// count-consistency guard inside `editedGroup` skips on any word-count change.
-    private func harvestNegativesFromEdit(before: String, after: String) {
+    ///
+    /// Same context-free re-encode preference (with pooled-embedding fallback) as
+    /// `harvestEmbedding`/`harvestEmbeddingByTime` above — see their doc comments and
+    /// `VoiceprintReencoder`'s header. Only the embedding SOURCE changes; the
+    /// `editedGroup` located span / word-count guard is untouched. `async` only
+    /// because the re-encode re-runs the encoder.
+    private func harvestNegativesFromEdit(before: String, after: String) async {
         let cfg = Config.load().config
         guard cfg.voiceprintHarvestEnabled, let vp = voiceprint else { return }
         guard let d = reviewDiagnostics, let features = d.encoderFeatures else { return }
         guard let replacements = EditDiff.singleWordReplacements(before: before, after: after),
               !replacements.isEmpty else { return }
         let groups = VoiceprintCoordinator.groupSpans(from: d)
+        let samples = d.utteranceSamples
+        let transcribeSamples = voiceprint?.transcribe
         for r in replacements {
             let termCore = HarvestSpanLocator.core(r.before)
             guard !termCore.isEmpty,
@@ -2172,13 +2283,21 @@ public final class AppState {
             // (text-only rewrite), a Concord dictionary substitution, or a literal
             // token-level emit. The guard inside skips on any word-count change.
             guard let g = HarvestSpanLocator.editedGroup(groups: groups, beforeText: before,
-                                                         wordIndex: r.wordIndex),
-                  let emb = features.pooledEmbedding(startSeconds: g.startSeconds,
-                                                     endSeconds: g.endSeconds)
+                                                         wordIndex: r.wordIndex)
             else { continue }
+            var emb: [Float]?
+            if let samples, !samples.isEmpty, let transcribeSamples {
+                emb = await VoiceprintReencoder.contextFreeEmbedding(
+                    utteranceSamples: samples, startSec: g.startSeconds, endSec: g.endSeconds,
+                    transcribe: transcribeSamples)
+            }
+            if emb == nil {
+                emb = features.pooledEmbedding(startSeconds: g.startSeconds, endSeconds: g.endSeconds)
+            }
+            guard let embedding = emb else { continue }
             vp.harvestNegative(termID: termID,
                                label: HarvestSpanLocator.core(r.after),
-                               embedding: emb,
+                               embedding: embedding,
                                aliases: dictionaryAliases(forTerm: termID),
                                harvestEnabled: cfg.voiceprintHarvestEnabled)
         }
@@ -2846,6 +2965,7 @@ public final class AppState {
         overlay.model.appliedPresetName = nil
         overlay.model.activeTransformName = nil
         overlay.model.cleanupMode = nil
+        overlay.model.cleanupModeSource = nil
         lastCleanupFailed = false
         // 0.14.0 PR 4 (#219): clear last-pass timings so a previous
         // dictation's measurements don't leak into this entry if
@@ -3590,6 +3710,15 @@ public final class AppState {
                 // Engine badge for the header.
                 self?.overlay.model.cleanupMode = AppState.engineBadge(
                     for: effectiveMode, hasInstantProvider: hasInstant)
+                // Curated-default transparency hint (Task 1b): WHY the badge
+                // above resolved the way it did — display only, mirrors
+                // behaviorForApp via Config.modeSource, never consulted for
+                // routing. appName is best-effort (nil bundle → generic
+                // "app default" copy in the overlay).
+                self?.overlay.model.cleanupModeSource = (
+                    source: loadedConfig.modeSource(for: targetBundleID),
+                    appName: targetBundleID.map { LearnedStore.appDisplayName($0) }
+                )
                 // When imageReferenceEnabled is false, downgrade any
                 // image-mode references to text mode for prompt-building.
                 // The reference chips in the overlay still show the
@@ -4082,6 +4211,7 @@ public final class AppState {
         overlay.model.appliedPresetName = nil
         overlay.model.activeTransformName = nil
         overlay.model.cleanupMode = nil
+        overlay.model.cleanupModeSource = nil
         lastCleanupFailed = false
         pendingContribution = nil
         #if Concord
@@ -4140,6 +4270,7 @@ public final class AppState {
         // #85: clear any in-place edit state so it never leaks into the next session.
         overlay.model.editing = false
         overlay.model.editableText = ""
+        overlay.model.editFocusWordRange = nil
         editPreEditText = ""
         overlay.model.references = []
         overlay.model.pickedModelOverride = nil
@@ -4357,7 +4488,7 @@ public final class AppState {
             isRefine: isRefine,
             override: overlay.model.pickedModelOverride
         )
-        let cleanupId = ModelIdentifier(provider: config.llmProvider, model: config.llmModel)
+        let cleanupId = config.cleanupDisplayIdentifier
 
         // Cleanup tier — most common path.
         if resolved == cleanupId {

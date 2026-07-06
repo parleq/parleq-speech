@@ -55,9 +55,14 @@
 //                      // means "use the RAM-tier default" (3 min on
 //                      // cautioned / 30 min on comfortable).
 //                      "idle_unload_minutes": null,
-//                      // Allow local provider on < 12 GB RAM machines
-//                      // despite thrash risk. Default false.
-//                      "allow_unsupported_ram": false
+//                      // Allow local provider below the selected model's
+//                      // RAM floor despite thrash risk. Default false.
+//                      "allow_unsupported_ram": false,
+//                      // Selected on-device model (mlx-community checkpoint
+//                      // id). Omit for the default (Gemma 4 E4B). The other
+//                      // catalog option is the full checkpoint id
+//                      // "mlx-community/Qwen3-4B-Instruct-2507-4bit".
+//                      "model": "mlx-community/gemma-4-E4B-it-qat-4bit"
 //                    } },
 //     "aws":       { "region": "us-east-2",
 //                    "profile": "work",
@@ -140,6 +145,14 @@ extension ModelIdentifier {
             default:        return provider.prefix(1).uppercased() + provider.dropFirst()
             }
         }
+        // On-device models are identified by a raw HF checkpoint id
+        // (e.g. "mlx-community/Qwen3-4B-Instruct-2507-4bit"). Humanizing that
+        // string (prefix-strip + title-case below) produces noise like
+        // "Mlx Community/Qwen3 4B Instruct 2507 4bit" — use the catalog's
+        // curated `displayName` instead ("Qwen3-4B").
+        if provider.lowercased() == "local" {
+            return LocalModelCatalog.model(for: model).displayName
+        }
         // Strip known provider prefixes so the badge reads
         // "2.5 Flash" (not "gemini-2.5-flash") or "Sonnet 4-5"
         // (not "claude-sonnet-4-5").
@@ -151,10 +164,11 @@ extension ModelIdentifier {
                 break
             }
         }
-        // Replace remaining hyphens/dots with spaces then title-case.
+        // Replace remaining hyphens with spaces then title-case. Dots are
+        // left alone so version numbers survive ("gemini-2.5-flash" →
+        // "2.5 Flash", not "2 5 Flash").
         let spaced = stripped
             .replacingOccurrences(of: "-", with: " ")
-            .replacingOccurrences(of: ".", with: " ")
         return spaced
             .split(separator: " ")
             .map { $0.prefix(1).uppercased() + $0.dropFirst() }
@@ -256,35 +270,148 @@ public enum LocalResidency: String, Codable, Sendable {
 /// Machine RAM tier, used to gate and tune the local cleanup provider.
 /// Based on physical memory reported by `ProcessInfo.processInfo.physicalMemory`.
 public enum RAMTier: Equatable, Sendable {
-    /// < 12 GB: local card not selectable (wired ~6 GB = thrash risk).
+    /// Below the model's RAM floor: local card not selectable (thrash risk).
     case unsupported
-    /// 12 GB – <24 GB: allowed with strong caution and aggressive idle-unload.
+    /// Between floor and comfortable line: allowed with strong caution and
+    /// aggressive idle-unload.
     case cautioned
-    /// >= 24 GB: comfortable fit for the ~6 GB resident model.
+    /// At/above the comfortable line: comfortable fit for the resident model.
     case comfortable
 
-    public static func forPhysicalMemory(_ bytes: UInt64) -> RAMTier {
+    /// Tier for a machine's physical memory against a specific model's floor.
+    public static func forPhysicalMemory(_ bytes: UInt64, model: LocalModelInfo) -> RAMTier {
         let gb = Double(bytes) / Double(1 << 30)
-        if gb < 12 { return .unsupported }
-        if gb < 24 { return .cautioned }
+        if gb < model.ramFloorGB { return .unsupported }
+        if gb < model.ramComfortableGB { return .cautioned }
         return .comfortable
     }
 
+    /// Tier of THIS machine for a specific model.
+    public static func current(for model: LocalModelInfo) -> RAMTier {
+        forPhysicalMemory(ProcessInfo.processInfo.physicalMemory, model: model)
+    }
+
+    // Back-compat overloads that gate against the DEFAULT model. Existing
+    // callers that don't know which model is selected keep working; per-model
+    // gating (wizard/settings) uses the `model:`-parameterized variants above.
+    public static func forPhysicalMemory(_ bytes: UInt64) -> RAMTier {
+        forPhysicalMemory(bytes, model: LocalModelCatalog.default)
+    }
+
     public static var current: RAMTier {
-        forPhysicalMemory(ProcessInfo.processInfo.physicalMemory)
+        current(for: LocalModelCatalog.default)
     }
 }
 
-/// Static defaults for the on-device cleanup tier. Single source of truth
-/// referenced by LocalModelStore, ResidencyManager, and the setup wizard.
+/// Descriptor for one selectable on-device cleanup model. Replaces the old
+/// single-model `LocalModelDefaults` scalars so the catalog, RAM gate, and UI
+/// copy all read per-model values from one place. `id` IS the HF checkpoint.
+public struct LocalModelInfo: Sendable, Equatable, Identifiable {
+    public let id: String
+    public var checkpoint: String { id }
+    /// Full name, e.g. "Gemma 4 E4B" (used in the Settings/wizard cards).
+    public let displayName: String
+    /// The name shown in the usage ledger, e.g. "On-device (Gemma 4 E4B)".
+    public let usageLedgerName: String
+    /// Short positioning chip, e.g. "Best quality" / "Lighter & faster".
+    public let shortLabel: String
+    /// One honest sentence on where this model shines (and its trade-off).
+    public let whereItShines: String
+    public let approxDownloadGB: Double
+    public let approxResidentGB: Double
+    /// Physical-memory floor (GB): below this the model is `.unsupported`.
+    public let ramFloorGB: Double
+    /// At/above this (GB) the machine is `.comfortable`; between floor and
+    /// this it is `.cautioned`.
+    public let ramComfortableGB: Double
+    public let idleUnloadMinutesCautioned: Int
+    public let idleUnloadMinutesComfortable: Int
+    public let maxTokens: Int
+    public let contextLength: Int
+    public let licenseName: String
+    public let licenseURL: String
+
+    public init(id: String, displayName: String, usageLedgerName: String,
+                shortLabel: String, whereItShines: String,
+                approxDownloadGB: Double, approxResidentGB: Double,
+                ramFloorGB: Double, ramComfortableGB: Double,
+                idleUnloadMinutesCautioned: Int, idleUnloadMinutesComfortable: Int,
+                maxTokens: Int, contextLength: Int,
+                licenseName: String, licenseURL: String) {
+        self.id = id
+        self.displayName = displayName
+        self.usageLedgerName = usageLedgerName
+        self.shortLabel = shortLabel
+        self.whereItShines = whereItShines
+        self.approxDownloadGB = approxDownloadGB
+        self.approxResidentGB = approxResidentGB
+        self.ramFloorGB = ramFloorGB
+        self.ramComfortableGB = ramComfortableGB
+        self.idleUnloadMinutesCautioned = idleUnloadMinutesCautioned
+        self.idleUnloadMinutesComfortable = idleUnloadMinutesComfortable
+        self.maxTokens = maxTokens
+        self.contextLength = contextLength
+        self.licenseName = licenseName
+        self.licenseURL = licenseURL
+    }
+}
+
+/// The set of on-device cleanup models the user can choose from. Gemma 4 E4B
+/// is the default/quality tier; Qwen3-4B-Instruct-2507 is the lighter option
+/// (loads via the stock mlx-swift-lm `qwen3` registry — no vendoring). Only
+/// ONE model is resident at a time, so the user's selection (`llm.local.model`)
+/// is a single global choice applied wherever a role resolves to "local".
+public enum LocalModelCatalog {
+    public static let gemma4E4B = LocalModelInfo(
+        id: "mlx-community/gemma-4-E4B-it-qat-4bit",
+        displayName: "Gemma 4 E4B",
+        usageLedgerName: "On-device (Gemma 4 E4B)",
+        shortLabel: "Best quality",
+        whereItShines: "Most capable on-device cleanup — strongest on tricky ASR corrections, technical terms, and world knowledge. Heaviest.",
+        approxDownloadGB: 4.2, approxResidentGB: 6.0,
+        ramFloorGB: 12, ramComfortableGB: 24,
+        idleUnloadMinutesCautioned: 3, idleUnloadMinutesComfortable: 30,
+        maxTokens: 1024, contextLength: 8192,
+        licenseName: "Google Gemma (Apache 2.0)",
+        licenseURL: "https://ai.google.dev/gemma/docs/gemma_4_license")
+
+    public static let qwen3_4B = LocalModelInfo(
+        id: "mlx-community/Qwen3-4B-Instruct-2507-4bit",
+        displayName: "Qwen3-4B",
+        usageLedgerName: "On-device (Qwen3-4B)",
+        shortLabel: "Lighter & faster",
+        whereItShines: "Runs on 8 GB Macs and loads quickly. Excellent at faithful cleanup; may occasionally miss a hard ASR or technical term that Gemma catches.",
+        approxDownloadGB: 2.4, approxResidentGB: 4.0,
+        ramFloorGB: 8, ramComfortableGB: 16,
+        idleUnloadMinutesCautioned: 3, idleUnloadMinutesComfortable: 30,
+        maxTokens: 1024, contextLength: 8192,
+        licenseName: "Qwen (Apache 2.0)",
+        licenseURL: "https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507")
+
+    /// Display/selection order: default (best) first, lighter second.
+    public static let all: [LocalModelInfo] = [gemma4E4B, qwen3_4B]
+
+    /// The default on-device model when the user has not chosen one.
+    public static let `default`: LocalModelInfo = gemma4E4B
+
+    /// The descriptor for a checkpoint id, or the default if unknown.
+    public static func model(for checkpoint: String) -> LocalModelInfo {
+        all.first { $0.checkpoint == checkpoint } ?? `default`
+    }
+}
+
+/// Static defaults for the on-device cleanup tier. Model-specific values now
+/// delegate to `LocalModelCatalog.default` (back-compat shim so existing
+/// references resolve to the default model); the truly model-agnostic values
+/// (models directory, GPU-cache cap, prefix-cache capacity) remain here.
 public enum LocalModelDefaults {
-    public static let checkpoint = "mlx-community/gemma-4-E4B-it-qat-4bit"
-    public static let approxDownloadGB = 4.2
-    public static let approxResidentGB = 6.0
-    public static let idleUnloadMinutesCautioned = 3
-    public static let idleUnloadMinutesComfortable = 30
-    public static let maxTokens = 1024
-    public static let contextLength = 8192
+    public static var checkpoint: String { LocalModelCatalog.default.checkpoint }
+    public static var approxDownloadGB: Double { LocalModelCatalog.default.approxDownloadGB }
+    public static var approxResidentGB: Double { LocalModelCatalog.default.approxResidentGB }
+    public static var idleUnloadMinutesCautioned: Int { LocalModelCatalog.default.idleUnloadMinutesCautioned }
+    public static var idleUnloadMinutesComfortable: Int { LocalModelCatalog.default.idleUnloadMinutesComfortable }
+    public static var maxTokens: Int { LocalModelCatalog.default.maxTokens }
+    public static var contextLength: Int { LocalModelCatalog.default.contextLength }
     /// LRU capacity for the on-device KV system-prefix cache (Task 9). Small:
     /// per-app preset transforms vary the prefix suffix so a handful of distinct
     /// prefixes can be live, but the working set is tiny and each entry holds
@@ -350,6 +477,23 @@ public struct AppBehavior: Equatable, Codable, Sendable {
         self.mode = mode
         self.presetID = presetID
     }
+}
+
+/// WHY a paste target's cleanup mode resolved the way it did — display-only,
+/// never consulted for routing. Mirrors `Config.behaviorForApp`'s branches
+/// exactly (see `Config.resolveMode(for:)`, the single shared implementation).
+public enum ModeSource: Equatable, Sendable {
+    /// An explicit `appBehaviors` override for this bundle ID.
+    case override
+    /// A `CuratedAppDefaults` entry actually took effect.
+    case curated
+    /// No override/curation applied — the app is on the user's global
+    /// `cleanupType`. Also covers: nil/empty bundle ID, cleanup globally Raw
+    /// (curated defaults skipped), and the curated-Polished-downgrade edge
+    /// (a curated `.polished` app when the user's cleanup isn't itself
+    /// Polished — the curation did NOT take effect, so the resolved mode is
+    /// just the global default).
+    case global
 }
 
 public struct Config: Sendable {
@@ -611,35 +755,42 @@ public struct Config: Sendable {
         guard let bundleID else { return AppBehavior(mode: cleanupType) }
         let trimmed = bundleID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return AppBehavior(mode: cleanupType) }
-        // Mode: explicit override → curated default → global cleanup type.
-        //   • "none" (cleanupType == .raw): curated defaults are skipped
-        //     entirely — a user who opted out of cleanup keeps Raw everywhere;
-        //     only an explicit override lifts them out.
-        //   • A curated `.polished` upgrade is applied ONLY when the user's
-        //     CLEANUP is itself Polished (cleanupType == .polished). Otherwise
-        //     it falls back to the user's cleanup type. This is load-bearing:
-        //     a concord (Instant) cleanup user who configured a cloud provider
-        //     for REFINEMENT has a non-nil `polishedProvider`, so without this
-        //     guard curated comms/email/browser apps would route their CLEANUP
-        //     to the refinement provider — cloud — even though the user chose
-        //     on-device cleanup. Curated `.instant` always applies (on-device
-        //     is always available); explicit overrides are always honored.
-        let mode: TargetMode
-        if let override = appBehaviors[trimmed]?.mode {
-            mode = override
-        } else if cleanupType == .raw {
-            mode = .raw
-        } else if let curated = CuratedAppDefaults.mode(for: trimmed) {
-            mode = (curated == .polished && cleanupType != .polished) ? cleanupType : curated
-        } else {
-            mode = cleanupType
-        }
+        let (mode, _) = resolveMode(for: trimmed)
         // Preset is sourced from presetForApp — the single source of truth
         // (`presetAppDefaults`) plus the MDM gate — so the two maps can never
         // drift. Only Polished carries a preset; suggested tones are never
         // auto-applied.
         let presetID = mode == .polished ? presetForApp(trimmed)?.id : nil
         return AppBehavior(mode: mode, presetID: presetID)
+    }
+
+    // Shared resolver behind behaviorForApp: returns (mode, source); trimmed non-empty (callers guard). Raw cleanup skips curated defaults entirely (only explicit overrides lift an app out); curated .polished downgrades to global when cleanup isn't Polished.
+    private func resolveMode(for trimmed: String) -> (mode: TargetMode, source: ModeSource) {
+        if let override = appBehaviors[trimmed]?.mode {
+            return (override, .override)
+        } else if cleanupType == .raw {
+            return (.raw, .global)
+        } else if let curated = CuratedAppDefaults.mode(for: trimmed) {
+            if curated == .polished && cleanupType != .polished {
+                // Downgrade edge: the curation did NOT take effect — the
+                // resolved mode is just the user's global cleanup type.
+                return (cleanupType, .global)
+            }
+            return (curated, .curated)
+        } else {
+            return (cleanupType, .global)
+        }
+    }
+
+    /// WHY the paste target's cleanup mode resolved the way it did — display
+    /// only (e.g. an overlay/Settings hint). Mirrors `behaviorForApp`'s
+    /// branches exactly via the shared `resolveMode(for:)` helper; never
+    /// consulted by routing.
+    public func modeSource(for bundleID: String?) -> ModeSource {
+        guard let bundleID else { return .global }
+        let trimmed = bundleID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return .global }
+        return resolveMode(for: trimmed).source
     }
 
     /// Model to use when references are attached to a dictation.
@@ -834,11 +985,20 @@ public struct Config: Sendable {
     /// default" (`LocalModelDefaults.idleUnloadMinutesCautioned`
     /// or `…Comfortable`). Decoded from `llm.local.idle_unload_minutes`.
     public var localIdleUnloadMinutes: Int?
-    /// When true, allow the local provider even on machines with
-    /// < 12 GB RAM where the ~6 GB resident model will likely
-    /// cause thrashing. Default false; gated by `RAMTier.current`.
+    /// When true, allow the local provider even on machines below the
+    /// selected model's RAM floor, where the resident model will likely
+    /// cause thrashing. Default false; gated by `RAMTier.current(for:)`.
     /// Decoded from `llm.local.allow_unsupported_ram`.
     public var localAllowUnsupportedRAM: Bool
+    /// The selected on-device cleanup model (an `mlx-community/…` checkpoint
+    /// id from `LocalModelCatalog`). Only one MLX model is resident at a time,
+    /// so this single choice applies wherever a role resolves to "local".
+    /// Decoded from `llm.local.model`; absent → the default (Gemma 4 E4B).
+    /// A default value keeps the synthesized memberwise init backward-compatible.
+    public var localModel: String = LocalModelCatalog.default.checkpoint
+    /// The descriptor for the currently-selected on-device model (falls back
+    /// to the default catalog entry if `localModel` is unrecognized).
+    public var selectedLocalModel: LocalModelInfo { LocalModelCatalog.model(for: localModel) }
 
     /// Keys whose effective values were sourced from MDM
     /// (/Library/Managed Preferences) rather than from the user's
@@ -943,6 +1103,7 @@ public struct Config: Sendable {
         localResidency: .auto,
         localIdleUnloadMinutes: nil,
         localAllowUnsupportedRAM: false,
+        localModel: LocalModelCatalog.default.checkpoint,
         managedKeys: []
     )
 
@@ -1628,7 +1789,7 @@ public struct Config: Sendable {
             || managedKeys.contains("contextModel")
             || managedKeys.contains("contextAllowedModels")
         if contextTierManaged {
-            let cleanupId = ModelIdentifier(provider: c.llmProvider, model: c.llmModel)
+            let cleanupId = c.cleanupDisplayIdentifier
             let contextId = ModelIdentifier(provider: contextProvider, model: contextModelName)
             c.contextModel = (contextId == cleanupId) ? nil : contextId
         }
@@ -1641,7 +1802,7 @@ public struct Config: Sendable {
         // so pinning just the provider snaps the model to that provider's
         // curated default.
         let currentRefineProvider = c.refineModel?.provider ?? (c.contextModel?.provider ?? c.llmProvider)
-        let currentRefineModel    = c.refineModel?.model    ?? (c.contextModel?.model    ?? c.llmModel)
+        let currentRefineModel    = c.refineModel?.model    ?? (c.contextModel?.model    ?? c.cleanupDisplayIdentifier.model)
         var refineProvider = currentRefineProvider
         var refineModelName = currentRefineModel
 
@@ -1664,7 +1825,7 @@ public struct Config: Sendable {
         let refineTierManaged = managedKeys.contains("refineProvider")
             || managedKeys.contains("refineModel")
         if refineTierManaged {
-            let cleanupId = ModelIdentifier(provider: c.llmProvider, model: c.llmModel)
+            let cleanupId = c.cleanupDisplayIdentifier
             let refineId  = ModelIdentifier(provider: refineProvider, model: refineModelName)
             // nil when the pin resolves back to the cleanup tier (= "same
             // as cleanup"); otherwise the explicit refine identifier.
@@ -1782,6 +1943,13 @@ public struct Config: Sendable {
                 if let v = local["allow_unsupported_ram"] as? Bool {
                     c.localAllowUnsupportedRAM = v
                 }
+                if let v = local["model"] as? String {
+                    if LocalModelCatalog.all.contains(where: { $0.checkpoint == v }) {
+                        c.localModel = v
+                    } else {
+                        configLogStderr("[config] WARNING: unknown llm.local.model '\(v)' — using default (\(LocalModelCatalog.default.checkpoint))")
+                    }
+                }
             }
             // Refinement tier — llm.refine sub-object ({provider, model}).
             // Mirrors the context_model shape but lives under "llm" so the
@@ -1794,8 +1962,16 @@ public struct Config: Sendable {
                let model = refine["model"] as? String {
                 let tp = provider.trimmingCharacters(in: .whitespacesAndNewlines)
                 let tm = model.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !tp.isEmpty && !tm.isEmpty {
-                    c.refineModel = ModelIdentifier(provider: tp, model: tm)
+                // The on-device provider centralizes its model in `llm.local.model`
+                // (parsed above into `c.localModel`), so `refine.model` is legitimately
+                // EMPTY when the Polished tier is on-device. Sourcing the model from
+                // `c.localModel` here keeps `refineModel` non-nil so `polishedProvider`
+                // resolves to "local" and the setting sticks across restarts — without
+                // this, an empty `refine.model` dropped the whole refine tier and the
+                // Polished provider silently reverted to a cloud default.
+                let resolvedModel = (tm.isEmpty && tp == "local") ? c.localModel : tm
+                if !tp.isEmpty && !resolvedModel.isEmpty {
+                    c.refineModel = ModelIdentifier(provider: tp, model: resolvedModel)
                 }
             }
             // Reframe v2: the global refinement TYPE. When present it is
@@ -2182,7 +2358,13 @@ public struct Config: Sendable {
         var llm: [String: Any] = [
             "mode": config.llmMode,
             "provider": config.llmProvider,
-            "model": config.llmModel,
+            // Anti-recurrence for the stale-badge bug: when the cleanup
+            // provider is on-device, `llm.model` on disk must mirror the
+            // authoritative on-device selection (`llm.local.model` /
+            // `config.localModel`) rather than whatever cloud model id was
+            // last selected before switching to local. A cloud provider's
+            // model is untouched.
+            "model": config.llmProvider == "local" ? config.localModel : config.llmModel,
         ]
         if !config.llmTuning.isDefault {
             llm["tuning"] = Self.serializeLLMTuning(config.llmTuning)
@@ -2215,6 +2397,9 @@ public struct Config: Sendable {
         }
         if config.localAllowUnsupportedRAM {
             localDict["allow_unsupported_ram"] = true
+        }
+        if config.localModel != LocalModelCatalog.default.checkpoint {
+            localDict["model"] = config.localModel
         }
         return localDict.isEmpty ? nil : localDict
     }
@@ -2493,9 +2678,14 @@ public struct Config: Sendable {
         } ?? false
         let preserveModelOnDisk = modelPinned
             || (providerPinned && !modelAllowlist && onDiskModelForeign)
+        // Anti-recurrence for the stale-badge bug (same rule as
+        // serializeLLMSection): outside the MDM-preservation cases above,
+        // an on-device cleanup provider writes `llm.model` from the
+        // authoritative `config.localModel`, not the possibly-stale
+        // `config.llmModel`, so the two fields can't diverge on disk.
         let llmModelToWrite: String = preserveModelOnDisk
             ? ((existingLLM["model"] as? String) ?? config.llmModel)
-            : config.llmModel
+            : (llmProviderToWrite == "local" ? config.localModel : config.llmModel)
         // Feature-toggle values: for unmanaged keys, write the current
         // in-memory value. For MDM-managed keys, carry forward the
         // existing on-disk value (if any) so removing the MDM profile
@@ -2933,6 +3123,26 @@ private func configLogStderr(_ message: String) {
 }
 
 extension Config {
+    /// The cleanup model IDENTIFIER for DISPLAY (badge/picker) and for
+    /// internal tier-identity comparisons. For the on-device provider the
+    /// authoritative model is `localModel` (the user's on-device selection,
+    /// which the runtime provider-build path in main.swift already reads via
+    /// `selectedLocalModel.checkpoint`) — NOT the stale `llmModel`, which the
+    /// runtime ignores on the local path and which main.swift's own comment
+    /// calls out as ignored. For every other (cloud) provider `llmModel` IS
+    /// the authoritative model, so this is just `llmModel`.
+    ///
+    /// Before this existed, several call sites built
+    /// `ModelIdentifier(provider: llmProvider, model: llmModel)` directly,
+    /// which silently showed/compared against a stale cloud model id after
+    /// switching the on-device model (`llmModel` doesn't get updated when
+    /// `localModel` changes). Use this instead of that pattern anywhere a
+    /// "the cleanup identifier" value is needed.
+    public var cleanupDisplayIdentifier: ModelIdentifier {
+        ModelIdentifier(provider: llmProvider,
+                         model: llmProvider == "local" ? selectedLocalModel.checkpoint : llmModel)
+    }
+
     /// Resolve which model should service a dictation given the
     /// current state. Priority (highest first):
     ///   1. `override`  — the in-overlay ModelPicker's explicit pick.
@@ -2956,7 +3166,7 @@ extension Config {
         override: ModelIdentifier? = nil
     ) -> ModelIdentifier {
         if let override { return override }
-        let cleanupId = ModelIdentifier(provider: llmProvider, model: llmModel)
+        let cleanupId = cleanupDisplayIdentifier
         // Cleanup disabled ("none") is a GLOBAL off switch. The Context tier
         // is a sub-feature of cleanup, so when the user has opted out of
         // cleanup entirely, reference-aware turns must NOT route to a
@@ -3029,8 +3239,11 @@ extension Config {
     }
 
     /// The model paired with `polishedProvider` (nil when none is configured).
+    /// Uses `cleanupDisplayIdentifier` rather than `llmModel` directly so a
+    /// local cleanup provider resolves to the authoritative on-device
+    /// selection (`localModel`), not a stale cloud model id.
     public var polishedModel: String? {
-        if Config.isGenerativeProvider(llmProvider) { return llmModel }
+        if Config.isGenerativeProvider(llmProvider) { return cleanupDisplayIdentifier.model }
         if let rm = refineModel, Config.isGenerativeProvider(rm.provider) { return rm.model }
         return nil
     }

@@ -3,6 +3,7 @@ import XCTest
 
 #if Concord
 import Concord
+import FluidAudio
 
 /// Records persistence calls; load result is injectable to exercise failure paths.
 private final class StubPersistence: VoiceprintPersistence, @unchecked Sendable {
@@ -120,6 +121,80 @@ final class VoiceprintCoordinatorTests: XCTestCase {
         XCTAssertEqual(updated, tmpl("Keavi"))
         XCTAssertFalse(c.hasVoiceprint("Keavi"))
         XCTAssertEqual(stub.saved, [], "build never persists")
+    }
+
+    /// Deterministic synthetic ASRResult: the carrier "I use <word> every day" with `word`
+    /// planted at slot index 2, and an `EncoderFeatureSequence` whose (single, uniform) window
+    /// carries `frameValue` at every position — so the slot's pooled embedding is exactly
+    /// `[frameValue, frameValue, frameValue, frameValue]`. Two clips at the SAME frameValue are
+    /// perfectly self-similar (cosine 1.0); a clip at the OPPOSITE-sign frameValue is
+    /// anti-correlated (cosine -1.0) with a centroid of the others — reliably below
+    /// `VoiceprintEnroller.defaultQualityFloor` (0.70), so it's dropped by the leave-one-out gate.
+    private static func makeSlotResult(word: String, frameValue: Float) -> ASRResult {
+        let words = ["I", "use", word, "every", "day"]
+        var timings: [TokenTiming] = []
+        var t = 0.0
+        for (i, w) in words.enumerated() {
+            let token = i == 0 ? w : " " + w
+            timings.append(TokenTiming(token: token, tokenId: 1, startTime: t, endTime: t + 0.4, confidence: 1.0))
+            t += 0.5
+        }
+        let window = EncoderFeatureSequence.Window(
+            frames: Array(repeating: [Float](repeating: frameValue, count: 4), count: 40),
+            globalFrameOffset: 0)
+        let features = EncoderFeatureSequence(windows: [window], hiddenSize: 4, secondsPerFrame: 0.1)
+        return ASRResult(text: words.joined(separator: " "), confidence: 1.0, duration: 2.5,
+                         processingTime: 0.1, tokenTimings: timings, encoderFeatures: features)
+    }
+
+    /// Regression guard for b1a9f5c: a mis-localized enrollment clip whose span the LOO quality
+    /// gate DROPS must not contribute its heard token as a harvested alias/confusable. Four
+    /// carriers: THREE normal clips (heard="keavi", embedding +0.5 — mutually identical, so each
+    /// survives the leave-one-out gate with self-similarity 1.0 regardless of the outlier's
+    /// presence in its LOO centroid, since cosine only depends on direction and the outlier can't
+    /// flip the centroid's sign with 3-to-1 normal clips outweighing it), and one OUTLIER clip
+    /// (heard="is" — a plausible onset-clipped mishear — embedding -0.5, opposite sign) whose LOO
+    /// cosine to the centroid of the 3 normal clips is exactly -1.0, far under the 0.70 floor, so
+    /// `VoiceprintEnroller.enroll` reports it in `droppedIndices` while the 3 normal clips survive
+    /// (asserted via `survivingMeanSelfSim`). Before b1a9f5c, buildPositive harvested from EVERY
+    /// localized span regardless of the gate's verdict, so "is" would have leaked into
+    /// `harvestedAliases` even though the surviving centroid excluded it.
+    func test_buildPositive_excludes_droppedClip_heard_token_from_harvestedAliases() async {
+        let c = VoiceprintCoordinator()
+        c.persistence = StubPersistence(.success([]))
+
+        let carrierText = "I use Keavi every day"
+        let clip1 = VoiceprintCoordinator.EnrollmentClip(wav: Data([1]), carrierText: carrierText)
+        let clip2 = VoiceprintCoordinator.EnrollmentClip(wav: Data([2]), carrierText: carrierText)
+        let clip3 = VoiceprintCoordinator.EnrollmentClip(wav: Data([3]), carrierText: carrierText)
+        let outlierClip = VoiceprintCoordinator.EnrollmentClip(wav: Data([4]), carrierText: carrierText)
+
+        let normalResult = Self.makeSlotResult(word: "keavi", frameValue: 0.5)
+        let outlierResult = Self.makeSlotResult(word: "is", frameValue: -0.5)
+
+        let transcribe: @Sendable (Data) async throws -> ASRResult? = { wav in
+            switch wav {
+            case Data([1]), Data([2]), Data([3]): return normalResult
+            case Data([4]): return outlierResult
+            default: return nil
+            }
+        }
+
+        let built = await c.buildPositive(termID: "Keavi", term: "Keavi",
+                                          carriers: [clip1, clip2, clip3, outlierClip],
+                                          transcribe: transcribe)
+        guard let (_, outcome) = built else {
+            XCTFail("expected buildPositive to yield a draft template")
+            return
+        }
+        XCTAssertEqual(outcome.enrolledClips, 4, "all 4 clips produced a usable localized span")
+        XCTAssertEqual(outcome.survivingMeanSelfSim, 1.0, accuracy: 0.0001,
+            "the 3 normal clips survive the LOO gate at perfect self-similarity — only the " +
+            "opposite-sign outlier is dropped, not the whole batch")
+        XCTAssertFalse(outcome.lowQuality, "3 surviving clips at meanSelfSim 1.0 clears the quality bar")
+        XCTAssertFalse(outcome.harvestedAliases.contains("is"),
+            "the dropped clip's heard token must NOT become a harvested alias — the LOO gate " +
+            "already judged its span an outlier")
     }
 
     func test_termSlotIndex_finds_single_word_term() {

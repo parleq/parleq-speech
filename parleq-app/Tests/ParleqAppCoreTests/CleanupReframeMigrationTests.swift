@@ -57,6 +57,19 @@ final class CleanupReframeMigrationTests: XCTestCase {
         XCTAssertTrue(c.hasPolishedProvider)
     }
 
+    /// RoboRev follow-up: `polishedModel` for a "local" cleanup provider must
+    /// resolve to the authoritative on-device selection (`localModel`), not
+    /// the stale `llmModel` — explicit coverage for the `isGenerativeProvider`
+    /// branch of `polishedModel` (which `cleanupType`'s "local" case in
+    /// `test_cleanupType_cloud_is_polished` exercises but does not assert on).
+    func test_polished_provider_is_cleanup_when_cleanup_is_local() {
+        var c = config(provider: "local", model: "gemini-2.5-flash")
+        c.localModel = LocalModelCatalog.qwen3_4B.checkpoint
+        XCTAssertEqual(c.polishedProvider, "local")
+        XCTAssertEqual(c.polishedModel, LocalModelCatalog.qwen3_4B.checkpoint)
+        XCTAssertTrue(c.hasPolishedProvider)
+    }
+
     func test_polished_provider_falls_to_refine_when_cleanup_is_concord() {
         // The maintainer's shape: concord cleanup + vertex refine → the shared
         // Polished provider is vertex (from refineModel).
@@ -65,6 +78,24 @@ final class CleanupReframeMigrationTests: XCTestCase {
         XCTAssertEqual(c.polishedProvider, "vertex")
         XCTAssertEqual(c.polishedModel, "gemini-2.5-flash")
         XCTAssertTrue(c.hasPolishedProvider)
+    }
+
+    func test_polished_provider_is_local_when_refine_is_local_with_empty_model() throws {
+        // Regression (persistence bug): the on-device Polished provider must
+        // STICK across a config round-trip. The local model is centralized in
+        // `llm.local.model`, so `refine.model` is legitimately empty — which
+        // used to drop the whole refine tier at parse and revert Polished to a
+        // cloud default on restart. polishedProvider must resolve to "local"
+        // and its model must mirror the centralized local model.
+        let c = try parse(#"""
+        {"llm":{"provider":"concord","model":"","refine":{"provider":"local","model":""},
+                "local":{"model":"mlx-community/Qwen3-4B-Instruct-2507-4bit"}}}
+        """#)
+        XCTAssertEqual(c.polishedProvider, "local")
+        XCTAssertTrue(c.hasPolishedProvider)
+        XCTAssertFalse(c.polishedModel?.isEmpty ?? true)
+        XCTAssertEqual(c.polishedModel, c.localModel)
+        XCTAssertEqual(c.refinementType, .polished)
     }
 
     func test_polished_provider_nil_for_bare_concord_and_none() {
@@ -203,6 +234,45 @@ final class CleanupReframeMigrationTests: XCTestCase {
         XCTAssertEqual(c.behaviorForApp("com.apple.Terminal").mode, .instant)
     }
 
+    // MARK: - modeSource (mirrors behaviorForApp's branches; display only)
+
+    func test_modeSource_override_wins() {
+        var c = config(provider: "none")
+        c.appBehaviors = ["com.example.app": AppBehavior(mode: .polished)]
+        XCTAssertEqual(c.modeSource(for: "com.example.app"), .override)
+    }
+
+    func test_modeSource_curated_instant_applies_under_global_polished() {
+        // iTerm2 is curated Instant; global cleanup is Polished (gemini), so
+        // the curation actually takes effect.
+        let c = config(provider: "gemini", model: "gemini-2.5-flash")
+        XCTAssertEqual(c.behaviorForApp("com.googlecode.iterm2").mode, .instant)
+        XCTAssertEqual(c.modeSource(for: "com.googlecode.iterm2"), .curated)
+    }
+
+    func test_modeSource_unmapped_app_is_global() {
+        let c = config(provider: "gemini", model: "gemini-2.5-flash")
+        XCTAssertEqual(c.modeSource(for: "com.example.unmapped"), .global)
+    }
+
+    func test_modeSource_global_raw_even_for_curated_app() {
+        // Global cleanup is Raw ("none") — curated defaults are skipped
+        // entirely, so even a curated app resolves to .global, not .curated.
+        let c = config(provider: "none")
+        XCTAssertEqual(c.behaviorForApp("com.googlecode.iterm2").mode, .raw)
+        XCTAssertEqual(c.modeSource(for: "com.googlecode.iterm2"), .global)
+    }
+
+    func test_modeSource_curated_polished_downgrade_edge_is_global() {
+        // com.apple.mail is curated .polished, but the user's global cleanup
+        // is Instant (concord) — the curation does NOT take effect (resolved
+        // mode falls back to the global Instant), so the source is .global,
+        // not .curated.
+        let c = config(provider: "concord")
+        XCTAssertEqual(c.behaviorForApp("com.apple.mail").mode, .instant)
+        XCTAssertEqual(c.modeSource(for: "com.apple.mail"), .global)
+    }
+
     func test_concord_refine_routes_to_shared_polished_provider() {
         // The maintainer's path: a refine / re-clean for a concord-cleanup user
         // resolves to their shared Polished provider (vertex), not concord.
@@ -277,5 +347,136 @@ final class CleanupReframeMigrationTests: XCTestCase {
         for p in ["concord", "none", ""] {
             XCTAssertFalse(Config.isGenerativeProvider(p), p)
         }
+    }
+
+    // MARK: - cleanupDisplayIdentifier (stale on-device model badge/picker bug)
+
+    /// The badge/picker display identifier for an on-device cleanup provider
+    /// must come from the authoritative on-device selection (`localModel`),
+    /// NOT the stale `llmModel` left over from a prior cloud provider (which
+    /// the runtime provider-build path in main.swift already ignores on the
+    /// local path).
+    func test_cleanupDisplayIdentifier_local_uses_localModel_not_stale_llmModel() {
+        var c = config(provider: "local", model: "gemini-2.5-flash")
+        c.localModel = LocalModelCatalog.qwen3_4B.checkpoint
+        let id = c.cleanupDisplayIdentifier
+        XCTAssertEqual(id.provider, "local")
+        XCTAssertEqual(id.model, LocalModelCatalog.qwen3_4B.checkpoint)
+        XCTAssertNotEqual(id.model, c.llmModel)
+    }
+
+    /// For every cloud provider, cleanupDisplayIdentifier is just llmModel —
+    /// unchanged behavior.
+    func test_cleanupDisplayIdentifier_cloud_is_llmModel() {
+        for p in ["gemini", "vertex", "bedrock", "bedrock-bearer", "azure", "openai"] {
+            let c = config(provider: p, model: "some-model")
+            XCTAssertEqual(c.cleanupDisplayIdentifier, ModelIdentifier(provider: p, model: "some-model"), p)
+        }
+    }
+
+    /// modelForInvocation's resolved identifier for a plain local cleanup
+    /// (no references, no refine) must likewise carry the on-device
+    /// selection, not a stale llmModel — this is what actually feeds the
+    /// overlay's ModelBadge.
+    func test_modelForInvocation_local_cleanup_uses_localModel() {
+        var c = config(provider: "local", model: "gemini-2.5-flash")
+        c.localModel = LocalModelCatalog.qwen3_4B.checkpoint
+        let resolved = c.modelForInvocation(hasReferences: false)
+        XCTAssertEqual(resolved, ModelIdentifier(provider: "local", model: LocalModelCatalog.qwen3_4B.checkpoint))
+    }
+
+    // MARK: - Fix 3: llm.model / llm.local.model anti-recurrence at save time
+
+    /// Once the cleanup provider is on-device, saving must sync `llm.model`
+    /// on disk to the current `llm.local.model` selection — so the two
+    /// fields can't diverge (the divergence is exactly what caused the
+    /// stale badge/picker bug in the first place). A stale on-disk
+    /// `llm.model` from a prior cloud provider gets corrected on the next
+    /// save.
+    func test_mergeForSave_local_provider_syncs_llmModel_to_localModel() throws {
+        var c = config(provider: "local", model: "gemini-2.5-flash")
+        c.localModel = LocalModelCatalog.qwen3_4B.checkpoint
+        let dict = Config.mergeForSave(c, existing: [:])
+        let llm = try XCTUnwrap(dict["llm"] as? [String: Any])
+        XCTAssertEqual(llm["model"] as? String, LocalModelCatalog.qwen3_4B.checkpoint)
+
+        // Round-trips: re-parsing the saved dict keeps llm.model and
+        // llm.local.model coherent.
+        let reparsed = Config.parse(fromDictionary: dict)
+        XCTAssertEqual(reparsed.llmModel, LocalModelCatalog.qwen3_4B.checkpoint)
+        XCTAssertEqual(reparsed.localModel, LocalModelCatalog.qwen3_4B.checkpoint)
+    }
+
+    /// A stale on-disk `llm.model` (from before switching to the on-device
+    /// provider) is corrected by the very next save — the divergence does
+    /// not persist across saves.
+    func test_mergeForSave_local_provider_corrects_stale_ondisk_llmModel() throws {
+        var c = config(provider: "local")
+        c.localModel = LocalModelCatalog.qwen3_4B.checkpoint
+        let existing: [String: Any] = [
+            "llm": ["mode": "default", "provider": "local", "model": "gemini-2.5-flash"],
+        ]
+        let dict = Config.mergeForSave(c, existing: existing)
+        let llm = try XCTUnwrap(dict["llm"] as? [String: Any])
+        XCTAssertEqual(llm["model"] as? String, LocalModelCatalog.qwen3_4B.checkpoint)
+    }
+
+    /// A cloud provider's model is untouched by the local-sync rule.
+    func test_mergeForSave_cloud_provider_model_unaffected() throws {
+        let c = config(provider: "vertex", model: "gemini-2.5-pro")
+        let dict = Config.mergeForSave(c, existing: [:])
+        let llm = try XCTUnwrap(dict["llm"] as? [String: Any])
+        XCTAssertEqual(llm["model"] as? String, "gemini-2.5-pro")
+    }
+
+    /// serializeToDictionary (the single-source-of-truth full serializer)
+    /// applies the same local-sync rule.
+    func test_serializeToDictionary_local_provider_syncs_llmModel_to_localModel() throws {
+        var c = config(provider: "local", model: "gemini-2.5-flash")
+        c.localModel = LocalModelCatalog.qwen3_4B.checkpoint
+        let dict = Config.serializeToDictionary(c)
+        let llm = try XCTUnwrap(dict["llm"] as? [String: Any])
+        XCTAssertEqual(llm["model"] as? String, LocalModelCatalog.qwen3_4B.checkpoint)
+    }
+
+    // MARK: - RoboRev follow-up: MDM refine-tier "same as cleanup" comparison
+    // for a local cleanup provider (Config.swift's applyManagedOverlay
+    // refineTierManaged block, mirrored here per the ManagedConfigTests.swift
+    // convention of simulating the private applyManagedOverlay logic inline —
+    // it reads real /Library/Managed Preferences, which a unit test can't
+    // fake). Before cleanupDisplayIdentifier existed, this block's
+    // `currentRefineModel` fallback and `cleanupId` both read raw `llmModel`;
+    // this test pins that both now consistently resolve through
+    // `cleanupDisplayIdentifier` (i.e. `localModel`) for a "local" cleanup
+    // provider, so an MDM refine-tier pin that resolves back to "local"
+    // correctly collapses to "same as cleanup" (nil), not a spurious mismatch
+    // caused by comparing a stale llmModel against the corrected value.
+    func test_mdm_refineTierManaged_local_cleanup_resolves_same_as_cleanup() {
+        var c = config(provider: "local", model: "gemini-2.5-flash") // stale leftover cloud id
+        c.localModel = LocalModelCatalog.qwen3_4B.checkpoint
+
+        // Mirrors Config.swift's currentRefineModel/currentRefineProvider
+        // fallback chain (refineModel ?? contextModel ?? cleanup) when
+        // neither refineModel nor contextModel is set.
+        let currentRefineProvider = c.refineModel?.provider ?? (c.contextModel?.provider ?? c.llmProvider)
+        let currentRefineModel    = c.refineModel?.model    ?? (c.contextModel?.model    ?? c.cleanupDisplayIdentifier.model)
+        XCTAssertEqual(currentRefineModel, LocalModelCatalog.qwen3_4B.checkpoint,
+                       "the refine-tier fallback must resolve to localModel, not the stale llmModel")
+
+        // An admin pin of refineProvider="local" with the tier otherwise
+        // unmanaged: refineProvider/refineModelName stay at the current
+        // (fallback) values computed above.
+        let refineProvider = currentRefineProvider
+        let refineModelName = currentRefineModel
+
+        // Mirrors the refineTierManaged block: cleanupId must be the SAME
+        // corrected identifier as the fallback above, or a "local" refine
+        // pin that resolves back to the cleanup provider would incorrectly
+        // NOT collapse to nil.
+        let cleanupId = c.cleanupDisplayIdentifier
+        let refineId  = ModelIdentifier(provider: refineProvider, model: refineModelName)
+        let resolvedRefineModel: ModelIdentifier? = (refineId == cleanupId) ? nil : refineId
+        XCTAssertNil(resolvedRefineModel,
+                     "a refine pin that resolves back to the local cleanup provider must collapse to nil (same as cleanup)")
     }
 }

@@ -47,10 +47,73 @@ struct CorrectionSpan: Equatable {
     /// PROVENANCE — shape inference alone misroutes when both the heard word
     /// and the term happen to be enrolled (RoboRev-7511).
     let reason: String?
+    /// The acoustic gate's exact audio-span timestamps for this edit, when the
+    /// driving `EditRecord` carries them (Feature B — timestamp-anchored
+    /// harvest). `nil` for edits with no gate provenance (deterministic
+    /// number/compound stages, older records) — the harvest falls back to the
+    /// positional locator in that case.
+    let startSeconds: Double?
+    let endSeconds: Double?
 
     /// True iff this span was produced by the acoustic gate's validation
     /// revert (the string Concord stamps on that edit — see spec fact 5).
     var isValidateRevert: Bool { reason == "acoustic-validate revert" }
+
+    /// True iff this span is a "considered" over-fire (Feature A): the
+    /// acoustic gate kept the emitted term but only barely — surfaced ONLY
+    /// when the gate's margin is borderline (see `LocalConcordConstants
+    /// .consideredBorderlineMargin`). `applied` is `false` for these records
+    /// (nothing was substituted); the span exists purely to flag the word
+    /// for the user to review.
+    var isValidateConsidered: Bool { reason == "acoustic-validate considered" }
+}
+
+/// Tunable constants for the on-device Concord correction surfacing that
+/// don't belong to Concord itself (app-side display/UX policy).
+enum LocalConcordConstants {
+    /// Borderline-margin threshold for surfacing a "considered" acoustic-gate
+    /// accept as an overlay flag (Feature A). A considered record's
+    /// `gateMargin` at or below this value is treated as "barely accepted" —
+    /// likely an over-fire worth flagging. Above it, the gate was confident
+    /// and the word stays unflagged.
+    ///
+    /// SCALE: a "considered" record only exists when the acoustic gate ACCEPTED
+    /// a term rather than reverting it. `gateMargin` is a gate-internal
+    /// confidence value where lower = a barely-confident accept; `0.15` sits
+    /// just above the gate's no-revert floor — wide enough to catch accepts
+    /// hovering just past it, but not so wide it flags a genuinely confident
+    /// match. (The exact gate-margin definition and revert threshold are
+    /// engine internals — see the correction engine's own docs.)
+    ///
+    /// STARTING GUESS, NOT YET CALIBRATED: `0.15` is a first-guess pick, not
+    /// data-fit. As of this writing there is no readily available margin
+    /// distribution to fit against — the flywheel corpus
+    /// (`~/.parleq/flywheel/manifest.jsonl`) records dictionary-stage
+    /// CTC-vs-CTC log-odds, not acoustic-gate `gateMargin`/`acoustic-validate
+    /// considered` records (grep for both came back empty), and
+    /// `VoiceprintSelfTestHarnessTests` exercises one binary Keavi/kiwi
+    /// accept-reject pair rather than a margin sweep across many
+    /// accepts/over-fires. This value is meant to be tuned during the
+    /// maintainer's real-voice walkthrough (voiceprint-overfire-flag design,
+    /// Task 8/8.1) once real "considered" margins are visible in the overlay.
+    ///
+    /// HOW TO TUNE: raise it to flag MORE considered-accepts as borderline
+    /// (catches more real over-fires, but also more false positives on
+    /// genuinely-fine words); lower it to flag FEWER (fewer false positives,
+    /// but risks missing real over-fires whose margin sat above the new,
+    /// tighter cutoff).
+    static let consideredBorderlineMargin: Double = 0.15
+
+    /// Single shared predicate for "this considered-over-fire EditRecord is
+    /// borderline enough to surface" — used by both `CorrectionHighlight
+    /// .spans(in:edits:)` and `ConcordCleanupProvider.appliedEditsForOverlay`
+    /// so the two admission checks can't drift out of sync. A missing
+    /// `gateMargin` fails SAFE (never surfaces) via the `?? .infinity`
+    /// fallback.
+    static func isBorderlineConsidered(_ edit: EditRecord) -> Bool {
+        edit.reason == "acoustic-validate considered"
+            && (edit.gateMargin ?? .infinity) <= consideredBorderlineMargin
+    }
 }
 
 enum CorrectionHighlight {
@@ -70,14 +133,23 @@ enum CorrectionHighlight {
     ///   - A `replacement` not present at all (a later/manual edit rewrote it): dropped — no
     ///     crash, no bogus range; the rest still map and stay correctly numbered.
     ///
-    /// Only `applied == true` edits with a non-empty `replacement` participate.
-    /// Empty-replacement edits (pure deletions) have no visible span to mark.
+    /// Participating edits are either (a) `applied == true` with a non-empty
+    /// `replacement` (empty-replacement edits are pure deletions with no
+    /// visible span to mark), or (b) a "considered" over-fire (Feature A:
+    /// `reason == "acoustic-validate considered"`, `applied == false`,
+    /// `replacement == original`) whose gate margin is borderline — see
+    /// `LocalConcordConstants.consideredBorderlineMargin`. A missing margin
+    /// (`nil`) fails SAFE (never surfaces): `?? .infinity` guarantees it
+    /// can't be `<=` the threshold.
     static func spans(in text: String, edits: [EditRecord]) -> [CorrectionSpan] {
         // Stable order: by wordRange (reading order); ties and nil-ranges keep EMISSION order
         // (Concord emits left-to-right), so the deterministic number/compound edits — which have
         // no wordRange — stay correctly sequenced for the cursor below.
         let applied = edits
-            .filter { $0.applied && !$0.replacement.isEmpty }
+            .filter {
+                ($0.applied && !$0.replacement.isEmpty)
+                    || LocalConcordConstants.isBorderlineConsidered($0)
+            }
             .enumerated()
             .sorted { lhs, rhs in
                 let l = lhs.element.wordRange?.lowerBound ?? Int.max
@@ -130,7 +202,9 @@ enum CorrectionHighlight {
                 replacement: item.edit.replacement,
                 stage: item.edit.stage,
                 wordRange: item.edit.wordRange,
-                reason: item.edit.reason
+                reason: item.edit.reason,
+                startSeconds: item.edit.startSeconds,
+                endSeconds: item.edit.endSeconds
             )
         }
     }
@@ -173,6 +247,66 @@ enum CorrectionHighlight {
         var out = text
         out.replaceSubrange(span.range, with: span.original)
         return out
+    }
+
+    /// Reconstruct a minimal applied `EditRecord` from a surviving highlight
+    /// span, so a re-map (after an undo / manual edit) can re-anchor the
+    /// remaining spans against a new text snapshot. Single shared
+    /// implementation — `AppState.editRecordFor` delegates here so the
+    /// wordRange/timestamps/reason round-trip can't drift out of sync between
+    /// the two (RoboRev-7511 was exactly this class of bug: a dropped field on
+    /// re-map silently re-anchoring to the wrong occurrence).
+    static func editRecord(for span: CorrectionSpan) -> EditRecord {
+        EditRecord(
+            stage: span.stage,
+            original: span.original,
+            replacement: span.replacement,
+            applied: true,
+            wordRange: span.wordRange,
+            startSeconds: span.startSeconds,
+            endSeconds: span.endSeconds,
+            reason: span.reason
+        )
+    }
+
+    /// The plan for a ⌥+N undo gesture on the numbered span `number` (Task 7 —
+    /// Feature A interaction). Pure decision, no side effects: `AppState
+    /// .undoCorrection` computes this, then performs the corresponding
+    /// mutation. Kept pure/testable so the routing branch (ordinary revert vs.
+    /// considered-flag edit-at-word) doesn't need a live AppState/OverlayWindow
+    /// to exercise.
+    enum UndoAction: Equatable {
+        /// Ordinary correction: revert `replacement` back to `original` in the
+        /// text, and re-map the surviving spans against the reverted text.
+        case revert(newText: String, remainingSpans: [CorrectionSpan])
+        /// A borderline "considered" over-fire (`span.isValidateConsidered`):
+        /// `original == replacement`, so a text revert would be a silent
+        /// no-op. Instead: drop the flag + renumber the remainder (against the
+        /// UNCHANGED text — there is nothing to mutate), and signal that the
+        /// caller should enter the existing E-edit mode focused at
+        /// `focusWordRange` (the considered span's `wordRange`).
+        case editAtWord(remainingSpans: [CorrectionSpan], focusWordRange: Range<Int>?)
+    }
+
+    /// Decide what a ⌥+N undo on `number` should do against `text`/`spans`.
+    /// Returns `nil` when no span has that number, OR (ordinary-correction
+    /// path only) when reverting would be a no-op — both cases mean the
+    /// caller should treat the gesture as not having found anything to undo.
+    static func planUndo(text: String, spans: [CorrectionSpan], number: Int) -> UndoAction? {
+        guard let span = spans.first(where: { $0.number == number }) else { return nil }
+        let remainingEdits = spans
+            .filter { $0.number != number }
+            .map(editRecord(for:))
+
+        if span.isValidateConsidered {
+            let remaining = CorrectionHighlight.spans(in: text, edits: remainingEdits)
+            return .editAtWord(remainingSpans: remaining, focusWordRange: span.wordRange)
+        }
+
+        let reverted = CorrectionHighlight.revert(text: text, span: span)
+        guard reverted != text else { return nil }
+        let remaining = CorrectionHighlight.spans(in: reverted, edits: remainingEdits)
+        return .revert(newText: reverted, remainingSpans: remaining)
     }
 }
 #endif

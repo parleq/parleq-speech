@@ -12,6 +12,10 @@ import UniformTypeIdentifiers
 struct PresetsSettingsView: View {
     @ObservedObject var model: SettingsModel
     @State private var newPresetID: String = ""
+    /// Collapsed by default — the "Recommended defaults" discovery list can
+    /// run to dozens of rows across every curated app, so it stays out of the
+    /// way until the user opts to look.
+    @State private var curatedDefaultsExpanded = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -107,11 +111,11 @@ struct PresetsSettingsView: View {
                 .font(.headline)
                 .padding(.top, 8)
 
-            (Text("Parleq adapts cleanup to each app. Terminals, code editors, and spreadsheets default to ")
+            (Text("Parleq uses smart defaults for common apps. Terminals, code editors, and spreadsheets stay on fast on-device ")
              + Text("Instant").bold()
-             + Text(" (fast, on-device, literal); everything else to ")
+             + Text(" cleanup so your commands and code aren't sent to an LLM; chat, email, and writing apps use ")
              + Text("Polished").bold()
-             + Text(" (your configured cleanup). Add an app to customize."))
+             + Text(" (your configured cleanup). Add any app below to override its default."))
                 .font(.callout).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -120,6 +124,8 @@ struct PresetsSettingsView: View {
             }
 
             appAddMenu(excluding: Set(bundleIDs))
+
+            recommendedDefaultsDisclosure(excluding: Set(bundleIDs))
         }
     }
 
@@ -183,15 +189,27 @@ struct PresetsSettingsView: View {
                 .labelsHidden()
                 .frame(maxWidth: 260)
 
-                // Informational: flag when the app sits at Parleq's curated
-                // smart default for its category (e.g. a terminal at Instant).
-                // Reworded from a bare "Parleq default" (which read as a cryptic
-                // label) to make it obvious this is a recommendation you can override.
-                if let curated = curatedDefault, effective == curated {
-                    Text("✓ Parleq's recommendation")
+                // Source label: WHY this row is at its current mode. Keyed off
+                // whether the EDITOR currently holds an explicit override
+                // (`appBehaviors[bundleID] == nil`), not value-equality against
+                // the curated default — a user who explicitly sets a row to the
+                // same value the curation would have picked is still an
+                // override ("your setting"), not a recommendation. This
+                // mirrors the editor's live (possibly-unsaved) state, which is
+                // what the user is looking at.
+                if model.appBehaviors[bundleID] != nil {
+                    Text("Your setting")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                        .help("Parleq's suggested mode for this kind of app. Change the mode above to override it.")
+                } else if curatedDefault != nil {
+                    Text("Parleq default")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .help("Parleq's smart default for this kind of app — change the mode above to override it.")
+                } else {
+                    Text("Global default")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
 
@@ -242,6 +260,98 @@ struct PresetsSettingsView: View {
         }
         .padding(10)
         .background(RoundedRectangle(cornerRadius: 8).fill(SettingsView.cardBackground))
+    }
+
+    // MARK: - "Recommended defaults" discovery disclosure
+    //
+    // Surfaces every curated app the user HASN'T already touched (that set is
+    // shown, editable, above) so a curious user can find out what Parleq's
+    // smart defaults actually cover, grouped by mode, without the list
+    // overwhelming the section by default (collapsed).
+
+    @ViewBuilder
+    private func recommendedDefaultsDisclosure(excluding existing: Set<String>) -> some View {
+        let entries = CuratedAppDefaults.all.filter { !existing.contains($0.bundleID) }
+        if !entries.isEmpty {
+            DisclosureGroup(isExpanded: $curatedDefaultsExpanded) {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("These apps aren't listed above because Parleq already applies its smart default to them automatically — you don't need to add them. Tap Override to pull one into the list and customize it.")
+                        .font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    ForEach([TargetMode.instant, .polished, .raw], id: \.self) { mode in
+                        let group = entries.filter { $0.mode == mode }
+                        if !group.isEmpty {
+                            curatedModeGroup(title: curatedGroupTitle(for: mode), entries: group)
+                        }
+                    }
+
+                    // The com.jetbrains.* PREFIX rule (CuratedAppDefaults.mode(for:))
+                    // covers a whole IDE family and isn't a single listable bundle
+                    // ID, so it can't appear as a row in `entries` above.
+                    Text("Also Instant: any JetBrains IDE (IntelliJ, PyCharm, GoLand, …).")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                .padding(.top, 8)
+            } label: {
+                Text("Recommended defaults")
+                    .font(.subheadline.weight(.medium))
+            }
+            .padding(10)
+            .background(RoundedRectangle(cornerRadius: 8).fill(SettingsView.cardBackground))
+        }
+    }
+
+    private func curatedGroupTitle(for mode: TargetMode) -> String {
+        switch mode {
+        case .instant: return "Instant"
+        case .polished: return "Polished"
+        case .raw: return "Raw"
+        }
+    }
+
+    private func curatedModeGroup(
+        title: String,
+        entries: [(bundleID: String, mode: TargetMode, tone: SuggestedTone?)]
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            ForEach(entries, id: \.bundleID) { entry in
+                curatedAppRow(entry)
+            }
+        }
+    }
+
+    private func curatedAppRow(
+        _ entry: (bundleID: String, mode: TargetMode, tone: SuggestedTone?)
+    ) -> some View {
+        let icon = appIcon(for: entry.bundleID)
+        let displayName = resolvedAppName(for: entry.bundleID)
+        return HStack(spacing: 8) {
+            if let icon {
+                Image(nsImage: icon)
+                    .resizable()
+                    .frame(width: 16, height: 16)
+                    .cornerRadius(3)
+            } else {
+                Image(systemName: "app.dashed")
+                    .frame(width: 16, height: 16)
+                    .foregroundStyle(.secondary)
+            }
+            Text(displayName)
+                .font(.callout)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Spacer()
+            Button("Override") {
+                materializeApp(entry.bundleID)
+            }
+            .buttonStyle(.plain)
+            .font(.caption)
+            .foregroundStyle(SettingsView.brandAccent)
+        }
     }
 
     // MARK: - "Add app" affordance
@@ -333,18 +443,45 @@ struct PresetsSettingsView: View {
         return ids.sorted()
     }
 
+    /// Mirrors `Config.resolveMode(for:)` exactly (the private helper behind
+    /// `Config.behaviorForApp`/`Config.modeSource`, in Config.swift), but reads
+    /// the Settings editor's LIVE (possibly-unsaved) `cleanupType` and
+    /// `appBehaviors` rather than a saved `Config`, so the row a user is
+    /// looking at mid-edit matches what would actually resolve once saved.
+    /// `SettingsModel.cleanupType` is initialized from `config.cleanupType` and
+    /// is the one live proxy for it, so this stays a faithful mirror rather
+    /// than a divergent reimplementation — same three branches, same
+    /// raw-opt-out skip and curated-Polished-downgrade edge case as Config's
+    /// resolver. Kept as a mirror instead of calling Config directly because
+    /// the settings model doesn't hold a full `Config` to call the instance
+    /// method on, and `resolveMode` is `private` to Config.swift (owned by
+    /// the ModeSource work, out of scope here). If this ever drifts, compare
+    /// against `Config.resolveMode(for:)`.
     private func effectiveMode(for bundleID: String) -> TargetMode {
-        model.appBehaviors[bundleID]?.mode
-            ?? CuratedAppDefaults.mode(for: bundleID)
-            ?? .polished
+        if let override = model.appBehaviors[bundleID]?.mode {
+            return override
+        } else if model.cleanupType == .raw {
+            return .raw
+        } else if let curated = CuratedAppDefaults.mode(for: bundleID) {
+            if curated == .polished && model.cleanupType != .polished {
+                return model.cleanupType
+            }
+            return curated
+        } else {
+            return model.cleanupType
+        }
     }
 
+    /// internal (not private) so the "Recommended defaults" disclosure rows
+    /// can reuse the same icon-resolution logic as the editable app rows.
     private func appIcon(for bundleID: String) -> NSImage? {
         guard let url = NSWorkspace.shared.urlForApplication(
             withBundleIdentifier: bundleID) else { return nil }
         return NSWorkspace.shared.icon(forFile: url.path)
     }
 
+    /// internal (not private) so the "Recommended defaults" disclosure rows
+    /// can reuse the same display-name resolution as the editable app rows.
     private func resolvedAppName(for bundleID: String) -> String {
         if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) {
             let name = (Bundle(url: url)?.object(forInfoDictionaryKey: "CFBundleDisplayName")

@@ -6,7 +6,7 @@ import DocTabs from '../../components/DocTabs.astro';
 
 ---
 
-<Layout title="On-device setup — Parleq" description="Run Parleq's cleanup entirely on your Mac — a fast Lightweight tier or the Gemma 4 local model via Apple MLX. No API key, no cloud account, no network.">
+<Layout title="On-device setup — Parleq" description="Run Parleq's cleanup entirely on your Mac — a fast Lightweight tier or an on-device LLM (Gemma 4 or the lighter Qwen3-4B) via Apple MLX. No API key, no cloud account, no network.">
   <FloatingNav active="docs" />
 
   <article class="accent-grape mx-auto max-w-2xl px-6 pt-16 pb-24">
@@ -19,7 +19,7 @@ import DocTabs from '../../components/DocTabs.astro';
       On-device cleanup
     </h1>
     <p class="mt-6 max-w-2xl text-[17px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      Parleq can run the cleanup pass entirely on your Mac — no API key, no cloud account, no per-call cost, and no network boundary for your transcript. There are <strong class="text-[color:var(--color-text)]">two on-device options</strong>, both available under <strong class="text-[color:var(--color-text)]">Settings → Cleanup → Provider</strong> — and the first-run setup wizard offers the Gemma 4 one directly as its <strong class="text-[color:var(--color-text)]">On-device</strong> choice. Both keep your transcript on your machine; they differ in what they can do and what they cost in download and memory.
+      Parleq can run the cleanup pass entirely on your Mac — no API key, no cloud account, no per-call cost, and no network boundary for your transcript. There are <strong class="text-[color:var(--color-text)]">two on-device options</strong>, both available under <strong class="text-[color:var(--color-text)]">Settings → Cleanup → Provider</strong> — and the first-run setup wizard offers the on-device LLM directly as its <strong class="text-[color:var(--color-text)]">On-device</strong> choice, with a picker for which model. Both keep your transcript on your machine; they differ in what they can do and what they cost in download and memory.
     </p>
 
     <!-- Tabbed picker: the two on-device tracks. Selecting a tab reveals its sections and hides
@@ -55,10 +55,10 @@ import DocTabs from '../../components/DocTabs.astro';
             <span aria-hidden="true" class="inline-flex h-8 w-8 items-center justify-center rounded-lg" style="background: color-mix(in srgb, var(--color-grape) 12%, transparent); color: var(--color-grape);">
               <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="14" height="14" rx="2"/><rect x="9" y="9" width="6" height="6" rx="1"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>
             </span>
-            <span class="text-[15px] font-semibold text-[color:var(--color-text)]">On-device LLM — Gemma 4</span>
+            <span class="text-[15px] font-semibold text-[color:var(--color-text)]">On-device LLM</span>
           </span>
-          <span class="mt-3 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">Everything Lightweight does, plus free-form rewriting and the full voice-refine loop.</span>
-          <span class="mt-3 text-[12px] font-medium text-[color:var(--color-grape)]">~4 GB download · 12 GB RAM · $0</span>
+          <span class="mt-3 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">Everything Lightweight does, plus free-form rewriting and the full voice-refine loop. Two models to choose from.</span>
+          <span class="mt-3 text-[12px] font-medium text-[color:var(--color-grape)]">Gemma 4 or Qwen3-4B · 8 GB+ RAM · $0</span>
         </button>
       </div>
 
@@ -66,10 +66,10 @@ import DocTabs from '../../components/DocTabs.astro';
       <div role="tabpanel" id="panel-lite" aria-labelledby="tab-lite" class="mt-10">
     <div class="space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
       <p>
-        The Lightweight option — built on Concord (by Keavi) — is a fast, fully deterministic corrector that runs in-process, with nothing to download and almost no memory overhead. It handles the structured cleanup: adding the "?" when you dictate a question, spelled-out numbers and percents (so "forty five percent" becomes "45%"), joining split compound words, your custom-dictionary terms (plus spoken forms), and — once you've enrolled them — voiceprint disambiguation of sound-alike words. General sentence casing and punctuation come from the speech model itself, not this tier. Because there is no language model on this path, it can't freely rewrite text, so the voice-refine loop, the one-tap style chips, and per-app styling aren't available here; switch to Gemma 4 or a cloud provider when you want those.
+        The Lightweight option — built on Concord (by Keavi) — is a fast, fully deterministic corrector that runs in-process, with nothing to download and almost no memory overhead. It handles the structured cleanup: adding the "?" when you dictate a question, spelled-out numbers and percents (so "forty five percent" becomes "45%"), joining split compound words, your custom-dictionary terms (plus spoken forms), and — once you've enrolled them — voiceprint disambiguation of sound-alike words. General sentence casing and punctuation come from the speech model itself, not this tier. Because there is no language model on this path, it can't freely rewrite text, so the voice-refine loop, the one-tap style chips, and per-app styling aren't available here; switch to the on-device LLM or a cloud provider when you want those.
       </p>
       <p>
-        To use it, open <strong class="text-[color:var(--color-text)]">Settings → Cleanup → Provider</strong> and select <strong class="text-[color:var(--color-text)]">Lightweight (on-device)</strong>. (It's a Settings option — the first-run wizard's <strong class="text-[color:var(--color-text)]">On-device</strong> choice is the Gemma 4 model below.) There's nothing to download and nothing to configure — it's ready immediately, and like every on-device path your transcript never crosses a network boundary.
+        To use it, open <strong class="text-[color:var(--color-text)]">Settings → Cleanup → Provider</strong> and select <strong class="text-[color:var(--color-text)]">Lightweight (on-device)</strong>. (It's a Settings option — the first-run wizard's <strong class="text-[color:var(--color-text)]">On-device</strong> choice is the on-device LLM below, with a model picker.) There's nothing to download and nothing to configure — it's ready immediately, and like every on-device path your transcript never crosses a network boundary.
       </p>
     </div>
 
@@ -89,16 +89,22 @@ import DocTabs from '../../components/DocTabs.astro';
       <!-- Panel: Gemma 4 -->
       <div role="tabpanel" id="panel-gemma" aria-labelledby="tab-gemma" class="mt-10">
     <p class="text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      Gemma 4 E4B is the local language model for fuller cleanup and the full voice-refine loop — pick it when transcript content must never leave your machine but you still want a model to rewrite, not just tidy.
+      The on-device LLM is for fuller cleanup and the full voice-refine loop — pick it when transcript content must never leave your machine but you still want a model to rewrite, not just tidy. There's a choice of two models: <strong class="text-[color:var(--color-text)]">Gemma 4 E4B</strong>, the default and the higher-quality of the two, and <strong class="text-[color:var(--color-text)]">Qwen3-4B</strong>, a lighter model that brings on-device LLM cleanup to Macs with as little as 8 GB of RAM.
     </p>
 
     <div class="mt-8 rounded-2xl border border-[color:var(--color-grape-300)] bg-[color:var(--color-panel-ink)] p-6">
       <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-text-subtle)]">At a glance</p>
       <ul class="mt-3 space-y-2 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
         <li><strong class="text-[color:var(--color-text)]">Auth:</strong> None. No account, no key.</li>
-        <li><strong class="text-[color:var(--color-text)]">Model:</strong> Gemma 4 E4B (4-bit, MLX), downloaded once from Hugging Face — about 4 GB.</li>
-        <li><strong class="text-[color:var(--color-text)]">Memory:</strong> ~6 GB while the model is loaded; Parleq frees it after a few minutes of inactivity.</li>
-        <li><strong class="text-[color:var(--color-text)]">Requirement:</strong> A Mac with at least 12 GB of RAM. On Macs with less, the option appears in the picker but can't be selected.</li>
+        <li>
+          <strong class="text-[color:var(--color-text)]">Models:</strong> Both 4-bit, run via MLX, and downloaded once from Hugging Face:
+          <ul class="mt-2 ml-4 list-disc space-y-1.5">
+            <li><strong class="text-[color:var(--color-text)]">Gemma 4 E4B</strong> (default) — ~4 GB download, ~6 GB while loaded, needs a Mac with at least 12 GB of RAM.</li>
+            <li><strong class="text-[color:var(--color-text)]">Qwen3-4B</strong> (lighter) — ~2.4 GB download, ~4 GB while loaded, needs a Mac with at least 8 GB of RAM.</li>
+          </ul>
+        </li>
+        <li><strong class="text-[color:var(--color-text)]">Memory:</strong> Only while the model is loaded; Parleq frees it after a few minutes of inactivity.</li>
+        <li><strong class="text-[color:var(--color-text)]">Requirement:</strong> Whichever model needs more RAM than your Mac has, that model appears in the picker but can't be selected — the other one still can.</li>
         <li><strong class="text-[color:var(--color-text)]">Network:</strong> None for cleanup — your transcript never crosses a network boundary. The only network use is the one-time model download you initiate.</li>
         <li><strong class="text-[color:var(--color-text)]">Cost:</strong> $0. No per-call charges, ever.</li>
       </ul>
@@ -111,12 +117,12 @@ import DocTabs from '../../components/DocTabs.astro';
       <li class="flex gap-4">
         <span class="font-display text-2xl font-semibold text-[color:var(--color-text)] tabular-nums">1.</span>
         <div>
-          <p class="text-[color:var(--color-text)] font-medium">Choose On-device.</p>
+          <p class="text-[color:var(--color-text)] font-medium">Choose On-device, then a model.</p>
           <p class="mt-2">
-            On first launch the setup wizard asks how you want cleanup handled. Pick <strong class="text-[color:var(--color-text)]">On-device</strong> — the Gemma 4 model. Already past the wizard? Open <strong class="text-[color:var(--color-text)]">Settings… → Cleanup → Provider</strong> and choose <strong class="text-[color:var(--color-text)]">On-device (no cloud)</strong> — the same option, labeled there to set it apart from Lightweight.
+            On first launch the setup wizard asks how you want cleanup handled. Pick <strong class="text-[color:var(--color-text)]">On-device</strong>, then choose <strong class="text-[color:var(--color-text)]">Gemma 4 E4B</strong> (the default, best quality) or <strong class="text-[color:var(--color-text)]">Qwen3-4B</strong> (lighter, for lower-RAM Macs). Already past the wizard? Open <strong class="text-[color:var(--color-text)]">Settings… → Cleanup → Provider</strong> and choose <strong class="text-[color:var(--color-text)]">On-device (no cloud)</strong> — the same option, labeled there to set it apart from Lightweight — then pick your model.
           </p>
           <p class="mt-2 text-[14px] text-[color:var(--color-text-subtle)]">
-            On a Mac with less than 12 GB of RAM the option is visible but disabled — the model's ~6 GB working set would crowd out your other apps, so Parleq won't let you select it.
+            Gemma 4 E4B needs a Mac with at least 12 GB of RAM; Qwen3-4B needs at least 8 GB. On a Mac below a model's RAM floor, that model is visible in the picker but disabled — its working set would crowd out your other apps, so Parleq won't let you select it.
           </p>
         </div>
       </li>
@@ -126,7 +132,7 @@ import DocTabs from '../../components/DocTabs.astro';
         <div>
           <p class="text-[color:var(--color-text)] font-medium">Let the model download.</p>
           <p class="mt-2">
-            Selecting On-device starts a one-time ~4 GB download from Hugging Face. Real, byte-accurate progress shows in the wizard and in the menu-bar item, and the download resumes where it left off if it's interrupted — quit, lost network, even a force-quit — rather than starting over. You can keep using Parleq while it downloads (it pastes raw transcription until the model is ready). The model is stored at <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">~/Library/Application Support/Parleq/models/</code>.
+            Selecting a model starts a one-time download from Hugging Face — about 4 GB for Gemma 4 E4B, or about 2.4 GB for Qwen3-4B. Real, byte-accurate progress shows in the wizard and in the menu-bar item, and the download resumes where it left off if it's interrupted — quit, lost network, even a force-quit — rather than starting over. You can keep using Parleq while it downloads (it pastes raw transcription until the model is ready). The model is stored at <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">~/Library/Application Support/Parleq/models/</code>.
           </p>
         </div>
       </li>
@@ -147,7 +153,7 @@ import DocTabs from '../../components/DocTabs.astro';
     </h2>
     <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
       <p>
-        While the model is loaded it uses about 6 GB of memory. Parleq keeps it resident only as long as you're actively dictating and unloads it after a few minutes of inactivity, returning that memory to the system. The first dictation after an unload reloads the model (a couple of seconds); subsequent ones are fast.
+        While the model is loaded it uses about 6 GB of memory for Gemma 4 E4B, or about 4 GB for Qwen3-4B. Parleq keeps it resident only as long as you're actively dictating and unloads it after a few minutes of inactivity, returning that memory to the system. The first dictation after an unload reloads the model (a couple of seconds); subsequent ones are fast.
       </p>
       <p>
         Parleq also caps the pool of reusable GPU scratch buffers the model keeps around, so the memory it holds while loaded stays close to the model's own size rather than climbing several gigabytes higher after a longer cleanup. The figure you see in Activity Monitor therefore tracks the model itself — useful to know if you or your security team are watching the process's footprint.
@@ -162,7 +168,7 @@ import DocTabs from '../../components/DocTabs.astro';
     </h2>
     <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
       <p>
-        To reclaim the disk space, open <strong class="text-[color:var(--color-text)]">Settings → Cleanup</strong> and click <strong class="text-[color:var(--color-text)]">Remove downloaded model</strong>. That deletes the weights from <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">~/Library/Application Support/Parleq/models/</code> and frees the in-memory copy immediately. You can re-download anytime by selecting On-device (no cloud) again, or switch to Lightweight, a cloud provider, or no cleanup at all.
+        To reclaim the disk space, open <strong class="text-[color:var(--color-text)]">Settings → Cleanup</strong> and click <strong class="text-[color:var(--color-text)]">Remove downloaded model</strong>. That deletes the weights for whichever model you downloaded from <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">~/Library/Application Support/Parleq/models/</code> and frees the in-memory copy immediately. You can re-download anytime by selecting On-device (no cloud) again, switch to the other model, or switch to Lightweight, a cloud provider, or no cleanup at all.
       </p>
     </div>
 
@@ -174,7 +180,7 @@ import DocTabs from '../../components/DocTabs.astro';
         Nothing about your dictation leaves your Mac on this path. Audio stays on-device (as always), and with on-device cleanup the transcript never crosses a network boundary either — there is no provider receiving your text. See the <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/privacy/'} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">privacy policy</a> for the full data posture.
       </p>
       <p>
-        The model is Google Gemma 4, licensed under the <a href="https://ai.google.dev/gemma/docs/gemma_4_license" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Apache 2.0 license</a>. Parleq doesn't redistribute the weights — your Mac downloads them from Hugging Face when you enable this option.
+        Both models are Apache 2.0 licensed: Google's Gemma 4, under its <a href="https://ai.google.dev/gemma/docs/gemma_4_license" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Apache 2.0 license</a>, and Alibaba's <a href="https://huggingface.co/Qwen/Qwen3-4B/blob/main/LICENSE" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Qwen3-4B, also Apache 2.0</a>. Parleq doesn't redistribute either model's weights — your Mac downloads them from Hugging Face when you enable this option.
       </p>
     </div>
       </div><!-- /panel-gemma -->

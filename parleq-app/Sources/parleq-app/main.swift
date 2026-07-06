@@ -298,19 +298,26 @@ struct ParleqApp {
             logStderr("[parleq] oidc: an OIDC auth mode is selected but oidc.issuer/client_id are not configured — Company Account is inactive; cleanup will fail closed until configured")
         }
 
-        // On-device LLM tier: one shared LocalModelStore + ResidencyManager for
-        // the whole process. Created here (before makeProvider) so the factory
-        // closure can capture the same instances that wizard/Settings will later
-        // reference. Both inits are @MainActor; main.swift's startup block runs
-        // inside MainActor.assumeIsolated, so the synchronous read is safe.
+        // On-device LLM tier: one LocalModelStore PER catalog model (registry),
+        // so Settings/Wizard can show download/remove state for every model —
+        // but only ONE ResidencyManager for the whole process, wired to the
+        // SELECTED model's store. Created here (before makeProvider) so the
+        // factory closure can capture the same instances that wizard/Settings
+        // will later reference. Both inits are @MainActor; main.swift's startup
+        // block runs inside MainActor.assumeIsolated, so the synchronous read
+        // is safe.
         //
-        let localModelStore = MainActor.assumeIsolated { LocalModelStore() }
+        let localModelStores = MainActor.assumeIsolated {
+            LocalModelCatalog.all.map { LocalModelStore(checkpoint: $0.checkpoint) }
+        }
+        let localModelStore = localModelStores.first { $0.checkpoint == config.selectedLocalModel.checkpoint }
+            ?? localModelStores[0]
         let localResidency = MainActor.assumeIsolated {
             ResidencyManager(
                 store: localModelStore,
                 policy: ResidencyPolicy.effective(
                     residency: config.localResidency,
-                    tier: RAMTier.current,
+                    tier: RAMTier.current(for: config.selectedLocalModel),
                     configMinutes: config.localIdleUnloadMinutes))
         }
 
@@ -505,17 +512,18 @@ struct ParleqApp {
                 // fail closed to raw paste rather than kicking off a multi-GB
                 // download on an unsupported machine (a config.json hand-edit or
                 // an upgrade from a build that predated the gate can reach here).
-                if RAMTier.current == .unsupported && !config.localAllowUnsupportedRAM {
+                if RAMTier.current(for: config.selectedLocalModel) == .unsupported && !config.localAllowUnsupportedRAM {
                     let gb = Int((Double(ProcessInfo.processInfo.physicalMemory) / Double(1 << 30)).rounded())
-                    logStderr("[parleq] LLM \(label): on-device requires 12 GB+ RAM (have \(gb)GB); set llm.local.allow_unsupported_ram=true to override. Falling back to no cleanup (raw paste).")
+                    let floor = Int(config.selectedLocalModel.ramFloorGB)
+                    logStderr("[parleq] LLM \(label): on-device model \(config.selectedLocalModel.displayName) requires \(floor) GB+ RAM (have \(gb)GB); set llm.local.allow_unsupported_ram=true to override. Falling back to no cleanup (raw paste).")
                     return nil
                 }
-                // id.model is ignored on the local path: the store only ever serves
-                // LocalModelDefaults.checkpoint, and a stale cloud model id left in
-                // config.llm.model would otherwise pollute logs and the UsageLedger
-                // (and hit cloud pricing tables in the Usage UI).
+                // id.model is ignored on the local path: the store serves the
+                // user-selected on-device checkpoint (config.localModel), and a
+                // stale cloud model id left in config.llm.model would otherwise
+                // pollute logs and the UsageLedger (and hit cloud pricing tables).
                 let p = LocalLLMProvider(
-                    model: LocalModelDefaults.checkpoint,
+                    model: config.selectedLocalModel.checkpoint,
                     store: localModelStore,
                     residency: localResidency)
                 logStderr("[parleq] LLM \(label) (local model=\(p.model) — on-device via MLX, no network)")
@@ -702,7 +710,7 @@ struct ParleqApp {
         // mirrors the dictation path's enabled-gating.
         if cleanupId.provider == "local" && localModelStore.state == .ready {
             let warmDictionary = config.customDictionaryEnabled ? config.customDictionary : []
-            let warmCheckpoint = LocalModelDefaults.checkpoint
+            let warmCheckpoint = config.selectedLocalModel.checkpoint
             Task(priority: .utility) {
                 await localResidency.warmCleanupPrefix(
                     checkpoint: warmCheckpoint, dictionary: warmDictionary)
@@ -793,6 +801,10 @@ struct ParleqApp {
             // on-device restart affordance can detect "config says local + model
             // ready, but the live process predates that" (see onDeviceActivationPending).
             LaunchInfo.cleanupProvider = cleanupId.provider
+            // Record the on-device model checkpoint this process launched with —
+            // set regardless of the launch provider, so a later switch TO local
+            // (or a model swap while already local) can compare against it.
+            LaunchInfo.localModel = config.selectedLocalModel.checkpoint
         }
 
         // Enterprise OIDC: wire the Company Account section. Only when a
@@ -910,11 +922,15 @@ struct ParleqApp {
             // About). The legacy SettingsWindowController was
             // removed in PR 2 (#217); ParleqAppWindowController
             // is the only window controller for the new shell.
-            // Inject the shared on-device model store into Settings so the
-            // Cleanup → on-device card can surface live download state.
-            // Task 11 fulfills the Settings side of TODO(local-ui).
+            // Inject the shared on-device model store (+ the full per-model
+            // registry) into Settings so the Cleanup → on-device card can
+            // surface live download state for every catalog model, not just
+            // the currently-selected one. Task 11 fulfills the Settings side
+            // of TODO(local-ui); the registry follow-up lets Settings render
+            // one row per model with its own download/remove affordance.
             ParleqAppWindowController.shared.setLocalModelStore(localModelStore)
-            let wizard = SetupWizardController(localModelStore: localModelStore)
+            ParleqAppWindowController.shared.setLocalModelStores(localModelStores)
+            let wizard = SetupWizardController(localModelStore: localModelStore, localModelStores: localModelStores)
             wizardBox.value = wizard
             // Sparkle auto-update controller. `startingUpdater: true`
             // arms Sparkle's standard background-check loop (default
@@ -1501,6 +1517,15 @@ struct ParleqApp {
                         // device key). Set BEFORE loadPersisted so the rings load
                         // with the templates.
                         coordinator.harvestPersistence = EncryptedHarvestStore()
+                        // Samples-based transcribe handle for the context-free canonical-
+                        // context re-encode (VoiceprintReencoder). Set BEFORE assigning to
+                        // AppState so `enforcementGateFactory` (called from the didSet)
+                        // captures it. Same `local` LocalASR instance every other voiceprint
+                        // transcribe closure here uses — the encoder is shared, only the
+                        // WAV-vs-samples entry point differs.
+                        coordinator.transcribe = { [weak local] samples in
+                            try? await local?.transcribeSamplesForVoiceprint(samples: samples)
+                        }
                         // SI-2: the clip-storage kill-switch erase now fires
                         // UNCONDITIONALLY at the top of this MainActor block (7034),
                         // covering every launch path (custom endpoint / load failure),

@@ -366,21 +366,51 @@ final class SettingsModel: ObservableObject {
     @Published var localResidency: LocalResidency
 
     /// Mirrors `config.localAllowUnsupportedRAM` (`llm.local.allow_unsupported_ram`).
-    /// On machines below the 12 GB RAM floor (`RAMTier.unsupported`) the on-device
-    /// cleanup option is NOT selectable unless this explicit config-file override
-    /// is set — same gate the Setup Wizard applies to its on-device card. There is
-    /// intentionally no UI for this flag; it's a deliberate config-only escape hatch.
+    /// On machines below a given on-device model's RAM floor (`RAMTier.unsupported`
+    /// for that model — see `LocalModelInfo.ramFloorGB`, per-model since the
+    /// catalog gained a second, lighter model) that model is NOT selectable
+    /// unless this explicit config-file override is set — same gate the Setup
+    /// Wizard applies to its on-device sub-choice. There is intentionally no UI
+    /// for this flag; it's a deliberate config-only escape hatch.
     @Published var localAllowUnsupportedRAM: Bool
 
-    /// Shared on-device model store, injected by ParleqAppWindowController
-    /// via setLocalModelStore(_:) at startup. The cleanup section observes
-    /// this for live download state and calls store.download() / store.remove().
+    /// The selected on-device model checkpoint. Mirrors `config.localModel`
+    /// (`llm.local.model`). Restart-required: like `localResidency`, the
+    /// checkpoint is baked into ResidencyManager/LocalLLMProvider at launch —
+    /// see `LaunchInfo.localModel` / `onDeviceActivationPending` for the
+    /// contextual restart affordance and `requiresRestart` below for the
+    /// general banner.
+    @Published var localModel: String
+
+    /// The descriptor for `localModel` (falls back to `LocalModelCatalog.default`
+    /// for an unrecognized id — same fallback `Config.selectedLocalModel` uses).
+    var selectedLocalModelInfo: LocalModelInfo { LocalModelCatalog.model(for: localModel) }
+
+    /// Shared on-device model store for the CURRENTLY SELECTED model, injected
+    /// by ParleqAppWindowController via setLocalModelStore(_:) at startup.
+    /// Retained for back-compat with any reader that only cares about the
+    /// active model; the Cleanup section's model LIST reads `localModelStores`
+    /// instead so every catalog model shows its own live download state.
     /// nil only before injection (between app launch and the first main-actor
     /// tick in main.swift where the store is wired — never nil in practice
     /// during normal Settings navigation).
     /// @Published so a view that guards on this property re-evaluates if
     /// injection timing ever changes.
     @Published var localModelStore: LocalModelStore?
+
+    /// The full per-model on-device store registry (one `LocalModelStore` per
+    /// `LocalModelCatalog.all` entry), injected by ParleqAppWindowController
+    /// via setLocalModelStores(_:) at startup. The Cleanup section's on-device
+    /// model list looks up each row's store here so every model — not just the
+    /// selected one — shows live download/remove state. Empty only before
+    /// injection (mirrors `localModelStore`'s nil-until-injected window).
+    @Published var localModelStores: [LocalModelStore] = []
+
+    /// Look up the store for a catalog checkpoint. Returns nil only before
+    /// `localModelStores` is injected at startup.
+    func store(for checkpoint: String) -> LocalModelStore? {
+        localModelStores.first { $0.checkpoint == checkpoint }
+    }
 
     // MARK: - Provider option catalog
 
@@ -446,6 +476,13 @@ final class SettingsModel: ObservableObject {
     private let initialContextModel: ModelIdentifier?
     private let initialRefineModel: ModelIdentifier?
     private let initialLocalResidency: LocalResidency
+    /// The on-device model checkpoint config.json had at SettingsModel init
+    /// (proxy for launch-time state, same role as `initialLocalResidency`).
+    /// Feeds the general `requiresRestart` banner for a model swap while the
+    /// provider stays "local" — `cloudInstanceRestartNeeded` intentionally
+    /// treats "local" as live on provider alone (any on-device model
+    /// satisfies an old single-model world), so it can't see a model change.
+    private let initialLocalModel: String
     private let initialOidcIssuer: String
     private let initialOidcClientID: String
     private let initialAwsRoleArn: String
@@ -524,6 +561,7 @@ final class SettingsModel: ObservableObject {
         self.polishedModelName = config.polishedModel ?? ModelCatalog.defaultModel(forProvider: pp)
         self.localResidency = config.localResidency
         self.localAllowUnsupportedRAM = config.localAllowUnsupportedRAM
+        self.localModel = config.localModel
         // Feature toggles (Phase 5).
         self.referenceWindowsEnabled = config.referenceWindowsEnabled
         self.transformPresetsEnabled = config.transformPresetsEnabled
@@ -572,6 +610,7 @@ final class SettingsModel: ObservableObject {
         self.initialContextModel = config.contextModel
         self.initialRefineModel = config.refineModel
         self.initialLocalResidency = config.localResidency
+        self.initialLocalModel = config.localModel
         refreshUsage()
     }
 
@@ -668,6 +707,7 @@ final class SettingsModel: ObservableObject {
         self.polishedModelName = config.polishedModel ?? ModelCatalog.defaultModel(forProvider: pp)
         self.localResidency = config.localResidency
         self.localAllowUnsupportedRAM = config.localAllowUnsupportedRAM
+        self.localModel = config.localModel
         // Feature toggles (Phase 5).
         self.transformPresetsEnabled = config.transformPresetsEnabled
         self.referenceWindowsEnabled = config.referenceWindowsEnabled
@@ -803,6 +843,12 @@ final class SettingsModel: ObservableObject {
             // change requires a restart for the new unload schedule to take effect.
             // TODO(local-ui): apply live once ResidencyManager exposes setPolicy.
             || localResidency != initialLocalResidency
+            // The on-device model checkpoint is baked into ResidencyManager /
+            // LocalLLMProvider at launch too — cloudInstanceRestartNeeded can't
+            // see this because it treats "local" as live on provider alone
+            // (isLive matches by provider when id.provider == "local", ignoring
+            // model id). A model swap needs its own explicit check.
+            || localModel != initialLocalModel
     }
 
     /// Persist current model values to ~/.parleq/config.json. Other
@@ -934,8 +980,9 @@ final class SettingsModel: ObservableObject {
         // legacy reader (credentials, MDM pickers) stays consistent.
         refineProvider = (refinementType == .polished) ? polishedProvider : "none"
         refineModelName = (refinementType == .polished) ? polishedModelName : ""
-        // On-device cleanup tier residency policy.
+        // On-device cleanup tier: residency policy + selected model.
         c.localResidency = localResidency
+        c.localModel = localModel
         // Feature toggles (Phase 5). Managed keys are already excluded
         // inside Config.save() via c.managedKeys, so we just set the
         // user-facing values unconditionally here — Config.save skips
@@ -1641,6 +1688,10 @@ struct SettingsView: View {
     /// sidebar row, the restart banner, and primary buttons.
     /// Exposed (non-private) so the Setup Wizard can reuse it.
     static let brandAccent = Color(red: 0xd9 / 255.0, green: 0x77 / 255.0, blue: 0x06 / 255.0)
+    /// Distinct color for borderline "considered" over-fire flags (Feature A):
+    /// a blue that reads clearly apart from the amber of real corrections, so a
+    /// dotted-underline flag says "a call I made" rather than "a change I made".
+    static let consideredAccent = Color(red: 0x3b / 255.0, green: 0x82 / 255.0, blue: 0xf6 / 255.0)
 
     /// Sidebar background — a slightly warmer / cooler tone than
     /// the detail pane so the two columns read as distinct surfaces
@@ -1966,11 +2017,14 @@ struct SettingsView: View {
         // ── Tier configuration ──────────────────────────────────────────
         tierConfiguration
 
-        // ── On-device model card (only when provider == "local") ─────────
+        // ── On-device model list (only when provider == "local") ─────────
+        // Renders one row per LocalModelCatalog entry — waits on the store
+        // registry being injected (never empty in practice past app launch;
+        // see SettingsModel.localModelStores) so the section isn't blank.
         if model.polishedProvider == "local",
            (model.cleanupType == .polished || model.refinementType == .polished),
-           let store = model.localModelStore {
-            LocalOnDeviceCard(store: store, model: model)
+           !model.localModelStores.isEmpty {
+            LocalOnDeviceCard(model: model)
         }
 
         // ── Provider Credentials (hidden when both tiers are local/none — no cloud creds)
@@ -2284,17 +2338,25 @@ struct SettingsView: View {
                                 }
                             }
                         }
-                        // RAM gate: on sub-12 GB machines the on-device ("local")
-                        // cleanup tier is not selectable unless the config-file
-                        // override (llm.local.allow_unsupported_ram) is set — same
-                        // floor the Setup Wizard enforces on its on-device card.
-                        // Omit the row entirely so it can't be picked. If "local"
-                        // is already the active selection (e.g. config.json was
-                        // hand-edited), keep it visible so the user sees their
-                        // current state rather than a silently-blank picker; the
-                        // factory still falls back to raw paste at launch.
+                        // RAM gate: the on-device ("local") cleanup tier is not
+                        // selectable at the PROVIDER level unless at least one
+                        // catalog model clears its floor on this machine (e.g. a
+                        // Qwen-only 8-11 GB Mac must still see "local" so it can
+                        // reach the model list below and pick the lighter model)
+                        // — or the config-file override (llm.local.allow_unsupported_ram)
+                        // is set, same escape hatch the Setup Wizard's on-device
+                        // card offers. Per-model gating (which specific model is
+                        // selectable) happens one level down, in the on-device
+                        // model list itself. Omit the row entirely so it can't be
+                        // picked. If "local" is already the active selection (e.g.
+                        // config.json was hand-edited), keep it visible so the user
+                        // sees their current state rather than a silently-blank
+                        // picker; the factory still falls back to raw paste at launch.
+                        let allOnDeviceModelsUnsupported = LocalModelCatalog.all.allSatisfy {
+                            RAMTier.current(for: $0) == .unsupported
+                        }
                         if gateLocalUnsupported
-                            && RAMTier.current == .unsupported
+                            && allOnDeviceModelsUnsupported
                             && !model.localAllowUnsupportedRAM
                             && selection.wrappedValue != "local" {
                             filtered = filtered.filter { $0.id != "local" }
@@ -3690,49 +3752,58 @@ struct SettingsCaption: View {
 
 // MARK: - On-device cleanup status card
 
+/// Formats a descriptor GB value with one decimal, dropping the decimal when
+/// it's a whole number (e.g. 4.2 -> "4.2", 8 -> "8"). Shared by every
+/// on-device size string (Settings AND the Setup Wizard) so the catalog's raw
+/// Double values read naturally without each call site re-deriving format.
+func formatGB(_ value: Double) -> String {
+    value.truncatingRemainder(dividingBy: 1) == 0
+        ? String(Int(value))
+        : String(format: "%.1f", value)
+}
+
 /// Status card for the on-device (local) cleanup provider. Rendered in
 /// Settings → Cleanup when the user picks "On-device". Shows the model
 /// download state (with a Download / Remove button), a residency picker,
 /// and a RAM-tier note on cautioned or unsupported machines.
 ///
-/// `@ObservedObject var store` drives redraws on every state transition
-/// (download progress, .ready, .failed) without going through SettingsModel.
-private struct LocalOnDeviceCard: View {
-    @ObservedObject var store: LocalModelStore
-    @ObservedObject var model: SettingsModel
-    @State private var showRemoveConfirmation = false
+/// Each row's `@ObservedObject var store` (in `LocalModelRow`) drives redraws
+/// on every state transition (download progress, .ready, .failed) without
+/// going through SettingsModel.
 
-    private var ramTier: RAMTier { RAMTier.current }
+/// On-device model list: one row per `LocalModelCatalog.all` entry (radio
+/// select + per-model download/remove), plus a shared residency picker and
+/// RAM note keyed to whichever model is currently selected. Replaces the old
+/// single-model card now that a second (lighter) model is selectable.
+private struct LocalOnDeviceCard: View {
+    @ObservedObject var model: SettingsModel
 
     var body: some View {
         SettingsCard {
             // Header
             Text("On-device model")
                 .font(.system(size: 13, weight: .semibold))
-            Text("Gemma 4 E4B, 4-bit — runs via Apple MLX on this Mac. No cloud calls, no API key.")
+            Text("Runs entirely on this Mac via Apple MLX. No cloud calls, no API key. Pick one model — only one is resident at a time.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: 0) {
-                Text("Uses Google Gemma 4 (Apache 2.0) · ")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                Link("Learn more", destination: URL(string: "https://ai.google.dev/gemma/docs/gemma_4_license")!)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+
+            ForEach(Array(LocalModelCatalog.all.enumerated()), id: \.element.id) { index, info in
+                if let store = model.store(for: info.checkpoint) {
+                    if index > 0 { Divider() }
+                    LocalModelRow(info: info, store: store, model: model)
+                }
             }
 
-            // State-driven status row
-            stateRow
-
-            // Restart-to-activate prompt (model ready, but the running process
-            // launched with a different provider — covers the Settings path).
+            // Restart-to-activate prompt (selected model ready, but the running
+            // process either launched with a different provider or a different
+            // on-device model — covers both the Settings and Wizard paths).
             activationRestartRow
 
-            // RAM tier note (cautioned or unsupported)
+            // RAM tier note (cautioned or unsupported) for the SELECTED model.
             ramTierNote
 
-            // Residency picker
+            // Residency picker — applies to whichever model is selected.
             HStack(alignment: .center, spacing: 8) {
                 Text("Keep model loaded")
                     .font(.callout)
@@ -3752,34 +3823,28 @@ private struct LocalOnDeviceCard: View {
                 .frame(maxWidth: 200)
                 Spacer()
             }
-            SettingsCaption("Automatic: unloads after 3 min (16 GB Mac) or 30 min (24 GB+ Mac) of inactivity. Keep loaded: model stays warm all session — fastest response but holds ~6 GB of memory. Unload when idle: same as automatic but the idle deadline follows the Automatic default for your tier. Restart to apply.")
-        }
-        .confirmationDialog(
-            "Remove the downloaded model?",
-            isPresented: $showRemoveConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Remove (~4 GB freed)", role: .destructive) {
-                store.remove()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("The model will need to be downloaded again (~4 GB) before on-device cleanup is available.")
+            let info = model.selectedLocalModelInfo
+            SettingsCaption("Automatic: unloads after \(info.idleUnloadMinutesCautioned) min (\(Int(info.ramFloorGB))\u{2013}\(Int(info.ramComfortableGB)) GB Mac) or \(info.idleUnloadMinutesComfortable) min (\(Int(info.ramComfortableGB))+ GB Mac) of inactivity. Keep loaded: model stays warm all session — fastest response but holds ~\(formatGB(info.approxResidentGB)) GB of memory. Unload when idle: same as automatic but the idle deadline follows the Automatic default for your tier. Restart to apply.")
         }
     }
 
-    /// Shown when the model is downloaded/ready but the running process didn't
-    /// launch with the on-device provider — i.e. on-device was just enabled
-    /// (here in Settings, or earlier in the wizard) and only takes effect after
-    /// a restart. Gated on `.ready` so the call-to-action appears when the model
-    /// is actually usable, not the instant the provider is switched.
+    /// Shown when the SELECTED model is downloaded/ready but the running
+    /// process either didn't launch with the on-device provider, or launched
+    /// with on-device active but a DIFFERENT model checkpoint — i.e. on-device
+    /// (or a model swap) was just chosen (here in Settings, or earlier in the
+    /// wizard) and only takes effect after a restart. Gated on the selected
+    /// model's store being `.ready` so the call-to-action appears when it's
+    /// actually usable, not the instant the provider/model is switched.
     @ViewBuilder
     private var activationRestartRow: some View {
-        if case .ready = store.state,
+        if let store = model.store(for: model.localModel),
+           case .ready = store.state,
            onDeviceActivationPending(
                launchProvider: LaunchInfo.cleanupProvider,
                configProvider: model.cleanupProvider,
-               modelReady: true) {
+               modelReady: true,
+               launchModel: LaunchInfo.localModel,
+               configModel: model.localModel) {
             HStack(alignment: .center, spacing: 10) {
                 Image(systemName: "arrow.clockwise.circle.fill")
                     .foregroundStyle(SettingsView.brandAccent)
@@ -3797,91 +3862,14 @@ private struct LocalOnDeviceCard: View {
     }
 
     @ViewBuilder
-    private var stateRow: some View {
-        switch store.state {
-        case .notDownloaded:
-            HStack(spacing: 10) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Model not downloaded")
-                        .font(.callout)
-                    Text("~4 GB one-time download required before on-device cleanup is available.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer()
-                Button("Download (~4 GB)") {
-                    store.download()
-                }
-                .buttonStyle(.borderedProminent)
-            }
-        case .downloading(let progress):
-            // Byte-accurate bar: the in-process streaming downloader (#89)
-            // reports real within-file progress, so the percentage climbs
-            // smoothly through the multi-GB shards instead of freezing.
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 8) {
-                    ProgressView(value: progress)
-                        .frame(maxWidth: 200)
-                    Text("\(Int(progress * 100))%")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                    Spacer()
-                    // Cancel an in-flight download — remove() cancels the task and
-                    // discards partial files, returning to .notDownloaded.
-                    Button("Cancel") { store.remove() }
-                        .buttonStyle(.bordered)
-                }
-                Text("Downloading the model (~7 GB, one-time)… Dictation works without cleanup until it finishes.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        case .ready:
-            HStack(spacing: 10) {
-                HStack(spacing: 8) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
-                    Text("Ready")
-                        .font(.callout)
-                }
-                Spacer()
-                Button("Remove downloaded model (frees ~4 GB)") {
-                    showRemoveConfirmation = true
-                }
-                .foregroundStyle(.red)
-                .buttonStyle(.bordered)
-            }
-        case .failed(let message):
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 8) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
-                    Text("Download failed: \(message)")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Button("Retry") {
-                    store.remove()
-                    store.download()
-                }
-                .buttonStyle(.bordered)
-                Text("Dictation works without cleanup until the model downloads successfully.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    @ViewBuilder
     private var ramTierNote: some View {
-        switch ramTier {
+        let info = model.selectedLocalModelInfo
+        switch RAMTier.current(for: info) {
         case .unsupported:
             HStack(spacing: 6) {
                 Image(systemName: "exclamationmark.triangle")
                     .foregroundStyle(.orange)
-                Text("This Mac has less than 12 GB of memory. The cleanup model uses ~6 GB while active, which may cause thrashing on machines with less RAM. Enable at your own risk via config.")
+                Text("This Mac has less than \(Int(info.ramFloorGB)) GB of memory. \(info.displayName) uses ~\(formatGB(info.approxResidentGB)) GB while active, which may cause thrashing on machines with less RAM. Enable at your own risk via config.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -3890,7 +3878,7 @@ private struct LocalOnDeviceCard: View {
             HStack(spacing: 6) {
                 Image(systemName: "memorychip")
                     .foregroundStyle(.orange)
-                Text("On a 16 GB Mac, the cleanup model uses ~6 GB while active — this can slow other memory-hungry apps. Parleq frees the memory after a few minutes of inactivity.")
+                Text("On this Mac, \(info.displayName) uses ~\(formatGB(info.approxResidentGB)) GB while active — this can slow other memory-hungry apps. Parleq frees the memory after a few minutes of inactivity.")
                     .font(.caption)
                     .foregroundStyle(.orange)
                     .fixedSize(horizontal: false, vertical: true)
@@ -3903,13 +3891,169 @@ private struct LocalOnDeviceCard: View {
             HStack(alignment: .top, spacing: 7) {
                 Image(systemName: "memorychip")
                     .foregroundStyle(SettingsView.brandAccent)
-                Text("Uses about 6 GB of memory while the model is loaded, and frees it automatically after a few minutes of inactivity. A Mac with 12 GB or more of memory is required.")
+                Text("Uses about \(formatGB(info.approxResidentGB)) GB of memory while \(info.displayName) is loaded, and frees it automatically after a few minutes of inactivity. A Mac with \(Int(info.ramFloorGB)) GB or more of memory is required.")
                     .font(.callout)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.05)))
+        }
+    }
+}
+
+/// One row in the on-device model list: a radio selector (name + trade-off
+/// blurb + size/RAM line + license) and a per-model download/remove/retry
+/// action driven by THAT model's store state. Selecting a different row
+/// writes `model.localModel` + saves; a per-row RAM gate disables selection
+/// on machines below that specific model's floor (matches the Setup Wizard's
+/// per-model gating).
+private struct LocalModelRow: View {
+    let info: LocalModelInfo
+    @ObservedObject var store: LocalModelStore
+    @ObservedObject var model: SettingsModel
+    @State private var showRemoveConfirmation = false
+
+    private var isSelected: Bool { model.localModel == info.checkpoint }
+    private var ramTier: RAMTier { RAMTier.current(for: info) }
+    private var isRAMGated: Bool { ramTier == .unsupported && !model.localAllowUnsupportedRAM }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                guard !isRAMGated, !isSelected else { return }
+                model.localModel = info.checkpoint
+                model.save()
+            } label: {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
+                        .foregroundStyle(isSelected ? SettingsView.brandAccent : Color.secondary)
+                        .font(.body)
+                        .padding(.top, 1)
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 6) {
+                            Text(info.displayName)
+                                .font(.callout)
+                                .fontWeight(isSelected ? .semibold : .regular)
+                                .foregroundStyle(isRAMGated ? Color.secondary : Color.primary)
+                            Text(info.shortLabel)
+                                .font(.caption2)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Capsule().fill(Color.secondary.opacity(0.15)))
+                                .foregroundStyle(.secondary)
+                        }
+                        Text(info.whereItShines)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        HStack(spacing: 0) {
+                            Text("~\(formatGB(info.approxDownloadGB)) GB download · needs \(Int(info.ramFloorGB)) GB RAM · ")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                            Link(info.licenseName, destination: URL(string: info.licenseURL)!)
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+                        if isRAMGated {
+                            Text("This Mac has less than \(Int(info.ramFloorGB)) GB of memory — enable at your own risk via config.")
+                                .font(.caption2)
+                                .foregroundStyle(.orange)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+            .buttonStyle(.plain)
+            .contentShape(Rectangle())
+            .disabled(isRAMGated)
+            .opacity(isRAMGated ? 0.55 : 1.0)
+
+            stateRow
+                .padding(.leading, 26)
+        }
+        .padding(.vertical, 2)
+        .confirmationDialog(
+            "Remove the downloaded model?",
+            isPresented: $showRemoveConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Remove (~\(formatGB(info.approxDownloadGB)) GB freed)", role: .destructive) {
+                store.remove()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("\(info.displayName) will need to be downloaded again (~\(formatGB(info.approxDownloadGB)) GB) before it's available for on-device cleanup.")
+        }
+    }
+
+    @ViewBuilder
+    private var stateRow: some View {
+        switch store.state {
+        case .notDownloaded:
+            HStack(spacing: 10) {
+                Text("Not downloaded")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button("Download (~\(formatGB(info.approxDownloadGB)) GB)") {
+                    store.download()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+        case .downloading(let progress):
+            // Byte-accurate bar: the in-process streaming downloader (#89)
+            // reports real within-file progress, so the percentage climbs
+            // smoothly through the multi-GB shards instead of freezing.
+            HStack(spacing: 8) {
+                ProgressView(value: progress)
+                    .frame(maxWidth: 160)
+                Text("\(Int(progress * 100))%")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                Spacer()
+                // Cancel an in-flight download — remove() cancels the task and
+                // discards partial files, returning to .notDownloaded.
+                Button("Cancel") { store.remove() }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+            }
+        case .ready:
+            HStack(spacing: 8) {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                    Text("Ready")
+                        .font(.caption)
+                }
+                Spacer()
+                Button("Remove (frees ~\(formatGB(info.approxDownloadGB)) GB)") {
+                    showRemoveConfirmation = true
+                }
+                .foregroundStyle(.red)
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+        case .failed(let message):
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                    Text("Download failed: \(message)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Button("Retry") {
+                    store.remove()
+                    store.download()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
         }
     }
 }

@@ -180,5 +180,41 @@ final class HarvestSpanLocatorTests: XCTestCase {
         XCTAssertNil(HarvestSpanLocator.locate(groups: groups, word: "cloud", rawOrdinal: -1))
         XCTAssertNil(HarvestSpanLocator.locate(groups: groups, word: "kiwi", rawOrdinal: 0))
     }
+
+    // MARK: - Task 5: locateByTime (timestamp-anchored harvest)
+
+    func test_locateByTime_returns_overlapping_group() {
+        // Window matches group 2 ("provider", 0.5–0.9) exactly.
+        let groups = [group("the", 0.0, 0.1), group("cloud", 0.1, 0.5),
+                      group("provider", 0.5, 0.9), group("bills", 0.9, 1.1)]
+        XCTAssertEqual(
+            HarvestSpanLocator.locateByTime(startSeconds: 0.5, endSeconds: 0.9, groups: groups),
+            2)
+    }
+
+    func test_locateByTime_returns_nil_when_window_overlaps_nothing() {
+        let groups = [group("the", 0.0, 0.1), group("cloud", 0.1, 0.5)]
+        XCTAssertNil(
+            HarvestSpanLocator.locateByTime(startSeconds: 2.0, endSeconds: 2.4, groups: groups))
+    }
+
+    func test_locateByTime_picks_max_overlap_when_window_spans_two_groups() {
+        // Window [0.4, 0.85] overlaps group 1 ("cloud", 0.1–0.5) by 0.1s and
+        // group 2 ("provider", 0.5–0.9) by 0.35s — group 2 has more overlap.
+        let groups = [group("the", 0.0, 0.1), group("cloud", 0.1, 0.5),
+                      group("provider", 0.5, 0.9), group("bills", 0.9, 1.1)]
+        XCTAssertEqual(
+            HarvestSpanLocator.locateByTime(startSeconds: 0.4, endSeconds: 0.85, groups: groups),
+            2)
+    }
+
+    func test_locateByTime_equal_overlap_ties_break_to_lowest_index() {
+        // Window [0.3, 0.7] overlaps group 0 ("cloud", 0.1–0.5) by 0.2s and
+        // group 1 ("provider", 0.5–0.9) by 0.2s — exact tie, lowest index wins.
+        let groups = [group("cloud", 0.1, 0.5), group("provider", 0.5, 0.9)]
+        XCTAssertEqual(
+            HarvestSpanLocator.locateByTime(startSeconds: 0.3, endSeconds: 0.7, groups: groups),
+            0, "equal overlap ⇒ deterministic tie-break to the lowest index")
+    }
 }
 #endif

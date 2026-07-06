@@ -355,7 +355,12 @@ public final class LocalASR {
             // nil unless the voiceprint demo armed encoder-feature capture
             // (PARLEQ_VOICEPRINT_DEMO=1). Excluded from Codable, so it never
             // reaches the on-disk flywheel record.
-            encoderFeatures: asrResult.encoderFeatures
+            encoderFeatures: asrResult.encoderFeatures,
+            // The same decoded 16k mono samples used for transcription above —
+            // feeds the voiceprint acoustic gate's context-free re-encode
+            // (VoiceprintReencoder). Memory-only; excluded from Codable, so it
+            // never reaches the on-disk flywheel record either.
+            utteranceSamples: samples
         )
         return (finalText, diagnostics)
     }
@@ -367,16 +372,17 @@ public final class LocalASR {
     /// only the token timings + encoder features, not the cleaned transcript.
     /// Returns nil for a malformed WAV. Not used on the normal dictation path.
     public func transcribeRawForVoiceprint(wav data: Data) async throws -> ASRResult? {
-        guard let wavStart = Self.findRIFFOffset(in: data),
-              wavStart + 12 <= data.count else {
-            return nil
-        }
-        let chunkSize = data
-            .subdata(in: (wavStart + 4)..<(wavStart + 8))
-            .withUnsafeBytes { UInt32(littleEndian: $0.load(as: UInt32.self)) }
-        let wavEnd = min(wavStart + 8 + Int(chunkSize), data.count)
-        let wavBytes = data.subdata(in: wavStart..<wavEnd)
-        guard let samples = Self.wavToFloatSamples(wavBytes) else { return nil }
+        guard let samples = Self.decodeWavSamples(data) else { return nil }
+        return try await asr.transcribeFull(samples: samples)
+    }
+
+    /// Voice-enrollment demo only (PARLEQ_VOICEPRINT_DEMO=1): same as
+    /// `transcribeRawForVoiceprint(wav:)` but skips WAV parsing entirely,
+    /// for callers that already hold raw Float32 samples (e.g. a
+    /// canonical-context re-encode buffer assembled in memory rather than
+    /// read from a WAV container). Bypasses the CTC vocab rescorer for the
+    /// same reason as the WAV-based sibling.
+    public func transcribeSamplesForVoiceprint(samples: [Float]) async throws -> ASRResult? {
         return try await asr.transcribeFull(samples: samples)
     }
 
@@ -397,6 +403,27 @@ public final class LocalASR {
     private var loadGeneration: UInt64 = 0
 
     // MARK: - WAV decoding
+
+    /// Decode a raw WAV `Data` buffer to Float32 samples: scan for the RIFF
+    /// header (robust to any leading prefix), honor its chunk length, then
+    /// convert the PCM body via `wavToFloatSamples`. Centralizes the
+    /// RIFF-scan → subdata → float pattern that the voiceprint decode callers
+    /// (`transcribeRawForVoiceprint`, `VoiceprintCoordinator.decodeWavSamples`,
+    /// and the contamination harness) share, so they can't drift. Prefer this
+    /// over calling `wavToFloatSamples` on raw file bytes, which assumes a
+    /// fixed 44-byte header with no RIFF scan. nil on a malformed/short buffer.
+    public static func decodeWavSamples(_ data: Data) -> [Float]? {
+        guard let wavStart = findRIFFOffset(in: data),
+              wavStart + 12 <= data.count else {
+            return nil
+        }
+        let chunkSize = data
+            .subdata(in: (wavStart + 4)..<(wavStart + 8))
+            .withUnsafeBytes { UInt32(littleEndian: $0.load(as: UInt32.self)) }
+        let wavEnd = min(wavStart + 8 + Int(chunkSize), data.count)
+        let wavBytes = data.subdata(in: wavStart..<wavEnd)
+        return wavToFloatSamples(wavBytes)
+    }
 
     /// Read a 16-bit mono 16 kHz WAV body and return Float32 samples
     /// in [-1.0, 1.0]. Strips the 44-byte WAV header. WAV samples
@@ -606,7 +633,13 @@ public enum BundledASREngine {
     /// `fluidAudioVersion` (the FluidAudio package tag) so that package-level bumps
     /// that do NOT change the encoder (runtime fixes, CTC updates, etc.) do NOT
     /// silently invalidate every user's enrolled voiceprints.
-    public static let voiceprintEncoderIdentity = "parakeet-tdt-0.6b-v3"
+    // `-ctxfree.1`: the voiceprint embedding DERIVATION changed (2026-07-04) from
+    // whole-utterance pooled encoder frames to a CONTEXT-FREE per-word re-encode
+    // (VoiceprintReencoder — fixes cross-word contamination). Old-space embeddings
+    // are NOT comparable to new-space ones, so this bump parks pre-fix templates for
+    // re-derivation (migrateIfNeeded, from stored enrollment audio). Do NOT add the
+    // old stamp to legacyCompatibleStamps — that would compare across spaces.
+    public static let voiceprintEncoderIdentity = "parakeet-tdt-0.6b-v3-ctxfree.1"
 
     /// Voiceprint template stamps that are KNOWN to have been produced by the same
     /// Parakeet encoder graph as `voiceprintEncoderIdentity`. Templates carrying any

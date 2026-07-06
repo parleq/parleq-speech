@@ -185,6 +185,17 @@ public final class VoiceprintCoordinator: ObservableObject {
     /// nil → in-memory only. Set by main.swift BEFORE `loadPersisted()`.
     public var harvestPersistence: HarvestedNegativePersistence?
 
+    /// Samples-based transcribe handle for the context-free canonical-context
+    /// re-encode (`VoiceprintReencoder`). Set once by main.swift (BEFORE this
+    /// coordinator is assigned to `AppState.voiceprint`, so `enforcementGateFactory`
+    /// captures it) to `LocalASR.transcribeSamplesForVoiceprint`, i.e. the SAME
+    /// underlying encoder instance used everywhere else in the app. nil →
+    /// re-encoding is skipped and both enrollment (`localizedSpan`) and serving
+    /// (`buildGate`) fall back to the old whole-utterance pooled embedding
+    /// (graceful degradation — e.g. before the ASR engine is ready, or a future
+    /// non-LocalASR path).
+    public var transcribe: (@Sendable ([Float]) async -> ASRResult?)?
+
     /// In-memory cache of the harvested-negative rings (loaded in `loadPersisted`,
     /// mutated by harvest/heal/clear/wipe, persisted best-effort on each mutation).
     private var harvested = HarvestedNegatives()
@@ -434,6 +445,15 @@ public final class VoiceprintCoordinator: ObservableObject {
     /// Letters-only lowercase normalization (matches the gate's slot key).
     private static func norm(_ s: String) -> String { s.lowercased().filter { $0.isLetter } }
 
+    /// Decode a raw WAV `Data` buffer to Float32 samples, scanning for the RIFF
+    /// header first — mirrors `LocalASR.transcribeRawForVoiceprint`'s decode so
+    /// enrollment carriers (which may carry a leading non-RIFF prefix, same as
+    /// any other WAV buffer in this app) decode the same way. nil on a malformed
+    /// buffer.
+    private static func decodeWavSamples(_ data: Data) -> [Float]? {
+        return LocalASR.decodeWavSamples(data)
+    }
+
     /// Index of the carrier word holding `term` (its first sub-word for a
     /// multi-word term). nil if the term isn't found in the sentence.
     static func termSlotIndex(term: String, in carrierText: String) -> Int? {
@@ -446,6 +466,14 @@ public final class VoiceprintCoordinator: ObservableObject {
     /// Pool the embedding of the word at `slotIndex` in a transcribed clip, plus
     /// the (normalized) token FluidAudio produced there. nil when the clip yields
     /// no features or the slot is out of range.
+    ///
+    /// PREFERS the context-free canonical-context re-encode (`VoiceprintReencoder`)
+    /// over the old whole-utterance pooled embedding, so enrollment and the
+    /// serving-time gate (`buildGate`) build/compare embeddings in the SAME space
+    /// — the fix for whole-utterance context contamination (see
+    /// `VoiceprintReencoder`'s header). Falls back to the pooled embedding when the
+    /// carrier can't be decoded to samples or no samples-based `transcribe` handle
+    /// is wired (`self.transcribe`), keeping enrollment functional either way.
     private func localizedSpan(
         wav: Data, slotIndex: Int,
         transcribe: (Data) async throws -> ASRResult?
@@ -456,9 +484,17 @@ public final class VoiceprintCoordinator: ObservableObject {
         let groups = VoiceprintDemo.wordGroups(from: timings)
         guard slotIndex >= 0, slotIndex < groups.count else { return nil }
         let g = groups[slotIndex]
+        let heard = Self.norm(g.text)
+
+        if let samples = Self.decodeWavSamples(wav), let transcribeSamples = self.transcribe,
+           let ctxFree = await VoiceprintReencoder.contextFreeEmbedding(
+               utteranceSamples: samples, startSec: g.startSeconds, endSec: g.endSeconds,
+               transcribe: transcribeSamples) {
+            return (ctxFree, heard)
+        }
         guard let emb = features.pooledEmbedding(
             startSeconds: g.startSeconds, endSeconds: g.endSeconds) else { return nil }
-        return (emb, Self.norm(g.text))
+        return (emb, heard)
     }
 
     /// BUILD (don't store) the POSITIVE voiceprint for `term` from recorded
@@ -491,8 +527,20 @@ public final class VoiceprintCoordinator: ObservableObject {
             modelVersion: BundledASREngine.voiceprintEncoderIdentity)
 
         let termKey = Self.norm(term)
+        // Only propose an alias/confusable from a clip whose span SURVIVED the
+        // enroll quality gate. `result.droppedIndices` are original positions
+        // into `embeddings`/`heardTokens` (parallel arrays, appended together
+        // per usable clip above) that the leave-one-out cosine gate judged
+        // outliers (or non-finite/wrong-dim). A mis-localized span — e.g. ASR
+        // clipping the term's onset so `groups[slot]` shifts to a neighbor word
+        // like "is" — is exactly such an outlier, so skipping dropped clips
+        // suppresses the bogus confusable the voiceprint centroid already
+        // excludes. Prevents nonsensical confusable proposals + wasted
+        // negative-carrier enrollment steps.
+        let droppedClips = Set(result.droppedIndices)
         var seen = Set<String>(); var aliases: [String] = []
-        for t in heardTokens where t != termKey && !t.isEmpty && !seen.contains(t) {
+        for (i, t) in heardTokens.enumerated()
+        where !droppedClips.contains(i) && t != termKey && !t.isEmpty && !seen.contains(t) {
             seen.insert(t); aliases.append(t)
         }
         log("[voiceprint] built term=\(termID) clips=\(embeddings.count) survivingMeanSelfSim=\(String(format: "%.3f", result.survivingMeanSelfSim)) lowQuality=\(result.template.lowQuality) aliases=\(aliases.count) (not committed)")
@@ -805,11 +853,23 @@ public final class VoiceprintCoordinator: ObservableObject {
     ///   keeps the inert ones (old stamp) and never collapses to `save([])`.
     /// Logging is COUNT-ONLY (no term text, no audio, no embeddings).
     public func migrateIfNeeded(transcribe: (Data) async throws -> ASRResult?) async {
-        // Harvested-negative rings need no handling here: loadPersisted already
-        // dropped every ring whose encoder stamp is neither current nor
-        // legacy-compatible, so any surviving ring is in the SAME feature space a
-        // migrated template is re-derived under (spec D5 — "stale rings are
-        // dropped in the same pass" happens at load, before this runs).
+        // Harvested-negative rings need no handling here for STAMP DROPPING:
+        // loadPersisted already dropped every ring whose encoder stamp is
+        // neither current nor legacy-compatible, so any surviving ring is in
+        // the SAME feature space a migrated template is re-derived under
+        // (spec D5 — "stale rings are dropped in the same pass" happens at
+        // load, before this runs). What this does NOT do: unlike the wizard's
+        // `commit()` (which runs `mergingHarvests` before storing), the
+        // migrated template below is installed WITHOUT merging any surviving
+        // ring for its termID. In the rare double-encoder-transition case
+        // (the TEMPLATE's stamp needed migration but its RING's stamp was
+        // already current/legacy-compatible), the ring's harvested centroid
+        // is temporarily unreflected in the freshly-migrated template. The
+        // ring itself is untouched on disk and re-applies lazily — the next
+        // `harvestNegative` / `healHarvestedNegative` call for that
+        // (termID, label), or the next wizard re-enroll (`commit` →
+        // `mergingHarvests`), both re-read `harvested.rings[termID]` fresh
+        // and recompute the centroid. Self-heals; no data loss.
         guard !pendingMigration.isEmpty, let audioPersistence else { return }
         let audioMap: [String: [StoredEnrollmentClip]]
         do {
@@ -1007,13 +1067,17 @@ public final class VoiceprintCoordinator: ObservableObject {
 
     /// A `@Sendable` factory the Concord provider holds: given an utterance's diagnostics it returns
     /// the acoustic gate (or nil). It captures only a Sendable snapshot of the enrolled
-    /// `VoiceprintStore` + stateless gate, so it runs safely off the MainActor inside
-    /// `generateStreaming`. Returns nil unless enforcement is on AND a voiceprint is enrolled.
-    public func enforcementGateFactory() -> @Sendable (ASRDiagnostics?) -> AcousticGate? {
+    /// `VoiceprintStore` + stateless gate (+ the samples-based `transcribe` handle for context-free
+    /// re-encode), so it runs safely off the MainActor inside `generateStreaming`. Returns nil unless
+    /// enforcement is on AND a voiceprint is enrolled. ASYNC: building the gate may re-encode a
+    /// handful of store-relevant word spans (see `buildGate`), each a real encoder pass; the
+    /// returned GATE CLOSURE itself stays synchronous (it only looks up pre-computed embeddings).
+    public func enforcementGateFactory() -> @Sendable (ASRDiagnostics?) async -> AcousticGate? {
         let store = self.store    // value-type snapshot
         let gate = self.gate
+        let transcribe = self.transcribe
         return { diagnostics in
-            Self.buildGate(diagnostics: diagnostics, store: store, gate: gate)
+            await Self.buildGate(diagnostics: diagnostics, store: store, gate: gate, transcribe: transcribe)
         }
     }
 
@@ -1044,7 +1108,8 @@ public final class VoiceprintCoordinator: ObservableObject {
 
     nonisolated static func buildGate(diagnostics: ASRDiagnostics?,
                                       store: VoiceprintStore,
-                                      gate: VoiceprintGate) -> AcousticGate? {
+                                      gate: VoiceprintGate,
+                                      transcribe: (@Sendable ([Float]) async -> ASRResult?)?) async -> AcousticGate? {
         // Self-gating: with nothing enrolled there is no gate at all (zero overhead,
         // byte-identical baseline). Enrollment presence — not an env flag — turns it on.
         guard store.count > 0 else { return nil }
@@ -1093,6 +1158,50 @@ public final class VoiceprintCoordinator: ObservableObject {
         }
 
         guard !singleWordSpans.isEmpty || !windowSpans.isEmpty else { return nil }
+
+        // Context-free re-encode (VoiceprintReencoder): the whole-utterance pooled
+        // embeddings above are context-contaminated (global self-attention + whole-clip
+        // CMVN) — the SAME word embeds differently depending on what else is in the
+        // clip. Re-encoding EVERY span would cost a full extra encoder pass per span
+        // (prohibitively slow), so this replaces the pooled embedding ONLY for spans
+        // whose normalized text could actually be gated: an enrolled term itself, or
+        // any of its negative (confusable) labels — typically 0-2 spans/utterance.
+        // Falls back to the pooled embedding above when `utteranceSamples`/`transcribe`
+        // is unavailable (e.g. the HTTP ASR path, or before the encoder is wired).
+        if let utteranceSamples = diagnostics.utteranceSamples, let transcribe {
+            var relevantTexts = Set<String>()
+            for termID in store.termIDs {
+                relevantTexts.insert(termID.lowercased().filter { $0.isLetter })
+                if let t = store.template(for: termID) {
+                    for label in t.negatives.keys {
+                        relevantTexts.insert(label.lowercased().filter { $0.isLetter })
+                    }
+                }
+            }
+            if !relevantTexts.isEmpty {
+                for i in singleWordSpans.indices where relevantTexts.contains(singleWordSpans[i].normalizedText) {
+                    let s = singleWordSpans[i]
+                    if let ctxFree = await VoiceprintReencoder.contextFreeEmbedding(
+                        utteranceSamples: utteranceSamples, startSec: s.startSeconds, endSec: s.endSeconds,
+                        transcribe: transcribe) {
+                        singleWordSpans[i] = SpanEmbedding(normalizedText: s.normalizedText, groupIndex: s.groupIndex,
+                                                            startSeconds: s.startSeconds, endSeconds: s.endSeconds,
+                                                            embedding: ctxFree)
+                    }
+                }
+                for i in windowSpans.indices where relevantTexts.contains(windowSpans[i].normalizedText) {
+                    let s = windowSpans[i]
+                    if let ctxFree = await VoiceprintReencoder.contextFreeEmbedding(
+                        utteranceSamples: utteranceSamples, startSec: s.startSeconds, endSec: s.endSeconds,
+                        transcribe: transcribe) {
+                        windowSpans[i] = SpanEmbedding(normalizedText: s.normalizedText, groupIndex: s.groupIndex,
+                                                        startSeconds: s.startSeconds, endSeconds: s.endSeconds,
+                                                        embedding: ctxFree)
+                    }
+                }
+            }
+        }
+
         // `frozenSpans` = single-word only; used by the text+occurrence fallback (prevents
         // concatenated window text, e.g. "kiv", from producing spurious .contains matches).
         // `allFrozenSpans` = single-word + windows; used by the IoU / nearest-start locators

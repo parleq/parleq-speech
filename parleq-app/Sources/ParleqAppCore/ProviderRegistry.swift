@@ -56,10 +56,17 @@ enum ProviderRegistry {
         case "openai":
             return KeychainStore.hasOpenAIAPIKey
         case "local":
-            // "configured" ≡ the model weights are downloaded and ready.
-            // Uses a nonisolated file-stat helper so this sync, non-isolated
-            // function can call it without a MainActor hop.
-            return LocalModelStore.isReadyOnDisk()
+            // "configured" ≡ AT LEAST ONE catalog model's weights are
+            // downloaded and ready — not just the default (Gemma). A user who
+            // downloaded only the lighter Qwen model is fully configured for
+            // on-device cleanup; checking isReadyOnDisk() with no argument
+            // would default to the Gemma checkpoint and wrongly report
+            // "not configured" even though Settings' model list shows Qwen
+            // as Ready. Uses a nonisolated file-stat helper so this sync,
+            // non-isolated function can call it without a MainActor hop.
+            return LocalModelCatalog.all.contains {
+                LocalModelStore.isReadyOnDisk(checkpoint: $0.checkpoint)
+            }
         default:
             return false
         }
