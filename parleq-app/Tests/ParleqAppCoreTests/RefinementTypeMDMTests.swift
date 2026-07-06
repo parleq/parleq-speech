@@ -53,6 +53,50 @@ final class RefinementTypeMDMTests: XCTestCase {
         XCTAssertFalse(r.forced)
     }
 
+    // MARK: - 1b. cleanupLockedToNone — the lockdown trigger (pin AND allowlist)
+
+    func test_lockdown_pin_to_none() {
+        XCTAssertTrue(ManagedConfig.cleanupLockedToNone(
+            effectiveProvider: "none", providerPinned: true, allowedProviders: nil))
+    }
+
+    func test_lockdown_single_entry_allowlist_none() {
+        // The bypass the audit caught: cleanupAllowedProviders=["none"] is a
+        // functionally-identical zero-cloud lockdown and MUST also trigger.
+        XCTAssertTrue(ManagedConfig.cleanupLockedToNone(
+            effectiveProvider: "none", providerPinned: false, allowedProviders: ["none"]))
+    }
+
+    func test_not_a_lockdown_multi_entry_allowlist_including_none() {
+        // The admin permitted a cloud choice; the user just has none selected.
+        // Forcing refinement off-cloud here would be over-restrictive.
+        XCTAssertFalse(ManagedConfig.cleanupLockedToNone(
+            effectiveProvider: "none", providerPinned: false, allowedProviders: ["none", "vertex"]))
+    }
+
+    func test_not_a_lockdown_unmanaged_user_chose_none() {
+        // No pin, no allowlist — the user chose none cleanup themselves; their
+        // Polished refinement stays their own choice.
+        XCTAssertFalse(ManagedConfig.cleanupLockedToNone(
+            effectiveProvider: "none", providerPinned: false, allowedProviders: nil))
+    }
+
+    func test_not_a_lockdown_when_effective_provider_is_not_none() {
+        // cleanupProvider pinned to a cloud provider is not a zero-cloud lockdown.
+        XCTAssertFalse(ManagedConfig.cleanupLockedToNone(
+            effectiveProvider: "vertex", providerPinned: true, allowedProviders: nil))
+    }
+
+    func test_allowlist_none_lockdown_forces_polished_refinement_end_to_end() {
+        // The two helpers compose: allowlist-["none"] lockdown → Polished forced to Raw.
+        let locked = ManagedConfig.cleanupLockedToNone(
+            effectiveProvider: "none", providerPinned: false, allowedProviders: ["none"])
+        let r = ManagedConfig.resolveRefinementUnderPinnedNoneCleanup(
+            cleanupPinnedNone: locked, refinement: .polished)
+        XCTAssertEqual(r.type, .raw)
+        XCTAssertTrue(r.forced)
+    }
+
     // MARK: - 2. refinementType is a recognized managed key
 
     func test_allKeys_contains_refinementType() {

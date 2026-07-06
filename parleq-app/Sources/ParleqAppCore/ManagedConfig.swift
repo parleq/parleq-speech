@@ -367,6 +367,34 @@ public enum ManagedConfig {
         return (type: refinement, forced: false)
     }
 
+    /// Whether MDM has LOCKED cleanup to "none" (a zero-cloud-cleanup lockdown) —
+    /// the trigger for the fail-closed refinement downgrade above. An admin can
+    /// lock cleanup to none two functionally-identical ways, and BOTH must count
+    /// (mirrors how the cleanup model-mismatch check already treats the pin and
+    /// allowlist forms as equivalent):
+    ///   • the PIN form: `cleanupProvider = "none"` (→ `providerPinned` true,
+    ///     effective provider "none"); or
+    ///   • the ALLOWLIST form restricted to exactly one value: `["none"]`, which
+    ///     forces the picker — and the effective provider — to "none".
+    ///
+    /// A MULTI-entry allowlist that merely INCLUDES "none" (e.g. `["none",
+    /// "vertex"]`) is NOT a lockdown: the admin permitted a cloud choice, and the
+    /// user simply has none selected right now — forcing their refinement
+    /// off-cloud there would be over-restrictive. And an UNMANAGED user who
+    /// chose none cleanup themselves is likewise not under an admin lockdown, so
+    /// their Polished refinement stays their own choice (both `providerPinned`
+    /// false and `allowedProviders` nil → false).
+    ///
+    /// Pure (no CFPreferences) so it's unit-tested directly.
+    public static func cleanupLockedToNone(
+        effectiveProvider: String, providerPinned: Bool, allowedProviders: [String]?
+    ) -> Bool {
+        guard effectiveProvider == "none" else { return false }
+        if providerPinned { return true }               // pinned to none
+        if allowedProviders == ["none"] { return true } // allowlist locked to none
+        return false
+    }
+
     /// Returns the MDM-managed non-negative Int for `key`, or nil
     /// if the key is not managed, is not an Int value, or is
     /// negative. Same CFPreferencesAppValueIsForced semantics as

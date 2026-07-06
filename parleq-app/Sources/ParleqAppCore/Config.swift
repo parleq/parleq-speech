@@ -1844,13 +1844,18 @@ public struct Config: Sendable {
         // (a) An admin can pin the global refinement TYPE directly
         //     (raw/instant/polished), mirroring the cleanup/context provider
         //     pins — so refinement can be forced onto a specific posture.
-        // (b) Fail-closed: a pinned zero-cloud cleanup (cleanupProvider="none")
-        //     is an explicit no-transcript-egress lockdown. Polished is the ONLY
-        //     cloud refinement type (Raw and Instant are on-device), so under a
-        //     pinned "none" cleanup we force Polished down to Raw — mirroring the
-        //     no-processing posture of a "none" cleanup. This wins even over an
-        //     explicit refinementType=polished pin (the lockdown is the stricter,
-        //     safer policy); the contradiction is logged so the admin can fix it.
+        // (b) Fail-closed: a zero-cloud cleanup lockdown (cleanup LOCKED to
+        //     "none" — either the `cleanupProvider="none"` pin OR a
+        //     `cleanupAllowedProviders=["none"]` single-entry allowlist) is an
+        //     explicit no-transcript-egress policy. Polished is the ONLY cloud
+        //     refinement type (Raw and Instant are on-device), so under that
+        //     lockdown we force Polished down to Raw — mirroring the no-processing
+        //     posture of a "none" cleanup. This wins even over an explicit
+        //     refinementType=polished pin (the lockdown is the stricter, safer
+        //     policy); the contradiction is logged so the admin can fix it.
+        //     `ManagedConfig.cleanupLockedToNone` owns the pin-vs-allowlist
+        //     equivalence (and excludes multi-entry allowlists that merely permit
+        //     none) so this can't be bypassed via the allowlist form.
         if let pinnedRefinement = ManagedConfig.managedString(forKey: "refinementType") {
             if let mode = TargetMode(rawValue: pinnedRefinement) {
                 c.refinementType = mode
@@ -1859,7 +1864,10 @@ public struct Config: Sendable {
                 configLogStderr("[parleq] refinementType: unrecognized value '\(pinnedRefinement)' (expected raw/instant/polished); ignoring pin.")
             }
         }
-        let cleanupPinnedNone = managedKeys.contains("cleanupProvider") && c.llmProvider == "none"
+        let cleanupPinnedNone = ManagedConfig.cleanupLockedToNone(
+            effectiveProvider: c.llmProvider,
+            providerPinned: managedKeys.contains("cleanupProvider"),
+            allowedProviders: ManagedConfig.managedStringArray(forKey: "cleanupAllowedProviders"))
         let refinementResolution = ManagedConfig.resolveRefinementUnderPinnedNoneCleanup(
             cleanupPinnedNone: cleanupPinnedNone, refinement: c.refinementType)
         if refinementResolution.forced {
