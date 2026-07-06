@@ -1863,10 +1863,16 @@ public struct Config: Sendable {
         let refinementResolution = ManagedConfig.resolveRefinementUnderPinnedNoneCleanup(
             cleanupPinnedNone: cleanupPinnedNone, refinement: c.refinementType)
         if refinementResolution.forced {
+            // Only log the CONTRADICTION (an explicit refinementType=polished pin
+            // fighting a "none" lockdown) — that's an admin policy error worth
+            // surfacing. The routine downgrade (no explicit pin) is the designed
+            // steady state and stays SILENT, matching the other pins here (e.g.
+            // the cleanupProvider pin logs nothing on success); `applyManagedOverlay`
+            // runs on every Config.load(), so an unconditional log would spam
+            // app.log on every dictation under a lockdown. The effective managed
+            // state is visible in the managed-config audit view regardless.
             if managedKeys.contains("refinementType") {
                 configLogStderr("[parleq] refinementType pin 'polished' contradicts a pinned zero-cloud cleanup (cleanupProvider=none); forcing refinement to 'raw' to preserve no-cloud egress. Fix the policy: pin refinementType to 'raw' or 'instant', or change cleanupProvider.")
-            } else {
-                configLogStderr("[parleq] cleanupProvider=none is a zero-cloud lockdown; forcing Polished refinement to 'raw' (Polished would send voice-refine turns to the cloud).")
             }
             c.refinementType = refinementResolution.type
             managedKeys.insert("refinementType")
