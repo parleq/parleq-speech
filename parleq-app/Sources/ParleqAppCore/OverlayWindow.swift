@@ -2777,7 +2777,7 @@ private struct OverlayContent: View {
     private var curatedModeHint: some View {
         if let modeInfo = model.cleanupModeSource,
            modeInfo.source == .curated,
-           model.cleanupMode == .instant || model.cleanupMode == .raw {
+           model.cleanupMode == .instant {
             let copy = modeInfo.appName.map { "\($0) default" } ?? "app default"
             HStack(spacing: 4) {
                 Image(systemName: "info.circle")

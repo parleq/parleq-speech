@@ -373,7 +373,7 @@ public enum LocalModelCatalog {
         idleUnloadMinutesCautioned: 3, idleUnloadMinutesComfortable: 30,
         maxTokens: 1024, contextLength: 8192,
         licenseName: "Google Gemma (Apache 2.0)",
-        licenseURL: "https://ai.google.dev/gemma/terms")
+        licenseURL: "https://ai.google.dev/gemma/docs/gemma_4_license")
 
     public static let qwen3_4B = LocalModelInfo(
         id: "mlx-community/Qwen3-4B-Instruct-2507-4bit",
@@ -764,25 +764,7 @@ public struct Config: Sendable {
         return AppBehavior(mode: mode, presetID: presetID)
     }
 
-    /// The single shared branch logic behind `behaviorForApp` — resolves both
-    /// the effective `TargetMode` AND *why* it resolved that way. `trimmed`
-    /// must already be a non-empty, whitespace-trimmed bundle ID (callers
-    /// handle the nil/empty case themselves, since they resolve to different
-    /// public shapes — `AppBehavior` vs `ModeSource`).
-    ///
-    /// Mode: explicit override → curated default → global cleanup type.
-    ///   • "none" (cleanupType == .raw): curated defaults are skipped
-    ///     entirely — a user who opted out of cleanup keeps Raw everywhere;
-    ///     only an explicit override lifts them out.
-    ///   • A curated `.polished` upgrade is applied ONLY when the user's
-    ///     CLEANUP is itself Polished (cleanupType == .polished). Otherwise
-    ///     it falls back to the user's cleanup type. This is load-bearing:
-    ///     a concord (Instant) cleanup user who configured a cloud provider
-    ///     for REFINEMENT has a non-nil `polishedProvider`, so without this
-    ///     guard curated comms/email/browser apps would route their CLEANUP
-    ///     to the refinement provider — cloud — even though the user chose
-    ///     on-device cleanup. Curated `.instant` always applies (on-device
-    ///     is always available); explicit overrides are always honored.
+    // Shared resolver behind behaviorForApp: returns (mode, source); trimmed must be non-empty (callers guard). Curated .polished downgrades to global when cleanup isn't Polished.
     private func resolveMode(for trimmed: String) -> (mode: TargetMode, source: ModeSource) {
         if let override = appBehaviors[trimmed]?.mode {
             return (override, .override)

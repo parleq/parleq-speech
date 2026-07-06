@@ -86,14 +86,7 @@ public enum VoiceprintReencoder {
         let startIdx = max(0, Int((sliceStartSec * sampleRate).rounded()))
         let endIdx = min(utteranceSamples.count, Int((sliceEndSec * sampleRate).rounded()))
         guard endIdx > startIdx else { return nil }
-        // Clamp an over-long word slice to the canonical buffer. A slice longer
-        // than `canonicalBufferSamples` leaves `remaining`/pad lengths at 0, so
-        // the buffer would be the raw (unpadded, longer-than-canonical) slice —
-        // Parakeet's whole-clip CMVN would then normalise over a different
-        // context than the padded case, placing the embedding in a slightly
-        // different normalisation space. Truncating keeps every embedding in the
-        // same fixed-length canonical context. Only words longer than ~1.59s
-        // (1.75s buffer − 2×0.08s margin) hit this — extremely rare.
+        // Clamp to canonical length — an unpadded longer slice shifts CMVN context and misaligns the embedding space.
         let clampedEndIdx = min(endIdx, startIdx + canonicalBufferSamples)
         let wordSlice = Array(utteranceSamples[startIdx..<clampedEndIdx])
 
