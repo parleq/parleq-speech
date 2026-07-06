@@ -1563,15 +1563,25 @@ struct ParleqApp {
                                 break
                             }
                         }
+                        // Surface parked-term "needs re-enroll" in the menu bar,
+                        // persistently and without requiring the user to open
+                        // Settings. Wired BEFORE migration so the didSet callback
+                        // catches the count migration sets; the explicit set after
+                        // migrateIfNeeded covers the launch-ordering case and any
+                        // count already present from loadPersisted.
+                        coordinator.onReEnrollCountChanged = { [weak menuBox] count in
+                            menuBox?.value?.setReEnrollCount(count)
+                        }
                         // Auto-migrate any voiceprints parked under an unknown encoder
                         // stamp by re-deriving them from the stored enrollment audio
                         // under the CURRENT encoder. Non-destructive (R1/SI-1): bails
                         // without writing if the audio store can't load; inert terms
                         // keep their old stamp on disk.
-                        Task { @MainActor [weak local] in
+                        Task { @MainActor [weak local, weak menuBox] in
                             await coordinator.migrateIfNeeded { wav in
                                 try await local?.transcribeRawForVoiceprint(wav: wav)
                             }
+                            menuBox?.value?.setReEnrollCount(coordinator.needsReEnrollCount)
                         }
                         // Bundle the wizard's dependencies and hand them to Settings.
                         let vpServices = VoiceprintServices(

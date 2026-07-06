@@ -212,7 +212,18 @@ public final class VoiceprintCoordinator: ObservableObject {
     /// failed the quality bar). Set by `migrateIfNeeded`. A later task surfaces a
     /// banner that OBSERVES this count — deliberately no banner type is referenced
     /// here (R7).
-    @Published public private(set) var needsReEnrollCount: Int = 0
+    @Published public private(set) var needsReEnrollCount: Int = 0 {
+        didSet {
+            if oldValue != needsReEnrollCount { onReEnrollCountChanged?(needsReEnrollCount) }
+        }
+    }
+
+    /// Fired whenever `needsReEnrollCount` changes (migration parks a term, or a
+    /// parked term is re-enrolled mid-session). main.swift wires this to the
+    /// menu-bar re-enroll prompt so the signal is persistent and visible without
+    /// opening Settings — count-only, no term text (invariant #2). The SwiftUI
+    /// Settings banner separately observes the `@Published` value directly.
+    public var onReEnrollCountChanged: ((Int) -> Void)?
 
     /// Term IDs that could NOT be auto-migrated and therefore need a manual
     /// re-enroll. The re-enroll banner CTA targets one of THESE (not just the
@@ -942,30 +953,34 @@ public final class VoiceprintCoordinator: ObservableObject {
             return
         }
         var migrated = 0
-        var discarded = 0
+        // Terms that couldn't be re-derived are PARKED, not discarded: their old
+        // template is preserved on disk (see the union save below) and they drive
+        // the re-enroll signal via `needsReEnrollCount`. "parked" names that
+        // faithfully; the old "discarded" wording read as data loss.
+        var parked = 0
         var stillInert: [VoiceprintTemplate] = []
         for t in pendingMigration {
             guard let clips = audioMap[t.termID], !clips.isEmpty else {
-                // No stored audio → can't re-derive; stays inert (needs manual re-enroll).
-                stillInert.append(t); discarded += 1; continue
+                // No stored audio → can't re-derive; stays parked (needs manual re-enroll).
+                stillInert.append(t); parked += 1; continue
             }
             guard let built = await buildTemplate(from: clips, termID: t.termID, transcribe: transcribe),
                   !built.lowQuality else {
-                // Re-derivation failed or low quality → don't install a bad gate; stay inert.
-                stillInert.append(t); discarded += 1; continue
+                // Re-derivation failed or low quality → don't install a bad gate; stay parked.
+                stillInert.append(t); parked += 1; continue
             }
             store.upsert(built.template); migrated += 1
         }
-        needsReEnrollCount = discarded
+        needsReEnrollCount = parked
         if migrated > 0 {
-            // R1: persist active store ∪ still-inert pending. `all` is non-empty
+            // R1: persist active store ∪ still-parked pending. `all` is non-empty
             // (migrated > 0), so this never degrades to save([]) → deleteAll().
             let all = store.termIDs.compactMap { store.template(for: $0) } + stillInert
             try? persistence?.save(all)
         }
         pendingMigration = stillInert
         onStoreChanged?()   // re-install the gate to see the migrated templates
-        log("[voiceprint] migrate: migrated=\(migrated) discarded=\(discarded)")
+        log("[voiceprint] migrate: migrated=\(migrated) parked/needs-reenroll=\(parked)")
     }
 
     // MARK: Startup enrollment
