@@ -1,6 +1,8 @@
 Parleq 0.43.0
 
-Voiceprints that carry over on their own, and tighter enterprise controls.
+Speak your punctuation, voiceprints that carry over on their own, and tighter enterprise controls.
+
+Speak your punctuation. Say "comma", "period", "question mark", "exclamation point", or "open/close quote" and Parleq writes the mark — the way phone keyboards do. It works in on-device Instant cleanup and in cloud Polished cleanup; Raw paste is left exactly as transcribed. On by default. Custom-dictionary corrections also got more accurate: the on-device dictionary stage now decides whether to fix a word by how closely it actually sounds like your term (a phonetic distance over CMUdict pronunciations) rather than a confidence threshold — fewer misses, fewer wrong corrections.
 
 Enrolled terms carry over across speech-model updates. When a speech-model change means your voiceprints have to be rebuilt, Parleq now re-derives them from your stored enrollment audio — including acronyms and initialisms the model spells out differently than before (an enrolled "E2E" heard as "E to E"), which previously had to be re-enrolled by hand. And if a term genuinely can't be carried over, the menu bar now shows a persistent "a voice term needs re-enrolling" prompt so you find out without opening Settings.
 

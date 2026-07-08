@@ -6,11 +6,17 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 ## [0.43.0] - Unreleased
 
-Voiceprints that carry over on their own, and tighter enterprise controls.
+Speak your punctuation, voiceprints that carry over on their own, and tighter enterprise controls.
 
 ### Added
 
+- **Speak your punctuation.** Say "comma", "period", "question mark", "exclamation point", or "open/close quote" and Parleq writes the mark — the way phone keyboards do. It works in on-device **Instant** cleanup (a fast deterministic on-device stage) and in cloud **Polished** cleanup (prompt-guided); **Raw** paste is left exactly as transcribed. On by default.
 - **A managed control for refinement.** IT admins can now pin the refinement mode (Raw / on-device Instant / cloud Polished) via a `refinementType` managed-configuration key. And pinning cleanup to "none" for a zero-cloud-egress lockdown now automatically forces refinement off the cloud too — since the 0.40.0 split made cleanup and refinement independent, "Raw cleanup" alone no longer guaranteed no transcript left the Mac; this closes that gap. See the [managed configuration guide](https://parleq.app/docs/managed-configuration/).
+
+### Changed
+
+- **Custom-dictionary corrections are more accurate.** The on-device dictionary stage now decides whether to correct a word by how closely it actually *sounds* like your dictionary term — a phonetic feature-distance gate over CMUdict pronunciations — instead of an ASR-confidence threshold. Fewer missed corrections, fewer wrong ones.
+- On-device correction engine updated to Concord 0.6.0 (spoken punctuation + the phonetic dictionary gate).
 
 ### Fixed
 
