@@ -25,6 +25,7 @@ copy for users who want a clickable view.
 | Transitive SwiftPM dependencies | 29 | Predominantly Apache-2.0 and MIT (e.g. yyjson is MIT) |
 | Components embedded inside SwiftPM dependencies | 5 | 1× MIT (llhttp, inside swift-nio); 1× zlib-style (ed25519-sparkle, inside Sparkle); 2× 2-clause BSD (bsdiff inside Sparkle, fastcluster inside FluidAudio); 1× Apache-2.0 (VBx, inside FluidAudio) |
 | Vendored source in-tree | 1 | MIT — `VendoredGemma4Text.swift` (copied from mlx-swift-lm; see [Embedded components](#embedded-components) below) |
+| Third-party data embedded inside Concord (Concord builds only) | 2 | 1× 2-clause BSD (CMUdict); 1× MIT (panphon feature tables) |
 | Apple system frameworks | n/a | Bundled with macOS — no attribution required |
 | Run-time downloaded model weights | 4 | See [Model weights](#model-weights) below |
 
@@ -54,7 +55,10 @@ Release builds of Parleq.app bundle one component that is **not** open source:
 
 Because Concord is first-party (same maintainer as Parleq) and proprietary,
 it is not a third-party open-source dependency and is excluded from the OSS
-counts above.
+counts above. **Concord itself bundles two permissively-licensed third-party
+data sets** — CMUdict (2-clause BSD) and panphon feature tables (MIT) — which
+therefore ship inside Parleq.app; both are attributed under
+[Embedded components](#embedded-components) below and in the bundled `NOTICE`.
 
 ---
 
@@ -196,6 +200,82 @@ also use direct HTTPS (URLSession) with no SDK.
   `TODO(upstream-gemma4)` in the file header). MIT is more permissive
   than Apache-2.0 and adds no obligations beyond keeping the license
   notice with the source.
+
+- **CMUdict** — 2-clause BSD — A derived, compressed form of the CMU
+  Pronouncing Dictionary (`cmudict.txt.zlib`) bundled inside the Concord
+  resource bundle (`Concord_Concord.bundle`), so it ships inside
+  `Parleq.app` (Concord builds only). Sourced from `cmusphinx/cmudict`,
+  pinned commit `74790861f652b15e4ac49015a90074ad62a27690`. Copyright
+  © 1993–2015 Carnegie Mellon University. The 2-clause BSD license
+  obliges binary redistributions to reproduce the copyright notice;
+  doing so here (and in the bundled `NOTICE`) satisfies that. Used by
+  Concord's phonetic dictionary gate to resolve word pronunciations.
+
+- **panphon** — MIT — Concord's generated `ArpabetToIPA.swift` and
+  `PanphonFeatureTable.swift` carry articulatory feature-table values
+  extracted from panphon, compiled into the Concord module that ships
+  inside `Parleq.app` (Concord builds only). Copyright © 2015 Carnegie
+  Mellon University (David R. Mortensen). Licensed under the MIT License,
+  satisfied by preserving the notice here and in the bundled `NOTICE`.
+  Used by Concord's phonetic distance gate that decides dictionary
+  corrections. Source: https://github.com/dmort27/panphon
+
+#### Full license texts for the bundled data (CMUdict, panphon)
+
+Both are permissive licenses whose binary-redistribution clauses require the
+copyright notice, conditions, and disclaimer to accompany the distribution; the
+full texts are reproduced here (and ship inside `Parleq.app` via this file).
+
+**CMUdict** — 2-clause BSD (CMUdict `LICENSE`, verbatim against pinned snapshot
+`74790861f652b15e4ac49015a90074ad62a27690`):
+
+```
+Copyright (C) 1993-2015 Carnegie Mellon University. All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions
+are met:
+
+1. Redistributions of source code must retain the above copyright
+   notice, this list of conditions and the following disclaimer.
+   The contents of this file are deemed to be source code.
+
+2. Redistributions in binary form must reproduce the above copyright
+   notice, this list of conditions and the following disclaimer in
+   the documentation and/or other materials provided with the
+   distribution.
+
+This work was supported in part by funding from the Defense Advanced
+Research Projects Agency, the Office of Naval Research and the National
+Science Foundation of the United States of America, and by member
+companies of the Carnegie Mellon Sphinx Speech Consortium. We acknowledge
+the contributions of many volunteers to the expansion and improvement of
+this dictionary.
+
+THIS SOFTWARE IS PROVIDED BY CARNEGIE MELLON UNIVERSITY ``AS IS'' AND
+ANY EXPRESSED OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL CARNEGIE MELLON UNIVERSITY
+NOR ITS EMPLOYEES BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
+
+**panphon** — MIT (panphon 0.22.2 `LICENSE.txt`, verbatim from the PyPI sdist):
+
+```
+Copyright (c) 2015 Carnegie Mellon University
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
 
 ---
 

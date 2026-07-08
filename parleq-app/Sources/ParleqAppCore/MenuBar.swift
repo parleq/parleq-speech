@@ -55,6 +55,15 @@ public final class MenuBar: NSObject {
     /// B3 "Recover last dictation" action. Disabled until AppState reports a
     /// retained capture this session (see `canRecoverLastDictation`).
     private let recoverLastDictationMenuItem: NSMenuItem
+    /// "⚠ Voice term needs re-enrolling" — shown when a durable voiceprint
+    /// couldn't be auto-re-derived after an ASR-encoder change and was PARKED.
+    /// Persistent (unlike the dismissible Settings→Dictionary banner) so a user
+    /// who never opens Settings still learns a term needs re-enrolling; clicking
+    /// opens the Dictionary pane where the per-term re-enroll CTA lives. Hidden
+    /// by default; driven by `setReEnrollCount(_:)` off the voiceprint
+    /// coordinator's `needsReEnrollCount`. Count-only — no term text (invariant
+    /// #2: dictation-derived content never leaves memory in logs/UI chrome here).
+    private let reEnrollMenuItem: NSMenuItem
     // Recent Dictations submenu removed in 0.14.0 PR 3 (#218).
     // The canonical surface for browsing history is now the Recent
     // Dictations section in the Parleq app window (open via
@@ -158,6 +167,7 @@ public final class MenuBar: NSObject {
         finishSetupMenuItem = NSMenuItem(title: "Finish setup…", action: nil, keyEquivalent: "")
         recoverLastDictationMenuItem = NSMenuItem(
             title: "Recover last dictation", action: nil, keyEquivalent: "")
+        reEnrollMenuItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
         microphoneMenuItem = NSMenuItem(
             title: "Microphone",
             action: nil,
@@ -176,6 +186,12 @@ public final class MenuBar: NSObject {
         finishSetupMenuItem.target = self
         finishSetupMenuItem.action = #selector(runSetup)
         finishSetupMenuItem.isHidden = true
+        reEnrollMenuItem.target = self
+        reEnrollMenuItem.action = #selector(presentDictionary)
+        reEnrollMenuItem.isHidden = true
+        reEnrollMenuItem.toolTip =
+            "A saved voice term couldn't be carried over after a speech-model " +
+            "update. Open the Dictionary to re-enroll it (about 30 seconds)."
         recoverLastDictationMenuItem.target = self
         recoverLastDictationMenuItem.action = #selector(recoverLastDictation)
         recoverLastDictationMenuItem.isEnabled = false
@@ -291,6 +307,9 @@ public final class MenuBar: NSObject {
         menu.addItem(localModelRestartMenuItem)
         // First-run prompt: hidden once wizard completed or provider chosen.
         menu.addItem(finishSetupMenuItem)
+        // Voiceprint re-enroll prompt (hidden until a term is parked by an
+        // encoder-change migration). Persistent until the user re-enrolls.
+        menu.addItem(reEnrollMenuItem)
         menu.addItem(hotkeyItem)
         menu.addItem(.separator())
         menu.addItem(settingsItem)
@@ -449,6 +468,24 @@ public final class MenuBar: NSObject {
     /// Clicking posts .parleqRunSetupAgain via the shared runSetup action.
     public func setNeedsSetupPrompt(_ show: Bool) {
         finishSetupMenuItem.isHidden = !show
+    }
+
+    /// Show or hide the "voice term needs re-enrolling" prompt from the
+    /// voiceprint coordinator's `needsReEnrollCount`. `count == 0` hides it;
+    /// otherwise a count-only message (no term text — invariant #2) with a
+    /// singular/plural title. main.swift wires this to the coordinator's
+    /// `$needsReEnrollCount` publisher (Concord builds only); non-Concord builds
+    /// never call it, so the item stays hidden.
+    public func setReEnrollCount(_ count: Int) {
+        guard count > 0 else {
+            reEnrollMenuItem.isHidden = true
+            reEnrollMenuItem.title = ""
+            return
+        }
+        reEnrollMenuItem.title = count == 1
+            ? "⚠ A voice term needs re-enrolling"
+            : "⚠ \(count) voice terms need re-enrolling"
+        reEnrollMenuItem.isHidden = false
     }
 
     private var currentPhase: AppState.Phase = .idle

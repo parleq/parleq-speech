@@ -62,6 +62,12 @@ public enum ManagedConfig {
         // styled cleanup to a specific cloud provider+model.
         "refineProvider",
         "refineModel",
+        // Refinement TYPE pin (raw/instant/polished). Independent of the
+        // refine provider/model pins above: those choose WHICH provider a
+        // Polished refinement uses, this pins whether refinement is Polished
+        // (cloud) at all. A pinned "none" cleanup also force-downgrades
+        // Polished refinement to Raw (fail-closed zero-cloud egress).
+        "refinementType",
         // Phase 3 — operational policy
         "sparkleUpdateFeedURL",
         "loggingMode",
@@ -331,6 +337,62 @@ public enum ManagedConfig {
         }
         // Managed: enabled ONLY when explicitly true; malformed → fail CLOSED.
         return (value: parsed == true, managed: true)
+    }
+
+    /// Fail-closed refinement-type resolution under a zero-cloud cleanup
+    /// lockdown. Since the 0.40.0 reframe, Cleanup and Refinement are
+    /// INDEPENDENT — a "none" (Raw) cleanup no longer implies zero cloud egress,
+    /// because Polished refinement still sends voice-refine turns to a cloud
+    /// provider. Polished is the ONLY cloud refinement type (Raw and Instant run
+    /// on-device). So when the cleanup provider is PINNED to "none" (an explicit
+    /// no-transcript-egress lockdown), a Polished refinement must be forced down
+    /// to Raw to keep the egress guarantee — mirroring the no-processing posture
+    /// of a "none" cleanup.
+    ///
+    /// Pure truth table (independent of the CFPreferences MDM channel, like
+    /// `resolveClipStorage`) so the security-critical decision is unit-tested
+    /// directly. Returns the effective refinement type and whether the rule
+    /// engaged (→ the caller marks `refinementType` managed so the UI locks it
+    /// and the audit shows it as managed).
+    ///
+    /// - `cleanupPinnedNone`: the cleanup provider is MDM-pinned to "none".
+    /// - `refinement`: the refinement type resolved so far (user value or an
+    ///   explicit `refinementType` pin).
+    public static func resolveRefinementUnderPinnedNoneCleanup(
+        cleanupPinnedNone: Bool, refinement: TargetMode
+    ) -> (type: TargetMode, forced: Bool) {
+        if cleanupPinnedNone && refinement == .polished {
+            return (type: .raw, forced: true)
+        }
+        return (type: refinement, forced: false)
+    }
+
+    /// Whether MDM has LOCKED cleanup to "none" (a zero-cloud-cleanup lockdown) —
+    /// the trigger for the fail-closed refinement downgrade above. An admin can
+    /// lock cleanup to none two functionally-identical ways, and BOTH must count
+    /// (mirrors how the cleanup model-mismatch check already treats the pin and
+    /// allowlist forms as equivalent):
+    ///   • the PIN form: `cleanupProvider = "none"` (→ `providerPinned` true,
+    ///     effective provider "none"); or
+    ///   • the ALLOWLIST form restricted to exactly one value: `["none"]`, which
+    ///     forces the picker — and the effective provider — to "none".
+    ///
+    /// A MULTI-entry allowlist that merely INCLUDES "none" (e.g. `["none",
+    /// "vertex"]`) is NOT a lockdown: the admin permitted a cloud choice, and the
+    /// user simply has none selected right now — forcing their refinement
+    /// off-cloud there would be over-restrictive. And an UNMANAGED user who
+    /// chose none cleanup themselves is likewise not under an admin lockdown, so
+    /// their Polished refinement stays their own choice (both `providerPinned`
+    /// false and `allowedProviders` nil → false).
+    ///
+    /// Pure (no CFPreferences) so it's unit-tested directly.
+    public static func cleanupLockedToNone(
+        effectiveProvider: String, providerPinned: Bool, allowedProviders: [String]?
+    ) -> Bool {
+        guard effectiveProvider == "none" else { return false }
+        if providerPinned { return true }               // pinned to none
+        if allowedProviders == ["none"] { return true } // allowlist locked to none
+        return false
     }
 
     /// Returns the MDM-managed non-negative Int for `key`, or nil

@@ -1,9 +1,9 @@
-Parleq 0.42.0
+Parleq 0.43.0
 
-Choose your on-device model, and voiceprints that hold up in real sentences.
+Speak your punctuation, voiceprints that carry over on their own, and tighter enterprise controls.
 
-On-device cleanup now offers a model choice. Keep the default Gemma 4 E4B for the best quality, or switch to the lighter Qwen3-4B — roughly half the download and memory, so full on-device LLM cleanup now fits on an 8 GB Mac. Choose one under Settings → Cleanup → Provider → On-device, or in the setup wizard. Either way, cleanup runs entirely on your Mac.
+Speak your punctuation. Say "comma", "period", "question mark", "exclamation point", or "open/close quote" and Parleq writes the mark — the way phone keyboards do. It works in on-device Instant cleanup and in Polished cleanup (cloud or on-device); Raw paste is left exactly as transcribed. On by default. Custom-dictionary corrections also got more accurate: the on-device dictionary stage now decides whether to fix a word by how closely it actually sounds like your term (a phonetic distance over CMUdict pronunciations) rather than a confidence threshold — fewer misses, fewer wrong corrections.
 
-Voiceprints hold up in real sentences. If you've enrolled a term that sounds like an everyday word, Parleq no longer trips over it mid-sentence — an enrolled "Keavi" stays "Keavi" even when you say "kiwi" later in the same sentence, because the acoustic gate now judges each word from its own audio. And when it keeps a term with only borderline confidence, the review overlay flags it so a one-tap edit fixes and teaches it.
+Enrolled terms carry over across speech-model updates. When a speech-model change means your voiceprints have to be rebuilt, Parleq now re-derives them from your stored enrollment audio — including acronyms and initialisms the model spells out differently than before (an enrolled "E2E" heard as "E to E"), which previously had to be re-enrolled by hand. And if a term genuinely can't be carried over, the menu bar now shows a persistent "a voice term needs re-enrolling" prompt so you find out without opening Settings.
 
-Cleanup settings are clearer. The overlay now tells you which cleanup mode ran and why — including when an app uses a built-in default (terminals and code editors stay on fast on-device cleanup so your commands aren't sent to an LLM). Those defaults are visible and overridable in Settings → App behaviors, and on-device model names now show cleanly and correctly throughout.
+Tighter enterprise controls. IT admins can pin the refinement mode (Raw, on-device Instant, or cloud Polished) with a new managed-configuration key. Pinning cleanup to "none" for a no-cloud lockdown now also forces refinement off the cloud — closing a gap where a follow-up voice command could still reach a cloud provider after the 0.40.0 change made cleanup and refinement independent.

@@ -1832,6 +1832,60 @@ public struct Config: Sendable {
             c.refineModel = (refineId == cleanupId) ? nil : refineId
         }
 
+        // REFINEMENT TYPE — pin + fail-closed non-cloud rule.
+        //
+        // Since the 0.40.0 reframe, Cleanup and Refinement are INDEPENDENT: a
+        // "none" (Raw) cleanup no longer implies zero cloud egress, because the
+        // user can still pick Polished refinement — which sends voice-refine
+        // turns to a cloud provider. `refineProvider`/`refineModel` (above) only
+        // pin WHICH provider a Polished refinement uses; they can't stop
+        // refinement from BEING Polished. This closes that gap two ways:
+        //
+        // (a) An admin can pin the global refinement TYPE directly
+        //     (raw/instant/polished), mirroring the cleanup/context provider
+        //     pins — so refinement can be forced onto a specific posture.
+        // (b) Fail-closed: a zero-cloud cleanup lockdown (cleanup LOCKED to
+        //     "none" — either the `cleanupProvider="none"` pin OR a
+        //     `cleanupAllowedProviders=["none"]` single-entry allowlist) is an
+        //     explicit no-transcript-egress policy. Polished is the ONLY cloud
+        //     refinement type (Raw and Instant are on-device), so under that
+        //     lockdown we force Polished down to Raw — mirroring the no-processing
+        //     posture of a "none" cleanup. This wins even over an explicit
+        //     refinementType=polished pin (the lockdown is the stricter, safer
+        //     policy); the contradiction is logged so the admin can fix it.
+        //     `ManagedConfig.cleanupLockedToNone` owns the pin-vs-allowlist
+        //     equivalence (and excludes multi-entry allowlists that merely permit
+        //     none) so this can't be bypassed via the allowlist form.
+        if let pinnedRefinement = ManagedConfig.managedString(forKey: "refinementType") {
+            if let mode = TargetMode(rawValue: pinnedRefinement) {
+                c.refinementType = mode
+                managedKeys.insert("refinementType")
+            } else {
+                configLogStderr("[parleq] refinementType: unrecognized value '\(pinnedRefinement)' (expected raw/instant/polished); ignoring pin.")
+            }
+        }
+        let cleanupPinnedNone = ManagedConfig.cleanupLockedToNone(
+            effectiveProvider: c.llmProvider,
+            providerPinned: managedKeys.contains("cleanupProvider"),
+            allowedProviders: ManagedConfig.managedStringArray(forKey: "cleanupAllowedProviders"))
+        let refinementResolution = ManagedConfig.resolveRefinementUnderPinnedNoneCleanup(
+            cleanupPinnedNone: cleanupPinnedNone, refinement: c.refinementType)
+        if refinementResolution.forced {
+            // Only log the CONTRADICTION (an explicit refinementType=polished pin
+            // fighting a "none" lockdown) — that's an admin policy error worth
+            // surfacing. The routine downgrade (no explicit pin) is the designed
+            // steady state and stays SILENT, matching the other pins here (e.g.
+            // the cleanupProvider pin logs nothing on success); `applyManagedOverlay`
+            // runs on every Config.load(), so an unconditional log would spam
+            // app.log on every dictation under a lockdown. The effective managed
+            // state is visible in the managed-config audit view regardless.
+            if managedKeys.contains("refinementType") {
+                configLogStderr("[parleq] refinementType pin 'polished' contradicts a pinned zero-cloud cleanup (cleanupProvider=none); forcing refinement to 'raw' to preserve no-cloud egress. Fix the policy: pin refinementType to 'raw' or 'instant', or change cleanupProvider.")
+            }
+            c.refinementType = refinementResolution.type
+            managedKeys.insert("refinementType")
+        }
+
         c.managedKeys = managedKeys
 
         // Defense-in-depth: when customModelEntryEnabled is off, a
@@ -2932,12 +2986,20 @@ public struct Config: Sendable {
         if let localToWrite = Self.serializeLocalSection(config) {
             llmToWrite["local"] = localToWrite
         }
-        // Reframe v2: the global refinement TYPE has no MDM key — it's purely
-        // the user's value. Carry it forward or the llm-section rebuild above
-        // would drop it (serializeToDictionary emitted it, but dict["llm"] is
-        // overwritten by llmToWrite), reverting a user's Instant/Raw choice to
-        // the migrated default on the next load.
-        llmToWrite["refinement"] = config.refinementType.rawValue
+        // Reframe v2: the global refinement TYPE. Normally purely the user's
+        // value, carried forward here (the llm-section rebuild above would
+        // otherwise drop it, reverting a user's Instant/Raw choice to the
+        // migrated default on the next load). When it's MANAGED — an admin
+        // pinned `refinementType`, or a pinned "none" cleanup force-downgraded
+        // Polished refinement to preserve zero-cloud egress — preserve the
+        // existing on-disk value so removing the MDM profile restores the user's
+        // pre-MDM choice (mirror of the refine-tier preservation below).
+        if config.managedKeys.contains("refinementType"),
+           let existingRefinement = existingLLM["refinement"] as? String {
+            llmToWrite["refinement"] = existingRefinement
+        } else {
+            llmToWrite["refinement"] = config.refinementType.rawValue
+        }
         // Refinement tier — llm.refine (omit-when-unset). Mirrors the
         // context_model preservation below: when the refine tier is
         // PINNED via MDM, preserve the existing on-disk value so removing

@@ -398,6 +398,27 @@ private func resolveAuditRow(key: String, config: Config, defaults: Config) -> (
     case "vertexWorkforceProvider":
         return formatString(config.vertexWorkforceProvider, managed: isManaged, defaultVal: defaults.vertexWorkforceProvider)
 
+    // MARK: Refine tier (provider/model pins + refinement TYPE)
+    case "refineProvider":
+        // Mirrors contextProvider: User when the user set an explicit refine
+        // provider (refineModel non-nil), Default when it inherits cleanup.
+        let val = config.refineModel?.provider ?? config.llmProvider
+        let display = val.isEmpty ? "(not set)" : val
+        if isManaged { return (display, .managed) }
+        return (display, config.refineModel != nil ? .user : .default)
+    case "refineModel":
+        let val = config.refineModel?.model ?? config.llmModel
+        let display = val.isEmpty ? "(not set)" : val
+        if isManaged { return (display, .managed) }
+        return (display, config.refineModel != nil ? .user : .default)
+    case "refinementType":
+        // Global refinement posture (raw/instant/polished). Managed when
+        // pinned OR force-downgraded by a pinned "none" cleanup (fail-closed
+        // zero-cloud egress) — both insert the key into managedKeys.
+        let display = config.refinementType.rawValue
+        if isManaged { return (display, .managed) }
+        return (display, config.refinementType != defaults.refinementType ? .user : .default)
+
     default:
         return ("(unknown key)", .default)
     }

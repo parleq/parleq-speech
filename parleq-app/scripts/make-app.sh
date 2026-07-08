@@ -87,6 +87,21 @@ chmod +x "$APP_BUNDLE/Contents/MacOS/ParleqApp"
 # the directory make-app.sh lives in.
 "$APP_DIR/scripts/fetch-metallib.sh" "$APP_BUNDLE/Contents/MacOS"
 
+# Stage SwiftPM resource bundles (e.g. Concord_Concord.bundle, which carries the
+# panphon CMUdict `cmudict.txt.zlib`) into Contents/Resources/. `swift build` emits
+# these next to the executable in the bin path, but this hand-assembled .app doesn't
+# pick them up the way an xcodebuild app would. Without this, Concord's `Bundle.module`
+# lookup returns nil at runtime and the panphon dictionary gate silently abstains to the
+# legacy confidence veto — the feature ships INERT (fails safe, but disabled). Must run
+# BEFORE codesign so the bundle is inside the signed .app; Bundle.module resolves it via
+# Bundle.main.resourceURL → Contents/Resources/.
+shopt -s nullglob
+for _res_bundle in "$BIN_PATH"/*.bundle; do
+    cp -R "$_res_bundle" "$APP_BUNDLE/Contents/Resources/"
+    echo "staged SwiftPM resource bundle: $(basename "$_res_bundle")"
+done
+shopt -u nullglob
+
 # Inject the standard macOS-bundle framework search path into the
 # executable's LC_RPATH. SwiftPM doesn't add this for binary-target
 # frameworks (it injects @executable_path/ only, treating the
