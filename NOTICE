@@ -20,6 +20,18 @@ proprietary license, distributed only inside Parleq.app, and is not
 available separately or as source. The public open-source build of Parleq
 does not include it (it is gated behind the `Concord` SwiftPM trait).
 
+Concord bundles two permissively-licensed third-party data sets, which
+therefore ship inside Parleq.app (Concord builds only):
+
+  * CMUdict — 2-clause BSD — a derived, compressed form of the CMU
+    Pronouncing Dictionary (cmusphinx/cmudict, pinned commit
+    74790861f652b15e4ac49015a90074ad62a27690), Copyright (c) 1993–2015
+    Carnegie Mellon University. https://github.com/cmusphinx/cmudict
+  * panphon — MIT — articulatory feature-table values extracted into
+    Concord's generated ArpabetToIPA.swift and PanphonFeatureTable.swift,
+    Copyright (c) 2015 Carnegie Mellon University (David R. Mortensen).
+    https://github.com/dmort27/panphon
+
 ============================================================
 Apple Swift open source projects
 ============================================================

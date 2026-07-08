@@ -25,6 +25,7 @@ copy for users who want a clickable view.
 | Transitive SwiftPM dependencies | 29 | Predominantly Apache-2.0 and MIT (e.g. yyjson is MIT) |
 | Components embedded inside SwiftPM dependencies | 5 | 1× MIT (llhttp, inside swift-nio); 1× zlib-style (ed25519-sparkle, inside Sparkle); 2× 2-clause BSD (bsdiff inside Sparkle, fastcluster inside FluidAudio); 1× Apache-2.0 (VBx, inside FluidAudio) |
 | Vendored source in-tree | 1 | MIT — `VendoredGemma4Text.swift` (copied from mlx-swift-lm; see [Embedded components](#embedded-components) below) |
+| Third-party data embedded inside Concord (Concord builds only) | 2 | 1× 2-clause BSD (CMUdict); 1× MIT (panphon feature tables) |
 | Apple system frameworks | n/a | Bundled with macOS — no attribution required |
 | Run-time downloaded model weights | 4 | See [Model weights](#model-weights) below |
 
@@ -54,7 +55,10 @@ Release builds of Parleq.app bundle one component that is **not** open source:
 
 Because Concord is first-party (same maintainer as Parleq) and proprietary,
 it is not a third-party open-source dependency and is excluded from the OSS
-counts above.
+counts above. **Concord itself bundles two permissively-licensed third-party
+data sets** — CMUdict (2-clause BSD) and panphon feature tables (MIT) — which
+therefore ship inside Parleq.app; both are attributed under
+[Embedded components](#embedded-components) below and in the bundled `NOTICE`.
 
 ---
 
@@ -196,6 +200,25 @@ also use direct HTTPS (URLSession) with no SDK.
   `TODO(upstream-gemma4)` in the file header). MIT is more permissive
   than Apache-2.0 and adds no obligations beyond keeping the license
   notice with the source.
+
+- **CMUdict** — 2-clause BSD — A derived, compressed form of the CMU
+  Pronouncing Dictionary (`cmudict.txt.zlib`) bundled inside the Concord
+  resource bundle (`Concord_Concord.bundle`), so it ships inside
+  `Parleq.app` (Concord builds only). Sourced from `cmusphinx/cmudict`,
+  pinned commit `74790861f652b15e4ac49015a90074ad62a27690`. Copyright
+  © 1993–2015 Carnegie Mellon University. The 2-clause BSD license
+  obliges binary redistributions to reproduce the copyright notice;
+  doing so here (and in the bundled `NOTICE`) satisfies that. Used by
+  Concord's phonetic dictionary gate to resolve word pronunciations.
+
+- **panphon** — MIT — Concord's generated `ArpabetToIPA.swift` and
+  `PanphonFeatureTable.swift` carry articulatory feature-table values
+  extracted from panphon, compiled into the Concord module that ships
+  inside `Parleq.app` (Concord builds only). Copyright © 2015 Carnegie
+  Mellon University (David R. Mortensen). Licensed under the MIT License,
+  satisfied by preserving the notice here and in the bundled `NOTICE`.
+  Used by Concord's phonetic distance gate that decides dictionary
+  corrections. Source: https://github.com/dmort27/panphon
 
 ---
 
