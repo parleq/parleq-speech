@@ -16,7 +16,7 @@ Speak your punctuation, voiceprints that carry over on their own, and tighter en
 ### Changed
 
 - **Custom-dictionary corrections are more accurate.** The on-device dictionary stage now decides whether to correct a word by how closely it actually *sounds* like your dictionary term — a phonetic feature-distance gate over CMUdict pronunciations — instead of an ASR-confidence threshold. Fewer missed corrections, fewer wrong ones.
-- On-device correction engine updated to Concord 0.6.0 (spoken punctuation + the phonetic dictionary gate).
+- On-device correction engine updated to Concord 0.6.1 (spoken punctuation + the phonetic dictionary gate).
 
 ### Fixed
 
