@@ -44,7 +44,7 @@ import DocTabs from '../../components/DocTabs.astro';
             </span>
             <span class="text-[15px] font-semibold text-[color:var(--color-text)]">Lightweight</span>
           </span>
-          <span class="mt-3 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">Instant, deterministic cleanup — questions, numbers, your dictionary, and voiceprints.</span>
+          <span class="mt-3 text-[14px] leading-relaxed text-[color:var(--color-text-muted)]">Instant, deterministic cleanup — questions, spoken punctuation, numbers, your dictionary, and voiceprints.</span>
           <span class="mt-3 text-[12px] font-medium text-[color:var(--color-grape)]">No download · sub-second · negligible memory</span>
         </button>
         <button
@@ -66,7 +66,7 @@ import DocTabs from '../../components/DocTabs.astro';
       <div role="tabpanel" id="panel-lite" aria-labelledby="tab-lite" class="mt-10">
     <div class="space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
       <p>
-        The Lightweight option — built on Concord (by Keavi) — is a fast, fully deterministic corrector that runs in-process, with nothing to download and almost no memory overhead. It handles the structured cleanup: adding the "?" when you dictate a question, spelled-out numbers and percents (so "forty five percent" becomes "45%"), joining split compound words, your custom-dictionary terms (plus spoken forms), and — once you've enrolled them — voiceprint disambiguation of sound-alike words. General sentence casing and punctuation come from the speech model itself, not this tier. Because there is no language model on this path, it can't freely rewrite text, so the voice-refine loop, the one-tap style chips, and per-app styling aren't available here; switch to the on-device LLM or a cloud provider when you want those.
+        The Lightweight option — built on Concord (by Keavi) — is a fast, fully deterministic corrector that runs in-process, with nothing to download and almost no memory overhead. It handles the structured cleanup: adding the "?" when you dictate a question, writing the punctuation you speak (say "comma", "period", "question mark", or "open/close quote" and it becomes the mark), spelled-out numbers and percents (so "forty five percent" becomes "45%"), joining split compound words, your custom-dictionary terms — matched by how they actually sound (phonetic distance over dictionary pronunciations, not a confidence guess), plus spoken forms — and, once you've enrolled them, voiceprint disambiguation of sound-alike words. General sentence casing, and the punctuation the speech model infers on its own, still come from the model itself — this tier adds the marks you speak explicitly. Because there is no language model on this path, it can't freely rewrite text, so the voice-refine loop, the one-tap style chips, and per-app styling aren't available here; switch to the on-device LLM or a cloud provider when you want those.
       </p>
       <p>
         To use it, open <strong class="text-[color:var(--color-text)]">Settings → Cleanup → Provider</strong> and select <strong class="text-[color:var(--color-text)]">Lightweight (on-device)</strong>. (It's a Settings option — the first-run wizard's <strong class="text-[color:var(--color-text)]">On-device</strong> choice is the on-device LLM below, with a model picker.) There's nothing to download and nothing to configure — it's ready immediately, and like every on-device path your transcript never crosses a network boundary.
