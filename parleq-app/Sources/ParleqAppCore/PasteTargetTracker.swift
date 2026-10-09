@@ -45,7 +45,7 @@ final class PasteTargetTracker: ObservableObject {
 
         // Seed with the currently-frontmost app, if not us.
         if let app = NSWorkspace.shared.frontmostApplication,
-           app.bundleIdentifier != selfBundleID {
+           isTrackable(app) {
             current = makeTarget(from: app)
         }
     }
@@ -57,10 +57,17 @@ final class PasteTargetTracker: ObservableObject {
     }
 
     private func handleActivation(_ app: NSRunningApplication) {
-        guard app.bundleIdentifier != selfBundleID else {
+        guard isTrackable(app) else {
             return
         }
         current = makeTarget(from: app)
+    }
+
+    /// Neither Parleq itself nor the Universal Control agent (frontmost while
+    /// this Mac's keyboard drives another device) is a real paste target.
+    private func isTrackable(_ app: NSRunningApplication) -> Bool {
+        app.bundleIdentifier != selfBundleID
+            && !HotkeyListener.isRemoteControlFrontmost(bundleID: app.bundleIdentifier)
     }
 
     private func makeTarget(from app: NSRunningApplication) -> PasteDestination {

@@ -177,6 +177,16 @@ public final class HotkeyListener {
     /// (® on some layouts) still passes through.
     private static let rKeyCode: Int64 = 0x0F
 
+    /// Bundle ID of the UniversalControl agent, which becomes frontmost on the
+    /// controlling Mac while its keyboard/pointer are routed to another device.
+    public static let universalControlBundleID = "com.apple.universalcontrol"
+
+    /// Whether the frontmost app means this Mac's input is driving another
+    /// device. Pure + testable.
+    public static func isRemoteControlFrontmost(bundleID: String?) -> Bool {
+        bundleID?.lowercased() == universalControlBundleID
+    }
+
     /// Timing-only gesture-classifier trace; opt-in like PARLEQ_VOCAB_TRACE —
     /// see the chatter/double-tap field bug. Env is launch-stable; read once.
     private static let hotkeyTrace: Bool =
@@ -437,6 +447,24 @@ public final class HotkeyListener {
         // left and right copies of the same modifier.
         let isDown = (event.flags.rawValue & binding.pressedFlagBit) != 0
         if isDown == keyDown { return }
+        if isDown {
+            let frontmost = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+            // Universal Control: while this Mac's keyboard drives ANOTHER Mac,
+            // macOS still delivers modifier flagsChanged events locally (it
+            // swallows ordinary keyDowns) and makes its own UniversalControl
+            // agent frontmost (verified on-device: the event's source PID,
+            // sender ID and HID/session idle times are identical either way —
+            // the frontmost bundle ID is the only discriminator). Without this
+            // gate a hotkey press aimed at the remote Mac starts a capture on
+            // BOTH machines. The remote Mac's
+            // Parleq receives the forwarded press and handles it. Leaving
+            // `keyDown` false makes the matching release a no-op too, so the
+            // ignored hold never arms the double-tap window.
+            if HotkeyListener.isRemoteControlFrontmost(bundleID: frontmost) {
+                logStderr("[parleq] hotkey ignored: input is routed to another device (Universal Control)")
+                return
+            }
+        }
         keyDown = isDown
         // We're already on the main run loop (the source was added to
         // CFRunLoopGetMain() in start()), so callbacks run on main —
