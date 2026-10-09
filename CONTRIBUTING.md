@@ -37,9 +37,11 @@ For faster iteration during development:
 
 ```bash
 cd parleq-app
-swift build          # debug build at .build/debug/ParleqApp
-swift run ParleqApp  # build + run; TCC permission prompts attribute to terminal
+swift build --build-system native          # debug build at .build/debug/ParleqApp
+swift run --build-system native ParleqApp  # build + run; TCC permission prompts attribute to terminal
 ```
+
+**Swift 6.4 / Xcode 27+: pass `--build-system native`** to `swift build` / `swift run` / `swift test`. The new default build system tries to compile mlx-swift's `.metal` shaders, and Xcode 27 no longer bundles the Metal compiler, so plain `swift build` fails with *"missing Metal Toolchain"*. We don't need those shaders (the prebuilt `mlx.metallib` is staged by `fetch-metallib.sh`); `make-app.sh` already passes the flag. Older toolchains accept it too.
 
 There is no formal test target. Verification is `swift build` + `make install` + manual end-to-end dictation.
 

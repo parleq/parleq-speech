@@ -24,9 +24,11 @@ make release         # dmg + named/hashed copy + RELEASE_NOTES.txt stub
 make clean           # remove .build / build dirs
 
 # From parleq-app/ directly:
-swift build          # debug build at .build/debug/ParleqApp
-swift run ParleqApp  # build + run (TCC prompts attribute to terminal)
+swift build --build-system native          # debug build at .build/debug/ParleqApp
+swift run --build-system native ParleqApp  # build + run (TCC prompts attribute to terminal)
 ```
+
+**Swift 6.4 / Xcode 27+: pass `--build-system native`** to `swift build` / `swift run` / `swift test`. The new default build system tries to compile mlx-swift's `.metal` shaders, and Xcode 27 no longer bundles the Metal compiler, so plain `swift build` fails with *"missing Metal Toolchain"*. We don't need those shaders (the prebuilt `mlx.metallib` is staged by `fetch-metallib.sh`); `make-app.sh` already passes the flag. Older toolchains accept it too.
 
 There is no formal test target. Verification is `swift build` + `make install` + manual end-to-end dictation.
 
@@ -39,7 +41,7 @@ The loop that works well here — follow it unless told otherwise:
 1. **Work in worktrees.** Build a meaningful chunk on a feature branch in a worktree under `../parleq-worktrees/` (single branch, or stacked branches). Keep the main checkout on `main`.
 2. **AI-assisted step-by-step testing.** When the chunk is ready, the AI assistant builds and restarts the app (`parleq-app/scripts/make-app.sh --debug`, then `pkill -x ParleqApp` + `open parleq-app/build/Parleq.app`) and walks the maintainer through testing one numbered step at a time. The maintainer just follows the steps and reports back — they shouldn't have to drive the build/restart themselves.
 3. **Audit round (often).** After testing passes, do another pass — serious bugs, security, proprietary-data exposure, open-source-license-page completeness (`THIRD_PARTY_LICENSES.md` + `NOTICE`), and unwanted competitor references. Fix findings; re-test.
-4. **Local review pass until clean.** Commit in small increments; run `swift build` (at minimum) and resolve what it flags. **RoboRev auto-reviews every commit** (post-commit hook; codex-primary, claude-code/sonnet backup). After committing, check the review (`roborev status` / `roborev show HEAD`, or the in-session `/roborev-review` · `/roborev-fix` skills) and work through its findings yourself — **deciding what's address-worthy is your call, not the maintainer's.** Address **high/critical + medium** by default (don't skip them); **read low** findings and fix the ones worth fixing, skipping genuine noise (note a skip with `roborev comment`/`close` and say why). Don't push to GitHub until it's clean.
+4. **Local review pass until clean.** Commit in small increments; run `swift build --build-system native` (at minimum) and resolve what it flags. **RoboRev auto-reviews every commit** (post-commit hook; codex-primary, claude-code/sonnet backup). After committing, check the review (`roborev status` / `roborev show HEAD`, or the in-session `/roborev-review` · `/roborev-fix` skills) and work through its findings yourself — **deciding what's address-worthy is your call, not the maintainer's.** Address **high/critical + medium** by default (don't skip them); **read low** findings and fix the ones worth fixing, skipping genuine noise (note a skip with `roborev comment`/`close` and say why). Don't push to GitHub until it's clean.
 5. **Hard approval gate.** Do **NOT** push to GitHub or open/update a PR until the maintainer gives explicit approval. Stage everything (branch committed, local checks clean) and wait.
 6. **Version bump happens inside the PR (the AI assistant handles it, not the maintainer).** `make set-version VERSION=x.y.z` (edits `parleq-app/Resources/Info.plist`) + a `CHANGELOG.md` section + rewrite `RELEASE_NOTES.txt` (first line must be `Parleq <version>` — `make release` validates this).
 7. **One PR per logical change.** Bundle phased/stacked work into a single PR. Push + `gh pr create` only after approval; use a separate `Closes #N.` sentence per issue (comma-separated lists only close the first).
@@ -56,7 +58,7 @@ The loop that works well here — follow it unless told otherwise:
 cd parleq-app
 swift package update --dry-run     # show what would change
 swift package update               # apply (touches Package.resolved)
-swift build                        # confirm it still compiles
+swift build --build-system native   # confirm it still compiles
 swift package show-dependencies    # walk the full tree
 ```
 

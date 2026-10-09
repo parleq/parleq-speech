@@ -50,10 +50,21 @@ if [[ "${PARLEQ_CONCORD:-1}" != "0" ]]; then
     TRAIT_ARGS="--traits Concord"
 fi
 
-echo "==> swift build -c $CONFIG $TRAIT_ARGS"
-swift build -c "$CONFIG" $TRAIT_ARGS
+# Pin SwiftPM's NATIVE build system. Swift 6.4 (Xcode 27) switched the default
+# to swift-build, which compiles mlx-swift's .metal shader sources as a resource
+# step — and Xcode 27 no longer bundles the Metal compiler (it's the separately
+# downloaded "Metal Toolchain" component), so the default build fails with
+# "cannot execute tool 'metal' due to missing Metal Toolchain". We never use
+# SwiftPM-compiled shaders anyway: fetch-metallib.sh stages the prebuilt,
+# SHA-pinned mlx.metallib below. The native build system skips the .metal
+# sources, matching every pre-6.4 build. (SwiftPM warns that --build-system
+# native is deprecated; migrating to swift-build is tracked separately.)
+BUILD_ARGS="--build-system native $TRAIT_ARGS"
 
-BIN_PATH="$(swift build -c "$CONFIG" $TRAIT_ARGS --show-bin-path)"
+echo "==> swift build -c $CONFIG $BUILD_ARGS"
+swift build -c "$CONFIG" $BUILD_ARGS
+
+BIN_PATH="$(swift build -c "$CONFIG" $BUILD_ARGS --show-bin-path)"
 # Phase 2 (Reference Windows): the SwiftPM executable was renamed
 # from "ParleqApp" to "parleq-app" when the package was split into
 # ParleqAppCore (library) + parleq-app (thin executable). We still
@@ -198,16 +209,16 @@ echo "    version: $SHORT_VERSION (build $BUILD_NUMBER)$([[ "$BUILD_NUMBER" == 0
 # the framework produces a guaranteed-crash-on-launch bundle.
 # Failing here is much friendlier than getting a launch-time
 # `dlopen Sparkle` crash from a user.
-SPARKLE_BUILD_DIR=$(swift build -c "$CONFIG" $TRAIT_ARGS --show-bin-path)
+SPARKLE_BUILD_DIR=$(swift build -c "$CONFIG" $BUILD_ARGS --show-bin-path)
 SPARKLE_SRC="$SPARKLE_BUILD_DIR/Sparkle.framework"
 if [[ ! -d "$SPARKLE_SRC" ]]; then
     echo "ERROR: Sparkle.framework not found at $SPARKLE_SRC." >&2
     echo "       The main executable links Sparkle, so the .app would crash" >&2
     echo "       on launch without the embedded framework. Try:" >&2
-    echo "         cd $APP_DIR && swift package resolve && swift build -c $CONFIG" >&2
+    echo "         cd $APP_DIR && swift package resolve && swift build --build-system native -c $CONFIG" >&2
     echo "       If that doesn't repopulate the framework, clear the artifact" >&2
     echo "       cache and rebuild:" >&2
-    echo "         rm -rf $APP_DIR/.build/artifacts && swift build -c $CONFIG" >&2
+    echo "         rm -rf $APP_DIR/.build/artifacts && swift build --build-system native -c $CONFIG" >&2
     exit 1
 fi
 mkdir -p "$APP_BUNDLE/Contents/Frameworks"

@@ -9,9 +9,11 @@ For end-user provider setup (Gemini, Vertex AI, Bedrock, Azure OpenAI), see [par
 ## Build from this directory
 
 ```bash
-swift build              # debug build at .build/debug/ParleqApp
-swift run ParleqApp      # build + run (TCC prompts attribute to the terminal)
+swift build --build-system native          # debug build at .build/debug/ParleqApp
+swift run --build-system native ParleqApp  # build + run (TCC prompts attribute to the terminal)
 ```
+
+**Swift 6.4 / Xcode 27+: pass `--build-system native`** to `swift build` / `swift run` / `swift test`. The new default build system tries to compile mlx-swift's `.metal` shaders, and Xcode 27 no longer bundles the Metal compiler, so plain `swift build` fails with *"missing Metal Toolchain"*. We don't need those shaders (the prebuilt `mlx.metallib` is staged by `fetch-metallib.sh`); `make-app.sh` already passes the flag. Older toolchains accept it too.
 
 For a real `.app` bundle (signed, single binary, installable to `/Applications`), use the top-level Makefile:
 
@@ -99,7 +101,7 @@ Non-obvious things that are easy to forget. Documented here so they survive futu
 
 ```bash
 # App builds?
-swift build
+swift build --build-system native
 
 # Speech engine loaded? (Look for "ASR" / "LocalASR" lines.)
 grep -E "LocalASR|ASR" ~/.parleq/app.log | tail -10
