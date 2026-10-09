@@ -4,6 +4,15 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.43.1] - Unreleased
+
+A fix for using Parleq on more than one Mac with Universal Control.
+
+### Fixed
+
+- **The hotkey no longer starts dictation on two Macs at once under Universal Control.** When one Mac's keyboard was controlling another Mac, holding the dictation hotkey started listening — and pasting — on *both* machines. Now only the Mac you're actually working on responds; the Mac lending its keyboard ignores the press.
+- **Building Parleq from source works on Xcode 27.** The build now uses SwiftPM's native build system, so it no longer fails trying to compile MLX's Metal shaders (which Parleq doesn't use — it ships Apple's prebuilt shader library).
+
 ## [0.43.0] - 2026-07-08
 
 Speak your punctuation, voiceprints that carry over on their own, and tighter enterprise controls.
