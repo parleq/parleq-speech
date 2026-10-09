@@ -4,7 +4,7 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
-## [0.43.1] - Unreleased
+## [0.43.1] - 2026-10-09
 
 A fix for using Parleq on more than one Mac with Universal Control.
 
