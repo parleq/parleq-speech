@@ -167,10 +167,11 @@ FluidAudio
 
 This product uses FluidAudio (Apache-2.0) for local speech recognition
 on Apple Neural Engine. It is pinned to a fork (jonyoder/FluidAudio, tag
-0.15.4-encoder.1) of the upstream FluidInference/FluidAudio 0.15.4 line,
-carrying an opt-in, additive patch that exposes the Parakeet encoder
+0.17.7-encoder.1) of the upstream FluidInference/FluidAudio 0.17.7 release,
+carrying opt-in, additive patches that expose the Parakeet encoder
 feature sequence used by the on-device voice-enrollment (voiceprint)
-disambiguation gate. The fork remains Apache-2.0.
+disambiguation gate and add a long-form final-window configuration
+option. The fork remains Apache-2.0.
 
   * FluidAudio (fork)  https://github.com/jonyoder/FluidAudio
   * FluidAudio (upstream)  https://github.com/FluidInference/FluidAudio
@@ -189,6 +190,13 @@ binary redistribution:
   * fastcluster — 2-clause BSD — Copyright (c) 2011 Daniel Müllner;
     changes from version 1.1.24 on (c) Google Inc.
   * VBx — Apache-2.0 — Brno University of Technology (BUT Speech@FIT).
+
+It also compiles in a Japanese text frontend (unused by Parleq) ported
+from:
+
+  * misaki — Apache-2.0 — hexgrad.
+  * cutlet — MIT — Copyright (c) 2020 Paul O'Leary McCann.
+  * Convert-Numbers-to-Japanese — MIT — Copyright (c) 2018 David Wilson.
 
 Their full license texts ship in FluidAudio's source checkout under
 ThirdPartyLicenses/. See THIRD_PARTY_LICENSES.md § "Embedded

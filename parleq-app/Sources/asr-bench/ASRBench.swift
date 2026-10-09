@@ -179,14 +179,19 @@ actor BatchEngine {
     func load() async throws {
         if manager != nil { return }
         let tracker = PhaseTracker()
-        let handler: DownloadUtils.ProgressHandler = { snapshot in
+        let handler: ProgressHandler = { snapshot in
             let label = "\(snapshot.phase)"
             if tracker.noteIfChanged(label) {
                 FileHandle.standardError.write("  [model] \(label)\n".data(using: .utf8)!)
             }
         }
         let models = try await AsrModels.downloadAndLoad(version: .v3, progressHandler: handler)
-        let m = AsrManager(config: .default)
+        // MUST mirror production `LocalASR` (ParleqAppCore/LocalASR.swift):
+        // 0.17.x's long-form defaults (no-mel v3 path #869, seam-gap repair
+        // #761, end-aligned final window #800) regressed long dictation on the
+        // flywheel corpus; all three are reverted there, so the bench does too.
+        let cfg = ASRConfig(melChunkContext: true, seamGapRepair: false, endAlignFinalWindow: false)
+        let m = AsrManager(config: cfg)
         try await m.loadModels(models)
         manager = m
     }
@@ -249,7 +254,12 @@ actor VocabEngine {
         }
         let vocab = CustomVocabularyContext(terms: tokenized, minSimilarity: minSimilarity)
         let resc = try await VocabularyRescorer.create(
-            spotter: spot, vocabulary: vocab, config: .default, ctcModelDirectory: dir
+            // Mirror production LocalASR: the acoustic spotter-rescue (PR #634's
+            // over-fire trigger) is disabled there, so the gate must measure the
+            // same configuration.
+            spotter: spot, vocabulary: vocab,
+            config: VocabularyRescorer.Config(spotterRescueEnabled: false),
+            ctcModelDirectory: dir
         )
         self.spotter = spot
         self.tokenizer = tok
@@ -424,7 +434,7 @@ func loadEouManager(_ chunkSize: StreamingChunkSize) async throws -> StreamingEo
         }
         let dest = modelsUrl.deletingLastPathComponent().deletingLastPathComponent()
         err("  [eou] downloading \(chunkSize.modelSubdirectory) models…")
-        try await DownloadUtils.downloadRepo(repo, to: dest)
+        try await ModelHub.download(repo, to: dest)
     }
     let manager = StreamingEouAsrManager(
         configuration: MLModelConfiguration(), chunkSize: chunkSize, eouDebounceMs: 1280
@@ -440,7 +450,7 @@ func loadNemotronManager(_ chunkSize: NemotronChunkSize) async throws -> Streami
     let encoder = cacheDir.appendingPathComponent("encoder/encoder_int8.mlmodelc")
     if !FileManager.default.fileExists(atPath: encoder.path) {
         err("  [nemotron] downloading \(chunkSize.rawValue)ms models…")
-        try await DownloadUtils.downloadRepo(chunkSize.repo, to: base)
+        try await ModelHub.download(chunkSize.repo, to: base)
     }
     let manager = StreamingNemotronAsrManager()
     try await manager.loadModels(from: cacheDir)

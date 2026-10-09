@@ -1,5 +1,5 @@
 {
-  "originHash" : "b6d80959f0e4bbcfcad243ff8a637ecde60bdd999cd1820e82392dc69ca6539e",
+  "originHash" : "60d4564bcf1f71d26eb9bdae061407821555e7df291e28ea00b4cf4fe2af9b68",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -33,8 +33,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/jonyoder/FluidAudio.git",
       "state" : {
-        "revision" : "07d617f2df9cf3cb76880e0925bf9fb4e20f55eb",
-        "version" : "0.15.4-encoder.2"
+        "revision" : "2331061533a07f2d597d750a550413aec8cf28f9",
+        "version" : "0.17.7-encoder.1"
       }
     },
     {
