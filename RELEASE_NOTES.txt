@@ -1,9 +1,5 @@
-Parleq 0.43.0
+Parleq 0.43.1
 
-Speak your punctuation, voiceprints that carry over on their own, and tighter enterprise controls.
+A fix for using Parleq on more than one Mac with Universal Control.
 
-Speak your punctuation. Say "comma", "period", "question mark", "exclamation point", or "open/close quote" and Parleq writes the mark — the way phone keyboards do. It works in on-device Instant cleanup and in Polished cleanup (cloud or on-device); Raw paste is left exactly as transcribed. On by default. Custom-dictionary corrections also got more accurate: the on-device dictionary stage now decides whether to fix a word by how closely it actually sounds like your term (a phonetic distance over CMUdict pronunciations) rather than a confidence threshold — fewer misses, fewer wrong corrections.
-
-Enrolled terms carry over across speech-model updates. When a speech-model change means your voiceprints have to be rebuilt, Parleq now re-derives them from your stored enrollment audio — including acronyms and initialisms the model spells out differently than before (an enrolled "E2E" heard as "E to E"), which previously had to be re-enrolled by hand. And if a term genuinely can't be carried over, the menu bar now shows a persistent "a voice term needs re-enrolling" prompt so you find out without opening Settings.
-
-Tighter enterprise controls. IT admins can pin the refinement mode (Raw, on-device Instant, or cloud Polished) with a new managed-configuration key. Pinning cleanup to "none" for a no-cloud lockdown now also forces refinement off the cloud — closing a gap where a follow-up voice command could still reach a cloud provider after the 0.40.0 change made cleanup and refinement independent.
+If you control one Mac with another Mac's keyboard and mouse (Universal Control), holding the dictation hotkey used to start Parleq listening — and pasting — on both Macs at once. Now only the Mac you're actually working on responds, and the Mac lending its keyboard stays out of the way.
