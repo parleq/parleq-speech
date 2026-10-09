@@ -1,5 +1,5 @@
-Parleq 0.43.1
+Parleq 0.44.0
 
-A fix for using Parleq on more than one Mac with Universal Control.
+A faster speech engine.
 
-If you control one Mac with another Mac's keyboard and mouse (Universal Control), holding the dictation hotkey used to start Parleq listening — and pasting — on both Macs at once. Now only the Mac you're actually working on responds, and the Mac lending its keyboard stays out of the way.
+Parleq's on-device speech recognition is updated to a newer engine. Short dictations now transcribe in roughly half the time, with the same results, and long dictations are at least as accurate as before. Your voiceprints and custom dictionary carry over as-is, with nothing to re-enroll.

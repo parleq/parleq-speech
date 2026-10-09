@@ -4,6 +4,15 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.44.0] - 2026-10-09
+
+A faster speech engine.
+
+### Changed
+
+- **Speech recognition is faster.** The on-device speech engine (FluidAudio) is updated to 0.17.7. In our benchmarks, short dictations transcribe in roughly half the time they did before, with identical results. Long dictations (over about 15 seconds) transcribe at least as accurately as before, and a little faster.
+- Some of the new engine's long-dictation settings repeated or dropped words where its 15-second processing windows meet and could lose the last words of a recording. Parleq turns those settings off, so long dictations behave the way they did before. Your voiceprints and custom dictionary work unchanged and don't need re-enrolling.
+
 ## [0.43.1] - 2026-10-09
 
 A fix for using Parleq on more than one Mac with Universal Control.
