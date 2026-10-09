@@ -19,7 +19,7 @@ Thanks for opening a PR! A few notes to make review smooth:
 
 <!--
 What did you do to convince yourself this works?
-- `swift build` clean
+- `swift build --build-system native` clean
 - `make install` + manual dictation flow
 - Tested with provider X / auth mode Y
 - Screenshot of the new UI (if applicable)

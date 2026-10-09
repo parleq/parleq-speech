@@ -100,7 +100,7 @@ let package = Package(
         // REGRESSION GATE before any future bump:
         //   python3 bench/gen_fixtures.py --corpora overfire \
         //     --manifest bench/fixtures/manifest-overfire.json
-        //   swift build --product asr-bench
+        //   swift build --build-system native --product asr-bench
         //   ./.build/debug/asr-bench --manifest bench/fixtures/manifest-overfire.json \
         //     --wav-dir bench/fixtures --paths batch \
         //     --dictionary bench/dictionary-overfire.json --out bench/results/overfire-<ver>.json
