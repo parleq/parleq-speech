@@ -53,13 +53,12 @@ let package = Package(
         // the main app in v0.9.0 to drop the local listening socket,
         // simplify supervision, and shed the Hummingbird dependency.
         //
-        // PINNED to the fork tag 0.15.4-encoder.2 (see "TAGGED FORK PIN" at the
-        // bottom of this block) — the 0.15.4 line PLUS an opt-in encoder-feature
-        // patch for voice enrollment AND the final-window tail-drop rescue
-        // (#747). The over-fire history below is WHY we set
+        // PINNED to the fork tag 0.17.7-encoder.1 (see "TAGGED FORK PIN" at the
+        // bottom of this block) — upstream v0.17.7 PLUS an opt-in encoder-feature
+        // patch for voice enrollment. The over-fire history below is WHY we set
         // `spotterRescueEnabled=false` in LocalASR to hold 0.14.5-equivalent
-        // over-fire behavior on the 0.15.4 line. DO NOT bump FluidAudio without
-        // running the REGRESSION GATE below AND re-evaluating that flag.
+        // over-fire behavior. DO NOT bump FluidAudio without running the
+        // REGRESSION GATE below AND re-evaluating that flag.
         //
         // HISTORY — why 0.14.5 was the prior exact pin and why the flag exists:
         // Root cause: upstream commit 410044d1 ("Fix/word boost
@@ -106,27 +105,31 @@ let package = Package(
         //     --dictionary bench/dictionary-overfire.json --out bench/results/overfire-<ver>.json
         //   python3 bench/score_overfire.py bench/results/overfire-<ver>.json \
         //     bench/dictionary-overfire.json   # expect total_overfires ~12, alarm near ~52
-        // TAGGED FORK PIN (voice-enrollment, 0.29.0; tail-drop rescue, this PR):
-        // pinned exactly to the fork tag 0.15.4-encoder.2 (jonyoder/FluidAudio),
-        // a fork of FluidInference/FluidAudio's 0.15.4 line that adds an opt-in
-        // encoder-feature-exposure patch (ASRResult.encoderFeatures) needed by
-        // the voiceprint acoustic-disambiguation gate. Because this rides the
-        // 0.15.4 line rather than 0.14.5, we set spotterRescueEnabled=false in
-        // LocalASR to keep 0.14.5-equivalent over-fire behavior (the spotter
-        // rescue from PR #634 is the over-fire trigger; disabling it restores
-        // the pre-regression baseline). Drop this fork and return to a pinned
-        // upstream FluidAudio once a tagged upstream release exposes encoder
-        // features. See parleq-fluidaudio-0.14.5-pin / the voice-enrollment plan.
+        // TAGGED FORK PIN: exactly the fork tag 0.17.7-encoder.1
+        // (jonyoder/FluidAudio) = upstream FluidInference/FluidAudio v0.17.7 + TWO
+        // commits: (1) exposing encoder features (ASRResult.encoderFeatures), needed
+        // by the voiceprint acoustic-disambiguation gate — upstream still has no
+        // equivalent API; and (2) an `ASRConfig.endAlignFinalWindow` opt-out for
+        // upstream's end-aligned final window (#800). Drop this fork and pin upstream
+        // once a tagged release covers both. See parleq-fluidaudio-0.14.5-pin / the
+        // voice-enrollment plan.
         //
-        // 0.15.4-encoder.2 (07d617f2 = encoder.1 + rescue only) adds an
-        // always-on "tail-chunk rescue" on the decode path: on quiet, long-form
-        // dictation the final ASR window could decode all-blank and silently
-        // drop the last few words — the rescue recovers that final window.
-        // Reported upstream as FluidInference/FluidAudio#747. The encoder graph
-        // is UNCHANGED (rescue is decode-path only), so voiceprints stay valid
-        // and spotterRescueEnabled stays false (that's the unrelated CTC vocab
-        // knob, not this tail rescue).
-        .package(url: "https://github.com/jonyoder/FluidAudio.git", exact: "0.15.4-encoder.2"),
+        // 0.15.4-encoder.2 -> 0.17.7-encoder.1 (2026-10): the fork's own tail-chunk
+        // rescue (#747) is DROPPED. Upstream's 0.17.x long-form defaults (no-mel v3
+        // path #869, seam-gap repair #761, end-aligned final window #800) regressed
+        // long dictation, so LocalASR turns all three off (see its AsrManager config).
+        // The encoder graph/weights are UNCHANGED (default model still
+        // parakeet-tdt-0.6b-v3), so voiceprints stay valid (voiceprintEncoderIdentity
+        // unchanged) and spotterRescueEnabled stays false. Gate results at the bump,
+        // with that config: long-clip flywheel WER 1.69% -> 1.64% (faster); corrector
+        // harness matches baseline (0 over-fires); over-fire bench identical to the
+        // old pin (14, all CRAN~"crane"); synthetic base WER identical, short-clip
+        // latency ~2x faster.
+        //
+        // traits: [] opts out of upstream's default `NemoTextProcessing` trait, a
+        // prebuilt Rust text-normalization xcframework (text-processing-rs) that
+        // Parleq doesn't use — keeps that binary out of the app.
+        .package(url: "https://github.com/jonyoder/FluidAudio.git", exact: "0.17.7-encoder.1", traits: []),
         // Sparkle — auto-update framework. Checks an EdDSA-signed
         // appcast.xml on parleq.app for newer releases and runs the
         // user-prompted download/install/relaunch flow. Used by

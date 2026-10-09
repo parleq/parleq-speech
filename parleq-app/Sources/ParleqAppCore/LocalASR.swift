@@ -47,7 +47,7 @@ import FluidAudio
 import Foundation
 
 /// Parleq-side snapshot of the in-progress FluidAudio model load.
-/// Mirrors `DownloadUtils.DownloadProgress` but kept as our own
+/// Mirrors `DownloadProgress` but kept as our own
 /// type so UI code (the overlay, future menu-bar tooltip work)
 /// doesn't have to import the FluidAudio module just to read a
 /// fraction-complete value. `Equatable` so `LocalASR.downloadProgress`
@@ -484,7 +484,7 @@ actor AsrBox {
     /// immediately.
     ///
     /// The optional `progress` callback receives per-phase snapshots
-    /// from FluidAudio's `DownloadUtils.ProgressHandler` — listing
+    /// from FluidAudio's `ProgressHandler` — listing
     /// files, downloading them, and compiling the CoreML models. The
     /// callback is required to be MainActor-isolated; FluidAudio
     /// invokes its handler on an unspecified queue, and we hop to
@@ -493,7 +493,7 @@ actor AsrBox {
         progress: @MainActor @Sendable @escaping (ASRDownloadProgress) -> Void
     ) async throws {
         if manager != nil { return }
-        let handler: DownloadUtils.ProgressHandler = { snapshot in
+        let handler: ProgressHandler = { snapshot in
             let adapted = ASRDownloadProgress(
                 fraction: snapshot.fractionCompleted,
                 phaseLabel: Self.phaseLabel(for: snapshot.phase)
@@ -517,7 +517,19 @@ actor AsrBox {
             version: .v3,
             progressHandler: handler
         )
-        let m = AsrManager(config: .default)
+        // Long-form (>15 s, multi-window) config. FluidAudio 0.17.x changed three
+        // long-form defaults that together regressed long dictation on the
+        // flywheel corpus (WER 1.69% -> 2.45%, duplicated/dropped words at window
+        // seams, lost trailing words, ~60% slower): the no-mel v3 path (#869),
+        // seam-gap repair (#761) and the end-aligned final window (#800; the
+        // opt-out is a fork addition). With all three reverted the long-clip
+        // gate is at parity or better (1.64%, faster). Single-window dictations
+        // (<=15 s) are unaffected either way. `asr-bench` mirrors this config.
+        let m = AsrManager(config: ASRConfig(
+            melChunkContext: true,
+            seamGapRepair: false,
+            endAlignFinalWindow: false
+        ))
         try await m.loadModels(models)
         // Voice-enrollment acoustic disambiguation. Ask FluidAudio to copy the
         // Parakeet encoder's acoustic features out of each transcribe call so a
@@ -539,7 +551,7 @@ actor AsrBox {
     /// Human-readable label for the current FluidAudio phase,
     /// suitable for surfacing directly to the user in the
     /// initialization overlay.
-    private static func phaseLabel(for phase: DownloadUtils.DownloadPhase) -> String {
+    private static func phaseLabel(for phase: DownloadPhase) -> String {
         switch phase {
         case .listing:
             return "Listing model files…"
@@ -624,7 +636,7 @@ public enum BundledASREngine {
     public static let model = "parakeet-tdt-v3"
     // Matches the FluidAudio pin in Package.swift (the encoder-features fork tag).
     // Stamped into flywheel contribution records only (NOT voiceprint templates — see below).
-    public static let fluidAudioVersion = "0.15.4-encoder.2"
+    public static let fluidAudioVersion = "0.17.7-encoder.1"
 
     /// Stable encoder-identity string stamped into voiceprint templates (#109).
     /// This is the name of the Parakeet encoder graph/weights — it MUST be bumped

@@ -23,7 +23,7 @@ copy for users who want a clickable view.
 |---|---|---|
 | Direct SwiftPM dependencies (parleq-app) | 7 | 4× Apache-2.0 (FluidAudio, Soto, swift-transformers, swift-huggingface); 3× MIT (Sparkle, mlx-swift, mlx-swift-lm) |
 | Transitive SwiftPM dependencies | 29 | Predominantly Apache-2.0 and MIT (e.g. yyjson is MIT) |
-| Components embedded inside SwiftPM dependencies | 5 | 1× MIT (llhttp, inside swift-nio); 1× zlib-style (ed25519-sparkle, inside Sparkle); 2× 2-clause BSD (bsdiff inside Sparkle, fastcluster inside FluidAudio); 1× Apache-2.0 (VBx, inside FluidAudio) |
+| Components embedded inside SwiftPM dependencies | 8 | 3× MIT (llhttp, inside swift-nio; cutlet and Convert-Numbers-to-Japanese, ported inside FluidAudio); 1× zlib-style (ed25519-sparkle, inside Sparkle); 2× 2-clause BSD (bsdiff inside Sparkle, fastcluster inside FluidAudio); 2× Apache-2.0 (VBx and misaki, inside FluidAudio) |
 | Vendored source in-tree | 1 | MIT — `VendoredGemma4Text.swift` (copied from mlx-swift-lm; see [Embedded components](#embedded-components) below) |
 | Third-party data embedded inside Concord (Concord builds only) | 2 | 1× 2-clause BSD (CMUdict); 1× MIT (panphon feature tables) |
 | Apple system frameworks | n/a | Bundled with macOS — no attribution required |
@@ -68,7 +68,7 @@ therefore ship inside Parleq.app; both are attributed under
 
 | Package | Version | License | Source | Used for |
 |---|---|---|---|---|
-| FluidAudio (fork) | 0.15.4-encoder.1 | Apache-2.0 | https://github.com/jonyoder/FluidAudio (fork of https://github.com/FluidInference/FluidAudio) | Parakeet TDT v3 ASR + CTC keyword spotting on the Apple Neural Engine. Called directly from `LocalASR.swift` since v0.9.0; previously wrapped in a bundled HTTP sidecar that has now been retired. Pinned to the tagged fork `0.15.4-encoder.1` — upstream FluidAudio 0.15.4 plus an opt-in, additive patch that exposes the Parakeet encoder feature sequence (`ASRResult.encoderFeatures`), needed by the on-device voice-enrollment (voiceprint) disambiguation gate. Over-fire behavior is held to the pre-regression 0.14.5 baseline by setting `spotterRescueEnabled=false` in `LocalASR.swift`. Drop the fork once a tagged upstream release exposes encoder features. See the pin comment in `parleq-app/Package.swift`. |
+| FluidAudio (fork) | 0.17.7-encoder.1 | Apache-2.0 | https://github.com/jonyoder/FluidAudio (fork of https://github.com/FluidInference/FluidAudio) | Parakeet TDT v3 ASR + CTC keyword spotting on the Apple Neural Engine. Called directly from `LocalASR.swift` since v0.9.0; previously wrapped in a bundled HTTP sidecar that has now been retired. Pinned to the tagged fork `0.17.7-encoder.1` — upstream FluidAudio 0.17.7 plus two opt-in, additive patches: one exposes the Parakeet encoder feature sequence (`ASRResult.encoderFeatures`), needed by the on-device voice-enrollment (voiceprint) disambiguation gate; the other adds an `endAlignFinalWindow` opt-out used to keep long-form transcription at its previous quality. Over-fire behavior is held to the pre-regression 0.14.5 baseline by setting `spotterRescueEnabled=false` in `LocalASR.swift`. Drop the fork once a tagged upstream release covers both. See the pin comment in `parleq-app/Package.swift`. |
 
 ### LLM cleanup (AWS Bedrock path)
 
@@ -184,6 +184,21 @@ also use direct HTTPS (URLSession) with no SDK.
   preserving the license/notice on redistribution, satisfied via this
   entry and the bundled `NOTICE`. Part of FluidAudio's speaker-
   diarization clustering.
+
+- **FluidAudio Japanese text frontend (misaki / cutlet /
+  Convert-Numbers-to-Japanese)** — Apache-2.0 + MIT — Swift ports under
+  `Sources/FluidAudio/TTS/KokoroAne/G2P/Japanese/`, compiled into the
+  FluidAudio module (added upstream after 0.15.4), so their object code
+  ships inside `Parleq.app` even though Parleq never uses FluidAudio's TTS.
+  Ported from hexgrad/misaki (Apache-2.0), itself adapted from
+  polm/cutlet (MIT, Copyright © 2020 Paul O'Leary McCann), and
+  Greatdane/Convert-Numbers-to-Japanese (MIT, Copyright © 2018 David
+  Wilson). Full texts ship in FluidAudio's source checkout at
+  `ThirdPartyLicenses/JapaneseG2P-LICENSE.md`. The UniDic dictionary and
+  word list that frontend loads are runtime-downloaded TTS data that
+  Parleq never fetches, so they are not redistributed. FluidAudio's
+  optional `NemoTextProcessing` binary is disabled (`traits: []` in
+  `Package.swift`) and does not ship.
 
 - **VendoredGemma4Text** — MIT — Source code copied from an
   mlx-swift-lm fork into
