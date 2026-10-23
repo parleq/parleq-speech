@@ -47,6 +47,7 @@ The loop that works well here — follow it unless told otherwise:
 7. **One PR per logical change.** Bundle phased/stacked work into a single PR. Push + `gh pr create` only after approval; use a separate `Closes #N.` sentence per issue (comma-separated lists only close the first).
 8. **Maintainer merges** (usually squash — so the branch tip won't be an ancestor of `main`; use `git branch -D` after confirming the PR merged).
 9. **Maintainer pulls `main` and runs `make release`** (DMG + GitHub release + appcast). Don't run destructive git ops (worktree remove / branch delete) while `make release` is running — wait for it to exit. After merge + release, clean up worktrees and delete the merged branches.
+   - **Signing guard (#122):** `notarize`/`dmg`/`release` run `parleq-app/scripts/signing-identity.sh check` and fail unless the signing cert is issued by Developer ID Certification Authority (G2) and unexpired; they warn within 60 days of expiry and verify the signed .app/.dmg afterward. G2 certs last 1 year, so **renew yearly**: create the cert (G2 Sub-CA) in the Apple portal, install it, delete the expired/old one from the keychain (or pass `CODESIGN_IDENTITY=<sha1>`). `PARLEQ_ALLOW_NON_G2=1` downgrades the failure to a warning (never for real releases). Debug/local builds are unaffected.
 
 ## Dependency upgrade policy
 
