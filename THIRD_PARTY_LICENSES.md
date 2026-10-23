@@ -92,7 +92,7 @@ also use direct HTTPS (URLSession) with no SDK.
 | Package | Version | License | Source | Used for |
 |---|---|---|---|---|
 | mlx-swift | 0.31.4 | MIT | https://github.com/ml-explore/mlx-swift | Apple MLX machine-learning framework for Swift. Provides the Metal-accelerated compute graph, quantized-linear operators, and KV-cache primitives used by the on-device cleanup tier. The prebuilt Metal shader library (`mlx.metallib`) is fetched from the matching release asset at build time by `parleq-app/scripts/fetch-metallib.sh` (SHA-256-verified). |
-| mlx-swift-lm | 3.31.4 | MIT | https://github.com/ml-explore/mlx-swift-lm | LLM inference layer on top of MLX Swift. Provides `MLXLLM`, `MLXLMCommon`, and the KV-cache / generation-loop infrastructure. Copyright © 2024 ml-explore. The `VendoredGemma4Text.swift` in-tree file is copied from a fork of this library — see [Embedded components](#embedded-components) for details. |
+| mlx-swift-lm | 3.31.4 | MIT | https://github.com/ml-explore/mlx-swift-lm | LLM inference layer on top of MLX Swift. Provides `MLXLLM`, `MLXLMCommon`, and the KV-cache / generation-loop infrastructure. Copyright © 2024 ml-explore. |
 | swift-transformers | 1.3.3 | Apache-2.0 | https://github.com/huggingface/swift-transformers | Swift tokeniser library from Hugging Face. Provides `AutoTokenizer` (Jinja2 chat-template evaluation + BPE/SentencePiece decoding) used by `LocalTokenizerBridge.swift`. |
 | swift-huggingface | 0.9.0 | Apache-2.0 | https://github.com/huggingface/swift-huggingface | Hugging Face Hub client for Swift. Provides `HubClient` used to download and verify the on-device model checkpoint from `huggingface.co` at user request. |
 
@@ -426,8 +426,9 @@ v0.10.0 for auto-updates, MIT-licensed, with two embedded vendored
 components attributed above); to drop the obsolete Hummingbird
 reference (the sidecar that depended on it was retired in v0.9.0); and
 to add mlx-swift, mlx-swift-lm, swift-transformers, and
-swift-huggingface for the on-device cleanup option, plus the vendored
-`VendoredGemma4Text.swift` (MIT, from mlx-swift-lm) and the Gemma 4
+swift-huggingface for the on-device cleanup option, plus a temporary
+vendored copy of mlx-swift-lm's Gemma 4 model (removed once mlx-swift-lm
+3.31.4 shipped the fix; no vendored source remains) and the Gemma 4
 E4B weights (Apache-2.0, user-downloaded, not distributed in the .app).
 
 If you upgrade a dependency, re-run the audit and update this file.
