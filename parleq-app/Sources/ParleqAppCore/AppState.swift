@@ -88,6 +88,26 @@ public final class AppState {
         }
     }
 
+    /// Run the enrolled-voiceprint veto (#125) on a Polished turn's raw
+    /// transcript: ONLY Concord's dictionary stage + the acoustic gate (see
+    /// `PolishedVoiceprintVeto`). Near-free unless an enrolled term or one of
+    /// its aliases was heard. The outcome is cached for the review session so
+    /// re-clean paths reuse it. Logs counts only (invariant #2).
+    func polishedVoiceprintVeto(transcript: String, diagnostics: ASRDiagnostics?,
+                                dictionary: [DictionaryEntry]) async -> VoiceprintVetoOutcome? {
+        guard let voiceprint else { return nil }
+        let outcome = await PolishedVoiceprintVeto.compute(
+            transcript: transcript, diagnostics: diagnostics, dictionary: dictionary,
+            enrolledTermIDs: voiceprint.enrolledTermIDs,
+            gateFactory: voiceprint.enforcementGateFactory())
+        if let outcome {
+            polishedVetoCache[transcript] = outcome
+            log("[voiceprint] polished veto: \(outcome.vetoedTerms.count) term(s) vetoed, "
+                + "\(outcome.text == transcript ? 0 : 1) revert pass")
+        }
+        return outcome
+    }
+
     // MARK: Review-window acoustics retention (correction-time negative harvest)
 
     /// The current review utterance's diagnostics (token timings + in-memory
@@ -521,6 +541,13 @@ public final class AppState {
     /// already-cleaned text. Reset at the start of each fresh capture
     /// and cleared in closeAndReset().
     private var lastRawTranscript: String = ""
+    /// Polished voiceprint-veto outcomes (#125) for this review session's
+    /// spoken turns, keyed by the raw ASR transcript the veto judged, so the
+    /// re-clean paths (model switch, reauth retry, undo style) — which re-run
+    /// cleanup on the retained raw transcript WITHOUT its diagnostics — keep
+    /// the veto. In-memory only; reset with the fresh-dictation state and in
+    /// closeAndReset().
+    private var polishedVetoCache: [String: VoiceprintVetoOutcome] = [:]
     /// B3 (recover last dictation): the most recent FRESH capture's audio
     /// (16 kHz mono WAV bytes) + its duration, retained so hold+R or the
     /// menu-bar "Recover last dictation" item can re-run ASR + cleanup on it
@@ -2954,6 +2981,7 @@ public final class AppState {
         chosenDestination = nil
         currentText = ""
         lastRawTranscript = ""
+        polishedVetoCache = [:]
         lastTurnWasRefine = false
         lastRefineWasSpoken = false
         lastRefinePriorText = ""
@@ -3768,6 +3796,20 @@ public final class AppState {
                 #else
                 let concordEnrolledIDs: [String] = []
                 #endif
+                // #125: on a Polished turn, run the voiceprint veto first
+                // (Instant runs it inside Concord; Raw never does).
+                #if Concord
+                let voiceprintVeto: VoiceprintVetoOutcome? =
+                    isPolishedVetoTarget(llm: resolvedLLM, asRefine: asRefine,
+                                         refineBehavior: refineBehavior)
+                    ? await self?.polishedVoiceprintVeto(
+                        transcript: asrResult.text, diagnostics: asrResultRaw.diagnostics,
+                        dictionary: dictionary)
+                    : nil
+                if Task.isCancelled { return }
+                #else
+                let voiceprintVeto: VoiceprintVetoOutcome? = nil
+                #endif
                 let outcome = await streamCleanupOrRefine(
                     llm: resolvedLLM,
                     overlay: overlay,
@@ -3786,6 +3828,7 @@ public final class AppState {
                     transform: asRefine ? nil : defaultPreset?.prompt,
                     asrDiagnostics: asrResultRaw.diagnostics,
                     enrolledTermIDs: concordEnrolledIDs,
+                    voiceprintVeto: voiceprintVeto,
                     shouldRenderToOverlay: { [weak self] in
                         self?.shouldStreamRenderToOverlay() ?? false
                     }
@@ -4200,6 +4243,7 @@ public final class AppState {
         helpOverlay.hide()
         currentText = ""
         lastRawTranscript = ""
+        polishedVetoCache = [:]
         lastTurnWasRefine = false
         lastRefineWasSpoken = false
         lastRefinePriorText = ""
@@ -4742,7 +4786,9 @@ public final class AppState {
                 // Refine re-runs never fold a preset (mirrors the main
                 // pipeline: the text being refined is already styled).
                 transform: asRefineRerun ? nil : intendedPreset?.prompt,
-                enrolledTermIDs: concordEnrolledIDs
+                enrolledTermIDs: concordEnrolledIDs,
+                // #125: reuse this review session's Polished voiceprint veto.
+                voiceprintVeto: self?.polishedVetoCache[rawTranscript]
             )
             if Task.isCancelled { return }
             // 0.14.0 PR 4 (#219): the model-switch path runs its
@@ -5058,7 +5104,9 @@ public final class AppState {
                 references: effectiveRefs,
                 pasteDestinationLabel: pasteDestLabel,
                 transform: asRefineRerun ? nil : intendedPreset?.prompt,
-                enrolledTermIDs: concordEnrolledIDs
+                enrolledTermIDs: concordEnrolledIDs,
+                // #125: reuse this review session's Polished voiceprint veto.
+                voiceprintVeto: self?.polishedVetoCache[rawTranscript]
             )
             if Task.isCancelled { return }
             self?.lastLLMLatencyMs = outcome.llmLatencyMs
@@ -5185,7 +5233,9 @@ public final class AppState {
                 customDictionary: dictionary,
                 references: effectiveRefs,
                 pasteDestinationLabel: pasteDestLabel,
-                enrolledTermIDs: concordEnrolledIDs
+                enrolledTermIDs: concordEnrolledIDs,
+                // #125: reuse this review session's Polished voiceprint veto.
+                voiceprintVeto: self.polishedVetoCache[raw]
             )
             if Task.isCancelled { return }
             self.lastLLMLatencyMs = outcome.llmLatencyMs
@@ -5364,6 +5414,20 @@ enum RefinementBehavior {
     case appendVerbatim
 }
 
+/// Whether a cleanup/refine call is a POLISHED turn the voiceprint veto
+/// (#125) applies to: a generative provider (not Concord — Instant already
+/// runs the veto inside its own dictionary stage — and not Raw/nil), on a
+/// fresh cleanup or a real interpret-refine (never an Instant/Raw append).
+func isPolishedVetoTarget(llm: (any LLMProvider)?, asRefine: Bool,
+                          refineBehavior: RefinementBehavior) -> Bool {
+    #if Concord
+    guard let llm, !(llm is ConcordCleanupProvider) else { return false }
+    #else
+    guard llm != nil else { return false }
+    #endif
+    return !asRefine || refineBehavior == .interpret
+}
+
 @MainActor
 private func streamCleanupOrRefine(
     llm: (any LLMProvider)?,
@@ -5399,6 +5463,11 @@ private func streamCleanupOrRefine(
     // call sites forward these uniformly (main capture + re-clean / preset);
     // the engine ignores policies in A2.
     enrolledTermIDs: [String] = [],
+    // Polished voiceprint veto (#125) for THIS turn's spoken words, computed
+    // by the caller from the utterance's diagnostics (or reused from the
+    // review-session cache on a re-clean). Applied only when the turn is a
+    // Polished call (`isPolishedVetoTarget`); ignored on Instant/Raw.
+    voiceprintVeto: VoiceprintVetoOutcome? = nil,
     // Gate for the per-chunk overlay writes. Evaluated on the MainActor
     // before each streamed chunk renders. When it returns false the
     // chunk text still accumulates into `assembled` (so the final
@@ -5409,6 +5478,13 @@ private func streamCleanupOrRefine(
     // streaming behavior for every other call site.
     shouldRenderToOverlay: @escaping @MainActor @Sendable () -> Bool = { true }
 ) async -> CleanupOutcome {
+    // #125: on a Polished turn, the LLM sees the transcript with voiceprint
+    // reverts applied and a vocabulary hint without the vetoed terms' aliases
+    // (so the prompt can't reintroduce a swap the voiceprint rejected).
+    let activeVeto = isPolishedVetoTarget(llm: llm, asRefine: asRefine, refineBehavior: refineBehavior)
+        ? voiceprintVeto : nil
+    let rawTranscript = activeVeto?.text ?? rawTranscript
+    let customDictionary = activeVeto?.promptDictionary(customDictionary) ?? customDictionary
     let fallback = asRefine ? priorText : rawTranscript
     // Reframe v2: dispatch a refine turn on its behavior.
     if asRefine {
@@ -5540,7 +5616,12 @@ private func streamCleanupOrRefine(
         // instead of cleaning. The structural wrapper makes the
         // user message a meta-instruction containing the data,
         // rather than being mistakable for the data itself.
-        systemPrompt = SystemPrompts.cleanup(dictionary: customDictionary, transform: transform)
+        // Keep-as-is pin for voiceprint-vetoed words — plain cleanup only: on a
+        // refine / reference turn the words are an INSTRUCTION, and "never
+        // change X" could contradict what the user is asking for.
+        let keepHint = SystemPrompts.voiceprintKeepHint(activeVeto?.keepWords ?? [])
+        let cleanupPrompt = SystemPrompts.cleanup(dictionary: customDictionary, transform: transform)
+        systemPrompt = keepHint.isEmpty ? cleanupPrompt : cleanupPrompt + "\n\n" + keepHint
         messages = [LLMMessage(role: "user", content: "Transcript to clean up:\n\n\(rawTranscript)")]
     }
 
