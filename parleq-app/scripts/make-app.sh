@@ -248,7 +248,9 @@ IDENTITY="${PARLEQ_CODESIGN_IDENTITY:-}"
 if [[ -z "$IDENTITY" ]]; then
     # Prefers a G2-issued, unexpired Developer ID cert (issue #122); falls
     # back to any Developer ID cert so local builds keep working.
-    IDENTITY=$("$(dirname "$0")/signing-identity.sh" select 2>/dev/null || true)
+    # Absolute path: this script has already cd'd into $APP_DIR, so a path
+    # relative to $0 breaks when invoked from the repo root (as `make` does).
+    IDENTITY=$("$APP_DIR/scripts/signing-identity.sh" select || true)
 fi
 if [[ -z "$IDENTITY" ]]; then
     IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null \

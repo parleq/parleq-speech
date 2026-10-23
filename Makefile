@@ -132,6 +132,9 @@ check-signing:
 notarize: check-signing build
 	@# notarytool requires a zip (or .pkg / .dmg). Make a fresh one
 	@# in build/ alongside the .app.
+	@# Check the identity the build actually used BEFORE uploading, so a
+	@# wrong-cert build fails here instead of coming back Invalid from Apple.
+	@$(SIGNING_ID) verify "$(APP_BUNDLE)"
 	@rm -f $(APP_DIR)/build/Parleq.zip
 	ditto -c -k --keepParent "$(APP_BUNDLE)" "$(APP_DIR)/build/Parleq.zip"
 	@# `notarytool submit` itself reports a clear error if the
