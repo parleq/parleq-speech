@@ -105,6 +105,15 @@ run: build
 clean:
 	rm -rf $(APP_DIR)/.build $(APP_DIR)/build
 
+# Release signing guard (issue #122): the identity that will sign (explicit
+# CODESIGN_IDENTITY, else the auto-selected one) must be G2-issued and
+# unexpired; warns inside 60 days of expiry. PARLEQ_ALLOW_NON_G2=1 downgrades
+# the failure to a warning. Debug/local builds never run this.
+SIGNING_ID := $(APP_DIR)/scripts/signing-identity.sh
+.PHONY: check-signing
+check-signing:
+	@$(SIGNING_ID) check "$(CODESIGN_IDENTITY)"
+
 # Submit Parleq.app to Apple for notarization, wait for the result,
 # and staple the ticket on success. Requires a one-time setup:
 #
@@ -120,7 +129,7 @@ clean:
 # as a Login Item. Once notarized + stapled, spctl will say
 # "accepted source=Notarized Developer ID" and the menu's
 # "Open at Login" toggle works without going through System Settings.
-notarize: build
+notarize: check-signing build
 	@# notarytool requires a zip (or .pkg / .dmg). Make a fresh one
 	@# in build/ alongside the .app.
 	@rm -f $(APP_DIR)/build/Parleq.zip
@@ -131,6 +140,7 @@ notarize: build
 		--keychain-profile $(NOTARY_PROFILE) \
 		--wait
 	xcrun stapler staple "$(APP_BUNDLE)"
+	@$(SIGNING_ID) verify "$(APP_BUNDLE)"
 	@echo ""
 	@echo "Notarized + stapled. Verify:"
 	@echo "  spctl -a -t exec --verbose $(APP_BUNDLE)"
@@ -218,8 +228,7 @@ dmg: notarize
 	@# "Developer ID Application:" cert from the keychain.
 	@IDENTITY="$(CODESIGN_IDENTITY)"; \
 	if [ -z "$$IDENTITY" ]; then \
-		IDENTITY=$$(security find-identity -v -p codesigning 2>/dev/null \
-			| awk '/Developer ID Application:/{print $$2; exit}'); \
+		IDENTITY=$$($(SIGNING_ID) select); \
 	fi; \
 	if [ -z "$$IDENTITY" ] || [ "$$IDENTITY" = "-" ]; then \
 		echo ""; \
@@ -230,6 +239,7 @@ dmg: notarize
 	fi; \
 	echo "==> codesign --sign $$IDENTITY (DMG)"; \
 	codesign --sign "$$IDENTITY" --timestamp "$(APP_DIR)/build/Parleq.dmg"
+	@$(SIGNING_ID) verify "$(APP_DIR)/build/Parleq.dmg"
 	xcrun notarytool submit "$(APP_DIR)/build/Parleq.dmg" \
 		--keychain-profile $(NOTARY_PROFILE) \
 		--wait

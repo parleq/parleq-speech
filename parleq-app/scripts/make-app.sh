@@ -228,7 +228,8 @@ echo "    embedded Sparkle.framework: $(du -sh "$APP_BUNDLE/Contents/Frameworks/
 # Pick a signing identity:
 #   1. Honor PARLEQ_CODESIGN_IDENTITY env var if set (lets the user
 #      override or force ad-hoc with "-").
-#   2. Otherwise prefer the first "Developer ID Application:" cert.
+#   2. Otherwise prefer a G2-issued "Developer ID Application:" cert
+#      (signing-identity.sh select), else any Developer ID cert.
 #      This is what Gatekeeper accepts for executable trust, and what
 #      SMAppService.mainApp needs to register Parleq as a Login Item
 #      from inside the app. With Developer ID, spctl -a -t exec on the
@@ -245,8 +246,9 @@ IDENTITY="${PARLEQ_CODESIGN_IDENTITY:-}"
 # match. Hashes are unique. The output of `security find-identity -v`
 # is "  N) <SHA-1> "<display name>"" — column 2 is the hash we want.
 if [[ -z "$IDENTITY" ]]; then
-    IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null \
-        | awk '/Developer ID Application:/{print $2; exit}')
+    # Prefers a G2-issued, unexpired Developer ID cert (issue #122); falls
+    # back to any Developer ID cert so local builds keep working.
+    IDENTITY=$("$(dirname "$0")/signing-identity.sh" select 2>/dev/null || true)
 fi
 if [[ -z "$IDENTITY" ]]; then
     IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null \
