@@ -105,10 +105,11 @@ check)
     if ! openssl x509 -noout -checkend $((WARN_DAYS * 86400)) -in "$pem" >/dev/null 2>&1; then
         echo "WARNING: signing certificate '$id' expires $end (within $WARN_DAYS days); renew it (G2 certs last 1 year)." >&2
     fi
-    [[ $ok == 1 ]] && echo "==> signing identity OK: $id (G2, expires $end)" >&2
+    if [[ $ok == 1 ]]; then echo "==> signing identity OK: $id (G2, expires $end)" >&2; fi
     ;;
 verify)
     target="${2:?usage: verify <path>}"
+    target="$(cd "$(dirname "$target")" && pwd)/$(basename "$target")"
     (cd "$TMP" && codesign -d --extract-certificates "$target" >/dev/null 2>&1) || {
         fail_or_warn "could not read signing certificates from $target"; exit 0; }
     # codesign0 is the leaf; convert DER to PEM

@@ -112,7 +112,7 @@ clean:
 SIGNING_ID := $(APP_DIR)/scripts/signing-identity.sh
 .PHONY: check-signing
 check-signing:
-	@$(SIGNING_ID) check $(CODESIGN_IDENTITY)
+	@$(SIGNING_ID) check "$(CODESIGN_IDENTITY)"
 
 # Submit Parleq.app to Apple for notarization, wait for the result,
 # and staple the ticket on success. Requires a one-time setup:
