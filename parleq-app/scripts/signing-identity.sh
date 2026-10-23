@@ -109,7 +109,7 @@ check)
     ;;
 verify)
     target="${2:?usage: verify <path>}"
-    target="$(cd "$(dirname "$target")" && pwd)/$(basename "$target")"
+    target="$(CDPATH= cd "$(dirname "$target")" >/dev/null && pwd)/$(basename "$target")"
     (cd "$TMP" && codesign -d --extract-certificates "$target" >/dev/null 2>&1) || {
         fail_or_warn "could not read signing certificates from $target"; exit 0; }
     # codesign0 is the leaf; convert DER to PEM
