@@ -322,23 +322,6 @@ public actor ResidencyManager {
     }
 
     private func loadContainer() async throws -> ModelContainer {
-        // TODO(upstream-gemma4): register the KV-shared-aware vendored Gemma 4
-        // text model OVER the factory's stock "gemma4" type before the first
-        // load. The pinned mlx-swift-lm (b95dc78) creates k/v projections
-        // unconditionally for all layers and cannot load the canonical Gemma 4
-        // QAT checkpoint (which omits them for the KV-shared layers); the fix
-        // has not merged upstream. See VendoredGemma4Text.swift for the full
-        // mechanism + provenance. Remove this call (and the vendored file) once
-        // upstream ships the gating fix and the pin is bumped.
-        //
-        // The QAT checkpoint's top-level config.json has model_type "gemma4",
-        // so _load(from:) dispatches via that key → our creator decodes the
-        // multimodal config, extracts text_config, and builds a text-only
-        // VendoredGemma4Model. registerModelType overwrites the existing entry
-        // on this shared factory instance; calling it again is harmless
-        // (idempotent — it just re-stores the same closure).
-        await Self.registerVendoredGemma4IfNeeded()
-
         print("[ResidencyManager] loading model from \(snapshotDirectory.lastPathComponent)")
         let c = try await LLMModelFactory.shared.loadContainer(
             from: snapshotDirectory,
@@ -370,16 +353,6 @@ public actor ResidencyManager {
             "[parleq] local: gpu cache limit \(previousLimitMB) MB → " +
             "\(limitBytes / (1024 * 1024)) MB")
         return c
-    }
-
-    /// TODO(upstream-gemma4): register the vendored KV-shared-aware Gemma 4 text
-    /// model over the factory's "gemma4" type. Idempotent. Remove on upstream merge.
-    private static func registerVendoredGemma4IfNeeded() async {
-        await LLMModelFactory.shared.typeRegistry.registerModelType("gemma4") { data in
-            let configuration = try JSONDecoder.json5().decode(
-                VendoredGemma4Configuration.self, from: data)
-            return VendoredGemma4Model(configuration)
-        }
     }
 
     private func scheduleIdleUnloadIfNeeded() {

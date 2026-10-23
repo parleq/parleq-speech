@@ -409,7 +409,7 @@ All network calls are HTTPS via URLSession or Soto, both using the system trust 
 | Concord | In-process deterministic 2nd-pass cleanup ("Lightweight (on-device)" tier) | exact `0.3.7` | `keavi-app/concord` (private; trait-gated — see below) |
 | Sparkle | Auto-update framework (Ed25519-signed appcast → download → relaunch). Open-source, the de-facto standard for third-party Mac auto-updates, widely deployed across the ecosystem. | `"2.9.0"..<"2.10.0"` | `sparkle-project/Sparkle` |
 | mlx-swift | In-process MLX compute framework for the on-device cleanup tier | exact `0.31.4` | `ml-explore/mlx-swift` |
-| mlx-swift-lm | LLM inference layer (MLXLLM, MLXLMCommon) for the on-device cleanup tier | commit `b95dc78` | `ml-explore/mlx-swift-lm` |
+| mlx-swift-lm | LLM inference layer (MLXLLM, MLXLMCommon) for the on-device cleanup tier | `3.31.4` (exact tag) | `ml-explore/mlx-swift-lm` |
 | swift-transformers | Tokeniser (AutoTokenizer, BPE/SentencePiece) for the on-device cleanup tier | exact `1.3.3` | `huggingface/swift-transformers` |
 | swift-huggingface | Hub client (model download) for the on-device cleanup tier | exact `0.9.0` | `huggingface/swift-huggingface` |
 | swift-nio, swift-crypto, swift-certificates | Transitive | (Soto / FluidAudio deps) | Apple |
@@ -426,7 +426,7 @@ All network calls are HTTPS via URLSession or Soto, both using the system trust 
 
 See §9.10 for the accepted-risk framing and §6 for the egress classification.
 
-**Vendored `VendoredGemma4Text.swift`.** A lightly modified copy of the Gemma 4 text-model graph from `ml-explore/mlx-swift-lm` is vendored in-tree under an MIT license (see `THIRD_PARTY_LICENSES.md` Embedded components). The vendored copy carries a KV-shared gating fix that has not yet landed upstream; it is a temporary measure pending resolution of `ml-explore/mlx-swift-lm#338`, at which point the vendored file will be removed and the upstream dependency used directly.
+
 
 `Package.resolved` is **committed** to the repository — fresh clones build against the exact dependency graph we tested. Bumping a dependency requires an explicit `swift package update` + reviewable commit diff. See [CLAUDE.md § Dependency upgrade policy](../CLAUDE.md) for the periodic-upgrade ritual.
 
@@ -620,7 +620,7 @@ For reviewers who want to verify the claims above against code:
 | Learned-changes store (auto-apply / suggest / revert; in-memory only) | `parleq-app/Sources/ParleqAppCore/LearnedStore.swift` |
 | MDM keys for correction ring (3 keys) | `parleq-app/Sources/ParleqAppCore/ManagedConfig.swift` (search "learnFromCorrections") |
 | OIDC loopback-redirect listener (127.0.0.1-only, ephemeral port, static response, defer teardown) | `parleq-app/Sources/ParleqAppCore/LoopbackRedirectServer.swift`; selection + browser open in `CompanyAccountView.swift` (`makeOIDCAuthenticator` / `loopbackRedirectAuthenticator`); validator in `ManagedConfig.swift` (`validateOIDCRedirectURI`) |
-| On-device cleanup (in-process MLX inference, no network boundary on the cleanup path) | `parleq-app/Sources/ParleqAppCore/LocalLLMProvider.swift` (provider impl + enable_thinking:false invariant), `ResidencyManager.swift` (model load/unload lifecycle), `LocalModelStore.swift` (download + state machine), `LocalTokenizerBridge.swift` (tokenizer + chat-template formatting), `VendoredGemma4Text.swift` (temporary vendored Gemma 4 model graph) |
+| On-device cleanup (in-process MLX inference, no network boundary on the cleanup path) | `parleq-app/Sources/ParleqAppCore/LocalLLMProvider.swift` (provider impl + enable_thinking:false invariant), `ResidencyManager.swift` (model load/unload lifecycle), `LocalModelStore.swift` (download + state machine), `LocalTokenizerBridge.swift` (tokenizer + chat-template formatting) |
 | On-device model download (user-initiated, huggingface.co, ~4 GB, no transcript content) | `parleq-app/Sources/ParleqAppCore/LocalModelStore.swift` (`download()` method, `HubClient` usage); `fetch-metallib.sh` (SHA-256-verified prebuilt Metal shader library) |
 
 ---
