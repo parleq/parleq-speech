@@ -64,7 +64,6 @@ make notarize            # build + Apple notarize + staple (requires keychain pr
 | `LocalModelStore.swift` | Download + state machine for the on-device model checkpoint. Uses swift-huggingface's `HubClient`; writes a `.parleq-ready` marker only on successful completion; fires `onStateChanged` callbacks for UI updates. |
 | `ResidencyManager.swift` | Model load/idle-unload lifecycle actor. Holds the loaded MLX model (or nil); enforces the `ResidencyPolicy` (keep-loaded vs. idle-unload-after-N-minutes based on RAM tier). |
 | `LocalTokenizerBridge.swift` | Bridges swift-transformers' `AutoTokenizer` to Parleq's prompt format. Applies the Jinja2 chat template from the checkpoint's `tokenizer_config.json` and produces token IDs for the generation loop. |
-| `VendoredGemma4Text.swift` | **TEMPORARY** in-tree vendor of the Gemma 4 text model graph from mlx-swift-lm, with a KV-shared-layer gating fix applied. MIT-licensed (Apple). Remove when the upstream fix merges into a tagged mlx-swift-lm release (`TODO(upstream-gemma4)`). |
 
 ## Per-utterance pipeline
 

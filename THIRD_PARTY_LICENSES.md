@@ -24,7 +24,7 @@ copy for users who want a clickable view.
 | Direct SwiftPM dependencies (parleq-app) | 7 | 4× Apache-2.0 (FluidAudio, Soto, swift-transformers, swift-huggingface); 3× MIT (Sparkle, mlx-swift, mlx-swift-lm) |
 | Transitive SwiftPM dependencies | 29 | Predominantly Apache-2.0 and MIT (e.g. yyjson is MIT) |
 | Components embedded inside SwiftPM dependencies | 8 | 3× MIT (llhttp, inside swift-nio; cutlet and Convert-Numbers-to-Japanese, ported inside FluidAudio); 1× zlib-style (ed25519-sparkle, inside Sparkle); 2× 2-clause BSD (bsdiff inside Sparkle, fastcluster inside FluidAudio); 2× Apache-2.0 (VBx and misaki, inside FluidAudio) |
-| Vendored source in-tree | 1 | MIT — `VendoredGemma4Text.swift` (copied from mlx-swift-lm; see [Embedded components](#embedded-components) below) |
+| Vendored source in-tree | 0 | none (the former `VendoredGemma4Text.swift` was removed when mlx-swift-lm 3.31.4 shipped the KV-shared fix) |
 | Third-party data embedded inside Concord (Concord builds only) | 2 | 1× 2-clause BSD (CMUdict); 1× MIT (panphon feature tables) |
 | Apple system frameworks | n/a | Bundled with macOS — no attribution required |
 | Run-time downloaded model weights | 4 | See [Model weights](#model-weights) below |
@@ -92,7 +92,7 @@ also use direct HTTPS (URLSession) with no SDK.
 | Package | Version | License | Source | Used for |
 |---|---|---|---|---|
 | mlx-swift | 0.31.4 | MIT | https://github.com/ml-explore/mlx-swift | Apple MLX machine-learning framework for Swift. Provides the Metal-accelerated compute graph, quantized-linear operators, and KV-cache primitives used by the on-device cleanup tier. The prebuilt Metal shader library (`mlx.metallib`) is fetched from the matching release asset at build time by `parleq-app/scripts/fetch-metallib.sh` (SHA-256-verified). |
-| mlx-swift-lm | commit b95dc78 | MIT | https://github.com/ml-explore/mlx-swift-lm | LLM inference layer on top of MLX Swift. Provides `MLXLLM`, `MLXLMCommon`, and the KV-cache / generation-loop infrastructure. Copyright © 2024 ml-explore. The `VendoredGemma4Text.swift` in-tree file is copied from a fork of this library — see [Embedded components](#embedded-components) for details. |
+| mlx-swift-lm | 3.31.4 | MIT | https://github.com/ml-explore/mlx-swift-lm | LLM inference layer on top of MLX Swift. Provides `MLXLLM`, `MLXLMCommon`, and the KV-cache / generation-loop infrastructure. Copyright © 2024 ml-explore. The `VendoredGemma4Text.swift` in-tree file is copied from a fork of this library — see [Embedded components](#embedded-components) for details. |
 | swift-transformers | 1.3.3 | Apache-2.0 | https://github.com/huggingface/swift-transformers | Swift tokeniser library from Hugging Face. Provides `AutoTokenizer` (Jinja2 chat-template evaluation + BPE/SentencePiece decoding) used by `LocalTokenizerBridge.swift`. |
 | swift-huggingface | 0.9.0 | Apache-2.0 | https://github.com/huggingface/swift-huggingface | Hugging Face Hub client for Swift. Provides `HubClient` used to download and verify the on-device model checkpoint from `huggingface.co` at user request. |
 
@@ -199,22 +199,6 @@ also use direct HTTPS (URLSession) with no SDK.
   Parleq never fetches, so they are not redistributed. FluidAudio's
   optional `NemoTextProcessing` binary is disabled (`traits: []` in
   `Package.swift`) and does not ship.
-
-- **VendoredGemma4Text** — MIT — Source code copied from an
-  mlx-swift-lm fork into
-  `parleq-app/Sources/ParleqAppCore/VendoredGemma4Text.swift`. This
-  file combines two files from the fork (`Gemma4.swift` and
-  `Gemma4Text.swift`) with a KV-shared-layer gating fix applied on
-  top of the upstream mlx-swift-lm codebase. Copyright © 2024 Apple
-  Inc. Licensed under the MIT License (same as upstream mlx-swift-lm).
-  The full MIT license text is reproduced at the top of the upstream
-  `mlx-swift-lm` checkout under `LICENSE`. This vendored copy is a
-  **temporary measure** pending the upstream fix merging into a tagged
-  release; the file will be removed when the upstream mlx-swift-lm
-  package is bumped to a release that includes the KV-shared fix (see
-  `TODO(upstream-gemma4)` in the file header). MIT is more permissive
-  than Apache-2.0 and adds no obligations beyond keeping the license
-  notice with the source.
 
 - **CMUdict** — 2-clause BSD — A derived, compressed form of the CMU
   Pronouncing Dictionary (`cmudict.txt.zlib`) bundled inside the Concord
