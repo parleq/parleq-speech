@@ -620,7 +620,7 @@ For reviewers who want to verify the claims above against code:
 | Learned-changes store (auto-apply / suggest / revert; in-memory only) | `parleq-app/Sources/ParleqAppCore/LearnedStore.swift` |
 | MDM keys for correction ring (3 keys) | `parleq-app/Sources/ParleqAppCore/ManagedConfig.swift` (search "learnFromCorrections") |
 | OIDC loopback-redirect listener (127.0.0.1-only, ephemeral port, static response, defer teardown) | `parleq-app/Sources/ParleqAppCore/LoopbackRedirectServer.swift`; selection + browser open in `CompanyAccountView.swift` (`makeOIDCAuthenticator` / `loopbackRedirectAuthenticator`); validator in `ManagedConfig.swift` (`validateOIDCRedirectURI`) |
-| On-device cleanup (in-process MLX inference, no network boundary on the cleanup path) | `parleq-app/Sources/ParleqAppCore/LocalLLMProvider.swift` (provider impl + enable_thinking:false invariant), `ResidencyManager.swift` (model load/unload lifecycle), `LocalModelStore.swift` (download + state machine), `LocalTokenizerBridge.swift` (tokenizer + chat-template formatting), `VendoredGemma4Text.swift` (temporary vendored Gemma 4 model graph) |
+| On-device cleanup (in-process MLX inference, no network boundary on the cleanup path) | `parleq-app/Sources/ParleqAppCore/LocalLLMProvider.swift` (provider impl + enable_thinking:false invariant), `ResidencyManager.swift` (model load/unload lifecycle), `LocalModelStore.swift` (download + state machine), `LocalTokenizerBridge.swift` (tokenizer + chat-template formatting) |
 | On-device model download (user-initiated, huggingface.co, ~4 GB, no transcript content) | `parleq-app/Sources/ParleqAppCore/LocalModelStore.swift` (`download()` method, `HubClient` usage); `fetch-metallib.sh` (SHA-256-verified prebuilt Metal shader library) |
 
 ---
