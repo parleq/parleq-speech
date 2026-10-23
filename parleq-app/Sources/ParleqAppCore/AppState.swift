@@ -4789,6 +4789,10 @@ public final class AppState {
             #else
             let concordEnrolledIDs: [String] = []
             #endif
+            // #125: this turn's Polished voiceprint veto (may await a still-
+            // running computation) — re-check cancellation after it.
+            let recleanVeto = await self?.polishedVeto(for: rawTranscript)
+            if Task.isCancelled { return }
             let outcome = await streamCleanupOrRefine(
                 llm: resolvedLLM,
                 overlay: overlay,
@@ -4814,7 +4818,7 @@ public final class AppState {
                 transform: asRefineRerun ? nil : intendedPreset?.prompt,
                 enrolledTermIDs: concordEnrolledIDs,
                 // #125: reuse this review session's Polished voiceprint veto.
-                voiceprintVeto: await self?.polishedVeto(for: rawTranscript)
+                voiceprintVeto: recleanVeto
             )
             if Task.isCancelled { return }
             // 0.14.0 PR 4 (#219): the model-switch path runs its
@@ -5109,6 +5113,10 @@ public final class AppState {
             #else
             let concordEnrolledIDs: [String] = []
             #endif
+            // #125: this turn's Polished voiceprint veto (may await a still-
+            // running computation) — re-check cancellation after it.
+            let recleanVeto = await self?.polishedVeto(for: rawTranscript)
+            if Task.isCancelled { return }
             let outcome = await streamCleanupOrRefine(
                 llm: resolvedLLM,
                 overlay: overlay,
@@ -5132,7 +5140,7 @@ public final class AppState {
                 transform: asRefineRerun ? nil : intendedPreset?.prompt,
                 enrolledTermIDs: concordEnrolledIDs,
                 // #125: reuse this review session's Polished voiceprint veto.
-                voiceprintVeto: await self?.polishedVeto(for: rawTranscript)
+                voiceprintVeto: recleanVeto
             )
             if Task.isCancelled { return }
             self?.lastLLMLatencyMs = outcome.llmLatencyMs
@@ -5248,6 +5256,10 @@ public final class AppState {
             #else
             let concordEnrolledIDs: [String] = []
             #endif
+            // #125: this turn's Polished voiceprint veto (may await a still-
+            // running computation) — re-check cancellation after it.
+            let recleanVeto = await self.polishedVeto(for: raw)
+            if Task.isCancelled { return }
             let outcome = await streamCleanupOrRefine(
                 llm: resolvedLLM,
                 overlay: self.overlay,
@@ -5261,7 +5273,7 @@ public final class AppState {
                 pasteDestinationLabel: pasteDestLabel,
                 enrolledTermIDs: concordEnrolledIDs,
                 // #125: reuse this review session's Polished voiceprint veto.
-                voiceprintVeto: await self.polishedVeto(for: raw)
+                voiceprintVeto: recleanVeto
             )
             if Task.isCancelled { return }
             self.lastLLMLatencyMs = outcome.llmLatencyMs
