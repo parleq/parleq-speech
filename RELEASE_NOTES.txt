@@ -1,5 +1,5 @@
-Parleq 0.44.0
+Parleq 0.45.0
 
-A faster speech engine.
+Voiceprints now work in every cleanup mode.
 
-Parleq's on-device speech recognition is updated to a newer engine. Short dictations now transcribe in roughly half the time, with the same results, and long dictations are at least as accurate as before. Your voiceprints and custom dictionary carry over as-is, with nothing to re-enroll.
+A voiceprint keeps a dictionary term from replacing an ordinary word that sounds like it. Until now that check only ran in on-device Instant cleanup, so apps set to Polished could still swap the word. Parleq now applies your voiceprints before Polished cleanup too, including spoken refines. Dictations without your enrolled terms are unaffected.

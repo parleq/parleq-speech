@@ -87,6 +87,22 @@ enum SystemPrompts {
         vocabularyHint(dictionary: dictionary)
     }
 
+    /// The voiceprint keep-as-is addendum (issue #125): words the enrolled
+    /// voiceprint confirmed were spoken as written, NOT as a dictionary term
+    /// they resemble. Appended to a Polished call's system prompt so the model
+    /// doesn't undo the acoustic veto via the vocabulary hint. "" when empty,
+    /// so callers can append unconditionally.
+    static func voiceprintKeepHint(_ words: [String]) -> String {
+        let cleaned = words
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard !cleaned.isEmpty else { return "" }
+        let list = cleaned.map { "\"\($0)\"" }.joined(separator: ", ")
+        return """
+            Voice-verified words: the speaker's voice confirms these words were said exactly as written — they are NOT misrecognitions of any vocabulary term. Keep them unchanged; never replace them with a vocabulary term or a similar-sounding word: \(list)
+            """
+    }
+
     /// The transform-preset addendum for a per-app default: appended to
     /// the cleanup prompt so the output arrives pre-styled in the SAME
     /// LLM call (no second pass). Empty string for nil/blank so callers
