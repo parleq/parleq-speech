@@ -4,6 +4,19 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.45.0] - 2026-10-23
+
+Voiceprints now work in every cleanup mode.
+
+### Fixed
+
+- **Voiceprints now protect Polished apps too.** A voiceprint stops a dictionary term from replacing an ordinary word that sounds like it (for example, a term `Acme` with the alias "acne": "I have acne" stays "I have acne"). That check used to run only in on-device **Instant** cleanup, so in apps set to **Polished** (cloud or on-device) the swap went through and voiceprints looked like they didn't work. Parleq now runs the voiceprint check before Polished cleanup, including spoken refines and switching a dictation to a Polished model from the overlay, and tells the model to keep the word as you said it. Dictations that contain no enrolled term are unaffected. **Raw** is unchanged.
+
+### Changed
+
+- The on-device Gemma cleanup model now runs on the official MLX library release (mlx-swift-lm 3.31.4) instead of a temporary in-tree copy of the model code. Output is identical on our cleanup test suite.
+- Releases are signed with a certificate from Apple's new Developer ID authority (G2), ahead of the original authority's February 2027 expiry. Existing installs and updates are unaffected.
+
 ## [0.44.0] - 2026-10-09
 
 A faster speech engine.
