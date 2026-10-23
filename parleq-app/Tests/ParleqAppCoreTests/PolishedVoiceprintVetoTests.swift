@@ -106,6 +106,19 @@ final class PolishedVoiceprintVetoTests: XCTestCase {
             transcript: "Acme said Acme", entries: [acme], tokens: [], gate: gate))
         XCTAssertEqual(out.text, "Acme said acne")
     }
+
+    func testMixedVerdictsApplyTheAcceptedAliasSwap() throws {
+        // Same alias twice: the voiceprint accepts the first as the term and
+        // vetoes the second. The alias leaves the prompt, so the accepted swap
+        // must already be in the text the LLM sees.
+        let gate: AcousticGate = { ctx in
+            ctx.occurrence == 0 ? .accept(margin: 3.0) : .reject(margin: -2.0)
+        }
+        let out = try XCTUnwrap(PolishedVoiceprintVeto.evaluate(
+            transcript: "acne said acne.", entries: [acme], tokens: [], gate: gate))
+        XCTAssertEqual(out.text, "Acme said acne.")
+        XCTAssertEqual(out.keepWords, ["acne"])
+    }
     #endif
 }
 

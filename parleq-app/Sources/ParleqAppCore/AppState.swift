@@ -94,14 +94,21 @@ public final class AppState {
     /// its aliases was heard. The outcome is cached for the review session so
     /// re-clean paths reuse it. Logs counts only (invariant #2).
     func polishedVoiceprintVeto(transcript: String, diagnostics: ASRDiagnostics?,
-                                dictionary: [DictionaryEntry]) async -> VoiceprintVetoOutcome? {
+                                dictionary: [DictionaryEntry],
+                                cacheOnlyIfCurrent: Bool = false) async -> VoiceprintVetoOutcome? {
         guard let voiceprint else { return nil }
         let outcome = await PolishedVoiceprintVeto.compute(
             transcript: transcript, diagnostics: diagnostics, dictionary: dictionary,
             enrolledTermIDs: voiceprint.enrolledTermIDs,
             gateFactory: voiceprint.enforcementGateFactory())
-        if let outcome {
+        // Always overwrite (nil removes) so an earlier turn's verdict for the
+        // same words can never stand in for this turn's. A background
+        // precompute only writes while its turn is still the current one, so
+        // it can't leak into the next dictation after a reset.
+        if !cacheOnlyIfCurrent || lastRawTranscript == transcript {
             polishedVetoCache[transcript] = outcome
+        }
+        if let outcome {
             log("[voiceprint] polished veto: \(outcome.vetoedTerms.count) term(s) vetoed, "
                 + "\(outcome.text == transcript ? 0 : 1) revert pass")
         }
@@ -3807,6 +3814,20 @@ public final class AppState {
                         dictionary: dictionary)
                     : nil
                 if Task.isCancelled { return }
+                if !isPolishedVetoTarget(llm: resolvedLLM, asRefine: asRefine,
+                                         refineBehavior: refineBehavior) {
+                    // Instant/Raw turn: the overlay's model picker can later
+                    // re-clean it with a Polished model (switchModelAndRecleanup,
+                    // no diagnostics). Precompute the veto OFF the hot path so
+                    // that re-clean keeps it.
+                    let raw = asrResult.text
+                    let diag = asrResultRaw.diagnostics
+                    Task { [weak self] in
+                        _ = await self?.polishedVoiceprintVeto(
+                            transcript: raw, diagnostics: diag, dictionary: dictionary,
+                            cacheOnlyIfCurrent: true)
+                    }
+                }
                 #else
                 let voiceprintVeto: VoiceprintVetoOutcome? = nil
                 #endif

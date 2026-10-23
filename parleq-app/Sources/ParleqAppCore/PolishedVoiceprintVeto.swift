@@ -149,6 +149,23 @@ enum PolishedVoiceprintVeto {
             if !keep.contains(where: { $0.lowercased() == heard.lowercased() }) { keep.append(heard) }
         }
         guard !vetoed.isEmpty else { return nil }
+        // Mixed verdicts for one term: the voiceprint ACCEPTED one alias
+        // occurrence as the term but vetoed another. The alias is about to
+        // leave the prompt and the vetoed word is pinned, so the LLM could no
+        // longer make the accepted swap — apply that voiceprint-verified
+        // substitution here instead. (Only for vetoed terms: with no veto the
+        // Polished prompt keeps doing forward correction as before.)
+        for edit in result.edits where edit.stage == .dictionary && edit.applied
+            && edit.gateDecision == "accept" && edit.gateMargin != nil {
+            guard let range = edit.wordRange, range.count == 1, range.lowerBound < words.count,
+                  let canonical = candidates[edit.original.lowercased()], vetoed.contains(canonical),
+                  edit.original.lowercased() != canonical else { continue }
+            let i = range.lowerBound
+            let parts = core(Substring(words[i]))
+            guard parts.core.lowercased() == edit.original.lowercased() else { continue }
+            words[i] = String(parts.pre) + edit.replacement + String(parts.post)
+            changed = true
+        }
         return VoiceprintVetoOutcome(text: changed ? words.joined(separator: " ") : transcript,
                                      vetoedTerms: vetoed, keepWords: keep)
     }
