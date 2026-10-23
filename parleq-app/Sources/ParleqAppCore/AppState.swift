@@ -88,31 +88,34 @@ public final class AppState {
         }
     }
 
-    /// Run the enrolled-voiceprint veto (#125) on a Polished turn's raw
+    /// Start the enrolled-voiceprint veto (#125) for a spoken turn's raw
     /// transcript: ONLY Concord's dictionary stage + the acoustic gate (see
     /// `PolishedVoiceprintVeto`). Near-free unless an enrolled term or one of
-    /// its aliases was heard. The outcome is cached for the review session so
-    /// re-clean paths reuse it. Logs counts only (invariant #2).
-    func polishedVoiceprintVeto(transcript: String, diagnostics: ASRDiagnostics?,
-                                dictionary: [DictionaryEntry],
-                                cacheOnlyIfCurrent: Bool = false) async -> VoiceprintVetoOutcome? {
-        guard let voiceprint else { return nil }
-        let outcome = await PolishedVoiceprintVeto.compute(
-            transcript: transcript, diagnostics: diagnostics, dictionary: dictionary,
-            enrolledTermIDs: voiceprint.enrolledTermIDs,
-            gateFactory: voiceprint.enforcementGateFactory())
-        // Always overwrite (nil removes) so an earlier turn's verdict for the
-        // same words can never stand in for this turn's. A background
-        // precompute only writes while its turn is still the current one, so
-        // it can't leak into the next dictation after a reset.
-        if !cacheOnlyIfCurrent || lastRawTranscript == transcript {
-            polishedVetoCache[transcript] = outcome
+    /// its aliases was heard. The TASK is registered in the review-session
+    /// cache synchronously, at turn start — so a later turn with identical
+    /// words replaces it (an older, slower computation can never land over
+    /// it), and a re-clean that races a still-running background computation
+    /// awaits it instead of missing it. Logs counts only (invariant #2).
+    @discardableResult
+    func startPolishedVoiceprintVeto(transcript: String, diagnostics: ASRDiagnostics?,
+                                     dictionary: [DictionaryEntry]) -> Task<VoiceprintVetoOutcome?, Never>? {
+        guard let voiceprint else {
+            polishedVetoTasks[transcript] = nil
+            return nil
         }
-        if let outcome {
-            log("[voiceprint] polished veto: \(outcome.vetoedTerms.count) term(s) vetoed, "
-                + "\(outcome.text == transcript ? 0 : 1) revert pass")
+        let enrolled = voiceprint.enrolledTermIDs
+        let factory = voiceprint.enforcementGateFactory()
+        let task = Task<VoiceprintVetoOutcome?, Never> { [weak self] in
+            let outcome = await PolishedVoiceprintVeto.compute(
+                transcript: transcript, diagnostics: diagnostics, dictionary: dictionary,
+                enrolledTermIDs: enrolled, gateFactory: factory)
+            if let outcome {
+                self?.log("[voiceprint] polished veto: \(outcome.vetoedTerms.count) term(s) vetoed")
+            }
+            return outcome
         }
-        return outcome
+        polishedVetoTasks[transcript] = task
+        return task
     }
 
     // MARK: Review-window acoustics retention (correction-time negative harvest)
@@ -554,7 +557,13 @@ public final class AppState {
     /// cleanup on the retained raw transcript WITHOUT its diagnostics — keep
     /// the veto. In-memory only; reset with the fresh-dictation state and in
     /// closeAndReset().
-    private var polishedVetoCache: [String: VoiceprintVetoOutcome] = [:]
+    private var polishedVetoTasks: [String: Task<VoiceprintVetoOutcome?, Never>] = [:]
+    /// The review session's veto for `transcript` (awaiting a still-running
+    /// computation), or nil when none was started for it (always nil in OSS
+    /// builds, which have no voiceprints).
+    func polishedVeto(for transcript: String) async -> VoiceprintVetoOutcome? {
+        await polishedVetoTasks[transcript]?.value
+    }
     /// B3 (recover last dictation): the most recent FRESH capture's audio
     /// (16 kHz mono WAV bytes) + its duration, retained so hold+R or the
     /// menu-bar "Recover last dictation" item can re-run ASR + cleanup on it
@@ -2988,7 +2997,7 @@ public final class AppState {
         chosenDestination = nil
         currentText = ""
         lastRawTranscript = ""
-        polishedVetoCache = [:]
+        polishedVetoTasks = [:]
         lastTurnWasRefine = false
         lastRefineWasSpoken = false
         lastRefinePriorText = ""
@@ -3809,9 +3818,9 @@ public final class AppState {
                 let voiceprintVeto: VoiceprintVetoOutcome? =
                     isPolishedVetoTarget(llm: resolvedLLM, asRefine: asRefine,
                                          refineBehavior: refineBehavior)
-                    ? await self?.polishedVoiceprintVeto(
+                    ? await self?.startPolishedVoiceprintVeto(
                         transcript: asrResult.text, diagnostics: asrResultRaw.diagnostics,
-                        dictionary: dictionary)
+                        dictionary: dictionary)?.value
                     : nil
                 if Task.isCancelled { return }
                 if !isPolishedVetoTarget(llm: resolvedLLM, asRefine: asRefine,
@@ -3819,14 +3828,10 @@ public final class AppState {
                     // Instant/Raw turn: the overlay's model picker can later
                     // re-clean it with a Polished model (switchModelAndRecleanup,
                     // no diagnostics). Precompute the veto OFF the hot path so
-                    // that re-clean keeps it.
-                    let raw = asrResult.text
-                    let diag = asrResultRaw.diagnostics
-                    Task { [weak self] in
-                        _ = await self?.polishedVoiceprintVeto(
-                            transcript: raw, diagnostics: diag, dictionary: dictionary,
-                            cacheOnlyIfCurrent: true)
-                    }
+                    // that re-clean keeps it (it awaits the task if still running).
+                    self?.startPolishedVoiceprintVeto(
+                        transcript: asrResult.text, diagnostics: asrResultRaw.diagnostics,
+                        dictionary: dictionary)
                 }
                 #else
                 let voiceprintVeto: VoiceprintVetoOutcome? = nil
@@ -4264,7 +4269,7 @@ public final class AppState {
         helpOverlay.hide()
         currentText = ""
         lastRawTranscript = ""
-        polishedVetoCache = [:]
+        polishedVetoTasks = [:]
         lastTurnWasRefine = false
         lastRefineWasSpoken = false
         lastRefinePriorText = ""
@@ -4809,7 +4814,7 @@ public final class AppState {
                 transform: asRefineRerun ? nil : intendedPreset?.prompt,
                 enrolledTermIDs: concordEnrolledIDs,
                 // #125: reuse this review session's Polished voiceprint veto.
-                voiceprintVeto: self?.polishedVetoCache[rawTranscript]
+                voiceprintVeto: await self?.polishedVeto(for: rawTranscript)
             )
             if Task.isCancelled { return }
             // 0.14.0 PR 4 (#219): the model-switch path runs its
@@ -5127,7 +5132,7 @@ public final class AppState {
                 transform: asRefineRerun ? nil : intendedPreset?.prompt,
                 enrolledTermIDs: concordEnrolledIDs,
                 // #125: reuse this review session's Polished voiceprint veto.
-                voiceprintVeto: self?.polishedVetoCache[rawTranscript]
+                voiceprintVeto: await self?.polishedVeto(for: rawTranscript)
             )
             if Task.isCancelled { return }
             self?.lastLLMLatencyMs = outcome.llmLatencyMs
@@ -5256,7 +5261,7 @@ public final class AppState {
                 pasteDestinationLabel: pasteDestLabel,
                 enrolledTermIDs: concordEnrolledIDs,
                 // #125: reuse this review session's Polished voiceprint veto.
-                voiceprintVeto: self.polishedVetoCache[raw]
+                voiceprintVeto: await self.polishedVeto(for: raw)
             )
             if Task.isCancelled { return }
             self.lastLLMLatencyMs = outcome.llmLatencyMs
