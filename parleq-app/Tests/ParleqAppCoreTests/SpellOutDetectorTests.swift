@@ -45,4 +45,31 @@ final class SpellOutDetectorTests: XCTestCase {
         XCTAssertEqual(SpellOutDetector.candidates(in: "U R the best"), [],
                        "'U R the' — only 2 single letters before 'the' breaks it")
     }
+
+    func test_trailing_comma_on_last_letter_keeps_letter() {
+        XCTAssertEqual(SpellOutDetector.candidates(in: "her name is M I R A, and"), ["Mira"])
+    }
+
+    func test_trailing_marks_on_last_letter_keep_letter() {
+        XCTAssertEqual(SpellOutDetector.candidates(in: "M I R A! and"), ["Mira"])
+        XCTAssertEqual(SpellOutDetector.candidates(in: "M I R A? and"), ["Mira"])
+        XCTAssertEqual(SpellOutDetector.candidates(in: "M I R A; and"), ["Mira"])
+        XCTAssertEqual(SpellOutDetector.candidates(in: "M I R A: and"), ["Mira"])
+    }
+
+    func test_trailing_mark_ends_the_run() {
+        // The mark is a boundary: letters after it start a new run.
+        XCTAssertEqual(SpellOutDetector.candidates(in: "A B C, D E F"), ["Abc", "Def"])
+        // "options A, B" style text must not form a false run.
+        XCTAssertEqual(SpellOutDetector.candidates(in: "options A, B C"), [])
+    }
+
+    func test_single_letter_with_comma_is_still_below_minimum() {
+        XCTAssertEqual(SpellOutDetector.candidates(in: "A, and then"), [])
+    }
+
+    func test_leading_mark_and_nonletter_punctuation_unchanged() {
+        XCTAssertEqual(SpellOutDetector.candidates(in: "M I R ,A"), ["Mir"])
+        XCTAssertEqual(SpellOutDetector.candidates(in: "M I R word, A"), ["Mir"])
+    }
 }

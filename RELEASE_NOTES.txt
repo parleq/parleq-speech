@@ -1,5 +1,5 @@
-Parleq 0.45.0
+Parleq 0.45.1
 
-Voiceprints now work in every cleanup mode.
+Bug fixes.
 
-A voiceprint keeps a dictionary term from replacing an ordinary word that sounds like it. Until now that check only ran in on-device Instant cleanup, so apps set to Polished could still swap the word. Parleq now applies your voiceprints before Polished cleanup too, including spoken refines. Dictations without your enrolled terms are unaffected.
+Spelled-out words no longer lose their last letter when it is followed by punctuation, and JPEG, GIF and WebP images added as references are now sent with their real type so cleanup models accept them. The on-device cleanup engine is updated with bug fixes.

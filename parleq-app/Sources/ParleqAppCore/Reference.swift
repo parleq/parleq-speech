@@ -10,8 +10,8 @@
 // (accept), is discarded (cancel), or a fresh dictation starts.
 //
 // CaptureMode is per-reference: `.text` ships OCR text (Phase 1
-// default and only option), `.image` ships PNG-encoded image data
-// (Phase 2).
+// default and only option), `.image` ships image data
+// (PNG, JPEG, GIF or WebP; the media type is sniffed at prompt-build time).
 
 import AppKit
 
@@ -28,7 +28,7 @@ public struct Reference: Identifiable {
     public let captureDate: Date
     public var captureMode: CaptureMode
     public let textContent: String?   // OCR text when mode == .text
-    public let imageData: Data?       // PNG-encoded image when mode == .image; Phase 2
+    public let imageData: Data?       // Image bytes when mode == .image: PNG, JPEG, GIF or WebP; the media type is sniffed at prompt-build time
 
     public init(
         id: UUID,

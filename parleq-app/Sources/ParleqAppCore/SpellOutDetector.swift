@@ -25,6 +25,9 @@ enum SpellOutDetector {
     /// three is the empirical floor for an intentional spelling.
     static let minLetters = 3
 
+    /// Punctuation that may trail the final spelled letter and ends the run.
+    private static let trailingBoundaryMarks: Set<Character> = [",", ";", ":", "?", "!"]
+
     /// Extract assembled candidate terms from a raw transcript. Returns
     /// [] when no spelled-letter run of length >= minLetters is present.
     static func candidates(in raw: String) -> [String] {
@@ -53,6 +56,13 @@ enum SpellOutDetector {
             // output and must not be treated as spell-out letters.
             if token.count == 1, let ch = token.first, ch.isUppercase {
                 run.append(ch)
+            } else if let ch = token.first, ch.isUppercase,
+                      token.count > 1,
+                      token.dropFirst().allSatisfy({ trailingBoundaryMarks.contains($0) }) {
+                // A spelled letter carrying trailing `, ; : ? !` ("M I R A,")
+                // still counts as that letter, and the mark ends the run.
+                run.append(ch)
+                flush()
             } else {
                 flush()
             }
