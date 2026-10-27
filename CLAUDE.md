@@ -241,7 +241,7 @@ Match the existing log style (e.g. `git log --oneline -10`):
 
 Multi-paragraph body explaining the *why*. Reference issue numbers (`closes #N`, `tracked in #N`). Co-author tag for AI-assisted commits.
 
-Don't commit `Package.resolved` (gitignored), `.build/` artifacts, or `node_modules/`.
+Don't commit `.build/` artifacts or `node_modules/`. `Package.resolved` IS committed; it changes only in explicit dependency-bump commits.
 
 ## Documentation pointers
 
