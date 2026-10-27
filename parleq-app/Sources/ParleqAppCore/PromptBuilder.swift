@@ -66,7 +66,6 @@ enum PromptBuilder {
         return parts.joined(separator: "\n")
     }
 
-    /// Build the first-turn `LLMMessage` for a reference-aware session.
     /// Pick an image media type from the leading bytes. PNG, JPEG, GIF and
     /// WebP are recognised; anything else (HEIC, TIFF, ...) and any data too
     /// short to decide falls back to `image/png`.
@@ -89,6 +88,7 @@ enum PromptBuilder {
         return "image/png"
     }
 
+    /// Build the first-turn `LLMMessage` for a reference-aware session.
     /// Text references are inlined in the text part (as fenced blocks
     /// in the instruction string). Image references are prepended as
     /// `.image` parts so the LLM sees both in a single message turn.
