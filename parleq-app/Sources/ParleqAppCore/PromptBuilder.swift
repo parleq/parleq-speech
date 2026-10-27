@@ -67,6 +67,28 @@ enum PromptBuilder {
     }
 
     /// Build the first-turn `LLMMessage` for a reference-aware session.
+    /// Pick an image media type from the leading bytes. PNG, JPEG, GIF and
+    /// WebP are recognised; anything else (HEIC, TIFF, ...) and any data too
+    /// short to decide falls back to `image/png`.
+    static func imageMimeType(for data: Data) -> String {
+        let b = [UInt8](data.prefix(12))
+        if b.count >= 4, b[0] == 0x89, b[1] == 0x50, b[2] == 0x4E, b[3] == 0x47 {
+            return "image/png"
+        }
+        if b.count >= 3, b[0] == 0xFF, b[1] == 0xD8, b[2] == 0xFF {
+            return "image/jpeg"
+        }
+        if b.count >= 4, b[0] == 0x47, b[1] == 0x49, b[2] == 0x46, b[3] == 0x38 {
+            return "image/gif"
+        }
+        if b.count >= 12,
+           b[0] == 0x52, b[1] == 0x49, b[2] == 0x46, b[3] == 0x46,
+           b[8] == 0x57, b[9] == 0x45, b[10] == 0x42, b[11] == 0x50 {
+            return "image/webp"
+        }
+        return "image/png"
+    }
+
     /// Text references are inlined in the text part (as fenced blocks
     /// in the instruction string). Image references are prepended as
     /// `.image` parts so the LLM sees both in a single message turn.
@@ -80,7 +102,7 @@ enum PromptBuilder {
         // Image references go first as image parts.
         for ref in references where ref.captureMode == .image {
             if let data = ref.imageData {
-                messageParts.append(.image(data: data, mimeType: "image/png"))
+                messageParts.append(.image(data: data, mimeType: imageMimeType(for: data)))
             }
         }
 

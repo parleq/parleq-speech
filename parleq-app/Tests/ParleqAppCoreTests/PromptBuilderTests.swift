@@ -359,4 +359,63 @@ final class PromptBuilderTests: XCTestCase {
         XCTAssertTrue(content.contains("Reference 1 — notes.txt"), "First ref should be numbered 1")
         XCTAssertTrue(content.contains("Reference 2 — Clipboard text"), "Second ref should be numbered 2")
     }
+
+    // MARK: - image media-type sniffing
+
+    private func mimeOfFirstImagePart(_ bytes: [UInt8]) -> String? {
+        let ref = Reference(
+            id: UUID(),
+            source: .window(bundleID: "com.example.img", title: "Img"),
+            label: "Img",
+            appIcon: nil,
+            thumbnail: nil,
+            captureDate: Date(),
+            captureMode: .image,
+            textContent: nil,
+            imageData: Data(bytes)
+        )
+        let msg = PromptBuilder.buildFirstTurnMessage(
+            references: [ref], destination: nil, instruction: "describe")
+        for part in msg.parts {
+            if case .image(_, let mime) = part { return mime }
+        }
+        return nil
+    }
+
+    func test_sniff_png() {
+        XCTAssertEqual(mimeOfFirstImagePart([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]), "image/png")
+    }
+
+    func test_sniff_jpeg() {
+        XCTAssertEqual(mimeOfFirstImagePart([0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10]), "image/jpeg")
+    }
+
+    func test_sniff_gif() {
+        XCTAssertEqual(mimeOfFirstImagePart(Array("GIF89a".utf8) + [0x01, 0x00]), "image/gif")
+        XCTAssertEqual(mimeOfFirstImagePart(Array("GIF87a".utf8) + [0x01, 0x00]), "image/gif")
+    }
+
+    func test_sniff_webp() {
+        let bytes = Array("RIFF".utf8) + [0x24, 0x00, 0x00, 0x00] + Array("WEBPVP8 ".utf8)
+        XCTAssertEqual(mimeOfFirstImagePart(bytes), "image/webp")
+    }
+
+    func test_sniff_riff_wave_falls_back_to_png() {
+        let bytes = Array("RIFF".utf8) + [0x24, 0x00, 0x00, 0x00] + Array("WAVEfmt ".utf8)
+        XCTAssertEqual(mimeOfFirstImagePart(bytes), "image/png")
+    }
+
+    func test_sniff_unknown_bytes_fall_back_to_png() {
+        XCTAssertEqual(mimeOfFirstImagePart([0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B]), "image/png")
+    }
+
+    func test_sniff_short_data_falls_back_to_png() {
+        XCTAssertEqual(mimeOfFirstImagePart([]), "image/png")
+        XCTAssertEqual(mimeOfFirstImagePart([0xFF]), "image/png")
+        XCTAssertEqual(mimeOfFirstImagePart([0xFF, 0xD8]), "image/png")
+        // RIFF header but too short to carry the WEBP marker at offset 8.
+        XCTAssertEqual(mimeOfFirstImagePart(Array("RIFF".utf8)), "image/png")
+        XCTAssertEqual(mimeOfFirstImagePart(Array("RIFF".utf8) + [0, 0, 0, 0] + Array("WEB".utf8)), "image/png")
+        XCTAssertEqual(mimeOfFirstImagePart(Array("GIF".utf8)), "image/png")
+    }
 }
