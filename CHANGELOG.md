@@ -4,6 +4,16 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.45.1] - 2026-10-27
+
+Bug fixes.
+
+### Fixed
+
+- **Spelled-out words keep their last letter.** When the final letter of a spelled-out word was followed by a comma, question mark, exclamation mark, semicolon or colon ("M I R A, and"), that letter was dropped from the learning journal's candidate, so "Mira" came out as "Mir". It now keeps the letter.
+- **JPEG, GIF and WebP images work as references.** Images added as references from a file or by dropping were always labelled as PNG, so cleanup models that check the type could reject them. They are now labelled with their real type.
+- **Bug fixes for the on-device cleanup engine.** Updated to engine release 0.6.3.
+
 ## [0.45.0] - 2026-10-23
 
 Voiceprints now work in every cleanup mode.
