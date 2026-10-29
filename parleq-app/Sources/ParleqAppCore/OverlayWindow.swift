@@ -1223,6 +1223,8 @@ public final class OverlayModel: ObservableObject {
     /// read-only Text to a focused editor bound to `editableText`. Entered by E,
     /// left via ⌘S (save), ⌘Return (commit+accept), or Esc (discard).
     @Published var editing: Bool = false
+    /// Edit can start: mirrors the guard in AppState.enterEditMode (#132).
+    var canEnterEdit: Bool { state == .awaitingAccept && !editing }
     @Published var editableText: String = ""
     /// Task 7 (Feature A interaction): word-index range (Concord token
     /// indices) to focus once the editor gains focus, set only when edit mode
@@ -2336,6 +2338,8 @@ private struct OverlayContent: View {
                     // (same rule as the engine-badge picker).
                     visionFallbackOption: firstConfiguredVisionModel(
                         in: Array(headerBadgeState.pickerEntries.prefix(headerBadgeState.configuredCount))),
+                    canEnterEdit: model.canEnterEdit,
+                    onEdit: { model.onEnterEdit?() },
                     onCopy: onCopy,
                     onCancel: onCancel,
                     onAccept: onAccept,

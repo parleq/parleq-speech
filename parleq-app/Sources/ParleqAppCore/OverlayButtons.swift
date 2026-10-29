@@ -37,6 +37,9 @@ struct OverlayButtons: View {
     /// A configured vision-capable model the user can one-click
     /// switch to. nil → omit the Switch button.
     let visionFallbackOption: ModelIdentifier?
+    /// True only when edit mode can start (OverlayModel.canEnterEdit).
+    let canEnterEdit: Bool
+    let onEdit: () -> Void
     let onCopy: () -> Void
     let onCancel: () -> Void
     let onAccept: () -> Void
@@ -125,17 +128,21 @@ struct OverlayButtons: View {
             // it lets the user pick a destination. Hidden when send-to
             // is gated off (reference windows disabled), so we don't
             // advertise a no-op.
-            // E — edit the reviewed text yourself before accepting (#85). As
-            // useful as send-elsewhere and previously only in the footer / "?"
-            // help, so surface it here next to the V hint. Always available in
-            // review (no gate).
-            HStack(spacing: 4) {
-                keyCap("E", isProminent: false)
-                Text("edit")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
+            // E — edit the reviewed text yourself before accepting (#85, #132).
+            // Clickable; calls the same closure the E key does. Disabled (not
+            // hidden) while the editor is open so the footer doesn't reflow.
+            Button(action: onEdit) {
+                HStack(spacing: 5) {
+                    keyCap("E", isProminent: false)
+                    Text("Edit")
+                }
+                .font(.system(size: 11))
             }
-            .help("Press E to edit the text yourself before accepting")
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(!canEnterEdit)
+            .help("Edit the text yourself before accepting (E)")
+            .accessibilityLabel("Edit the text before accepting")
             if sendToEnabled {
                 HStack(spacing: 4) {
                     keyCap("V", isProminent: false)
@@ -253,6 +260,8 @@ private let _previewTarget = PasteDestination(
         pasteTarget: _previewTarget,
         conflict: nil,
         visionFallbackOption: nil,
+        canEnterEdit: true,
+        onEdit: {},
         onCopy: {},
         onCancel: {},
         onAccept: {},
@@ -270,6 +279,8 @@ private let _previewTarget = PasteDestination(
         pasteTarget: nil,
         conflict: nil,
         visionFallbackOption: nil,
+        canEnterEdit: true,
+        onEdit: {},
         onCopy: {},
         onCancel: {},
         onAccept: {},
@@ -287,6 +298,8 @@ private let _previewTarget = PasteDestination(
         pasteTarget: _previewTarget,
         conflict: nil,
         visionFallbackOption: nil,
+        canEnterEdit: true,
+        onEdit: {},
         onCopy: {},
         onCancel: {},
         onAccept: {},
@@ -304,6 +317,8 @@ private let _previewTarget = PasteDestination(
         pasteTarget: _previewTarget,
         conflict: .visionRefsButNonVisionModel(refCount: 3),
         visionFallbackOption: ModelIdentifier(provider: "gemini", model: "gemini-2.5-flash"),
+        canEnterEdit: true,
+        onEdit: {},
         onCopy: {},
         onCancel: {},
         onAccept: {},
@@ -321,6 +336,8 @@ private let _previewTarget = PasteDestination(
         pasteTarget: _previewTarget,
         conflict: .visionRefsButNonVisionModel(refCount: 1),
         visionFallbackOption: nil,
+        canEnterEdit: true,
+        onEdit: {},
         onCopy: {},
         onCancel: {},
         onAccept: {},
