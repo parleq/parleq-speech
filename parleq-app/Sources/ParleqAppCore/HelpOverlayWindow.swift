@@ -211,7 +211,7 @@ private struct HelpContent: View {
             HelpSection(title: "Reviewing your text", rows: {
                 var rows = [
                     HelpRow(keys: "Enter", desc: "Accept & paste to the current app"),
-                    HelpRow(keys: "E", desc: "Edit the text yourself before accepting"),
+                    HelpRow(keys: "E", desc: "Edit the text yourself before accepting (or click Edit)"),
                     HelpRow(keys: "V", desc: "Send to a different window"),
                 ]
                 if model.transformPresetsEnabled {

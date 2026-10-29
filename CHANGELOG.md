@@ -4,6 +4,12 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.46.0] - Unreleased
+
+### Added
+
+- **Clickable Edit button in the review overlay.** The "E edit" hint is now a real button that does what pressing E does. It is greyed out while you are already editing. (#132)
+
 ## [0.45.1] - 2026-10-27
 
 Bug fixes.

@@ -1,5 +1,3 @@
-Parleq 0.45.1
+Parleq 0.46.0
 
-Bug fixes.
-
-Spelled-out words no longer lose their last letter when it is followed by punctuation, and JPEG, GIF and WebP images added as references are now sent with their real type so cleanup models accept them. The on-device cleanup engine is updated with bug fixes.
+The "E edit" hint in the review overlay is now a clickable Edit button. It does exactly what pressing E does, and is greyed out while you are already editing.
