@@ -1,37 +1,44 @@
 @import "tailwindcss";
 
 /*
- * Parleq design tokens. Custom theme rather than Tailwind's defaults
- * so the site reads like a Parleq site, not a Tailwind site:
+ * Parleq design tokens. Parleq is a Keavi product: it shares the Keavi
+ * family's foundations and keeps its own voice.
  *
- *   - Fraunces (variable serif, optical sizing) for headings —
- *     reads as "writerly" without being precious. Ties to Parleq's
- *     core promise: voice in, written word out.
- *   - Inter for body — reliable, neutral, lets Fraunces carry the
- *     personality.
- *   - Warm white background (#fafaf7) instead of pure white — softer
- *     on the eye, less of a default-Tailwind feel.
- *   - Amber accent (#d97706) — warm, friendly, distinct from the
- *     blues that dominate developer-tool sites in 2026.
- *   - Sound-bar motif color matches the in-app SoundWaveBars view's
- *     accent so the website feels continuous with the product.
+ *   - Shared with keavi.app and Stu: the Keavi slate neutrals (text,
+ *     muted, subtle, borders), the cool light ground (#f4f6f9), Inter
+ *     for body and IBM Plex Mono for code.
+ *   - Parleq's own: Fraunces (variable serif, optical sizing) for
+ *     headings, ties to the core promise: voice in, written word out.
+ *   - Grape leads. Concord grape is the accent for links, eyebrows,
+ *     focus and the solid Download button.
+ *   - Amber is reserved for the voice: the sound-bar mark (logo,
+ *     favicon, flow-card glyph) and the spark in the flow art. It matches
+ *     the in-app SoundWaveBars view, so the site stays continuous with the
+ *     product. Never use amber for text, links or buttons.
  */
 @theme {
   --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
   --font-serif: 'Fraunces', ui-serif, Georgia, serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 
-  --color-bg: #fafaf7;
+  /* Keavi slate (keavi-50 ground, keavi-950 / -600 / -500 text, -200 / -100 lines). */
+  --color-bg: #f4f6f9;
   --color-surface: #ffffff;
-  --color-text: #0f172a;
-  --color-text-muted: #475569;
-  --color-text-subtle: #64748b;
-  --color-border: #e2e8f0;
-  --color-border-subtle: #f1f5f9;
-  --color-accent: #d97706;
-  --color-accent-hover: #b45309;
-  --color-accent-soft: #fef3c7;
-  --color-wave: #d97706;
+  --color-text: #020d1a;
+  --color-text-muted: #45596f;
+  --color-text-subtle: #536880;
+  --color-border: #cbd4e0;
+  --color-border-subtle: #e7ebf1;
+
+  /* Accent = grape. In a dark zone (.zone-dark) these re-point to the
+     light grape steps; see the rule below the theme. */
+  --color-accent: #5b2a86;
+  --color-accent-hover: #43205f;
+  --color-accent-soft: #ebe0f6;
+
+  /* Amber: the voice. Sound bars and the flow-art spark only. */
+  --color-amber: #d97706;
+  --color-wave: var(--color-amber);
 
   /* Concord grape — a rich muted purple that sets the on-device cleanup
      family apart (the Lightweight tier, the on-device showcase block, the
@@ -47,11 +54,7 @@
        body  #f6f1fb on panel #23103a → 15.66 (AAA)
        lavender headline #a87fce on #23103a → 5.46 (AA normal)
        grape-200 #cdb4e6 on #23103a → 9.34
-       amber #d97706 small text on #311551 → 4.86 (just passes AA)
-     RULE: amber small text on the panel is borderline — prefer amber for
-     large text, icons, and CTA fill. (Solid Download CTAs use the darker
-     --color-accent-hover #b45309 via `.cta-solid` = 5.02:1 white-on-amber;
-     the base #d97706 fill is 3.19 and reserved for large/icon accents.) */
+     Amber is never text: it marks the voice (bars, flow spark) only. */
   --color-grape-950: #150720;
   --color-grape-900: #23103a;
   --color-grape-800: #311551;
@@ -63,19 +66,19 @@
   --color-grape-200: #cdb4e6;
   --color-grape-100: #ebe0f6;
   --color-panel-ink: #f6f1fb;             /* near-white body/headline on dark panel */
-  --flow-voice: var(--color-accent);      /* amber spark = voice energy */
+  --flow-voice: var(--color-amber);       /* amber spark = voice energy */
   --flow-clean: var(--color-grape-300);   /* lavender = cleanup/intelligence */
 
   /* Light-purple "utility page" hero (docs + FAQ family) — a shade darker than panel-ink so it
      reads as a hero, but clearly lighter than the deep-grape marquee heroes (home/enterprise).
-     Used as a top→bottom gradient. Dark text + amber eyebrow sit on it (AA-verified). */
+     Used as a top→bottom gradient. Dark text + grape eyebrow sit on it (grape 6.6:1 on the
+     bottom stop; amber would be 2.1:1, never use it here). */
   --color-hero-light-top: #ece4f7;
   --color-hero-light-bottom: #ddccf0;
 
-  /* Very faint slate wash for the homepage section rhythm — sits a hair
-     below the warm-white base so alternating sections read as distinct
-     bands without a hard line. Derived from the slate border palette. */
-  --color-section-tint: #f5f6f8;
+  /* Slate wash (keavi-100) a step below the ground: code-block and
+     inset-panel grounds, set apart from color-bg without a hard line. */
+  --color-section-tint: #e7ebf1;
 }
 
 html {
@@ -112,13 +115,22 @@ body {
 
 
 
-/* Solid brand CTA (the Download buttons). Fills with the DARKER accent so the
-   white label clears WCAG AA — #b45309 on white is 5.02:1, vs the base
-   #d97706's 3.19:1. Hover darkens the *current* accent (color-mix toward
-   black), so a CTA that lands inside a grape zone — where the accent tokens
-   re-point — still themes and darkens correctly. */
+/* Solid brand CTA (the Download buttons). Fills with the deep grape
+   (--color-accent-hover, #43205f): the white label is 13.0:1. Hover darkens the
+   current accent toward black. */
 .cta-solid { background: var(--color-accent-hover); }
 .cta-solid:hover { background: color-mix(in srgb, var(--color-accent-hover) 80%, #000); }
+
+/* Dark zone: any grape-panel ground (marquee heroes, the nav pill, the dark
+   bands, the footer). Accent text and icons go lavender (grape-300 is 5.5:1 on
+   grape-900), and the solid CTA turns into a pale pill with deep-grape text
+   (11.7:1), since a deep-grape fill would vanish into the panel. */
+.zone-dark {
+  --color-accent: var(--color-grape-300);
+  --color-accent-hover: var(--color-grape-200);
+}
+.zone-dark .cta-solid { background: var(--color-panel-ink); color: var(--color-grape-strong); }
+.zone-dark .cta-solid:hover { background: #ffffff; }
 
 /* On-device "grape zone". Applied to a block or page that features on-device
    cleanup, it re-points the accent variables to Concord grape — so every
@@ -161,12 +173,12 @@ body {
 
 /* Flow card token highlights — used inside the hero's dark-grape panel to
    mark the "wrong" tokens in the input card and the "fixed" tokens in the
-   output card. `.u-tok` = amber underline (raw, unrecognized term);
+   output card. `.u-tok` = amber underline (raw speech is the voice, so it stays amber);
    `.mk-tok` = lavender grape-200 text on grape-400/42% tint (corrected).
    Both rely on the grape-ramp variables available globally. */
 .u-tok {
   text-decoration: underline;
-  text-decoration-color: color-mix(in srgb, var(--color-accent) 75%, transparent);
+  text-decoration-color: color-mix(in srgb, var(--color-amber) 75%, transparent);
   text-decoration-thickness: 1.5px;
   text-underline-offset: 3px;
 }
@@ -213,7 +225,7 @@ body {
 
 /* How-it-works pipeline stepper. The data-transformation strip
    doubles as stage navigation; the script flips its boxes into
-   aria-current buttons. The active box picks up the amber-accent
+   aria-current buttons. The active box picks up the accent
    treatment (mirroring the "Pasted" box's resting accent style), so
    the mapping box→panel reads at a glance. Hover/idle styling lives in
    markup classes; this rule covers only the aria-current state that
@@ -224,7 +236,7 @@ body {
   background: color-mix(in srgb, var(--color-accent-soft) 35%, transparent);
 }
 /* Subtle marker for the native <details> rows: hide the default
-   disclosure triangle (we render our own amber chevron) and rotate the
+   disclosure triangle (we render our own accent chevron) and rotate the
    chevron when open. `list-style: none` is the cross-browser way to
    drop the <summary> marker (Firefox + standards-mode); the
    ::-webkit- rule covers older Safari/Chrome that ignore list-style on

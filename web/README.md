@@ -56,9 +56,9 @@ Pages get URLs from filename: `src/pages/foo.astro` → `/foo/`.
 
 Custom theme defined in `src/styles/global.css` under `@theme { … }`:
 
-- **Fonts**: Fraunces (variable serif, optical sizing) for display, Inter for body, JetBrains Mono for code.
-- **Palette**: warm white background (`#fafaf7`), slate text, amber accent (`#d97706`). Distinct from typical Tailwind-defaulted developer-tool sites.
-- **Sound-bar motif**: same accent color as the in-app `SoundWaveBars` view — keeps the website continuous with the product.
+- **Fonts**: Fraunces (variable serif, optical sizing) for display, Inter for body, IBM Plex Mono for code.
+- **Palette**: shared with the other Keavi sites (keavi.app, Stu): the cool light ground (`#f4f6f9`) and the Keavi slate neutrals. Parleq's own accent is Concord grape (`#5b2a86`); dark grape panels (`.zone-dark`) switch the accent to lavender.
+- **Amber is the voice**: the sound-bar mark and the spark in the flow art use `--color-amber` (`#d97706`), matching the in-app `SoundWaveBars` view. Amber is never used for text, links or buttons.
 
 To tweak the look-and-feel, edit those tokens in one place rather than chasing arbitrary classes through `index.astro`.
 
