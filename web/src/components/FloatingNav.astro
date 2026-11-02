@@ -33,7 +33,7 @@ const items = [
 ];
 ---
 
-<div class="pointer-events-none fixed inset-x-0 top-3 z-50 sm:top-4">
+<div class="zone-dark pointer-events-none fixed inset-x-0 top-3 z-50 sm:top-4">
   <div class="mx-auto max-w-[1700px] px-3 sm:px-5">
     <nav
       class="pointer-events-auto flex items-center justify-between gap-4 rounded-2xl border border-white/10 px-4 py-2.5 shadow-[0_10px_30px_-12px_rgba(8,3,18,.7)] backdrop-blur-md sm:px-6"
@@ -49,7 +49,7 @@ const items = [
         {items.map((item) =>
           item.key === active ? (
             // Active item is still a LINK (clickable to the section root, e.g. Docs from a docs
-            // subpage) — just styled as current with the amber underline.
+            // subpage) — just styled as current with the accent underline.
             <a href={item.href} aria-current="true" class="font-semibold text-white underline decoration-[color:var(--color-accent)] decoration-2 underline-offset-[7px]">{item.label}</a>
           ) : (
             <a href={item.href} class="transition-colors hover:text-white">{item.label}</a>

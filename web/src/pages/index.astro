@@ -45,7 +45,7 @@ const base = `${import.meta.env.BASE_URL}`.replace(/\/$/, '');
        (cap 1700px), ~20px desktop margin, FULL-BLEED on mobile (margin → 0, no rounding). -->
   <section class="mx-auto max-w-[1700px] px-0 py-0 sm:px-5 sm:py-5">
     <div
-      class="relative overflow-hidden rounded-none px-5 pb-28 pt-28 sm:rounded-[28px] sm:px-10 sm:pt-36"
+      class="zone-dark relative overflow-hidden rounded-none px-5 pb-28 pt-28 sm:rounded-[28px] sm:px-10 sm:pt-36"
       style="background:
                radial-gradient(58% 74% at 72% 52%, color-mix(in srgb, var(--color-grape-600) 55%, transparent), transparent 68%),
                linear-gradient(180deg, #1d0b33 0%, #140622 100%);
@@ -268,7 +268,7 @@ const base = `${import.meta.env.BASE_URL}`.replace(/\/$/, '');
         <div class="justify-self-center lg:justify-self-end lg:mt-2">
           <div class="w-full max-w-sm rounded-2xl border p-5 shadow-[0_22px_60px_-34px_rgba(20,7,32,.55)]" style="background: linear-gradient(180deg, #1c2128, #171c22); border-color: rgba(255,255,255,.1);">
             <div class="flex items-center gap-3">
-              <span aria-hidden="true" class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" style="background: color-mix(in srgb, var(--color-accent) 22%, transparent); color: #fcd9a3;">
+              <span aria-hidden="true" class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" style="background: color-mix(in srgb, var(--color-accent) 22%, transparent); color: var(--color-grape-200);">
                 <svg viewBox="0 0 24 24" class="h-[18px] w-[18px]" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8a9 9 0 1 1-1.5 5"/><path d="M3 4v4h4"/><path d="M12 8v4l3 2"/></svg>
               </span>
               <div>
@@ -297,13 +297,13 @@ const base = `${import.meta.env.BASE_URL}`.replace(/\/$/, '');
        servers in the path. A DARK GRAPE band (from-[#23103a] to-[#140622])
        that bookends the page in the hero's grape atmosphere and reads as a
        distinct, weightier moment. Text is grape-200 (white emphasis) so it
-       passes contrast on the grape ground; amber carries the eyebrow,
+       passes contrast on the grape ground; lavender (.zone-dark) carries the eyebrow,
        bullets, and links. id anchors the hero pill + the site-wide
        "Enterprise" nav link; scroll-mt clears the heading on jump. -->
   <section
     id="enterprise"
     data-reveal
-    class="scroll-mt-20 bg-gradient-to-br from-[#23103a] to-[#140622] text-[color:var(--color-grape-200)]"
+    class="zone-dark scroll-mt-20 bg-gradient-to-br from-[#23103a] to-[#140622] text-[color:var(--color-grape-200)]"
   >
     <div class="mx-auto max-w-3xl px-6 py-20 sm:py-24">
       <p class="text-sm font-medium uppercase tracking-[0.18em] text-[color:var(--color-accent)]">
