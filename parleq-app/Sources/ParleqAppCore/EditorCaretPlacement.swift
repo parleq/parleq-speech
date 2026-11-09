@@ -18,6 +18,18 @@ struct EditClick: Equatable {
     /// Screen y of the click (AppKit screen coordinates, y up). Used to keep the
     /// clicked line at the same height on screen once the editor is up.
     let screenY: CGFloat
+    /// Concord correction badges drawn into the review text but absent from the
+    /// editor. Empty when the review text had no highlights.
+    var badges: [Badge] = []
+
+    /// A superscript number badge inserted into the review text right after a
+    /// correction span (see OverlayContent.highlightedReviewText).
+    struct Badge: Equatable {
+        /// UTF-16 offset in the plain text where the badge is inserted.
+        let location: Int
+        /// The badge text, e.g. "2".
+        let label: String
+    }
 }
 
 /// Content-area layout rule, kept pure so it can be unit tested.
@@ -54,9 +66,15 @@ enum EditorCaretPlacement {
         return currentOriginY + (clipIsFlipped ? delta : -delta)
     }
 
+    /// How often to check whether SwiftUI focus has landed.
+    static let focusPollInterval: TimeInterval = 0.016
+
     /// Called when the in-place editor appears in `panel`. Aligns the editor's
-    /// text with the review text, places the caret at `click` when the editor
-    /// was opened by a click, and makes sure the editor ends up focused.
+    /// text with the review text, makes sure the editor ends up focused, and
+    /// then — once, right after focus lands — places the caret at `click` when
+    /// the editor was opened by a click. Placing only after focus means focus
+    /// arriving can't move the caret, and nothing here runs after the user can
+    /// type or move the caret themselves.
     static func editorDidAppear(in panel: NSWindow, click: EditClick?) {
         DispatchQueue.main.async {
             guard let textView = editorTextView(in: panel) else { return }
@@ -64,26 +82,73 @@ enum EditorCaretPlacement {
             // of the review Text; zero it so the editor opens without a sideways
             // jump and the click maps to the same glyph.
             textView.textContainer?.lineFragmentPadding = 0
-            var placed: NSRange?
-            if let click {
-                placed = placeCaret(click, in: textView, panel: panel)
-            }
-            let textAtPlacement = textView.string
-            DispatchQueue.main.asyncAfter(deadline: .now() + settleDelay) {
-                // The editor may have closed (Esc / ⌘S) or been rebuilt meanwhile.
-                guard panel.isVisible, editorTextView(in: panel) === textView else { return }
-                if panel.firstResponder !== textView {
-                    panel.makeFirstResponder(textView)
-                }
-                // Focus arriving can move the selection; restore the placed caret
-                // unless the user has already typed.
-                if let placed, textView.string == textAtPlacement,
-                   textView.selectedRange() != placed {
-                    textView.setSelectedRange(placed)
-                    textView.scrollRangeToVisible(placed)
-                }
-            }
+            placeWhenFocused(textView, in: panel, click: click,
+                             deadline: Date().addingTimeInterval(settleDelay))
         }
+    }
+
+    private static func placeWhenFocused(_ textView: NSTextView, in panel: NSWindow,
+                                         click: EditClick?, deadline: Date) {
+        // The editor may have closed (Esc / ⌘S) or been rebuilt meanwhile.
+        guard panel.isVisible, editorTextView(in: panel) === textView else { return }
+        if panel.firstResponder !== textView {
+            if Date() < deadline {
+                DispatchQueue.main.asyncAfter(deadline: .now() + focusPollInterval) {
+                    placeWhenFocused(textView, in: panel, click: click, deadline: deadline)
+                }
+                return
+            }
+            // Fallback: SwiftUI focus never landed.
+            panel.makeFirstResponder(textView)
+        }
+        if let click {
+            placeCaret(click, in: textView, panel: panel)
+        }
+    }
+
+    /// Plain-text UTF-16 index for `badgedIndex`, an index into the review text
+    /// with `badges` inserted. An index inside a badge snaps to the end of the
+    /// corrected span the badge follows. `badges` must be sorted by location.
+    static func plainIndex(fromBadged badgedIndex: Int, badges: [EditClick.Badge]) -> Int {
+        var inserted = 0
+        for badge in badges {
+            let start = badge.location + inserted
+            if badgedIndex <= start { break }
+            let length = (badge.label as NSString).length
+            if badgedIndex < start + length { return badge.location }
+            inserted += length
+        }
+        return badgedIndex - inserted
+    }
+
+    /// Character index the click hits in the review text as drawn WITH badges,
+    /// mapped back to the plain text. Mirrors highlightedReviewText's fonts.
+    private static func indexAccountingForBadges(_ click: EditClick, plainText: String,
+                                                 width: CGFloat) -> Int {
+        let body = NSFont.systemFont(ofSize: 17)
+        let badgeFont = NSFont.systemFont(ofSize: 9, weight: .bold)
+        let mirror = NSMutableAttributedString(string: plainText, attributes: [.font: body])
+        for badge in click.badges.reversed() where badge.location <= mirror.length {
+            mirror.insert(NSAttributedString(string: badge.label,
+                                             attributes: [.font: badgeFont, .baselineOffset: 6]),
+                          at: badge.location)
+        }
+        let storage = NSTextStorage(attributedString: mirror)
+        let layout = NSLayoutManager()
+        let container = NSTextContainer(size: NSSize(width: width,
+                                                     height: .greatestFiniteMagnitude))
+        container.lineFragmentPadding = 0
+        layout.addTextContainer(container)
+        storage.addLayoutManager(layout)
+        layout.ensureLayout(for: container)
+        guard storage.length > 0 else { return 0 }
+        var fraction: CGFloat = 0
+        let glyph = layout.glyphIndex(for: click.textPoint, in: container,
+                                      fractionOfDistanceThroughGlyph: &fraction)
+        var badged = layout.characterIndexForGlyph(at: glyph)
+        if fraction > 0.5 { badged += 1 }
+        let plain = plainIndex(fromBadged: min(badged, storage.length), badges: click.badges)
+        return min(max(0, plain), (plainText as NSString).length)
     }
 
     /// The in-place editor's text view: the panel's only non-field-editor,
@@ -102,18 +167,27 @@ enum EditorCaretPlacement {
 
     private static func placeCaret(_ click: EditClick,
                                    in textView: NSTextView,
-                                   panel: NSWindow) -> NSRange? {
+                                   panel: NSWindow) {
         guard let container = textView.textContainer,
-              let layout = textView.layoutManager else { return nil }
+              let layout = textView.layoutManager else { return }
         layout.ensureLayout(for: container)
         let origin = textView.textContainerOrigin
-        let point = NSPoint(x: click.textPoint.x + origin.x, y: click.textPoint.y + origin.y)
-        let index = textView.characterIndexForInsertion(at: point)
+        let index: Int
+        if click.badges.isEmpty {
+            // Same text, same width, same font: the editor's layout matches the
+            // review text's, so hit-test the editor directly.
+            let point = NSPoint(x: click.textPoint.x + origin.x, y: click.textPoint.y + origin.y)
+            index = textView.characterIndexForInsertion(at: point)
+        } else {
+            // Badges shift the review layout; hit-test a mirror of it instead.
+            let width = textView.bounds.width - 2 * origin.x
+            index = indexAccountingForBadges(click, plainText: textView.string, width: width)
+        }
         let range = NSRange(location: index, length: 0)
         textView.setSelectedRange(range)
 
         let length = (textView.string as NSString).length
-        guard length > 0 else { return range }
+        guard length > 0 else { return }
         let glyph = layout.glyphIndexForCharacter(at: min(index, length - 1))
         var lineRect = layout.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
         lineRect.origin.x += origin.x
@@ -136,6 +210,5 @@ enum EditorCaretPlacement {
             scroller.reflectScrolledClipView(clip)
             current = scroller
         }
-        return range
     }
 }

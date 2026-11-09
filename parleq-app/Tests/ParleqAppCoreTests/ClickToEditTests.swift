@@ -52,4 +52,31 @@ final class ClickToEditTests: XCTestCase {
             currentOriginY: 42, lineTopOnScreen: 400, wantedTopOnScreen: 400,
             clipIsFlipped: true), 42)
     }
+
+    // MARK: plainIndex(fromBadged:)
+
+    private let badges = [
+        EditClick.Badge(location: 5, label: "1"),
+        EditClick.Badge(location: 10, label: "12"),
+    ]
+
+    func testNoBadgesIsIdentity() {
+        XCTAssertEqual(EditorCaretPlacement.plainIndex(fromBadged: 7, badges: []), 7)
+    }
+
+    func testBeforeFirstBadgeUnchanged() {
+        XCTAssertEqual(EditorCaretPlacement.plainIndex(fromBadged: 5, badges: badges), 5)
+    }
+
+    func testInsideBadgeSnapsToSpanEnd() {
+        // Badged text: 0-4 plain, 5 = "1", then plain 5… at badged 6.
+        // Badged 11-12 = "12" (plain 10 + 1 inserted).
+        XCTAssertEqual(EditorCaretPlacement.plainIndex(fromBadged: 12, badges: badges), 10)
+    }
+
+    func testAfterBadgesSubtractsInsertedLength() {
+        XCTAssertEqual(EditorCaretPlacement.plainIndex(fromBadged: 6, badges: badges), 5)
+        XCTAssertEqual(EditorCaretPlacement.plainIndex(fromBadged: 11, badges: badges), 10)
+        XCTAssertEqual(EditorCaretPlacement.plainIndex(fromBadged: 20, badges: badges), 17)
+    }
 }

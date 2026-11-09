@@ -1845,7 +1845,24 @@ private struct PresetChip: View {
 /// cursor. A click on an unfocused overlay only focuses it, as is usual on macOS.
 private struct ClickToEdit: ViewModifier {
     @ObservedObject var model: OverlayModel
+    /// The text is drawn by highlightedReviewText, with correction badges.
+    var showsBadges = false
     @State private var cursorPushed = false
+
+    /// The badges highlightedReviewText inserts, in plain-text UTF-16 offsets.
+    private var badges: [EditClick.Badge] {
+        #if Concord
+        guard showsBadges else { return [] }
+        let text = model.text
+        return model.correctionSpans
+            .filter { $0.range.upperBound <= text.endIndex }
+            .map { EditClick.Badge(location: $0.range.upperBound.utf16Offset(in: text),
+                                   label: "\($0.number)") }
+            .sorted { $0.location < $1.location }
+        #else
+        return []
+        #endif
+    }
 
     func body(content: Content) -> some View {
         content
@@ -1853,7 +1870,8 @@ private struct ClickToEdit: ViewModifier {
             .onTapGesture(coordinateSpace: .local) { location in
                 guard model.canEnterEdit else { return }
                 model.pendingEditClick = EditClick(textPoint: location,
-                                                   screenY: NSEvent.mouseLocation.y)
+                                                   screenY: NSEvent.mouseLocation.y,
+                                                   badges: badges)
                 model.onEnterEdit?()
                 // AppState declined: don't let the click leak into a later E-edit.
                 if !model.editing { model.pendingEditClick = nil }
@@ -1876,6 +1894,11 @@ private struct ClickToEdit: ViewModifier {
                 }
             }
             .accessibilityHint("Click to edit")
+            // VoiceOver: an explicit action, since the tap gesture needs a
+            // pointer location. Opens the editor like E does.
+            .accessibilityAction(named: "Edit") {
+                if model.canEnterEdit { model.onEnterEdit?() }
+            }
     }
 }
 
@@ -3522,7 +3545,7 @@ private struct OverlayContent: View {
                                 .font(.system(size: 17))
                                 .fixedSize(horizontal: false, vertical: true)
                                 .frame(maxWidth: .infinity, alignment: .leading)
-                                .modifier(ClickToEdit(model: model))
+                                .modifier(ClickToEdit(model: model, showsBadges: true))
                             correctionLegend(model.correctionSpans)
                         } else {
                             Text(model.text)
