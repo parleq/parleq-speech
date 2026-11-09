@@ -75,7 +75,9 @@ enum EditorCaretPlacement {
     /// the editor was opened by a click. Placing only after focus means focus
     /// arriving can't move the caret, and nothing here runs after the user can
     /// type or move the caret themselves.
-    static func editorDidAppear(in panel: NSWindow, click: EditClick?) {
+    /// `textAtOpen` is the editor's text captured synchronously in onAppear,
+    /// before anything is queued, so a keystroke can't sneak into the baseline.
+    static func editorDidAppear(in panel: NSWindow, click: EditClick?, textAtOpen: String) {
         DispatchQueue.main.async {
             guard let textView = editorTextView(in: panel) else { return }
             // TextEditor's default 5pt line-fragment padding shifts its text right
@@ -83,7 +85,7 @@ enum EditorCaretPlacement {
             // jump and the click maps to the same glyph.
             textView.textContainer?.lineFragmentPadding = 0
             placeWhenFocused(textView, in: panel, click: click,
-                             textAtOpen: textView.string,
+                             textAtOpen: textAtOpen,
                              deadline: Date().addingTimeInterval(settleDelay))
         }
     }

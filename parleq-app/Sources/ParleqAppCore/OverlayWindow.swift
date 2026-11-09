@@ -253,9 +253,10 @@ public final class OverlayWindow {
         panel.onEnterEdit = { [weak self] in self?.model.onEnterEdit?() }
         panel.isEditing = { [weak self] in self?.model.editing ?? false }
         // Click-to-edit: place the caret at the click and back up SwiftUI focus.
-        model.onEditorAppeared = { [weak self] click in
+        model.onEditorAppeared = { [weak self] click, textAtOpen in
             guard let self else { return }
-            EditorCaretPlacement.editorDidAppear(in: self.panel, click: click)
+            EditorCaretPlacement.editorDidAppear(in: self.panel, click: click,
+                                                 textAtOpen: textAtOpen)
         }
 
         sizeObservation = hc.observe(\.preferredContentSize, options: [.new]) { [weak self] _, change in
@@ -1339,7 +1340,7 @@ public final class OverlayModel: ObservableObject {
     /// Edit button opened it. Consumed by the editor's onAppear.
     var pendingEditClick: EditClick?
     /// Set by OverlayWindow: the editor appeared (with the opening click, if any).
-    var onEditorAppeared: ((EditClick?) -> Void)?
+    var onEditorAppeared: ((EditClick?, String) -> Void)?
     var onCommitEdit: ((Bool) -> Void)?
     var onDiscardEdit: (() -> Void)?
 
@@ -3511,7 +3512,7 @@ private struct OverlayContent: View {
                                 editorFocused = true
                                 let click = model.pendingEditClick
                                 model.pendingEditClick = nil
-                                model.onEditorAppeared?(click)
+                                model.onEditorAppeared?(click, model.editableText)
                             }
                             // #85: dispatch edit-mode keys through the shared
                             // OverlayKeymap decision table (the same one the unit
