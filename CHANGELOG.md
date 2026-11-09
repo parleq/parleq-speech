@@ -4,6 +4,16 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.47.0] - Unreleased
+
+### Added
+
+- **Click the text to edit it.** In the review overlay, click anywhere in your dictation to start editing with the cursor right where you clicked. E and the Edit button still work. If another window has focus, the first click brings the overlay forward and the second starts editing, as usual on macOS.
+
+### Fixed
+
+- **Editing long dictations.** When a dictation was long enough to scroll, editing it could lose focus after one keystroke, and once blanked the text. Long dictations now edit like short ones.
+
 ## [0.46.0] - 2026-10-29
 
 ### Added
