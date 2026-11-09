@@ -4,7 +4,7 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
-## [0.47.0] - Unreleased
+## [0.47.0] - 2026-11-09
 
 ### Added
 
