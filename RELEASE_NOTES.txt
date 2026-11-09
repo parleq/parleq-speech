@@ -1,3 +1,5 @@
-Parleq 0.46.0
+Parleq 0.47.0
 
-The "E edit" hint in the review overlay is now a clickable Edit button. It does exactly what pressing E does, and is greyed out while you are already editing.
+Click anywhere in your dictation in the review overlay to start editing with the cursor right where you clicked. E and the Edit button still work.
+
+Also fixes editing long dictations, which could lose focus after one keystroke.
