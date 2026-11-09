@@ -83,25 +83,31 @@ enum EditorCaretPlacement {
             // jump and the click maps to the same glyph.
             textView.textContainer?.lineFragmentPadding = 0
             placeWhenFocused(textView, in: panel, click: click,
+                             textAtOpen: textView.string,
                              deadline: Date().addingTimeInterval(settleDelay))
         }
     }
 
     private static func placeWhenFocused(_ textView: NSTextView, in panel: NSWindow,
-                                         click: EditClick?, deadline: Date) {
+                                         click: EditClick?, textAtOpen: String,
+                                         deadline: Date) {
         // The editor may have closed (Esc / ⌘S) or been rebuilt meanwhile.
         guard panel.isVisible, editorTextView(in: panel) === textView else { return }
         if panel.firstResponder !== textView {
             if Date() < deadline {
                 DispatchQueue.main.asyncAfter(deadline: .now() + focusPollInterval) {
-                    placeWhenFocused(textView, in: panel, click: click, deadline: deadline)
+                    placeWhenFocused(textView, in: panel, click: click,
+                                     textAtOpen: textAtOpen, deadline: deadline)
                 }
                 return
             }
             // Fallback: SwiftUI focus never landed.
             panel.makeFirstResponder(textView)
         }
-        if let click {
+        // Focus can land between polls; if the user typed in that gap, leave
+        // their caret alone. (A caret-only move inside one ~16 ms poll gap
+        // can't be told apart from focus itself moving the selection.)
+        if let click, textView.string == textAtOpen {
             placeCaret(click, in: textView, panel: panel)
         }
     }
