@@ -141,7 +141,7 @@ struct OverlayButtons: View {
             .buttonStyle(.bordered)
             .controlSize(.small)
             .disabled(!canEnterEdit)
-            .help("Edit the text yourself before accepting (E)")
+            .help("Edit the text yourself before accepting (E, or click the text)")
             .accessibilityLabel("Edit the text before accepting")
             if sendToEnabled {
                 HStack(spacing: 4) {

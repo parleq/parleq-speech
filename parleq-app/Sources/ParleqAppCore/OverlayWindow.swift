@@ -252,6 +252,11 @@ public final class OverlayWindow {
         // focused editor owns the keyboard.
         panel.onEnterEdit = { [weak self] in self?.model.onEnterEdit?() }
         panel.isEditing = { [weak self] in self?.model.editing ?? false }
+        // Click-to-edit: place the caret at the click and back up SwiftUI focus.
+        model.onEditorAppeared = { [weak self] click in
+            guard let self else { return }
+            EditorCaretPlacement.editorDidAppear(in: self.panel, click: click)
+        }
 
         sizeObservation = hc.observe(\.preferredContentSize, options: [.new]) { [weak self] _, change in
             // Trace: prove the KVO fires. Captures the .new value so
@@ -1330,6 +1335,11 @@ public final class OverlayModel: ObservableObject {
     /// review). onDiscardEdit = Esc (drop edits → review). AppState sets these
     /// (model-level, like onReauthSignIn).
     var onEnterEdit: (() -> Void)?
+    /// Click-to-edit: the click that is opening the editor; nil when E or the
+    /// Edit button opened it. Consumed by the editor's onAppear.
+    var pendingEditClick: EditClick?
+    /// Set by OverlayWindow: the editor appeared (with the opening click, if any).
+    var onEditorAppeared: ((EditClick?) -> Void)?
     var onCommitEdit: ((Bool) -> Void)?
     var onDiscardEdit: (() -> Void)?
 
@@ -1827,6 +1837,45 @@ private struct PresetChip: View {
         .onHover { hovered = $0 }
         .animation(.easeOut(duration: 0.12), value: hovered)
         .accessibilityHint("Apply this transform to the dictation")
+    }
+}
+
+/// Click-to-edit on the review text: a click opens the in-place editor with the
+/// caret at the clicked spot (EditorCaretPlacement), and hovering shows the text
+/// cursor. A click on an unfocused overlay only focuses it, as is usual on macOS.
+private struct ClickToEdit: ViewModifier {
+    @ObservedObject var model: OverlayModel
+    @State private var cursorPushed = false
+
+    func body(content: Content) -> some View {
+        content
+            .contentShape(Rectangle())
+            .onTapGesture(coordinateSpace: .local) { location in
+                guard model.canEnterEdit else { return }
+                model.pendingEditClick = EditClick(textPoint: location,
+                                                   screenY: NSEvent.mouseLocation.y)
+                model.onEnterEdit?()
+                // AppState declined: don't let the click leak into a later E-edit.
+                if !model.editing { model.pendingEditClick = nil }
+            }
+            // Push/pop stay balanced, including when the view goes away while
+            // hovered (it does on every click, as the editor replaces it).
+            .onHover { inside in
+                if inside, !cursorPushed {
+                    NSCursor.iBeam.push()
+                    cursorPushed = true
+                } else if !inside, cursorPushed {
+                    NSCursor.pop()
+                    cursorPushed = false
+                }
+            }
+            .onDisappear {
+                if cursorPushed {
+                    NSCursor.pop()
+                    cursorPushed = false
+                }
+            }
+            .accessibilityHint("Click to edit")
     }
 }
 
@@ -2591,7 +2640,11 @@ private struct OverlayContent: View {
             )
 
         Group {
-            if measuredContentHeight <= scrollThreshold {
+            if !OverlayContentLayout.usesScrollContainer(
+                measuredHeight: measuredContentHeight,
+                threshold: scrollThreshold,
+                editing: model.editing
+            ) {
                 measuredContent
             } else {
                 ScrollViewReader { proxy in
@@ -3426,9 +3479,17 @@ private struct OverlayContent: View {
                         TextEditor(text: $model.editableText)
                             .font(.system(size: 17))
                             .scrollContentBackground(.hidden)
-                            .frame(minHeight: ChromeSlotMetrics.contentMin)
+                            // Capped at the scroll threshold: the editor scrolls
+                            // itself while contentArea stays in one layout
+                            // (OverlayContentLayout.usesScrollContainer).
+                            .frame(minHeight: ChromeSlotMetrics.contentMin, maxHeight: scrollThreshold)
                             .focused($editorFocused)
-                            .onAppear { editorFocused = true }
+                            .onAppear {
+                                editorFocused = true
+                                let click = model.pendingEditClick
+                                model.pendingEditClick = nil
+                                model.onEditorAppeared?(click)
+                            }
                             // #85: dispatch edit-mode keys through the shared
                             // OverlayKeymap decision table (the same one the unit
                             // tests cover), so the editor and the panel can't
@@ -3461,18 +3522,21 @@ private struct OverlayContent: View {
                                 .font(.system(size: 17))
                                 .fixedSize(horizontal: false, vertical: true)
                                 .frame(maxWidth: .infinity, alignment: .leading)
+                                .modifier(ClickToEdit(model: model))
                             correctionLegend(model.correctionSpans)
                         } else {
                             Text(model.text)
                                 .font(.system(size: 17))
                                 .fixedSize(horizontal: false, vertical: true)
                                 .frame(maxWidth: .infinity, alignment: .leading)
+                                .modifier(ClickToEdit(model: model))
                         }
                         #else
                         Text(model.text)
                             .font(.system(size: 17))
                             .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
+                            .modifier(ClickToEdit(model: model))
                         #endif
                     }
                     // Cleanup-failure decoration. AppState passes a
