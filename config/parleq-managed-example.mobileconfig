@@ -62,7 +62,7 @@
                                     <string>openai</string>
                                 </array>
 
-                                <!-- Restrict cleanup model to GPT-4o family.
+                                <!-- Restrict cleanup model to the GPT-6 family.
                                      Use cleanupModel (String) to pin to a single model,
                                      OR cleanupAllowedModels ([String]) to offer a subset.
                                      When both are set, the pin wins.
@@ -76,8 +76,8 @@
                                      provider. -->
                                 <key>cleanupAllowedModels</key>
                                 <array>
-                                    <string>gpt-4o</string>
-                                    <string>gpt-4o-mini</string>
+                                    <string>gpt-6-luna</string>
+                                    <string>gpt-6.1-terra</string>
                                 </array>
 
                                 <!-- ═══ Feature toggles ════════════════════════════════════════ -->
@@ -229,13 +229,16 @@
                                      pin the GCP project and regions Vertex calls route through.
                                      Closes "use the allowed provider but route to my personal
                                      GCP project." All three are non-empty strings; empty values
-                                     are rejected and logged. Uncomment + edit as appropriate:
+                                     are rejected and logged. Note: Gemini 3+ and Claude Haiku 5.5 are
+                                     served on Vertex only from "global"; a regional pin
+                                     (e.g. europe-west4) makes those models return 404.
+                                     Uncomment + edit as appropriate:
                                 <key>vertexProject</key>
                                 <string>corp-vertex-prod</string>
                                 <key>vertexRegion</key>
-                                <string>us-central1</string>
+                                <string>global</string>
                                 <key>vertexAnthropicRegion</key>
-                                <string>us-east5</string>
+                                <string>global</string>
                                 -->
 
                                 <!-- awsRegion / awsProfile — pin the AWS Bedrock destination.
@@ -257,7 +260,7 @@
                                 <key>azureResource</key>
                                 <string>corp-openai</string>
                                 <key>azureDeployment</key>
-                                <string>gpt-4o-mini</string>
+                                <string>gpt-6-luna</string>
                                 -->
 
                             </dict>
