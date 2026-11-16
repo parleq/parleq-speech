@@ -106,6 +106,16 @@ final class ModelDeprecationMigrationTests: XCTestCase {
         XCTAssertFalse(ModelCatalog.ownsModel(provider: "azure", model: "gemini-3.8-flash"))
     }
 
+    func test_provider_snap_prefers_openai_over_azure_for_openai_family_ids() {
+        // RoboRev on a19a33b: an unpinned allowlist of ["o4-mini"] on a
+        // Gemini config must infer OpenAI, not an Azure deployment the
+        // user may not have.
+        for id in ["o4-mini", "gpt-6-luna", "gpt-4o-mini"] {
+            let owner = Config.providerSnapOrder.first { ModelCatalog.ownsModel(provider: $0, model: id) }
+            XCTAssertEqual(owner, "openai", id)
+        }
+    }
+
     // MARK: - Vertex location migration
 
     func test_vertex_old_default_region_moves_to_global() {

@@ -1654,7 +1654,11 @@ public struct Config: Sendable {
                     // Provider is user-controlled. Snap to the
                     // owning provider so the policy + user produce
                     // a valid runtime config.
-                    let owningProvider = ["gemini", "vertex", "bedrock", "bedrock-bearer", "azure", "openai"]
+                    // OpenAI before Azure: Azure labels share OpenAI's model
+                    // names (ModelCatalog.ownsModel), so an OpenAI-family ID
+                    // is ambiguous. Infer the direct API, which needs no
+                    // resource/deployment the user may not have.
+                    let owningProvider = Self.providerSnapOrder
                         .first { ModelCatalog.ownsModel(provider: $0, model: firstAllowed) }
                     if let owning = owningProvider {
                         configLogStderr("[parleq] cleanupAllowedModels: no allowed model compatible with provider '\(c.llmProvider)'; snapping provider to '\(owning)' which owns '\(firstAllowed)'")
@@ -1746,7 +1750,11 @@ public struct Config: Sendable {
                     contextModelName = ModelCatalog.defaultModel(forProvider: contextProvider)
                     configLogStderr("[parleq] contextAllowedModels: contradictory policy — no allowed model compatible with managed provider '\(contextProvider)'. Keeping provider per directive and resetting model '\(original)' to default '\(contextModelName)'. Fix the policy: either expand contextAllowedModels to include a '\(contextProvider)' model, or change contextProvider.")
                 } else {
-                    let owningProvider = ["gemini", "vertex", "bedrock", "bedrock-bearer", "azure", "openai"]
+                    // OpenAI before Azure: Azure labels share OpenAI's model
+                    // names (ModelCatalog.ownsModel), so an OpenAI-family ID
+                    // is ambiguous. Infer the direct API, which needs no
+                    // resource/deployment the user may not have.
+                    let owningProvider = Self.providerSnapOrder
                         .first { ModelCatalog.ownsModel(provider: $0, model: firstAllowed) }
                     if let owning = owningProvider {
                         configLogStderr("[parleq] contextAllowedModels: no allowed model compatible with provider '\(contextProvider)'; snapping provider to '\(owning)' which owns '\(firstAllowed)'")
@@ -2008,6 +2016,10 @@ public struct Config: Sendable {
         let isNew = loggedMigrationMessages.withLock { $0.insert(message).inserted }
         if isNew { configLogStderr(message) }
     }
+
+    /// Provider order for inferring an allowlist entry's owner when the
+    /// policy snaps the provider. OpenAI precedes Azure (see call sites).
+    static let providerSnapOrder = ["gemini", "vertex", "bedrock", "bedrock-bearer", "openai", "azure"]
 
     /// Vertex region defaults before 0.47.1 — rewritten to `global` by
     /// `migrateRetiredModels` when the config uses a global-only model.
