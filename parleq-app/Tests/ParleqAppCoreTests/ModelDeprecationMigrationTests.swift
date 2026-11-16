@@ -68,6 +68,29 @@ final class ModelDeprecationMigrationTests: XCTestCase {
         XCTAssertEqual(c.refineModel?.model, "gpt-6.1-sol")
     }
 
+    func test_azure_live_legacy_labels_stay_canonical() {
+        // Dropping a still-served Azure label would let the
+        // customModelEntryEnabled=false scrub flip it to gpt-6-luna and send
+        // that standard deployment reasoning-shape params (400).
+        for m in ["gpt-4o-mini", "gpt-4o", "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano"] {
+            XCTAssertTrue(ModelCatalog.isCanonical(provider: "azure", model: m), m)
+        }
+    }
+
+    // MARK: - MDM allowlist expansion
+
+    func test_allowlist_expansion_adds_successors_and_keeps_originals() {
+        XCTAssertEqual(ModelCatalog.expandingRetiredModels(["gemini-2.5-flash", "gpt-4o-mini"]),
+                       ["gemini-2.5-flash", "gemini-3.5-flash-lite", "gpt-4o-mini", "gpt-6-luna"],
+                       "gpt-4o-mini stays: it is still a live Azure label")
+    }
+
+    func test_allowlist_expansion_dedupes_and_ignores_current_ids() {
+        XCTAssertEqual(ModelCatalog.expandingRetiredModels(["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3.8-flash"]),
+                       ["gemini-2.5-flash", "gemini-3.5-flash-lite", "gemini-2.5-flash-lite", "gemini-3.8-flash"])
+        XCTAssertEqual(ModelCatalog.expandingRetiredModels(["gemini-3.8-flash"]), ["gemini-3.8-flash"])
+    }
+
     // MARK: - Vertex location migration
 
     func test_vertex_old_default_region_moves_to_global() {

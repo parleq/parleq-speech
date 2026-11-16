@@ -1615,7 +1615,7 @@ public struct Config: Sendable {
         if let pinnedModel = ManagedConfig.managedString(forKey: "cleanupModel") {
             c.llmModel = pinnedModel
             managedKeys.insert("cleanupModel")
-        } else if let allowedModels = ManagedConfig.managedStringArray(forKey: "cleanupAllowedModels") {
+        } else if let allowedModels = ManagedConfig.managedModelAllowlist(forKey: "cleanupAllowedModels") {
             // Cross-provider safety: filter the allowlist to models
             // compatible with the current (possibly pinned/snapped)
             // provider, mirroring the picker's per-provider filter.
@@ -1719,7 +1719,7 @@ public struct Config: Sendable {
         if let pinnedModel = ManagedConfig.managedString(forKey: "contextModel") {
             contextModelName = pinnedModel
             managedKeys.insert("contextModel")
-        } else if let allowedModels = ManagedConfig.managedStringArray(forKey: "contextAllowedModels") {
+        } else if let allowedModels = ManagedConfig.managedModelAllowlist(forKey: "contextAllowedModels") {
             // Same cross-provider filter as the cleanup tier.
             let compatibleAllowed = allowedModels.filter { id in
                 if ModelCatalog.isCanonical(provider: contextProvider, model: id) {

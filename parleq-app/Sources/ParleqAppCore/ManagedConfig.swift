@@ -715,6 +715,15 @@ public enum ManagedConfig {
     /// [String] (malformed profiles occasionally include mixed-type arrays).
     ///
     /// Same CFPreferencesAppValueIsForced semantics as `managedBool`.
+    /// A managed MODEL allowlist (`cleanupAllowedModels` /
+    /// `contextAllowedModels`) with retired IDs' successors added
+    /// (`ModelCatalog.expandingRetiredModels`). Use this — not
+    /// `managedStringArray` — wherever the list drives runtime selection or
+    /// a picker; the audit view keeps showing the raw policy.
+    public static func managedModelAllowlist(forKey key: String) -> [String]? {
+        managedStringArray(forKey: key).map(ModelCatalog.expandingRetiredModels)
+    }
+
     public static func managedStringArray(forKey key: String) -> [String]? {
         let appID = bundleID as CFString
         let cfKey = key as CFString

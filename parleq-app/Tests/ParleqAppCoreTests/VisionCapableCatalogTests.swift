@@ -66,6 +66,7 @@ final class VisionCapableCatalogTests: XCTestCase {
     }
 
     func test_azure_includes_new_and_legacy_labels() {
+        // gpt-4.1-nano is in the Azure catalog but text-only, so absent here.
         XCTAssertEqual(ids("azure"), [
             "gpt-6-luna", "gpt-6.1-terra", "gpt-6.1-sol",
             "gpt-4o-mini", "gpt-4o", "gpt-4.1", "gpt-4.1-mini",

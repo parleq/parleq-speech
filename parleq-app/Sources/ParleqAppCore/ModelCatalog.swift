@@ -58,8 +58,12 @@ public enum ModelCatalog {
     /// Azure routes by DEPLOYMENT name; this label only selects the
     /// request shape (reasoning vs standard), vision capability, and the
     /// pricing row. The gpt-4o / gpt-4.1 labels stay while Azure keeps
-    /// serving those deployments (retirement 2027-04-14); the o-series
-    /// labels were dropped (Azure retirement 2026-11-19).
+    /// serving those deployments (retirement 2027-04-14; gpt-4.1-nano's
+    /// Azure date is unpublished, so it stays too — dropping a live label
+    /// would let the customModelEntryEnabled=false scrub flip it to
+    /// gpt-6-luna and send that standard deployment reasoning params).
+    /// The o-series labels were dropped (Azure retirement 2026-11-19; a
+    /// scrub to gpt-6-luna keeps the same reasoning request shape).
     public static let azureModels: [String] = [
         "gpt-6-luna",
         "gpt-6.1-terra",
@@ -68,6 +72,7 @@ public enum ModelCatalog {
         "gpt-4o",
         "gpt-4.1",
         "gpt-4.1-mini",
+        "gpt-4.1-nano",
     ]
 
     public static let openAIModels: [String] = [
@@ -126,6 +131,28 @@ public enum ModelCatalog {
             ],
         ]
     }()
+
+    /// An MDM model allowlist with each retired entry's successor(s)
+    /// inserted right after it (originals kept, order preserved, deduped).
+    ///
+    /// Allowlists are flat cross-provider ID lists, so a retired entry is
+    /// EXPANDED rather than replaced: "gpt-4o-mini" is still a live Azure
+    /// label even though OpenAI retired it. Without this, a policy naming
+    /// gemini-2.5-flash would migrate the effective model to
+    /// gemini-3.5-flash-lite while the picker offered only the retired ID
+    /// (blank selection). The admin's restriction is otherwise unchanged.
+    public static func expandingRetiredModels(_ allowlist: [String]) -> [String] {
+        var out: [String] = []
+        var seen = Set<String>()
+        func add(_ id: String) { if seen.insert(id).inserted { out.append(id) } }
+        for id in allowlist {
+            add(id)
+            for provider in retiredModelReplacements.keys.sorted() {
+                if let next = retiredModelReplacements[provider]?[id] { add(next) }
+            }
+        }
+        return out
+    }
 
     /// The replacement for `model` under `provider` when it has been
     /// retired, else nil. Exact-ID match only — dated snapshots or other

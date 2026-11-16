@@ -2974,7 +2974,7 @@ private struct OverlayContent: View {
         //     config-load policy enforcement).
         // Selection uses the existing pickedModelOverride semantics: a
         // one-off override for THIS dictation, never a config write.
-        let managedAllowedModels = ManagedConfig.managedStringArray(forKey: "cleanupAllowedModels")
+        let managedAllowedModels = ManagedConfig.managedModelAllowlist(forKey: "cleanupAllowedModels")
         var seenProviders = Set<String>()
         for provider in ids.map(\.provider) where !seenProviders.contains(provider) {
             seenProviders.insert(provider)

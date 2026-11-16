@@ -1587,6 +1587,7 @@ struct SettingsView: View {
         ("gpt-4o",        "GPT-4o 👁 — retiring Apr 2027"),
         ("gpt-4.1",       "GPT-4.1 👁 — retiring Apr 2027"),
         ("gpt-4.1-mini",  "GPT-4.1 Mini 👁 — retiring Apr 2027"),
+        ("gpt-4.1-nano",  "GPT-4.1 Nano — text-only, legacy"),
     ]
 
     /// OpenAI direct (api.openai.com) model options. Unlike Azure,
@@ -2036,9 +2037,9 @@ struct SettingsView: View {
     private var tierConfiguration: some View {
         // Resolve MDM allowlist values once so the pickers can filter.
         let cleanupAllowedProviders = ManagedConfig.managedStringArray(forKey: "cleanupAllowedProviders")
-        let cleanupAllowedModels    = ManagedConfig.managedStringArray(forKey: "cleanupAllowedModels")
+        let cleanupAllowedModels    = ManagedConfig.managedModelAllowlist(forKey: "cleanupAllowedModels")
         let contextAllowedProviders = ManagedConfig.managedStringArray(forKey: "contextAllowedProviders")
-        let contextAllowedModels    = ManagedConfig.managedStringArray(forKey: "contextAllowedModels")
+        let contextAllowedModels    = ManagedConfig.managedModelAllowlist(forKey: "contextAllowedModels")
 
         return SettingsCard {
             VStack(alignment: .leading, spacing: 18) {
