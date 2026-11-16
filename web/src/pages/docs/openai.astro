@@ -5,7 +5,7 @@ import PricingNote from '../../components/PricingNote.astro';
 
 ---
 
-<Layout title="OpenAI setup — Parleq" description="Set up OpenAI direct API as Parleq's cleanup provider. GPT-4o, GPT-4.1, and o-series reasoning models.">
+<Layout title="OpenAI setup — Parleq" description="Set up OpenAI direct API as Parleq's cleanup provider. GPT-6 Luna, GPT-6.1 Terra, and GPT-6.1 Sol.">
   <FloatingNav active="docs" />
 
   <article class="mx-auto max-w-2xl px-6 pt-16 pb-24 sm:pt-20">
@@ -98,7 +98,7 @@ import PricingNote from '../../components/PricingNote.astro';
           <li><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[13px]">gpt-6.1-sol</code> — highest quality 👁</li>
         </ul>
         <p class="text-[14px] text-[color:var(--color-text-subtle)]">
-          All of these are reasoning-family models, so Parleq sends the reasoning request shape (no <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[12px]">temperature</code>, <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[12px]">max_completion_tokens</code> instead of <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[12px]">max_tokens</code>). Parleq detects this automatically from the model name — no manual family switch needed, unlike Azure. Older models (o1, o3, GPT-4o, GPT-4.1) are no longer offered because OpenAI has shut them down or is retiring them; a saved config that names one is moved to a current model automatically.
+          All of these are reasoning-family models, so Parleq sends the reasoning request shape (no <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[12px]">temperature</code>, <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[12px]">max_completion_tokens</code> instead of <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[12px]">max_tokens</code>). Parleq detects this automatically from the model name, on both OpenAI and Azure. Older models (o1, o3, GPT-4o, GPT-4.1) are no longer offered because OpenAI has shut them down or is retiring them; a saved config that names one is moved to a current model automatically.
         </p>
       </div>
     </section>
