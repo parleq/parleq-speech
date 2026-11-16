@@ -2037,9 +2037,9 @@ struct SettingsView: View {
     private var tierConfiguration: some View {
         // Resolve MDM allowlist values once so the pickers can filter.
         let cleanupAllowedProviders = ManagedConfig.managedStringArray(forKey: "cleanupAllowedProviders")
-        let cleanupAllowedModels    = ManagedConfig.managedModelAllowlist(forKey: "cleanupAllowedModels")
+        let cleanupAllowedModels    = ManagedConfig.managedStringArray(forKey: "cleanupAllowedModels")
         let contextAllowedProviders = ManagedConfig.managedStringArray(forKey: "contextAllowedProviders")
-        let contextAllowedModels    = ManagedConfig.managedModelAllowlist(forKey: "contextAllowedModels")
+        let contextAllowedModels    = ManagedConfig.managedStringArray(forKey: "contextAllowedModels")
 
         return SettingsCard {
             VStack(alignment: .leading, spacing: 18) {
@@ -2322,7 +2322,7 @@ struct SettingsView: View {
                         if let allowedModels = modelAllowlist, !allowedModels.isEmpty {
                             filtered = filtered.filter { providerOption in
                                 allowedModels.contains { modelID in
-                                    ModelCatalog.isCanonical(provider: providerOption.id, model: modelID)
+                                    ModelCatalog.ownsModel(provider: providerOption.id, model: modelID)
                                 }
                             }
                         }
@@ -2464,9 +2464,13 @@ struct SettingsView: View {
 
         // Compute the effective model list for this picker invocation.
         let models: [(value: String, label: String)] = {
-            guard let allowed = allowedModels, isAllowlist else {
+            guard let rawAllowed = allowedModels, isAllowlist else {
                 return allModels
             }
+            // A retired entry gains its successor for THIS provider (and the
+            // retired ID itself is dropped below), so a policy written
+            // before a model refresh still shows the migrated selection.
+            let allowed = ModelCatalog.expandingRetiredModels(rawAllowed, forProvider: provider)
             // Cross-provider allowlist safety: filter allowed IDs to those
             // that ARE canonical for the current provider. An admin who
             // pushes a cross-provider allowlist like
@@ -2480,12 +2484,17 @@ struct SettingsView: View {
                 if let found = allModels.first(where: { $0.value == id }) {
                     return found
                 }
+                // This provider retired the ID; its successor is listed
+                // right after it by expandingRetiredModels.
+                if ModelCatalog.replacementForRetiredModel(provider: provider, model: id) != nil {
+                    return nil
+                }
                 // If the ID is canonical for some OTHER provider, exclude
                 // it from THIS provider's picker — it would produce an
                 // invalid wire combination at runtime.
                 let belongsToOtherProvider = ["gemini", "vertex", "bedrock", "bedrock-bearer", "azure", "openai"]
                     .filter { $0 != provider }
-                    .contains { ModelCatalog.isCanonical(provider: $0, model: id) }
+                    .contains { ModelCatalog.ownsModel(provider: $0, model: id) }
                 if belongsToOtherProvider {
                     return nil
                 }

@@ -113,6 +113,7 @@
 // over config — better to run with defaults than fail to launch.
 
 import Foundation
+import os
 
 /// A pairing of LLM provider and model name. Used to identify which
 /// backend and model should handle a given phase of LLM work (cleanup,
@@ -1615,7 +1616,9 @@ public struct Config: Sendable {
         if let pinnedModel = ManagedConfig.managedString(forKey: "cleanupModel") {
             c.llmModel = pinnedModel
             managedKeys.insert("cleanupModel")
-        } else if let allowedModels = ManagedConfig.managedModelAllowlist(forKey: "cleanupAllowedModels") {
+        } else if let rawAllowedModels = ManagedConfig.managedStringArray(forKey: "cleanupAllowedModels") {
+            // Retired entries gain their successor for THIS provider.
+            let allowedModels = ModelCatalog.expandingRetiredModels(rawAllowedModels, forProvider: c.llmProvider)
             // Cross-provider safety: filter the allowlist to models
             // compatible with the current (possibly pinned/snapped)
             // provider, mirroring the picker's per-provider filter.
@@ -1628,7 +1631,7 @@ public struct Config: Sendable {
                 }
                 let belongsElsewhere = ["gemini", "vertex", "bedrock", "bedrock-bearer", "azure", "openai"]
                     .filter { $0 != c.llmProvider }
-                    .contains { ModelCatalog.isCanonical(provider: $0, model: id) }
+                    .contains { ModelCatalog.ownsModel(provider: $0, model: id) }
                 return !belongsElsewhere  // bare custom IDs allowed
             }
             if compatibleAllowed.isEmpty, let firstAllowed = allowedModels.first {
@@ -1652,7 +1655,7 @@ public struct Config: Sendable {
                     // owning provider so the policy + user produce
                     // a valid runtime config.
                     let owningProvider = ["gemini", "vertex", "bedrock", "bedrock-bearer", "azure", "openai"]
-                        .first { ModelCatalog.isCanonical(provider: $0, model: firstAllowed) }
+                        .first { ModelCatalog.ownsModel(provider: $0, model: firstAllowed) }
                     if let owning = owningProvider {
                         configLogStderr("[parleq] cleanupAllowedModels: no allowed model compatible with provider '\(c.llmProvider)'; snapping provider to '\(owning)' which owns '\(firstAllowed)'")
                         c.llmProvider = owning
@@ -1682,12 +1685,12 @@ public struct Config: Sendable {
         if managedKeys.contains("cleanupProvider"),
            !managedKeys.contains("cleanupModel"),
            !managedKeys.contains("cleanupAllowedModels") {
-            let modelMatchesCurrentProvider = ModelCatalog.isCanonical(provider: c.llmProvider, model: c.llmModel)
+            let modelMatchesCurrentProvider = ModelCatalog.ownsModel(provider: c.llmProvider, model: c.llmModel)
             if !modelMatchesCurrentProvider {
                 let otherProviders = ["gemini", "vertex", "bedrock", "bedrock-bearer", "azure", "openai"]
                     .filter { $0 != c.llmProvider }
                 let modelBelongsElsewhere = otherProviders.contains {
-                    ModelCatalog.isCanonical(provider: $0, model: c.llmModel)
+                    ModelCatalog.ownsModel(provider: $0, model: c.llmModel)
                 }
                 if modelBelongsElsewhere {
                     let original = c.llmModel
@@ -1719,7 +1722,8 @@ public struct Config: Sendable {
         if let pinnedModel = ManagedConfig.managedString(forKey: "contextModel") {
             contextModelName = pinnedModel
             managedKeys.insert("contextModel")
-        } else if let allowedModels = ManagedConfig.managedModelAllowlist(forKey: "contextAllowedModels") {
+        } else if let rawAllowedModels = ManagedConfig.managedStringArray(forKey: "contextAllowedModels") {
+            let allowedModels = ModelCatalog.expandingRetiredModels(rawAllowedModels, forProvider: contextProvider)
             // Same cross-provider filter as the cleanup tier.
             let compatibleAllowed = allowedModels.filter { id in
                 if ModelCatalog.isCanonical(provider: contextProvider, model: id) {
@@ -1727,7 +1731,7 @@ public struct Config: Sendable {
                 }
                 let belongsElsewhere = ["gemini", "vertex", "bedrock", "bedrock-bearer", "azure", "openai"]
                     .filter { $0 != contextProvider }
-                    .contains { ModelCatalog.isCanonical(provider: $0, model: id) }
+                    .contains { ModelCatalog.ownsModel(provider: $0, model: id) }
                 return !belongsElsewhere
             }
             if compatibleAllowed.isEmpty, let firstAllowed = allowedModels.first {
@@ -1743,7 +1747,7 @@ public struct Config: Sendable {
                     configLogStderr("[parleq] contextAllowedModels: contradictory policy — no allowed model compatible with managed provider '\(contextProvider)'. Keeping provider per directive and resetting model '\(original)' to default '\(contextModelName)'. Fix the policy: either expand contextAllowedModels to include a '\(contextProvider)' model, or change contextProvider.")
                 } else {
                     let owningProvider = ["gemini", "vertex", "bedrock", "bedrock-bearer", "azure", "openai"]
-                        .first { ModelCatalog.isCanonical(provider: $0, model: firstAllowed) }
+                        .first { ModelCatalog.ownsModel(provider: $0, model: firstAllowed) }
                     if let owning = owningProvider {
                         configLogStderr("[parleq] contextAllowedModels: no allowed model compatible with provider '\(contextProvider)'; snapping provider to '\(owning)' which owns '\(firstAllowed)'")
                         contextProvider = owning
@@ -1767,12 +1771,12 @@ public struct Config: Sendable {
         if managedKeys.contains("contextProvider"),
            !managedKeys.contains("contextModel"),
            !managedKeys.contains("contextAllowedModels") {
-            let modelMatchesCurrentProvider = ModelCatalog.isCanonical(provider: contextProvider, model: contextModelName)
+            let modelMatchesCurrentProvider = ModelCatalog.ownsModel(provider: contextProvider, model: contextModelName)
             if !modelMatchesCurrentProvider {
                 let otherProviders = ["gemini", "vertex", "bedrock", "bedrock-bearer", "azure", "openai"]
                     .filter { $0 != contextProvider }
                 let modelBelongsElsewhere = otherProviders.contains {
-                    ModelCatalog.isCanonical(provider: $0, model: contextModelName)
+                    ModelCatalog.ownsModel(provider: $0, model: contextModelName)
                 }
                 if modelBelongsElsewhere {
                     let original = contextModelName
@@ -1812,7 +1816,7 @@ public struct Config: Sendable {
             // to a different provider, snap the model to the pinned
             // provider's default (mirror of the cleanup/context checks).
             if pinnedProvider != refineProvider,
-               !ModelCatalog.isCanonical(provider: pinnedProvider, model: refineModelName) {
+               !ModelCatalog.ownsModel(provider: pinnedProvider, model: refineModelName) {
                 refineModelName = ModelCatalog.defaultModel(forProvider: pinnedProvider)
             }
             refineProvider = pinnedProvider
@@ -1949,6 +1953,10 @@ public struct Config: Sendable {
     /// be a data-residency decision; those configs log a hint instead.
     /// Idempotent; runs on every load path via `applyManagedOverlay`.
     static func migrateRetiredModels(_ c: inout Config) {
+        // Config.load() runs from many call sites per process and the
+        // migration repeats until Settings next saves, so log each
+        // distinct message once per process, not once per load.
+        let configLogStderr = Self.logMigrationOnce
         func replace(_ provider: String, _ model: String, tier: String) -> String {
             guard let next = ModelCatalog.replacementForRetiredModel(provider: provider, model: model) else {
                 return model
@@ -1992,6 +2000,13 @@ public struct Config: Sendable {
                 configLogStderr("[parleq] vertex anthropic region: '\(c.vertexAnthropicRegion)' does not serve this Claude model (global-only); left unchanged — set vertex.anthropic_region to 'global' to use it")
             }
         }
+    }
+
+    private static let loggedMigrationMessages = OSAllocatedUnfairLock(initialState: Set<String>())
+
+    private static func logMigrationOnce(_ message: String) {
+        let isNew = loggedMigrationMessages.withLock { $0.insert(message).inserted }
+        if isNew { configLogStderr(message) }
     }
 
     /// Vertex region defaults before 0.47.1 — rewritten to `global` by

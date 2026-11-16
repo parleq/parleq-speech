@@ -79,16 +79,22 @@ final class ModelDeprecationMigrationTests: XCTestCase {
 
     // MARK: - MDM allowlist expansion
 
-    func test_allowlist_expansion_adds_successors_and_keeps_originals() {
-        XCTAssertEqual(ModelCatalog.expandingRetiredModels(["gemini-2.5-flash", "gpt-4o-mini"]),
-                       ["gemini-2.5-flash", "gemini-3.5-flash-lite", "gpt-4o-mini", "gpt-6-luna"],
-                       "gpt-4o-mini stays: it is still a live Azure label")
+    func test_allowlist_expansion_is_provider_scoped() {
+        let policy = ["gemini-2.5-flash", "gpt-4o-mini", "gpt-4.1-nano"]
+        XCTAssertEqual(ModelCatalog.expandingRetiredModels(policy, forProvider: "gemini"),
+                       ["gemini-2.5-flash", "gemini-3.5-flash-lite", "gpt-4o-mini", "gpt-4.1-nano"])
+        XCTAssertEqual(ModelCatalog.expandingRetiredModels(policy, forProvider: "openai"),
+                       ["gemini-2.5-flash", "gpt-4o-mini", "gpt-6-luna", "gpt-4.1-nano"])
+        XCTAssertEqual(ModelCatalog.expandingRetiredModels(policy, forProvider: "azure"), policy,
+                       "Azure labels are live deployments; never offer gpt-6-luna for a gpt-4.1-nano deployment")
     }
 
-    func test_allowlist_expansion_dedupes_and_ignores_current_ids() {
-        XCTAssertEqual(ModelCatalog.expandingRetiredModels(["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3.8-flash"]),
-                       ["gemini-2.5-flash", "gemini-3.5-flash-lite", "gemini-2.5-flash-lite", "gemini-3.8-flash"])
-        XCTAssertEqual(ModelCatalog.expandingRetiredModels(["gemini-3.8-flash"]), ["gemini-3.8-flash"])
+    func test_retired_ids_still_belong_to_their_provider() {
+        XCTAssertTrue(ModelCatalog.ownsModel(provider: "gemini", model: "gemini-2.5-flash"))
+        XCTAssertTrue(ModelCatalog.ownsModel(provider: "vertex", model: "claude-sonnet-4-5@20250929"))
+        XCTAssertTrue(ModelCatalog.ownsModel(provider: "openai", model: "o4-mini"))
+        XCTAssertFalse(ModelCatalog.ownsModel(provider: "openai", model: "gemini-2.5-flash"))
+        XCTAssertFalse(ModelCatalog.ownsModel(provider: "azure", model: "o4-mini"), "dropped Azure label is custom")
     }
 
     // MARK: - Vertex location migration

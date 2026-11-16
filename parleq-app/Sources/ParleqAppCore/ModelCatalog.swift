@@ -132,26 +132,38 @@ public enum ModelCatalog {
         ]
     }()
 
-    /// An MDM model allowlist with each retired entry's successor(s)
-    /// inserted right after it (originals kept, order preserved, deduped).
+    /// An MDM model allowlist as it applies to `provider`: each entry
+    /// `provider` has retired gets its successor inserted right after it
+    /// (originals kept, order preserved, deduped).
     ///
-    /// Allowlists are flat cross-provider ID lists, so a retired entry is
-    /// EXPANDED rather than replaced: "gpt-4o-mini" is still a live Azure
-    /// label even though OpenAI retired it. Without this, a policy naming
-    /// gemini-2.5-flash would migrate the effective model to
-    /// gemini-3.5-flash-lite while the picker offered only the retired ID
-    /// (blank selection). The admin's restriction is otherwise unchanged.
-    public static func expandingRetiredModels(_ allowlist: [String]) -> [String] {
+    /// Provider-scoped on purpose: allowlists are flat cross-provider ID
+    /// lists, and the same ID can be retired on one provider but live on
+    /// another (OpenAI retired gpt-4o-mini / gpt-4.1-nano; they are still
+    /// live Azure deployment labels). Expanding with another provider's
+    /// table would offer an Azure user gpt-6-luna for a standard
+    /// deployment. Without any expansion, a policy naming gemini-2.5-flash
+    /// would migrate the effective model while the picker offered only the
+    /// retired ID (blank selection).
+    public static func expandingRetiredModels(_ allowlist: [String], forProvider provider: String) -> [String] {
+        let table = retiredModelReplacements[provider] ?? [:]
         var out: [String] = []
         var seen = Set<String>()
         func add(_ id: String) { if seen.insert(id).inserted { out.append(id) } }
         for id in allowlist {
             add(id)
-            for provider in retiredModelReplacements.keys.sorted() {
-                if let next = retiredModelReplacements[provider]?[id] { add(next) }
-            }
+            if let next = table[id] { add(next) }
         }
         return out
+    }
+
+    /// True when `model` is a model `provider` offers now OR has retired.
+    /// Use for "does this ID belong to that provider?" ownership checks
+    /// (cross-provider allowlist filtering, pinned-provider mismatch):
+    /// a retired ID must still count as its provider's, or an allowlist
+    /// naming gemini-2.5-flash would read as a bare custom ID on OpenAI.
+    public static func ownsModel(provider: String, model: String) -> Bool {
+        isCanonical(provider: provider, model: model)
+            || replacementForRetiredModel(provider: provider, model: model) != nil
     }
 
     /// The replacement for `model` under `provider` when it has been
