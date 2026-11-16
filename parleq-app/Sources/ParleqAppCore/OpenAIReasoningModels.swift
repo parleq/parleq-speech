@@ -1,7 +1,7 @@
 // OpenAIReasoningModels — shared helper used by both OpenAIProvider
 // (api.openai.com) and AzureOpenAIProvider (Azure OpenAI Service)
 // since both speak the Chat Completions wire format and both need
-// to detect o-series models at request time.
+// to detect reasoning models (o-series, gpt-5, gpt-6) at request time.
 //
 // Reasoning models differ from standard Chat Completions models in
 // two ways that affect the request body:
@@ -39,22 +39,63 @@ import Foundation
 /// "o4-mini-2025-04-16").
 public func isOpenAIReasoningModel(_ model: String) -> Bool {
     let m = model.lowercased()
-    // Enumerate all known o-series prefixes. Each entry is checked
-    // as an exact match ("o1") AND as a versioned-snapshot prefix
-    // ("o1-2024-12-17"). Add new o-series families here when released.
-    // Prefixes ordered longest-first as a readability convention, but
-    // ordering doesn't affect the result: the function returns Bool, so
-    // any matching prefix produces `true` regardless of which one hits
-    // first. The mini vs non-mini distinction (for vision capability)
-    // is resolved at call sites (e.g. AzureOpenAIProvider.supportsVision)
-    // not here. The prefix-aware match catches dated snapshot IDs such
-    // as "o1-2024-12-17" and "o4-mini-2025-04-16" that users enter
-    // via the Custom… route.
+    // o-series: each entry is checked as an exact match ("o1") AND as a
+    // versioned-snapshot prefix ("o1-2024-12-17", "o4-mini-2025-04-16")
+    // so dated IDs entered via Custom… route through the reasoning shape.
     let prefixes = ["o1-mini", "o3-mini", "o4-mini", "o1", "o3"]
     for prefix in prefixes {
         if m == prefix || m.hasPrefix(prefix + "-") {
             return true
         }
+    }
+    // gpt-5 / gpt-6 families (gpt-5-mini, gpt-5.6-luna, gpt-6-luna,
+    // gpt-6.1-sol, …) are all reasoning models: verified 2026-11 that
+    // every one rejects `max_tokens` with a 400. The `-chat` variants
+    // (gpt-5-chat-latest) are the non-reasoning exception.
+    if (m.hasPrefix("gpt-5") || m.hasPrefix("gpt-6")) && !m.contains("-chat") {
+        return true
+    }
+    return false
+}
+
+/// The `reasoning_effort` to send for an OpenAI reasoning model on
+/// api.openai.com. "none" (no hidden reasoning at all) for the models
+/// verified to accept it (2026-11: gpt-6-luna TTFT 0.6-0.8s at "none"
+/// vs 1.3s and 20-46 reasoning tokens at "low"); "low" for everything
+/// else (gpt-6.1-sol rejects "none"; o-series predate it).
+///
+/// Azure keeps "low" unconditionally: its API-version gating of the
+/// "none" value is unverified, and "low" is accepted everywhere.
+public func openAIReasoningEffort(forModel model: String) -> String {
+    let m = model.lowercased()
+    let acceptsNone = ["gpt-6-luna", "gpt-6.1-terra", "gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol"]
+    for id in acceptsNone where m == id || m.hasPrefix(id + "-") {
+        return "none"
+    }
+    return "low"
+}
+
+/// Image-input capability for OpenAI-family model IDs (OpenAI direct and
+/// Azure labels). Explicit allowlist; unknown IDs are text-only.
+public func openAIModelSupportsVision(_ model: String) -> Bool {
+    let m = model.lowercased()
+    // gpt-4o family (and dated snapshots); audio/realtime previews
+    // share the prefix but don't accept images via Chat Completions.
+    let isGPT4o = (m == "gpt-4o" || m.hasPrefix("gpt-4o-"))
+    let isNonVisionPreview = m.contains("audio-preview") || m.contains("realtime-preview")
+    if isGPT4o && !isNonVisionPreview { return true }
+    // gpt-4.1 family except nano (text-only).
+    let isGPT41 = (m == "gpt-4.1" || m.hasPrefix("gpt-4.1-"))
+    let isGPT41Nano = (m == "gpt-4.1-nano" || m.hasPrefix("gpt-4.1-nano-"))
+    if isGPT41 && !isGPT41Nano { return true }
+    if m == "gpt-4-turbo" { return true }
+    // gpt-5 / gpt-6 families are multimodal.
+    if m.hasPrefix("gpt-5") || m.hasPrefix("gpt-6") { return true }
+    // o-series: o1, o3, o4-mini see images; o1-mini and o3-mini don't.
+    if isOpenAIReasoningModel(m) {
+        if m == "o1-mini" || m.hasPrefix("o1-mini-") { return false }
+        if m == "o3-mini" || m.hasPrefix("o3-mini-") { return false }
+        return true
     }
     return false
 }

@@ -40,32 +40,7 @@ public final class OpenAIProvider: LLMProvider, Sendable {
     /// Reasoning models: o1 and o3 support vision (added Dec 2024 / 2025);
     /// o4-mini supports vision; o1-mini and o3-mini are text-only.
     public var supportsVision: Bool {
-        let m = model.lowercased()
-        // gpt-4o family (gpt-4o, gpt-4o-mini, and dated snapshots like
-        // gpt-4o-2024-11-20) supports vision. Audio-preview and
-        // realtime-preview variants share the gpt-4o prefix but do NOT
-        // accept image inputs through Chat Completions — exclude by
-        // substring on the variant suffix.
-        let isGPT4o = (m == "gpt-4o" || m.hasPrefix("gpt-4o-"))
-        let isNonVisionPreview = m.contains("audio-preview") || m.contains("realtime-preview")
-        if isGPT4o && !isNonVisionPreview { return true }
-        // gpt-4.1 family supports vision (gpt-4.1, gpt-4.1-mini, and
-        // their dated snapshots) EXCEPT gpt-4.1-nano which is text-only.
-        let isGPT41 = (m == "gpt-4.1" || m.hasPrefix("gpt-4.1-"))
-        let isGPT41Nano = (m == "gpt-4.1-nano" || m.hasPrefix("gpt-4.1-nano-"))
-        if isGPT41 && !isGPT41Nano { return true }
-        // o-series reasoning models (partial vision support).
-        // Use the shared prefix-aware helper so dated snapshots (e.g.
-        // "o1-2024-12-17") also report the correct capability.
-        if isOpenAIReasoningModel(m) {
-            // o1, o3, o4-mini (and their dated snapshots) support vision;
-            // o1-mini and o3-mini (and their dated snapshots) are text-only.
-            if m == "o1-mini" || m.hasPrefix("o1-mini-") { return false }
-            if m == "o3-mini" || m.hasPrefix("o3-mini-") { return false }
-            return true
-        }
-        return false  // conservative; explicit allowlist only
-        // gpt-4.1-nano falls through to false (text-only).
+        openAIModelSupportsVision(model)
     }
 
     public init(model: String) {
@@ -214,7 +189,7 @@ public final class OpenAIProvider: LLMProvider, Sendable {
             // low effort is appropriate for cleanup-style tasks (short
             // utterances); users who want medium/high can pick a non-reasoning
             // model. Omit temperature — reasoning models only accept 1.0.
-            body["reasoning_effort"] = "low"
+            body["reasoning_effort"] = openAIReasoningEffort(forModel: model)
         } else {
             // #55: configurable max-tokens + temperature for the standard
             // family (reasoning models above reject non-1.0 temperature).

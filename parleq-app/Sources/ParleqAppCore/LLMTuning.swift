@@ -28,7 +28,9 @@ import Foundation
 /// knob existed (modulo the `maxOutputTokens` 1024 → 2048 default raise,
 /// documented below).
 public struct LLMTuning: Sendable, Equatable {
-    /// Gemini `thinkingConfig.thinkingBudget`.
+    /// Gemini `thinkingConfig.thinkingBudget` — Gemini 2.5-family models
+    /// only. Gemini 3+ models use `thinkingLevel` instead and ignore this
+    /// override (see `resolvedThinkingConfig`).
     ///
     /// `nil` (the default) keeps the built-in per-model logic: 0 on
     /// Flash / Flash-Lite (chain-of-thought disabled — invariant #3),
@@ -176,5 +178,25 @@ public struct LLMTuning: Sendable, Equatable {
     public func resolvedThinkingBudget(forModel model: String) -> Int {
         if let override = thinkingBudget { return override }
         return model.lowercased().contains("pro") ? 128 : 0
+    }
+
+    /// The complete Gemini `generationConfig.thinkingConfig` object for
+    /// `model` — the one place both the direct-API and Vertex Gemini
+    /// paths get it from.
+    ///
+    /// - Gemini 3+ (`ModelCatalog.usesGeminiThinkingLevel`): the newer
+    ///   `thinkingLevel` control. Flash-Lite takes "minimal"; the others
+    ///   reject "minimal", so "low" — which produced zero thinking tokens
+    ///   on 3.8 Flash and 4 Argon in testing (2026-11). A `thinkingBudget`
+    ///   is NOT sent: gemini-4-argon on Vertex rejects it outright, so the
+    ///   `thinking_budget` override deliberately does not apply here.
+    /// - Gemini 2.5 and anything unrecognized: the legacy budget split
+    ///   (`resolvedThinkingBudget`, override honored).
+    public func resolvedThinkingConfig(forModel model: String) -> [String: Any] {
+        if ModelCatalog.usesGeminiThinkingLevel(model) {
+            let level = model.lowercased().contains("flash-lite") ? "minimal" : "low"
+            return ["thinkingLevel": level]
+        }
+        return ["thinkingBudget": resolvedThinkingBudget(forModel: model)]
     }
 }

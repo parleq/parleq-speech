@@ -20,6 +20,7 @@
 //
 // URL format:
 //   https://{region}-aiplatform.googleapis.com/v1/projects/{project}/
+//          (or https://aiplatform.googleapis.com/... when region == "global")
 //          locations/{region}/publishers/google/models/{model}:streamGenerateContent
 
 import Foundation
@@ -66,7 +67,7 @@ public final class VertexProvider: LLMProvider, Sendable {
     /// models). Kept separate from `region` (Gemini calls) so users
     /// can route Gemini through us-central1 and Claude through us-east5
     /// without a wholesale region switch that would affect cost, latency,
-    /// and data-residency for non-Claude calls. Defaults to "us-east5".
+    /// and data-residency for non-Claude calls. Defaults to "global".
     public let anthropicRegion: String
     public let authMode: AuthMode
     public let session: URLSession
@@ -104,33 +105,18 @@ public final class VertexProvider: LLMProvider, Sendable {
     public var supportsVision: Bool {
         // Vertex hosts both Gemini and Anthropic Claude models.
         // Claude models (any ID containing "claude") are all vision-
-        // capable on Vertex — same capability as on Bedrock. The
-        // Anthropic publisher is only available in specific Vertex
-        // regions (us-east5, europe-west1). With the separate
-        // `anthropicRegion` config field (issue #34), Claude is now
-        // in the curated Vertex dropdown; the URL is built using
-        // `anthropicRegion` instead of `region` so Gemini region
-        // settings are unaffected.
-        // Gemini: 2.5 Flash + Pro are multimodal; Flash-Lite is
-        // text-only. Gemini 1.5 family was retired from Vertex in
-        // 2025 and is no longer recognized here.
+        // capable on Vertex — same capability as on Bedrock. Claude
+        // calls use `anthropicRegion` instead of `region` (issue #34)
+        // so Gemini location settings are unaffected.
         if model.lowercased().contains("claude") { return true }
-        let m = model.lowercased()
-        switch m {
-        case "gemini-2.5-flash", "gemini-2.5-pro":
-            return true
-        case "gemini-2.5-flash-lite":
-            return false
-        default:
-            return false   // conservative; explicit allowlist
-        }
+        return ModelCatalog.geminiSupportsVision(model)
     }
 
     public init(
         model: String,
         project: String,
         region: String,
-        anthropicRegion: String = "us-east5",
+        anthropicRegion: String = "global",
         authMode: AuthMode = .adc,
         oidcExchange: CachedExchange<GCPWorkforceExchanger>? = nil,
         oidcSession: OIDCSession? = nil
@@ -339,6 +325,14 @@ public final class VertexProvider: LLMProvider, Sendable {
         }
     }
 
+    /// The Vertex API host for a location. The `global` location has no
+    /// regional subdomain (`aiplatform.googleapis.com`); every region uses
+    /// `{region}-aiplatform.googleapis.com`. Gemini 3+ and Claude Haiku
+    /// 5.5 are served only from `global`.
+    static func host(forLocation location: String) -> String {
+        location == "global" ? "aiplatform.googleapis.com" : "\(location)-aiplatform.googleapis.com"
+    }
+
     /// True when the model ID belongs to the Anthropic Claude family.
     /// Claude IDs on Vertex use the `<base>@<version>` format, e.g.
     /// `claude-sonnet-4-5@20250929`. Checking for "claude" substring
@@ -359,7 +353,7 @@ public final class VertexProvider: LLMProvider, Sendable {
         onEvent: @Sendable (LLMStreamEvent) -> Void
     ) async throws {
         let body = buildGeminiRequestBody(systemPrompt: systemPrompt, messages: messages)
-        let urlString = "https://\(region)-aiplatform.googleapis.com/v1/projects/\(project)/locations/\(region)/publishers/google/models/\(model):streamGenerateContent?alt=sse"
+        let urlString = "https://\(Self.host(forLocation: region))/v1/projects/\(project)/locations/\(region)/publishers/google/models/\(model):streamGenerateContent?alt=sse"
         guard let url = URL(string: urlString) else {
             throw LLMError.requestFailed(
                 NSError(domain: "VertexProvider", code: 1, userInfo: [NSLocalizedDescriptionKey: "Could not build URL: \(urlString)"])
@@ -468,7 +462,7 @@ public final class VertexProvider: LLMProvider, Sendable {
         let encodedModel = model.addingPercentEncoding(
             withAllowedCharacters: .urlPathAllowed
         ) ?? model
-        let urlString = "https://\(anthropicRegion)-aiplatform.googleapis.com/v1/projects/\(project)/locations/\(anthropicRegion)/publishers/anthropic/models/\(encodedModel):streamRawPredict"
+        let urlString = "https://\(Self.host(forLocation: anthropicRegion))/v1/projects/\(project)/locations/\(anthropicRegion)/publishers/anthropic/models/\(encodedModel):streamRawPredict"
         guard let url = URL(string: urlString) else {
             throw LLMError.requestFailed(
                 NSError(domain: "VertexProvider", code: 2, userInfo: [NSLocalizedDescriptionKey: "Could not build Claude URL: \(urlString)"])
@@ -643,9 +637,9 @@ public final class VertexProvider: LLMProvider, Sendable {
         // minimum the model allows.
         // #55: thinkingBudget override sent verbatim when set; otherwise
         // the built-in Flash(0)/Pro(128) split.
-        generationConfig["thinkingConfig"] = [
-            "thinkingBudget": tuning.resolvedThinkingBudget(forModel: model)
-        ]
+        // Gemini 3+ instead gets thinkingLevel — gemini-4-argon on Vertex
+        // rejects any thinkingBudget. See LLMTuning.resolvedThinkingConfig.
+        generationConfig["thinkingConfig"] = tuning.resolvedThinkingConfig(forModel: model)
         return [
             "systemInstruction": ["parts": [["text": systemPrompt]]],
             "contents": contents,

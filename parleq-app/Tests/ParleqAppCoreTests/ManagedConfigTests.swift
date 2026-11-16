@@ -180,12 +180,12 @@ final class ManagedConfigTests: XCTestCase {
         // pass through unmodified. We test this via the catalog directly —
         // Config.load() reads from disk so we exercise ModelCatalog in
         // isolation for the "enabled" path.
-        XCTAssertTrue(ModelCatalog.isCanonical(provider: "gemini", model: "gemini-2.5-flash"))
-        XCTAssertTrue(ModelCatalog.isCanonical(provider: "vertex", model: "gemini-2.5-flash"))
+        XCTAssertTrue(ModelCatalog.isCanonical(provider: "gemini", model: "gemini-3.8-flash"))
+        XCTAssertTrue(ModelCatalog.isCanonical(provider: "vertex", model: "gemini-3.8-flash"))
         XCTAssertTrue(ModelCatalog.isCanonical(provider: "bedrock", model: "openai.gpt-oss-120b-1:0"))
         XCTAssertTrue(ModelCatalog.isCanonical(provider: "bedrock-bearer", model: "openai.gpt-oss-120b-1:0"))
         XCTAssertTrue(ModelCatalog.isCanonical(provider: "azure", model: "gpt-4o-mini"))
-        XCTAssertTrue(ModelCatalog.isCanonical(provider: "openai", model: "gpt-4o-mini"))
+        XCTAssertTrue(ModelCatalog.isCanonical(provider: "openai", model: "gpt-6-luna"))
     }
 
     func test_model_catalog_non_canonical_model_is_rejected() {
@@ -196,14 +196,14 @@ final class ManagedConfigTests: XCTestCase {
     }
 
     func test_model_catalog_default_model_matches_expected_values() {
-        XCTAssertEqual(ModelCatalog.defaultModel(forProvider: "gemini"),         "gemini-2.5-flash-lite",       "gemini default should be the first entry (Flash-Lite)")
-        XCTAssertEqual(ModelCatalog.defaultModel(forProvider: "vertex"),         "gemini-2.5-flash-lite",       "vertex default should be the first entry (Flash-Lite)")
+        XCTAssertEqual(ModelCatalog.defaultModel(forProvider: "gemini"),         "gemini-3.5-flash-lite",       "gemini default should be the first entry (Flash-Lite)")
+        XCTAssertEqual(ModelCatalog.defaultModel(forProvider: "vertex"),         "gemini-3.5-flash-lite",       "vertex default should be the first entry (Flash-Lite)")
         XCTAssertEqual(ModelCatalog.defaultModel(forProvider: "bedrock"),        "openai.gpt-oss-120b-1:0",     "bedrock default should be the first entry")
         XCTAssertEqual(ModelCatalog.defaultModel(forProvider: "bedrock-bearer"), "openai.gpt-oss-120b-1:0",     "bedrock-bearer default should be the first entry")
-        XCTAssertEqual(ModelCatalog.defaultModel(forProvider: "azure"),          "gpt-4o-mini",                 "azure default should be gpt-4o-mini")
-        XCTAssertEqual(ModelCatalog.defaultModel(forProvider: "openai"),         "gpt-4o-mini",                 "openai default should be gpt-4o-mini")
-        // Unknown provider falls back to gemini-2.5-flash hardcoded sentinel.
-        XCTAssertEqual(ModelCatalog.defaultModel(forProvider: "unknown"),        "gemini-2.5-flash",            "unknown provider should fall back to gemini-2.5-flash")
+        XCTAssertEqual(ModelCatalog.defaultModel(forProvider: "azure"),          "gpt-6-luna",                  "azure default should be gpt-6-luna")
+        XCTAssertEqual(ModelCatalog.defaultModel(forProvider: "openai"),         "gpt-6-luna",                  "openai default should be gpt-6-luna")
+        // Unknown provider falls back to the fallback default (Flash-Lite).
+        XCTAssertEqual(ModelCatalog.defaultModel(forProvider: "unknown"),        "gemini-3.5-flash-lite",       "unknown provider should fall back to gemini-3.5-flash-lite")
     }
 
     func test_custom_model_entry_enabled_false_non_canonical_cleanup_reset() {
@@ -234,7 +234,7 @@ final class ManagedConfigTests: XCTestCase {
         var c = Config.default
         c.customModelEntryEnabled = false
         c.llmProvider = "gemini"
-        c.llmModel = "gemini-2.5-flash"  // canonical
+        c.llmModel = "gemini-3.8-flash"  // canonical
 
         if !c.customModelEntryEnabled {
             if !ModelCatalog.isCanonical(provider: c.llmProvider, model: c.llmModel) {
@@ -242,7 +242,7 @@ final class ManagedConfigTests: XCTestCase {
             }
         }
 
-        XCTAssertEqual(c.llmModel, "gemini-2.5-flash",
+        XCTAssertEqual(c.llmModel, "gemini-3.8-flash",
                        "Canonical cleanup model should be preserved even when customModelEntryEnabled=false")
     }
 
@@ -335,7 +335,7 @@ final class ManagedConfigTests: XCTestCase {
         let allowedProviders = ["azure", "openai"]
         var c = Config.default
         c.llmProvider = "gemini"
-        c.llmModel = "gemini-2.5-flash"
+        c.llmModel = "gemini-3.8-flash"
 
         // Simulate the Config.load() MDM allowlist enforcement.
         if !allowedProviders.contains(c.llmProvider), let first = allowedProviders.first {
@@ -405,7 +405,7 @@ final class ManagedConfigTests: XCTestCase {
         // stored provider = "gemini"
         var c = Config.default
         c.llmProvider = "gemini"
-        c.llmModel = "gemini-2.5-flash"
+        c.llmModel = "gemini-3.8-flash"
 
         // Simulate Config.load() pin application.
         let pinnedProvider = "azure"
@@ -459,14 +459,14 @@ final class ManagedConfigTests: XCTestCase {
     }
 
     func test_context_model_not_in_allowlist_resets_to_first() {
-        let allowedModels = ["gemini-2.5-flash", "gemini-2.5-flash-lite"]
-        var contextModelName = "gemini-2.5-pro"  // not in list
+        let allowedModels = ["gemini-3.8-flash", "gemini-3.5-flash-lite"]
+        var contextModelName = "gemini-4-argon"  // not in list
 
         if !allowedModels.contains(contextModelName), let first = allowedModels.first {
             contextModelName = first
         }
 
-        XCTAssertEqual(contextModelName, "gemini-2.5-flash",
+        XCTAssertEqual(contextModelName, "gemini-3.8-flash",
                        "Context model not in allowlist should reset to first allowed entry")
     }
 
@@ -492,12 +492,12 @@ final class ManagedConfigTests: XCTestCase {
     func test_context_tier_rebuild_non_nil_when_different_from_cleanup() {
         var c = Config.default
         c.llmProvider = "gemini"
-        c.llmModel = "gemini-2.5-flash-lite"
+        c.llmModel = "gemini-3.5-flash-lite"
         c.contextModel = nil
 
         // Simulate MDM pinning context to a different provider.
         let contextProvider = "vertex"
-        let contextModelName = "gemini-2.5-flash"
+        let contextModelName = "gemini-3.8-flash"
         let cleanupId = ModelIdentifier(provider: c.llmProvider, model: c.llmModel)
         let contextId = ModelIdentifier(provider: contextProvider, model: contextModelName)
         c.contextModel = (contextId == cleanupId) ? nil : contextId
@@ -505,7 +505,7 @@ final class ManagedConfigTests: XCTestCase {
         XCTAssertNotNil(c.contextModel,
                         "contextModel should be non-nil when context tier differs from cleanup")
         XCTAssertEqual(c.contextModel?.provider, "vertex")
-        XCTAssertEqual(c.contextModel?.model, "gemini-2.5-flash")
+        XCTAssertEqual(c.contextModel?.model, "gemini-3.8-flash")
     }
 
     // MARK: - 13. ManagedConfig.allKeys — single source of truth
@@ -807,13 +807,13 @@ final class ManagedConfigTests: XCTestCase {
     // MARK: - 16. Pinned provider with model from different provider
 
     func test_pinned_provider_resets_model_when_model_belongs_to_other_provider() {
-        // Scenario: user had gemini/gemini-2.5-flash. MDM pins
+        // Scenario: user had gemini/gemini-3.8-flash. MDM pins
         // cleanupProvider=openai without an accompanying cleanupModel pin.
         // The stored model belongs to gemini's catalog, so the runtime
         // sanity check should reset it to openai's default.
         var c = Config.default
         c.llmProvider = "gemini"
-        c.llmModel = "gemini-2.5-flash"
+        c.llmModel = "gemini-3.8-flash"
         var managedKeys = Set<String>()
 
         // Apply provider pin
@@ -838,11 +838,11 @@ final class ManagedConfigTests: XCTestCase {
     }
 
     func test_pinned_provider_preserves_canonical_model_for_pinned_provider() {
-        // Scenario: user had openai/gpt-4o-mini. MDM pins cleanupProvider=openai
+        // Scenario: user had openai/gpt-6-luna. MDM pins cleanupProvider=openai
         // (no-op for provider) — model is already canonical, should stay.
         var c = Config.default
         c.llmProvider = "openai"
-        c.llmModel = "gpt-4o-mini"
+        c.llmModel = "gpt-6-luna"
         var managedKeys = Set<String>()
 
         // Apply provider pin
@@ -860,7 +860,7 @@ final class ManagedConfigTests: XCTestCase {
             }
         }
 
-        XCTAssertEqual(c.llmModel, "gpt-4o-mini",
+        XCTAssertEqual(c.llmModel, "gpt-6-luna",
                        "Canonical model for pinned provider should be preserved")
     }
 
@@ -897,7 +897,7 @@ final class ManagedConfigTests: XCTestCase {
         // value explicitly anyway.
         var c = Config.default
         c.llmProvider = "gemini"
-        c.llmModel = "gemini-2.5-flash"  // mismatch with the pinned provider below
+        c.llmModel = "gemini-3.8-flash"  // mismatch with the pinned provider below
         var managedKeys = Set<String>()
         managedKeys.insert("cleanupProvider")
         managedKeys.insert("cleanupModel")
@@ -927,19 +927,19 @@ final class ManagedConfigTests: XCTestCase {
 
     func test_save_pinned_provider_canonical_ondisk_writes_user_pick() {
         // Regression: MDM pins cleanupProvider=vertex (no model pin).
-        // On disk: vertex/gemini-2.5-flash. User picked flash-lite in
+        // On disk: vertex/gemini-3.8-flash. User picked flash-lite in
         // Settings. The save must WRITE the in-memory pick, not snap
         // back to the on-disk model.
         var c = Config.default
         c.llmProvider = "vertex"
-        c.llmModel = "gemini-2.5-flash-lite"
+        c.llmModel = "gemini-3.5-flash-lite"
         c.managedKeys = ["cleanupProvider"]
         let existing: [String: Any] = [
-            "llm": ["provider": "vertex", "model": "gemini-2.5-flash"]
+            "llm": ["provider": "vertex", "model": "gemini-3.8-flash"]
         ]
         let merged = Config.mergeForSave(c, existing: existing)
         let llm = merged["llm"] as? [String: Any]
-        XCTAssertEqual(llm?["model"] as? String, "gemini-2.5-flash-lite",
+        XCTAssertEqual(llm?["model"] as? String, "gemini-3.5-flash-lite",
                        "User's in-pin model pick must be written, not the on-disk value")
     }
 
@@ -952,7 +952,7 @@ final class ManagedConfigTests: XCTestCase {
         // original choice; the in-memory model is the auto-snap.
         var c = Config.default
         c.llmProvider = "vertex"
-        c.llmModel = "gemini-2.5-flash"  // runtime auto-snap
+        c.llmModel = "gemini-3.8-flash"  // runtime auto-snap
         c.managedKeys = ["cleanupProvider"]
         let existing: [String: Any] = [
             "llm": ["provider": "vertex", "model": "gpt-4o-mini"]
@@ -969,30 +969,30 @@ final class ManagedConfigTests: XCTestCase {
         // by the fix.
         var c = Config.default
         c.llmProvider = "vertex"
-        c.llmModel = "gemini-2.5-flash-lite"  // would-be in-memory value
+        c.llmModel = "gemini-3.5-flash-lite"  // would-be in-memory value
         c.managedKeys = ["cleanupProvider", "cleanupModel"]
         let existing: [String: Any] = [
-            "llm": ["provider": "vertex", "model": "gemini-2.5-flash"]
+            "llm": ["provider": "vertex", "model": "gemini-3.8-flash"]
         ]
         let merged = Config.mergeForSave(c, existing: existing)
         let llm = merged["llm"] as? [String: Any]
-        XCTAssertEqual(llm?["model"] as? String, "gemini-2.5-flash",
+        XCTAssertEqual(llm?["model"] as? String, "gemini-3.8-flash",
                        "Pinned model always preserves the on-disk value")
     }
 
     func test_save_ctx_pinned_provider_canonical_ondisk_writes_user_pick() {
         // Context-tier mirror of the regression: contextProvider pinned
-        // to vertex (no contextModel pin); on disk vertex/gemini-2.5-flash;
+        // to vertex (no contextModel pin); on disk vertex/gemini-3.8-flash;
         // user picked flash-lite. The save must write the in-memory pick.
         var c = Config.default
         c.managedKeys = ["contextProvider"]
-        c.contextModel = ModelIdentifier(provider: "vertex", model: "gemini-2.5-flash-lite")
+        c.contextModel = ModelIdentifier(provider: "vertex", model: "gemini-3.5-flash-lite")
         let existing: [String: Any] = [
-            "context_model": ["provider": "vertex", "model": "gemini-2.5-flash"]
+            "context_model": ["provider": "vertex", "model": "gemini-3.8-flash"]
         ]
         let merged = Config.mergeForSave(c, existing: existing)
         let ctx = merged["context_model"] as? [String: Any]
-        XCTAssertEqual(ctx?["model"] as? String, "gemini-2.5-flash-lite",
+        XCTAssertEqual(ctx?["model"] as? String, "gemini-3.5-flash-lite",
                        "Context tier: user's in-pin model pick must be written")
     }
 
@@ -1002,7 +1002,7 @@ final class ManagedConfigTests: XCTestCase {
         // model is foreign to vertex (gpt-4o-mini) → preserve it.
         var c = Config.default
         c.managedKeys = ["contextProvider"]
-        c.contextModel = ModelIdentifier(provider: "vertex", model: "gemini-2.5-flash")
+        c.contextModel = ModelIdentifier(provider: "vertex", model: "gemini-3.8-flash")
         let existing: [String: Any] = [
             "context_model": ["provider": "vertex", "model": "gpt-4o-mini"]
         ]
@@ -1396,14 +1396,14 @@ final class ManagedConfigTests: XCTestCase {
 
     func test_blocked_provider_cleanupFailureHint_returns_message() {
         let msg = "Test blocked message"
-        let provider = BlockedProvider(providerID: "gemini", model: "gemini-2.5-flash", message: msg)
+        let provider = BlockedProvider(providerID: "gemini", model: "gemini-3.8-flash", message: msg)
         let hint = provider.cleanupFailureHint(for: .authPathBlocked(msg))
         XCTAssertEqual(hint, msg,
                        "BlockedProvider.cleanupFailureHint should return the stored message for .authPathBlocked")
     }
 
     func test_blocked_provider_cleanupFailureHint_nil_for_other_errors() {
-        let provider = BlockedProvider(providerID: "gemini", model: "gemini-2.5-flash", message: "blocked")
+        let provider = BlockedProvider(providerID: "gemini", model: "gemini-3.8-flash", message: "blocked")
         // cleanupFailureHint should return nil for non-authPathBlocked errors
         // so the AppState fallback chain (network hint, generic hint) still works.
         XCTAssertNil(provider.cleanupFailureHint(for: .missingAPIKey),
@@ -1413,14 +1413,14 @@ final class ManagedConfigTests: XCTestCase {
     }
 
     func test_blocked_provider_supportsVision_is_false() {
-        let provider = BlockedProvider(providerID: "gemini", model: "gemini-2.5-flash", message: "blocked")
+        let provider = BlockedProvider(providerID: "gemini", model: "gemini-3.8-flash", message: "blocked")
         XCTAssertFalse(provider.supportsVision,
                        "BlockedProvider should not claim to support vision")
     }
 
     func test_blocked_provider_generates_streaming_throws_authPathBlocked() async {
         let msg = "blocked by org"
-        let provider = BlockedProvider(providerID: "gemini", model: "gemini-2.5-flash", message: msg)
+        let provider = BlockedProvider(providerID: "gemini", model: "gemini-3.8-flash", message: msg)
         do {
             try await provider.generateStreaming(
                 systemPrompt: "sys",

@@ -130,14 +130,13 @@ final class SettingsModel: ObservableObject {
     @Published var bedrockAPIKeySet: Bool
     /// Google Cloud project ID for Vertex AI (#21 step 4).
     @Published var vertexProject: String
-    /// Vertex AI region, e.g. "us-central1".
+    /// Vertex AI location: "global" (default) or a region.
     @Published var vertexRegion: String
     /// Vertex AI auth mode (#23): "adc" or "serviceAccount".
     @Published var vertexAuthMode: String
     /// Region used for Anthropic publisher calls on Vertex AI (Claude
-    /// models). Separate from `vertexRegion` so users can keep Gemini
-    /// in us-central1 while routing Claude through us-east5. Defaults
-    /// to "us-east5".
+    /// models). Separate from `vertexRegion` so Claude can be routed
+    /// independently of Gemini. Defaults to "global".
     @Published var vertexAnthropicRegion: String
     /// Mirror of `KeychainStore.hasVertexServiceAccountJSON` for SwiftUI.
     @Published var vertexServiceAccountJSONSet: Bool
@@ -911,10 +910,10 @@ final class SettingsModel: ObservableObject {
         c.awsAuthMode = ["sso", "static", "bedrockApiKey", "oidc"].contains(awsAuthMode) ? awsAuthMode : "sso"
         c.vertexProject = vertexProject.trimmingCharacters(in: .whitespacesAndNewlines)
         c.vertexRegion = vertexRegion.trimmingCharacters(in: .whitespacesAndNewlines)
-        if c.vertexRegion.isEmpty { c.vertexRegion = "us-central1" }
+        if c.vertexRegion.isEmpty { c.vertexRegion = "global" }
         c.vertexAuthMode = ["adc", "serviceAccount", "oidcFederation", "googleOAuth"].contains(vertexAuthMode) ? vertexAuthMode : "adc"
         c.vertexAnthropicRegion = vertexAnthropicRegion.trimmingCharacters(in: .whitespacesAndNewlines)
-        if c.vertexAnthropicRegion.isEmpty { c.vertexAnthropicRegion = "us-east5" }
+        if c.vertexAnthropicRegion.isEmpty { c.vertexAnthropicRegion = "global" }
         c.azureResource = azureResource.trimmingCharacters(in: .whitespacesAndNewlines)
         c.azureDeployment = azureDeployment.trimmingCharacters(in: .whitespacesAndNewlines)
         c.azureApiVersion = azureApiVersion.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1489,10 +1488,10 @@ struct SettingsView: View {
     private static let bedrockModelOptions: [(value: String, label: String)] = [
         ("openai.gpt-oss-120b-1:0",
          "GPT-OSS 120B — fastest (cleanup default)"),
-        ("us.anthropic.claude-haiku-4-5-20251001-v1:0",
-         "Claude Haiku 4.5 👁 — balanced"),
-        ("us.anthropic.claude-sonnet-4-5-20250929-v1:0",
-         "Claude Sonnet 4.5 👁 — highest quality"),
+        ("us.anthropic.claude-haiku-5-5",
+         "Claude Haiku 5.5 👁 — balanced"),
+        ("us.anthropic.claude-sonnet-5-5",
+         "Claude Sonnet 5.5 👁 — highest quality"),
         // Claude 3.5 Sonnet / Haiku removed: AWS marked them
         // end-of-life / legacy (the 3.5 Sonnet returns
         // "model version has reached the end of its life" and
@@ -1521,10 +1520,10 @@ struct SettingsView: View {
     private static let bedrockBearerModelOptions: [(value: String, label: String)] = [
         ("openai.gpt-oss-120b-1:0",
          "GPT-OSS 120B — fastest (cleanup default)"),
-        ("us.anthropic.claude-haiku-4-5-20251001-v1:0",
-         "Claude Haiku 4.5 👁 — balanced"),
-        ("us.anthropic.claude-sonnet-4-5-20250929-v1:0",
-         "Claude Sonnet 4.5 👁 — highest quality"),
+        ("us.anthropic.claude-haiku-5-5",
+         "Claude Haiku 5.5 👁 — balanced"),
+        ("us.anthropic.claude-sonnet-5-5",
+         "Claude Sonnet 5.5 👁 — highest quality"),
         // Claude 3.5 removed — see bedrockModelOptions for why.
         ("us.amazon.nova-pro-v1:0",
          "Amazon Nova Pro 👁 — multimodal"),
@@ -1539,90 +1538,71 @@ struct SettingsView: View {
 
     /// Gemini model picker options (Google AI Studio direct API).
     /// Flash-Lite is first — it's the cleanup-tier default (fastest,
-    /// cheapest). Flash and Pro follow for higher-quality / vision use.
+    /// cheapest). 3.8 Flash and 4 Argon follow for higher quality.
     ///
-    /// Gemini 1.5 family removed: Google retired it from the direct
-    /// v1beta endpoint in 2025 (`models/gemini-1.5-pro is not found
-    /// for API version v1beta`). 1.5 is also retired on Vertex. Users
-    /// who need a 1.5 build can enter the ID via Custom… IF they have
-    /// access to an older endpoint, but the curated list shouldn't
-    /// imply 1.5 still works on shipped Google paths.
+    /// Gemini 2.5 removed (0.47.1): Google shut 2.5 Flash / Pro down on
+    /// 2026-12-01 (access already limited to prior users from
+    /// 2026-11-02); configs naming a 2.5 ID are migrated at load by
+    /// `Config.migrateRetiredModels`. Gemini 4 Hydrogen was evaluated and
+    /// left out: it cannot turn thinking off (200-500 hidden tokens per
+    /// call even at the lowest level; one 28 s TTFT), the cost
+    /// invariant #3 exists to prevent. All three picks accept images.
     private static let geminiModelOptions: [(value: String, label: String)] = [
-        ("gemini-2.5-flash-lite", "Gemini 2.5 Flash-Lite — fastest (cleanup default)"),
-        ("gemini-2.5-flash",      "Gemini 2.5 Flash 👁 — recommended"),
-        ("gemini-2.5-pro",        "Gemini 2.5 Pro 👁 — highest quality"),
+        ("gemini-3.5-flash-lite", "Gemini 3.5 Flash-Lite 👁 — fastest (cleanup default)"),
+        ("gemini-3.8-flash",      "Gemini 3.8 Flash 👁 — recommended"),
+        ("gemini-4-argon",        "Gemini 4 Argon 👁 — highest quality, slower"),
     ]
 
     /// Vertex AI model picker options. Includes both Gemini models
     /// (publishers/google endpoint) and Anthropic Claude models
-    /// (publishers/anthropic endpoint).
+    /// (publishers/anthropic endpoint, routed via `vertexAnthropicRegion`
+    /// — issue #34).
     ///
-    /// Claude entries are available now that `vertexAnthropicRegion`
-    /// (issue #34) lets users keep their Gemini region (e.g. us-central1)
-    /// and route Claude calls through a separate region (e.g. us-east5,
-    /// europe-west1) that actually hosts the Anthropic publisher.
-    ///
-    /// Gemini 1.5 family (pro / flash, 002 or bare alias) was
-    /// removed because Google retired it from Vertex in 2025.
-    /// (Still works on the direct Gemini API as legacy — see
-    /// geminiModelOptions.)
+    /// The Gemini 3+ models are served ONLY from the `global` location
+    /// (every regional endpoint 404s), and Claude Haiku 5.5 likewise —
+    /// hence both Vertex location defaults are "global".
     private static let vertexModelOptions: [(value: String, label: String)] = [
-        ("gemini-2.5-flash-lite",         "Gemini 2.5 Flash-Lite — fastest (cleanup default)"),
-        ("gemini-2.5-flash",              "Gemini 2.5 Flash 👁 — recommended"),
-        ("gemini-2.5-pro",                "Gemini 2.5 Pro 👁 — highest quality"),
-        ("claude-haiku-4-5@20251001",     "Claude Haiku 4.5 👁 — balanced (Anthropic via Vertex)"),
-        ("claude-sonnet-4-5@20250929",    "Claude Sonnet 4.5 👁 — highest quality (Anthropic via Vertex)"),
+        ("gemini-3.5-flash-lite", "Gemini 3.5 Flash-Lite 👁 — fastest (cleanup default)"),
+        ("gemini-3.8-flash",      "Gemini 3.8 Flash 👁 — recommended"),
+        ("gemini-4-argon",        "Gemini 4 Argon 👁 — highest quality, slower"),
+        ("claude-haiku-5-5",      "Claude Haiku 5.5 👁 — balanced (Anthropic via Vertex)"),
+        ("claude-sonnet-5-5",     "Claude Sonnet 5.5 👁 — highest quality (Anthropic via Vertex)"),
     ]
 
     /// Azure OpenAI model options. Azure routes by deployment, not
     /// model name on the wire — these IDs determine vision capability
     /// detection and the request-shape family heuristic only.
     ///
-    /// gpt-4.1 family added April 2025; widely deployed on Azure
-    /// OpenAI Service. Standard Chat Completions API — no reasoning-
-    /// model parameter quirks. 4.1-nano marked text-only as a
-    /// conservative default; if a specific deployment supports
-    /// vision, the conflict warning will fire but the user can
-    /// downgrade or pick 4.1-mini instead.
-    ///
-    /// gpt-4-turbo was removed: it's a legacy SKU that may not be
-    /// deployable in all Azure regions any more, and gpt-4o is a
-    /// strict superset replacement. Users who specifically need a
-    /// gpt-4-turbo deployment can enter the ID via Custom….
+    /// Refreshed in 0.47.1: the gpt-6 picks lead (all reasoning-shape
+    /// models — `isOpenAIReasoningModel` — sent reasoning_effort "low" on
+    /// Azure). Pick the label matching the model your deployment runs.
     private static let azureModelOptions: [(value: String, label: String)] = [
-        ("gpt-4o-mini",  "GPT-4o Mini 👁 — fastest (cleanup default)"),
-        ("gpt-4o",       "GPT-4o 👁 — highest quality"),
-        ("gpt-4.1",      "GPT-4.1 👁 — current"),
-        ("gpt-4.1-mini", "GPT-4.1 Mini 👁 — current, cheaper"),
-        ("gpt-4.1-nano", "GPT-4.1 Nano — text-only, smallest"),
-        // o-series reasoning models — slower and more expensive than
-        // standard GPT, but deeper analysis for context-tier use.
-        ("o1",           "o1 👁 — reasoning, slower"),
-        ("o1-mini",      "o1-mini — reasoning, text-only"),
-        ("o3",           "o3 👁 — reasoning, slower"),
-        ("o3-mini",      "o3-mini — reasoning, text-only"),
-        ("o4-mini",      "o4-mini 👁 — reasoning"),
+        ("gpt-6-luna",    "GPT-6 Luna 👁 — fastest (cleanup default)"),
+        ("gpt-6.1-terra", "GPT-6.1 Terra 👁 — recommended"),
+        ("gpt-6.1-sol",   "GPT-6.1 Sol 👁 — highest quality"),
+        // Older deployments Azure still serves until 2027-04-14. The
+        // o-series labels were removed (Azure retires them 2026-11-19);
+        // an existing o-series label keeps working as a custom value.
+        ("gpt-4o-mini",   "GPT-4o Mini 👁 — retiring Apr 2027"),
+        ("gpt-4o",        "GPT-4o 👁 — retiring Apr 2027"),
+        ("gpt-4.1",       "GPT-4.1 👁 — retiring Apr 2027"),
+        ("gpt-4.1-mini",  "GPT-4.1 Mini 👁 — retiring Apr 2027"),
     ]
 
     /// OpenAI direct (api.openai.com) model options. Unlike Azure,
     /// there is no deployment-name indirection — the model ID in the
-    /// request body is the routing key. The curated list mirrors Azure's
-    /// set for the 4o and 4.1 families, plus o-series reasoning models
-    /// which use a conditional parameter shape (max_completion_tokens,
-    /// no temperature) handled in buildRequestBody via isOpenAIReasoningModel.
+    /// request body is the routing key.
+    ///
+    /// Refreshed in 0.47.1: OpenAI shut down o1 / o3-mini / o4-mini /
+    /// gpt-4.1-nano on 2026-10-23 and retires o3 on 2026-12-11 and the
+    /// gpt-4o / gpt-4.1 family on 2027-01-14, naming gpt-6-luna as the
+    /// 4o/4.1 replacement. All three picks are reasoning models
+    /// (`isOpenAIReasoningModel`); gpt-6-luna and 6.1-terra are sent
+    /// reasoning_effort "none", 6.1-sol "low" (it rejects "none").
     private static let openAIModelOptions: [(value: String, label: String)] = [
-        ("gpt-4o-mini",  "GPT-4o Mini 👁 — fastest (cleanup default)"),
-        ("gpt-4o",       "GPT-4o 👁 — highest quality"),
-        ("gpt-4.1",      "GPT-4.1 👁 — current"),
-        ("gpt-4.1-mini", "GPT-4.1 Mini 👁 — current, cheaper"),
-        ("gpt-4.1-nano", "GPT-4.1 Nano — text-only, smallest"),
-        // o-series reasoning models — slower and more expensive than
-        // standard GPT, but deeper analysis for context-tier use.
-        ("o1",           "o1 👁 — reasoning, slower"),
-        ("o1-mini",      "o1-mini — reasoning, text-only"),
-        ("o3",           "o3 👁 — reasoning, slower"),
-        ("o3-mini",      "o3-mini — reasoning, text-only"),
-        ("o4-mini",      "o4-mini 👁 — reasoning"),
+        ("gpt-6-luna",    "GPT-6 Luna 👁 — fastest (cleanup default)"),
+        ("gpt-6.1-terra", "GPT-6.1 Terra 👁 — recommended"),
+        ("gpt-6.1-sol",   "GPT-6.1 Sol 👁 — highest quality"),
     ]
 
     /// Helper to return the canonical model list for a given provider.
@@ -2862,15 +2842,15 @@ struct SettingsView: View {
                          binding: bind(\.vertexProject),
                          isManaged: vertexProjectManaged)
             labeledField(label: "Region",
-                         placeholder: "e.g. us-central1",
+                         placeholder: "global",
                          binding: bind(\.vertexRegion),
                          isManaged: vertexRegionManaged)
-            SettingsCaption("Gemini calls use this region.")
+            SettingsCaption("Gemini calls use this location. Gemini 3 and newer models are only available in \"global\".")
             labeledField(label: "Anthropic region",
-                         placeholder: "e.g. us-east5",
+                         placeholder: "global",
                          binding: bind(\.vertexAnthropicRegion),
                          isManaged: vertexAnthropicRegionManaged)
-            SettingsCaption("Claude calls on Vertex use this region. us-east5 and europe-west1 are common; us-central1 doesn't host the Anthropic publisher.")
+            SettingsCaption("Claude calls on Vertex use this location. \"global\" serves every Claude model Parleq lists; Claude Haiku 5.5 is only available there.")
             HStack(alignment: .center) {
                 Text("Auth mode")
                     .frame(minWidth: 90, alignment: .leading)
@@ -3116,7 +3096,7 @@ struct SettingsView: View {
                          binding: bind(\.azureResource),
                          isManaged: azureResourceManaged)
             labeledField(label: "Deployment",
-                         placeholder: "e.g. gpt-4o-mini",
+                         placeholder: "e.g. gpt-6-luna",
                          binding: bind(\.azureDeployment),
                          isManaged: azureDeploymentManaged)
             labeledField(label: "API version",

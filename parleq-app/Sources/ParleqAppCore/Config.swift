@@ -19,7 +19,7 @@
 //                    // CLEANUP config. Derives cleanupType: "none"→Raw,
 //                    // "concord"→Instant (on-device), generative→Polished.
 //                    "provider": "gemini",
-//                    "model": "gemini-2.5-flash",
+//                    "model": "gemini-3.5-flash-lite",
 //                    // GLOBAL refinement TYPE: "raw"|"instant"|"polished".
 //                    "refinement": "polished",
 //                    // Refinement's Polished provider (used when refinement
@@ -69,7 +69,7 @@
 //                    // Enterprise OIDC federation (omit-when-default):
 //                    "role_arn": "arn:aws:iam::1:role/Parleq",
 //                    "session_duration_seconds": 3600 },
-//     "vertex":    { "project": "my-proj", "region": "us-central1",
+//     "vertex":    { "project": "my-proj", "region": "global",
 //                    // Enterprise OIDC federation (omit-when-default):
 //                    "workforce_provider":
 //                      "locations/global/workforcePools/p/providers/v" },
@@ -566,21 +566,22 @@ public struct Config: Sendable {
     /// the `projects/{project}` segment in the streamGenerateContent
     /// URL when `llmProvider == "vertex"`.
     public var vertexProject: String
-    /// Vertex AI location, e.g. "us-central1", "europe-west4". Used
-    /// as both the regional subdomain and the
-    /// `locations/{region}` segment.
+    /// Vertex AI location: "global" (the default — the only location
+    /// that serves Gemini 3+ models) or a region like "us-central1" /
+    /// "europe-west4". "global" maps to the un-prefixed
+    /// `aiplatform.googleapis.com` host; a region is used as both the
+    /// regional subdomain and the `locations/{region}` segment.
     public var vertexRegion: String
     /// Vertex AI auth mode (#23). "adc" (default) shells out to
     /// gcloud; "serviceAccount" mints OAuth tokens from a pasted
     /// SA JSON stored in the Keychain.
     public var vertexAuthMode: String
-    /// Region used for Anthropic publisher calls on Vertex AI (Claude
-    /// models). Defaults to "us-east5" — one of the few regions where
-    /// Vertex hosts the Anthropic publisher. Kept separate from
-    /// `vertexRegion` (the Gemini-call region) so users can keep their
-    /// primary Gemini region in us-central1 while routing Claude
-    /// through us-east5 without affecting cost / latency / data
-    /// residency for non-Claude calls.
+    /// Location used for Anthropic publisher calls on Vertex AI (Claude
+    /// models). Defaults to "global" — Claude Haiku 5.5 is served only
+    /// there; Sonnet 5.5 is also in "us-east5". Kept separate from
+    /// `vertexRegion` (the Gemini-call location) so an admin can route
+    /// Claude through a specific region without affecting cost /
+    /// latency / data residency for non-Claude calls.
     public var vertexAnthropicRegion: String
     /// Azure OpenAI resource name (#21 step 5) — the prefix in
     /// `https://{resource}.openai.azure.com/...`. From the "Keys
@@ -1031,15 +1032,15 @@ public struct Config: Sendable {
         recordingPulse: true,
         asrMode: "default",
         llmMode: "default",
-        llmModel: "gemini-2.5-flash",
+        llmModel: ModelCatalog.fallbackDefaultModel,
         llmProvider: "gemini",
         awsRegion: "us-east-2",
         awsProfile: nil,
         awsAuthMode: "sso",
         vertexProject: "",
-        vertexRegion: "us-central1",
+        vertexRegion: "global",
         vertexAuthMode: "adc",
-        vertexAnthropicRegion: "us-east5",
+        vertexAnthropicRegion: "global",
         azureResource: "",
         azureDeployment: "",
         azureApiVersion: "2025-04-01-preview",
@@ -1888,6 +1889,11 @@ public struct Config: Sendable {
 
         c.managedKeys = managedKeys
 
+        // Rewrite retired model IDs BEFORE the canonical scrub below, so a
+        // config naming e.g. gemini-2.5-pro lands on its real successor
+        // (gemini-4-argon) rather than being reset to the provider default.
+        migrateRetiredModels(&c)
+
         // Defense-in-depth: when customModelEntryEnabled is off, a
         // non-canonical model name (whether MDM-pushed, manually
         // edited into config.json, or left over from before the
@@ -1929,6 +1935,69 @@ public struct Config: Sendable {
             }
         }
     }
+
+    /// Rewrite retired / shutting-down model IDs to their successors
+    /// (`ModelCatalog.retiredModelReplacements`) on every model tier, and
+    /// move a Vertex config still on the OLD default regions to `global`
+    /// when it now uses a model that Vertex serves only from `global`.
+    ///
+    /// Applies to MDM-pinned model IDs too: a retired ID cannot serve a
+    /// single request, so keeping it would only turn every dictation into
+    /// a raw-transcript fallback. (Google itself auto-routes the retired
+    /// Gemini 2.5 IDs.) Each rewrite is logged so an admin can update the
+    /// policy. Managed REGIONS are never touched — a non-default region may
+    /// be a data-residency decision; those configs log a hint instead.
+    /// Idempotent; runs on every load path via `applyManagedOverlay`.
+    static func migrateRetiredModels(_ c: inout Config) {
+        func replace(_ provider: String, _ model: String, tier: String) -> String {
+            guard let next = ModelCatalog.replacementForRetiredModel(provider: provider, model: model) else {
+                return model
+            }
+            configLogStderr("[parleq] retired model: \(tier) '\(model)' (provider=\(provider)) → '\(next)'")
+            return next
+        }
+        c.llmModel = replace(c.llmProvider, c.llmModel, tier: "cleanup")
+        if let ctx = c.contextModel {
+            c.contextModel = ModelIdentifier(provider: ctx.provider, model: replace(ctx.provider, ctx.model, tier: "context"))
+        }
+        if let rfn = c.refineModel {
+            c.refineModel = ModelIdentifier(provider: rfn.provider, model: replace(rfn.provider, rfn.model, tier: "refine"))
+        }
+
+        // Every Vertex model this config can route to (cleanup / context /
+        // refine). Context falls back to cleanup when unset; that model is
+        // already in the list.
+        var vertexModels: [String] = []
+        if c.llmProvider == "vertex" { vertexModels.append(c.llmModel) }
+        if let ctx = c.contextModel, ctx.provider == "vertex" { vertexModels.append(ctx.model) }
+        if let rfn = c.refineModel, rfn.provider == "vertex" { vertexModels.append(rfn.model) }
+
+        if vertexModels.contains(where: ModelCatalog.isVertexGlobalOnlyGeminiModel),
+           c.vertexRegion != "global" {
+            if c.vertexRegion == Self.legacyDefaultVertexRegion,
+               !c.managedKeys.contains("vertexRegion") {
+                configLogStderr("[parleq] vertex region: '\(c.vertexRegion)' (old default) → 'global' (Gemini 3+ models are served only from global)")
+                c.vertexRegion = "global"
+            } else {
+                configLogStderr("[parleq] vertex region: '\(c.vertexRegion)' does not serve Gemini 3+ models (global-only); left unchanged — set vertex.region to 'global' to use them")
+            }
+        }
+        if vertexModels.contains(where: ModelCatalog.isVertexGlobalOnlyClaudeModel),
+           c.vertexAnthropicRegion != "global" {
+            if c.vertexAnthropicRegion == Self.legacyDefaultVertexAnthropicRegion,
+               !c.managedKeys.contains("vertexAnthropicRegion") {
+                configLogStderr("[parleq] vertex anthropic region: '\(c.vertexAnthropicRegion)' (old default) → 'global' (model is served only from global)")
+                c.vertexAnthropicRegion = "global"
+            } else {
+                configLogStderr("[parleq] vertex anthropic region: '\(c.vertexAnthropicRegion)' does not serve this Claude model (global-only); left unchanged — set vertex.anthropic_region to 'global' to use it")
+            }
+        }
+    }
+
+    /// Vertex region defaults before 0.47.1 — rewritten to `global` by
+    /// `migrateRetiredModels` when the config uses a global-only model.
+    static let legacyDefaultVertexRegion = "us-central1"
+    static let legacyDefaultVertexAnthropicRegion = "us-east5"
 
     // MARK: - Test seams
 
