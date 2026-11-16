@@ -94,7 +94,16 @@ final class ModelDeprecationMigrationTests: XCTestCase {
         XCTAssertTrue(ModelCatalog.ownsModel(provider: "vertex", model: "claude-sonnet-4-5@20250929"))
         XCTAssertTrue(ModelCatalog.ownsModel(provider: "openai", model: "o4-mini"))
         XCTAssertFalse(ModelCatalog.ownsModel(provider: "openai", model: "gemini-2.5-flash"))
-        XCTAssertFalse(ModelCatalog.ownsModel(provider: "azure", model: "o4-mini"), "dropped Azure label is custom")
+        XCTAssertFalse(ModelCatalog.ownsModel(provider: "gemini", model: "o4-mini"))
+    }
+
+    func test_azure_owns_openai_family_labels() {
+        // Azure labels name the user's deployment with OpenAI model names,
+        // so an Azure allowlist of ["o4-mini"] must not be filtered out as
+        // "OpenAI's retired model" (RoboRev on b0ac010).
+        XCTAssertTrue(ModelCatalog.ownsModel(provider: "azure", model: "o4-mini"))
+        XCTAssertTrue(ModelCatalog.ownsModel(provider: "azure", model: "gpt-6-luna"))
+        XCTAssertFalse(ModelCatalog.ownsModel(provider: "azure", model: "gemini-3.8-flash"))
     }
 
     // MARK: - Vertex location migration

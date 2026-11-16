@@ -1626,7 +1626,7 @@ public struct Config: Sendable {
             // like ["gemini-2.5-flash", "gpt-4o"] without a provider
             // lockdown could end up with provider=gemini + model=gpt-4o.
             let compatibleAllowed = allowedModels.filter { id in
-                if ModelCatalog.isCanonical(provider: c.llmProvider, model: id) {
+                if ModelCatalog.ownsModel(provider: c.llmProvider, model: id) {
                     return true
                 }
                 let belongsElsewhere = ["gemini", "vertex", "bedrock", "bedrock-bearer", "azure", "openai"]
@@ -1726,7 +1726,7 @@ public struct Config: Sendable {
             let allowedModels = ModelCatalog.expandingRetiredModels(rawAllowedModels, forProvider: contextProvider)
             // Same cross-provider filter as the cleanup tier.
             let compatibleAllowed = allowedModels.filter { id in
-                if ModelCatalog.isCanonical(provider: contextProvider, model: id) {
+                if ModelCatalog.ownsModel(provider: contextProvider, model: id) {
                     return true
                 }
                 let belongsElsewhere = ["gemini", "vertex", "bedrock", "bedrock-bearer", "azure", "openai"]

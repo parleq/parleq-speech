@@ -161,9 +161,18 @@ public enum ModelCatalog {
     /// (cross-provider allowlist filtering, pinned-provider mismatch):
     /// a retired ID must still count as its provider's, or an allowlist
     /// naming gemini-2.5-flash would read as a bare custom ID on OpenAI.
+    ///
+    /// Azure is special: its model field is a free label for the user's
+    /// own deployment and uses OpenAI's model names, so every OpenAI-family
+    /// ID (current or retired, e.g. an "o4-mini" deployment) is a valid
+    /// Azure label. Azure therefore owns OpenAI's IDs too, so an Azure
+    /// allowlist of ["o4-mini"] is not filtered out as "OpenAI's model".
     public static func ownsModel(provider: String, model: String) -> Bool {
-        isCanonical(provider: provider, model: model)
-            || replacementForRetiredModel(provider: provider, model: model) != nil
+        if isCanonical(provider: provider, model: model)
+            || replacementForRetiredModel(provider: provider, model: model) != nil {
+            return true
+        }
+        return provider == "azure" && ownsModel(provider: "openai", model: model)
     }
 
     /// The replacement for `model` under `provider` when it has been

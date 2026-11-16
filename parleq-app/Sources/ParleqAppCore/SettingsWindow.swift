@@ -2489,6 +2489,11 @@ struct SettingsView: View {
                 if ModelCatalog.replacementForRetiredModel(provider: provider, model: id) != nil {
                     return nil
                 }
+                // Not curated here but owned by this provider (e.g. an Azure
+                // deployment label like "o4-mini"): keep it as a custom value.
+                if ModelCatalog.ownsModel(provider: provider, model: id) {
+                    return (id, id)
+                }
                 // If the ID is canonical for some OTHER provider, exclude
                 // it from THIS provider's picker — it would produce an
                 // invalid wire combination at runtime.
