@@ -4,6 +4,22 @@ All notable changes to Parleq are documented here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.47.1] - Unreleased
+
+Model refresh: Google, Anthropic and OpenAI are shutting down several models Parleq offered.
+
+### Fixed
+
+- **Gemini cleanup keeps working after Google retires Gemini 2.5.** Google has limited Gemini 2.5 Flash and Pro to existing users and shuts them down on December 1, so new setups were failing. The Gemini options are now Gemini 3.5 Flash-Lite (the new default), Gemini 3.8 Flash and Gemini 4 Argon. All three accept image references.
+- **Vertex AI uses the `global` location by default.** Vertex serves the new Gemini models and Claude Haiku 5.5 only from `global`. If your config still has the old default regions (`us-central1`, or `us-east5` for Claude), Parleq switches it to `global` when you use one of these models. A region you picked yourself, or one set by your admin, is left alone.
+- **Claude Haiku and Sonnet 5.5 replace 4.5** on Vertex AI and Amazon Bedrock. Anthropic retires Sonnet 4.5 on November 30.
+- **Current OpenAI models.** The OpenAI options are now GPT-6 Luna (the new default), GPT-6.1 Terra and GPT-6.1 Sol. OpenAI has already shut down o1, o3-mini, o4-mini and GPT-4.1 Nano, and retires o3 on December 11 and the GPT-4o and GPT-4.1 families on January 14. The Azure list adds the same three. It keeps GPT-4o and GPT-4.1, which Azure serves until April 2027, and drops the o-series, which Azure retires on November 19.
+- **Azure and custom GPT-5 models no longer fail.** Model names starting with `gpt-5` or `gpt-6` now get the request format these models need. Before, a GPT-5 deployment got the older format and an error.
+
+### Changed
+
+- **Saved settings move to the replacement model automatically.** If your settings name a retired model, Parleq switches to its replacement when it loads them: Gemini 2.5 Flash or Flash-Lite to 3.5 Flash-Lite, 2.5 Pro to 4 Argon, Claude 4.5 to 5.5, GPT-4o and GPT-4.1 to GPT-6 Luna, o1, o3 and o3-mini to GPT-6.1 Sol, and o4-mini to GPT-6.1 Terra. This also covers models set by an admin, since a retired model can't work, and each switch is logged so admins can update their profiles. Azure model labels are left as they are, because they describe your own deployment.
+
 ## [0.47.0] - 2026-11-09
 
 ### Added
