@@ -64,7 +64,7 @@ enum ModelCapability {
             // before the first token — EXCEPT on OpenAI direct when sent
             // reasoning_effort "none" (e.g. gpt-6-luna), which streams as
             // promptly as a standard model. Azure always sends "low".
-            guard isOpenAIReasoningModel(m) || m.contains("gpt-5") else { return false }
+            guard isOpenAIReasoningModel(m) else { return false }
             if provider.lowercased() == "openai" {
                 return openAIReasoningEffort(forModel: m) != "none"
             }

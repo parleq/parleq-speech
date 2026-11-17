@@ -15,11 +15,10 @@
 //
 // System messages and SSE streaming are accepted unchanged.
 //
-// Note for AzureOpenAIProvider: Azure routes by deployment name, not
-// model name, so the family is declared explicitly in Settings
-// (AzureOpenAIProvider.Family.reasoning) and this helper is NOT used
-// on that path. It is used only by OpenAIProvider, where the model
-// string is the wire routing key and can be detected reliably.
+// Used by BOTH providers. On Azure the "model" is the user's label for
+// their deployment (Azure routes by deployment name), and
+// AzureOpenAIProvider picks the request shape from that label with
+// this helper — so a label starting gpt-5/gpt-6 gets the reasoning shape.
 // The helper lives here rather than inside OpenAIProvider so it
 // can be called from tests without opening up private access.
 
@@ -69,10 +68,19 @@ public func isOpenAIReasoningModel(_ model: String) -> Bool {
 public func openAIReasoningEffort(forModel model: String) -> String {
     let m = model.lowercased()
     let acceptsNone = ["gpt-6-luna", "gpt-6.1-terra", "gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol"]
-    for id in acceptsNone where m == id || m.hasPrefix(id + "-") {
+    // Exact id, or a dated snapshot (gpt-6-luna-2026-09-30). Any other
+    // suffix (gpt-6.1-terra-pro) is an unverified variant and gets "low",
+    // which every reasoning model accepts.
+    for id in acceptsNone where m == id || isDatedSnapshot(m, of: id) {
         return "none"
     }
     return "low"
+}
+
+private func isDatedSnapshot(_ m: String, of id: String) -> Bool {
+    guard m.hasPrefix(id + "-") else { return false }
+    let suffix = m.dropFirst(id.count + 1)
+    return suffix.range(of: #"^\d{4}-\d{2}-\d{2}$"#, options: .regularExpression) != nil
 }
 
 /// Image-input capability for OpenAI-family model IDs (OpenAI direct and

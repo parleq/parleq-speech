@@ -239,6 +239,50 @@ final class ModelDeprecationMigrationTests: XCTestCase {
         XCTAssertEqual(openAIReasoningEffort(forModel: "gpt-6.1-terra"), "none")
         XCTAssertEqual(openAIReasoningEffort(forModel: "gpt-6.1-sol"), "low", "6.1-sol rejects none")
         XCTAssertEqual(openAIReasoningEffort(forModel: "o3"), "low")
+        XCTAssertEqual(openAIReasoningEffort(forModel: "gpt-6-luna-2026-09-30"), "none", "dated snapshot")
+        XCTAssertEqual(openAIReasoningEffort(forModel: "gpt-6.1-terra-pro"), "low", "unverified variant")
+    }
+
+    func test_extended_ttft_follows_reasoning_shape() {
+        XCTAssertFalse(ModelCapability.expectsExtendedTTFT(provider: "openai", model: "gpt-6-luna"), "effort none")
+        XCTAssertTrue(ModelCapability.expectsExtendedTTFT(provider: "openai", model: "gpt-6.1-sol"))
+        XCTAssertTrue(ModelCapability.expectsExtendedTTFT(provider: "azure", model: "gpt-6-luna"), "Azure sends low")
+        XCTAssertFalse(ModelCapability.expectsExtendedTTFT(provider: "openai", model: "gpt-5-chat-latest"), "non-reasoning")
+        XCTAssertFalse(ModelCapability.expectsExtendedTTFT(provider: "azure", model: "gpt-4o"))
+    }
+
+    // MARK: - save() under an MDM provider pin keeps the user's pick
+
+    func test_save_under_provider_pin_writes_pick_over_retired_on_disk_model() {
+        var c = Config.default
+        c.managedKeys = ["cleanupProvider"]
+        c.llmProvider = "gemini"
+        c.llmModel = "gemini-3.8-flash"  // user's pick after load migrated 2.5
+        let existing: [String: Any] = ["llm": ["provider": "gemini", "model": "gemini-2.5-flash"]]
+        let llm = Config.mergeForSave(c, existing: existing)["llm"] as? [String: Any]
+        XCTAssertEqual(llm?["model"] as? String, "gemini-3.8-flash",
+                       "a retired id of the pinned provider is not a foreign fallback")
+    }
+
+    func test_save_under_context_provider_pin_writes_pick_over_retired_on_disk_model() {
+        var c = Config.default
+        c.managedKeys = ["contextProvider"]
+        c.contextModel = ModelIdentifier(provider: "vertex", model: "gemini-3.8-flash")
+        let existing: [String: Any] = ["context_model": ["provider": "vertex", "model": "gemini-2.5-flash"]]
+        let ctx = Config.mergeForSave(c, existing: existing)["context_model"] as? [String: Any]
+        XCTAssertEqual(ctx?["model"] as? String, "gemini-3.8-flash")
+    }
+
+    func test_save_under_provider_pin_still_preserves_truly_foreign_model() {
+        var c = Config.default
+        c.managedKeys = ["cleanupProvider"]
+        c.llmProvider = "gemini"
+        c.llmModel = "gemini-3.5-flash-lite"
+        // Under a provider pin save keeps the on-disk provider; a model that
+        // provider doesn't own is the pre-MDM fallback and must survive.
+        let existing: [String: Any] = ["llm": ["provider": "gemini", "model": "gpt-6-luna"]]
+        let llm = Config.mergeForSave(c, existing: existing)["llm"] as? [String: Any]
+        XCTAssertEqual(llm?["model"] as? String, "gpt-6-luna", "pre-MDM fallback for another provider is kept")
     }
 
     func test_new_openai_models_are_vision_capable() {

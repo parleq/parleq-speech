@@ -2824,7 +2824,11 @@ public struct Config: Sendable {
         // on-disk model is not a foreign fallback worth preserving —
         // preserving it would write "" (non-nil, so the ?? never fires).
         let onDiskModelForeign = onDiskModel.map {
-            !$0.isEmpty && !ModelCatalog.isCanonical(provider: llmProviderToWrite, model: $0)
+            // ownsModel, not isCanonical: a RETIRED id of the pinned provider
+            // (gemini-2.5-flash under a gemini pin) is that provider's own
+            // model, not a foreign fallback — treating it as foreign would
+            // write it back and lose the user's pick on every restart.
+            !$0.isEmpty && !ModelCatalog.ownsModel(provider: llmProviderToWrite, model: $0)
         } ?? false
         let preserveModelOnDisk = modelPinned
             || (providerPinned && !modelAllowlist && onDiskModelForeign)
@@ -3242,7 +3246,7 @@ public struct Config: Sendable {
             //     picking within the pinned world: write the in-memory
             //     choice so it persists. (allowlist lands here too.)
             let ctxOnDiskModelForeign = !existingModel.isEmpty
-                && !ModelCatalog.isCanonical(provider: provider, model: existingModel)
+                && !ModelCatalog.ownsModel(provider: provider, model: existingModel)  // retired ids count as owned (see the cleanup tier)
             let preserveModel = ctxModelPinned
                 || (ctxProviderPinned && !ctxModelAllowlist && ctxOnDiskModelForeign)
             let model = preserveModel && !existingModel.isEmpty
