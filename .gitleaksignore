@@ -1,0 +1,3 @@
+# Fake OAuth client secret in an OIDC unit test (not a real credential).
+ab3c95e3c3e44733f8971ace5985cb0f19a944ff:parleq-app/Tests/ParleqAppCoreTests/OIDCSessionTests.swift:generic-api-key:702
+ab3c95e3c3e44733f8971ace5985cb0f19a944ff:parleq-app/Tests/ParleqAppCoreTests/OIDCSessionTests.swift:generic-api-key:723

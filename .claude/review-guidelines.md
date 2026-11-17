@@ -7,6 +7,7 @@ Repo-specific priorities and false-positive suppressions for `commit-review`. Su
 - **Swift 6 strict-concurrency correctness** — data races, actor isolation violations, missing `Sendable`, unsafe cross-actor access. This is the #1 bug class here.
 - **Secret handling** — provider secrets (Gemini key, Bedrock key/static creds, Vertex SA JSON, Azure key) must go through `KeychainStore`; never logged, never displayed in plaintext after save.
 - **Provider auth correctness** — Bedrock SigV4 / bearer path, Vertex JWT (RS256) token minting, Azure family routing (`max_tokens` vs `max_completion_tokens` by deployment family). Mismatches here silently break a provider.
+- **Public repo** — flag as high anything that shouldn't be published: secrets or tokens (even "test" ones that look real), personal data (emails, home-directory paths, names of non-contributors), dictation transcripts or audio, internal URLs, references to private repos, and unannounced product strategy or roadmap.
 - **Compliance invariants** (see "NOT to flag" — these are *enforced*, so flag any change that *violates* them): audio stays memory-only; transcript content never reaches logs/stderr.
 
 ## Things NOT to flag (intentional — flagging these is noise)

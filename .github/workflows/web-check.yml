@@ -1,0 +1,38 @@
+# Build the Astro site on every pull request that touches it, so a broken
+# page fails the PR instead of the post-merge Pages deploy (deploy-pages.yml
+# only runs on main). Build only; nothing is deployed from here.
+
+name: Site build check
+
+on:
+  pull_request:
+    paths:
+      - 'web/**'
+      - '.github/workflows/web-check.yml'
+      - '.github/workflows/deploy-pages.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build site
+        run: npm run build
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
