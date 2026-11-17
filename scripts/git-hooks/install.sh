@@ -5,7 +5,7 @@
 # The gate is COPIED into the hooks directory and the hook runs that copy, not
 # the file in whichever worktree is pushing, so a branch can't weaken the gate
 # it is being pushed through. Rerun after the gate changes on main to refresh
-# the copy. If a stu-managed pre-push hook is present, the gate goes in
+# the copy. If the existing pre-push hook chains a pre-push.local, the gate goes in
 # pre-push.local, which that hook runs first; otherwise it is appended to (or
 # becomes) pre-push. RoboRev's own pre-push flush section is left in place.
 set -eu
@@ -18,7 +18,7 @@ chmod +x "$gate"
 echo "copied the gate to $gate"
 marker="# parleq push gate"
 
-if [ -f "$hooks/pre-push" ] && grep -q "stu-pre-push: managed hook" "$hooks/pre-push"; then
+if [ -f "$hooks/pre-push" ] && grep -q "pre-push\.local" "$hooks/pre-push"; then
   target="$hooks/pre-push.local"
 else
   target="$hooks/pre-push"
