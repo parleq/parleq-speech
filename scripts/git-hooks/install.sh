@@ -24,22 +24,10 @@ else
   target="$hooks/pre-push"
 fi
 
-if [ -f "$target" ] && grep -q "$marker" "$target"; then
-  # Rewrite our section (from the marker to its end line) so a rerun picks up
-  # changes to it; every other section of the hook is kept as is.
-  tmp=$(mktemp "${TMPDIR:-/tmp}/parleq-install.XXXXXX")
-  awk -v m="$marker" 'index($0, m) == 1 && $0 !~ / end$/ {skip=1}
-                      !skip {print}
-                      skip && $0 == "# parleq push gate end" {skip=0}' "$target" > "$tmp"
-  cat "$tmp" > "$target"
-  rm -f "$tmp"
-fi
-
-if [ ! -f "$target" ]; then
-  printf '#!/bin/sh\n' > "$target"
-fi
-# The gate reads git's ref lines on stdin; save them so later sections still get them.
-cat >> "$target" <<HOOK
+# Our section. The gate reads git's ref lines on stdin; it saves them so later
+# sections still get them.
+stanza=$(mktemp "${TMPDIR:-/tmp}/parleq-install.XXXXXX")
+cat > "$stanza" <<HOOK
 $marker (written by scripts/git-hooks/install.sh)
 _pg_in=\$(mktemp "\${TMPDIR:-/tmp}/parleq-push-gate.XXXXXX") || exit 1
 cat > "\$_pg_in"
@@ -48,5 +36,22 @@ exec 0< "\$_pg_in"
 rm -f "\$_pg_in"
 # parleq push gate end
 HOOK
+
+if [ -f "$target" ] && grep -q "$marker" "$target"; then
+  # Replace our section where it stands, so a rerun picks up changes to it and
+  # the order of every other section is unchanged.
+  tmp=$(mktemp "${TMPDIR:-/tmp}/parleq-install.XXXXXX")
+  awk -v m="$marker" -v f="$stanza" '
+    index($0, m) == 1 && $0 != "# parleq push gate end" {
+      while ((getline l < f) > 0) print l; close(f); skip=1; next }
+    skip { if ($0 == "# parleq push gate end") skip=0; next }
+    { print }' "$target" > "$tmp"
+  cat "$tmp" > "$target"
+  rm -f "$tmp"
+else
+  [ -f "$target" ] || printf '#!/bin/sh\n' > "$target"
+  cat "$stanza" >> "$target"
+fi
+rm -f "$stanza"
 chmod +x "$target"
 echo "installed push gate in $target"
