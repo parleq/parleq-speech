@@ -57,7 +57,7 @@ export PARLEQ_RELEASE_BUILD := 1
 endif
 
 .DEFAULT_GOAL := help
-.PHONY: help build build-debug install run clean notarize dmg dmg-preview release release-precheck set-version show-version
+.PHONY: install-hooks help build build-debug install run clean notarize dmg dmg-preview release release-precheck set-version show-version
 
 help:
 	@echo "Parleq build & install"
@@ -78,11 +78,16 @@ help:
 	@echo "  show-version  Print the current marketing version + build number"
 	@echo "  set-version   Set marketing version. Usage: make set-version VERSION=0.5.0"
 	@echo "  clean         Remove build artifacts"
+	@echo "  install-hooks Install the pre-push gate (RoboRev review handled +"
+	@echo "                public-content scan); see scripts/git-hooks/push-gate.py"
 	@echo ""
 	@echo "Variables:"
 	@echo "  INSTALL_DEST       Install destination (default: $(INSTALL_DEST))"
 	@echo "  CODESIGN_IDENTITY  Override the auto-detected signing identity"
 	@echo "  NOTARY_PROFILE     notarytool keychain profile (default: $(NOTARY_PROFILE))"
+
+install-hooks:
+	@scripts/git-hooks/install.sh
 
 build:
 	PARLEQ_CODESIGN_IDENTITY="$(CODESIGN_IDENTITY)" $(APP_DIR)/scripts/make-app.sh
