@@ -287,6 +287,16 @@ final class ModelDeprecationMigrationTests: XCTestCase {
         XCTAssertEqual(llm?["model"] as? String, "gemini-3.8-flash")
     }
 
+    func test_save_under_context_pin_persists_pick_and_keeps_saved_provider() {
+        var c = Config.default
+        c.managedKeys = ["contextProvider"]
+        c.contextModel = ModelIdentifier(provider: "gemini", model: "gemini-3.8-flash")
+        let existing: [String: Any] = ["context_model": ["provider": "openai", "model": "gpt-6-luna"]]
+        let ctx = Config.mergeForSave(c, existing: existing)["context_model"] as? [String: Any]
+        XCTAssertEqual(ctx?["provider"] as? String, "openai", "pinned tier keeps the saved provider")
+        XCTAssertEqual(ctx?["model"] as? String, "gemini-3.8-flash", "the pick survives a restart")
+    }
+
     func test_save_under_provider_pin_still_preserves_truly_foreign_model() {
         var c = Config.default
         c.managedKeys = ["cleanupProvider"]
