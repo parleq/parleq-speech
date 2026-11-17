@@ -47,7 +47,7 @@ const providers = [
   {
     slug: 'openai',
     name: 'OpenAI',
-    blurb: 'Direct OpenAI API key (api.openai.com). GPT-4o and GPT-4.1 families for cleanup; o1 / o3 / o4-mini reasoning models for context-aware reference turns. Simple API key auth.',
+    blurb: 'Direct OpenAI API key (api.openai.com). GPT-6 family models for cleanup. Simple API key auth.',
     difficulty: 'Easiest',
   },
   {
@@ -59,13 +59,13 @@ const providers = [
   {
     slug: 'vertex',
     name: 'Google Vertex AI',
-    blurb: 'Gemini models — plus Claude Haiku and Sonnet — on GCP, with IAM, audit logs, and data residency. Two auth modes: gcloud Application Default Credentials, or service-account JSON.',
+    blurb: 'Gemini models — plus Claude Haiku and Sonnet — on GCP, with IAM, audit logs, and your organization's Google Cloud terms. Two auth modes: gcloud Application Default Credentials, or service-account JSON.',
     difficulty: 'Medium',
   },
   {
     slug: 'azure',
     name: 'Azure OpenAI',
-    blurb: 'GPT-4o and GPT-4.1 families on Microsoft\'s contract, plus o1 / o3 / o4-mini reasoning models. Two auth modes: resource API key, or Microsoft Entra ID via az login.',
+    blurb: 'GPT-6 family models (plus legacy GPT-4o / GPT-4.1) on Microsoft\'s contract. Two auth modes: resource API key, or Microsoft Entra ID via az login.',
     difficulty: 'Medium',
   },
 ];

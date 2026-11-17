@@ -226,7 +226,7 @@ private final class WizardModel: ObservableObject {
     /// Azure step shows the key-paste field or the `az login` blurb.
     @Published var pendingAzureAuthMode = "apiKey"
     @Published var pendingVertexProject = ""
-    @Published var pendingVertexRegion = "us-central1"
+    @Published var pendingVertexRegion = "global"
     /// "adc" (default) or "serviceAccount". Drives whether the
     /// wizard's Vertex step shows the gcloud blurb or the SA-JSON
     /// paste TextEditor.
@@ -353,12 +353,12 @@ private final class WizardModel: ObservableObject {
         // a stale cloud model id in config.llm.model would pollute
         // logs and the UsageLedger.
         switch effectiveProvider {
-        case "gemini": c.llmModel = "gemini-2.5-flash"
+        case "gemini": c.llmModel = ModelCatalog.defaultModel(forProvider: "gemini")
         case "vertex":
-            c.llmModel = "gemini-2.5-flash"
+            c.llmModel = ModelCatalog.defaultModel(forProvider: "vertex")
             c.vertexProject = pendingVertexProject.trimmingCharacters(in: .whitespacesAndNewlines)
             c.vertexRegion = pendingVertexRegion.trimmingCharacters(in: .whitespacesAndNewlines)
-            if c.vertexRegion.isEmpty { c.vertexRegion = "us-central1" }
+            if c.vertexRegion.isEmpty { c.vertexRegion = "global" }
             c.vertexAuthMode = ["adc", "serviceAccount", "oidcFederation", "googleOAuth"].contains(pendingVertexAuthMode)
                 ? pendingVertexAuthMode : "adc"
             if pendingVertexAuthMode == "oidcFederation" {
@@ -372,7 +372,7 @@ private final class WizardModel: ObservableObject {
                 applyWizardOIDC(&c)
             }
         case "bedrock":
-            c.llmModel = "openai.gpt-oss-120b-1:0"
+            c.llmModel = ModelCatalog.defaultModel(forProvider: "bedrock")
             c.awsRegion = pendingAwsRegion.trimmingCharacters(in: .whitespacesAndNewlines)
             if c.awsRegion.isEmpty { c.awsRegion = "us-east-2" }
             let trimmed = pendingAwsProfile.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -388,7 +388,7 @@ private final class WizardModel: ObservableObject {
                 c.awsRoleArn = pendingAwsRoleArn.trimmingCharacters(in: .whitespacesAndNewlines)
             }
         case "azure":
-            c.llmModel = "gpt-4o-mini"
+            c.llmModel = ModelCatalog.defaultModel(forProvider: "azure")
             c.azureResource = pendingAzureResource.trimmingCharacters(in: .whitespacesAndNewlines)
             c.azureDeployment = pendingAzureDeployment.trimmingCharacters(in: .whitespacesAndNewlines)
             c.azureAuthMode = ["apiKey", "azureAd"].contains(pendingAzureAuthMode)
@@ -1292,7 +1292,7 @@ private struct ConfigureProviderStep: View {
             HStack {
                 Text("Region:")
                     .frame(width: 70, alignment: .trailing)
-                TextField("us-central1", text: $model.pendingVertexRegion)
+                TextField("global", text: $model.pendingVertexRegion)
                     .textFieldStyle(.roundedBorder)
                     .frame(maxWidth: 200)
             }
@@ -1433,7 +1433,7 @@ private struct ConfigureProviderStep: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
-                Text("Create an OpenAI resource in your Azure subscription, deploy a model under it (e.g. `gpt-4o-mini`), then paste the resource key + names below.")
+                Text("Create an OpenAI resource in your Azure subscription, deploy a model under it (e.g. `gpt-6-luna`), then paste the resource key + names below.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1452,7 +1452,7 @@ private struct ConfigureProviderStep: View {
             HStack {
                 Text("Deployment:")
                     .frame(width: 90, alignment: .trailing)
-                TextField("gpt-4o-mini", text: $model.pendingAzureDeployment)
+                TextField("gpt-6-luna", text: $model.pendingAzureDeployment)
                     .textFieldStyle(.roundedBorder)
                     .frame(maxWidth: 280)
             }
@@ -1576,15 +1576,8 @@ private struct AdvancedModelStep: View {
     /// The default cleanup-model identifier derived from the wizard's
     /// provider choice, mirroring the mapping in `WizardModel.commit()`.
     private var cleanupModelIdentifier: ModelIdentifier {
-        let defaultModel: String
-        switch model.pickedProvider {
-        case "gemini":   defaultModel = "gemini-2.5-flash"
-        case "vertex":   defaultModel = "gemini-2.5-flash"
-        case "bedrock":  defaultModel = "openai.gpt-oss-120b-1:0"
-        case "azure":    defaultModel = "gpt-4o-mini"
-        default:         defaultModel = "gemini-2.5-flash"
-        }
-        return ModelIdentifier(provider: model.pickedProvider, model: defaultModel)
+        ModelIdentifier(provider: model.pickedProvider,
+                        model: ModelCatalog.defaultModel(forProvider: model.pickedProvider))
     }
 
     /// The pool of models the dropdown can offer. Includes the

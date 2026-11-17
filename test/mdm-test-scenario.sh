@@ -103,7 +103,7 @@ case "$scenario" in
         write_scenario '    <key>cleanupProvider</key>
     <string>openai</string>
     <key>cleanupModel</key>
-    <string>gpt-4o-mini</string>'
+    <string>gpt-6-luna</string>'
         restart_parleq
         ;;
 
@@ -112,18 +112,18 @@ case "$scenario" in
     <string>openai</string>
     <key>cleanupAllowedModels</key>
     <array>
-        <string>gpt-4o</string>
-        <string>gpt-4o-mini</string>
+        <string>gpt-6-luna</string>
+        <string>gpt-6.1-terra</string>
     </array>'
         restart_parleq
         ;;
 
     test6-cross-provider-snap)
         # Use a Gemini-only model so the auto-snap path actually fires.
-        # gpt-4o would NOT trigger it because Azure hosts gpt-4o too.
+        # gpt-6-luna would NOT trigger it because Azure hosts gpt-6-luna too.
         write_scenario '    <key>cleanupAllowedModels</key>
     <array>
-        <string>gemini-2.5-flash</string>
+        <string>gemini-3.8-flash</string>
     </array>'
         restart_parleq
         ;;
@@ -168,13 +168,13 @@ case "$scenario" in
         # mirror case where only the Model column has a managed caption.
         # Note: the #176 fix means the Provider picker will be silently
         # filtered to providers that own at least one allowed model
-        # (gemini-2.5-flash + gemini-2.5-pro are gemini/vertex only) —
+        # (gemini-3.8-flash + gemini-4-argon are gemini/vertex only) —
         # but with no provider-level managed key, no lock/caption
         # appears on the provider column.
         write_scenario '    <key>cleanupAllowedModels</key>
     <array>
-        <string>gemini-2.5-flash</string>
-        <string>gemini-2.5-pro</string>
+        <string>gemini-3.8-flash</string>
+        <string>gemini-4-argon</string>
     </array>'
         restart_parleq
         ;;
@@ -187,7 +187,7 @@ case "$scenario" in
         write_scenario '    <key>contextProvider</key>
     <string>vertex</string>
     <key>contextModel</key>
-    <string>claude-sonnet-4-5@20250929</string>'
+    <string>claude-sonnet-5-5</string>'
         restart_parleq
         ;;
 
@@ -204,7 +204,7 @@ case "$scenario" in
         #   #176 (provider picker hides incompatible providers):
         #        cleanupAllowedModels is set to a Gemini-only model, so
         #        the Provider picker should show only Gemini + Vertex
-        #        (the two providers that own gemini-2.5-flash), NOT all
+        #        (the two providers that own gemini-3.8-flash), NOT all
         #        six providers.
         write_scenario '    <key>cleanupAllowedProviders</key>
     <array>
@@ -214,7 +214,7 @@ case "$scenario" in
     </array>
     <key>cleanupAllowedModels</key>
     <array>
-        <string>gemini-2.5-flash</string>
+        <string>gemini-3.8-flash</string>
     </array>
     <key>imageReferenceEnabled</key>
     <false/>'
@@ -488,9 +488,9 @@ case "$scenario" in
         write_scenario '    <key>vertexProject</key>
     <string>corp-vertex-prod</string>
     <key>vertexRegion</key>
-    <string>us-central1</string>
+    <string>global</string>
     <key>vertexAnthropicRegion</key>
-    <string>us-east5</string>'
+    <string>global</string>'
         restart_parleq
         echo "--- check Settings → Vertex card and Compliance Audit ---"
         ;;
@@ -519,7 +519,7 @@ case "$scenario" in
         write_scenario '    <key>azureResource</key>
     <string>corp-openai</string>
     <key>azureDeployment</key>
-    <string>gpt-4o-mini</string>'
+    <string>gpt-6-luna</string>'
         restart_parleq
         echo "--- check Settings → Azure card and Compliance Audit ---"
         ;;
@@ -625,9 +625,9 @@ with open(p, 'w') as f: json.dump(c, f, indent=2)
         echo "  test1-lock-icon                referenceWindowsEnabled=false"
         echo "  test2-provider-pin             cleanupProvider=azure"
         echo "  test3-provider-allowlist       cleanupAllowedProviders=[azure,openai]"
-        echo "  test4-model-pin                pin openai + gpt-4o-mini"
-        echo "  test5-model-allowlist          openai + allowed [gpt-4o, gpt-4o-mini]"
-        echo "  test6-cross-provider-snap      allowed=[gemini-2.5-flash] no provider pin"
+        echo "  test4-model-pin                pin openai + gpt-6-luna"
+        echo "  test5-model-allowlist          openai + allowed [gpt-6-luna, gpt-6.1-terra]"
+        echo "  test6-cross-provider-snap      allowed=[gemini-3.8-flash] no provider pin"
         echo "  test7-auto-update              autoUpdateEnabled=false"
         echo "  test8-audit-mixed              allowlist + one toggle for audit dialog"
         echo "  test9-save-preservation        provider pin to different provider"

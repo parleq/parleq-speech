@@ -138,7 +138,7 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
           <tr class="bg-[color:var(--color-surface)]">
             <td class="px-4 py-3 font-mono text-[13px] text-[color:var(--color-text)]">cleanupAllowedProviders</td>
             <td class="px-4 py-3 font-mono text-[13px]">[String]</td>
-            <td class="px-4 py-3"><strong class="text-[color:var(--color-text)]">Allowlist.</strong> Restricts the picker to a subset of providers; the user can still choose among them. A lock icon indicates the restriction. If the user&rsquo;s stored provider is not in the allowed list, it resets to the first entry.</td>
+            <td class="px-4 py-3"><strong class="text-[color:var(--color-text)]">Allowlist.</strong> Restricts the picker to a subset of providers; the user can still choose among them. A lock icon indicates the restriction. If the user&rsquo;s stored provider is not in the allowed list, it resets to the first entry. Pinned model IDs that a vendor has retired are rewritten to their successor at runtime (and logged), so update your profiles to current model IDs.</td>
           </tr>
           <tr class="bg-[color:var(--color-bg)]">
             <td class="px-4 py-3 font-mono text-[13px] text-[color:var(--color-text)]">cleanupModel</td>
@@ -270,12 +270,12 @@ const repoUrl = 'https://github.com/parleq/parleq-speech';
           <tr class="bg-[color:var(--color-bg)]">
             <td class="px-4 py-3 font-mono text-[13px] text-[color:var(--color-text)]">vertexRegion</td>
             <td class="px-4 py-3 font-mono text-[13px]">String</td>
-            <td class="px-4 py-3"><strong class="text-[color:var(--color-text)]">Pin the Vertex Gemini region</strong> (e.g. <code class="font-mono text-[12px]">us-central1</code>). Combined with <code class="font-mono text-[12px]">vertexProject</code>, this lets you fully constrain where Gemini calls land for data-residency compliance. Empty pins rejected.</td>
+            <td class="px-4 py-3"><strong class="text-[color:var(--color-text)]">Pin the Vertex Gemini region</strong> (e.g. <code class="font-mono text-[12px]">global</code>, Parleq&rsquo;s default). Combined with <code class="font-mono text-[12px]">vertexProject</code>, this lets you constrain where Gemini calls land. Note that the current Gemini models (3 and later) are served on Vertex only from <code class="font-mono text-[12px]">global</code>; if you pin a regional value such as <code class="font-mono text-[12px]">europe-west4</code> for data residency, those models return 404 there, so choose the region and the model list together. Empty pins rejected.</td>
           </tr>
           <tr class="bg-[color:var(--color-surface)]">
             <td class="px-4 py-3 font-mono text-[13px] text-[color:var(--color-text)]">vertexAnthropicRegion</td>
             <td class="px-4 py-3 font-mono text-[13px]">String</td>
-            <td class="px-4 py-3"><strong class="text-[color:var(--color-text)]">Pin the Vertex Anthropic region</strong> for Claude-on-Vertex calls (e.g. <code class="font-mono text-[12px]">us-east5</code>). Separate from <code class="font-mono text-[12px]">vertexRegion</code> because <code class="font-mono text-[12px]">us-central1</code> doesn&rsquo;t host the Anthropic publisher. Empty pins rejected.</td>
+            <td class="px-4 py-3"><strong class="text-[color:var(--color-text)]">Pin the Vertex Anthropic region</strong> for Claude-on-Vertex calls (e.g. <code class="font-mono text-[12px]">global</code>, Parleq&rsquo;s default). Separate from <code class="font-mono text-[12px]">vertexRegion</code> because the two settings are independent. Claude Haiku 5.5 is served on Vertex only from <code class="font-mono text-[12px]">global</code>. Empty pins rejected.</td>
           </tr>
           <tr class="bg-[color:var(--color-bg)]">
             <td class="px-4 py-3 font-mono text-[13px] text-[color:var(--color-text)]">awsRegion</td>

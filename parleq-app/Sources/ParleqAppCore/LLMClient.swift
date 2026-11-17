@@ -30,7 +30,7 @@ public struct LLMResult {
 /// Auth is a single GEMINI_API_KEY resolved from the environment,
 /// then the macOS Keychain. No plaintext-on-disk fallback.
 public final class LLMClient: LLMProvider, Sendable {
-    public static let defaultModel = "gemini-2.5-flash"
+    public static let defaultModel = ModelCatalog.fallbackDefaultModel
     private static let endpointBase = "https://generativelanguage.googleapis.com/v1beta"
 
     // Internal so the LLMStreaming extension (in a sibling file
@@ -50,18 +50,8 @@ public final class LLMClient: LLMProvider, Sendable {
     public var providerName: String { "gemini" }
 
     public var supportsVision: Bool {
-        // Gemini 2.5 Flash + Pro are multimodal. Flash-Lite is text-
-        // only. Gemini 1.5 family was multimodal but Google retired
-        // it from the direct v1beta endpoint in 2025 — no longer
-        // listed; any 1.5 request returns 404.
-        switch model {
-        case "gemini-2.5-flash", "gemini-2.5-pro":
-            return true
-        case "gemini-2.5-flash-lite":
-            return false
-        default:
-            return false   // conservative; explicit allowlist
-        }
+        // Explicit allowlist shared with Vertex + ModelConflict.
+        ModelCatalog.geminiSupportsVision(model)
     }
 
     /// Construct a client. The Gemini API key is **not** captured
@@ -168,9 +158,10 @@ public final class LLMClient: LLMProvider, Sendable {
             "temperature": tuning.temperature,
             "maxOutputTokens": tuning.maxOutputTokens,
         ]
-        // thinkingBudget override (#55) is sent verbatim when set;
-        // otherwise the built-in Flash/Pro 0/128 split applies.
-        cfg["thinkingConfig"] = ["thinkingBudget": tuning.resolvedThinkingBudget(forModel: model)]
+        // Gemini 3+: thinkingLevel (minimal/low). Gemini 2.5: the
+        // thinkingBudget override (#55) verbatim when set, else the
+        // built-in Flash/Pro 0/128 split. See LLMTuning.resolvedThinkingConfig.
+        cfg["thinkingConfig"] = tuning.resolvedThinkingConfig(forModel: model)
         return cfg
     }
 

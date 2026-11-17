@@ -365,7 +365,7 @@ final class LLMProviderCapabilityTests: XCTestCase {
     }
 
     func test_openai_unknown_model_defaults_to_no_vision() {
-        let provider = OpenAIProvider(model: "gpt-5-future-unknown")
+        let provider = OpenAIProvider(model: "future-model-unknown")
         XCTAssertFalse(provider.supportsVision, "Unknown model on OpenAI direct should default to no vision (conservative)")
     }
 

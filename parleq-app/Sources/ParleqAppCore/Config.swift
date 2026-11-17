@@ -19,7 +19,7 @@
 //                    // CLEANUP config. Derives cleanupType: "none"→Raw,
 //                    // "concord"→Instant (on-device), generative→Polished.
 //                    "provider": "gemini",
-//                    "model": "gemini-2.5-flash",
+//                    "model": "gemini-3.5-flash-lite",
 //                    // GLOBAL refinement TYPE: "raw"|"instant"|"polished".
 //                    "refinement": "polished",
 //                    // Refinement's Polished provider (used when refinement
@@ -69,7 +69,7 @@
 //                    // Enterprise OIDC federation (omit-when-default):
 //                    "role_arn": "arn:aws:iam::1:role/Parleq",
 //                    "session_duration_seconds": 3600 },
-//     "vertex":    { "project": "my-proj", "region": "us-central1",
+//     "vertex":    { "project": "my-proj", "region": "global",
 //                    // Enterprise OIDC federation (omit-when-default):
 //                    "workforce_provider":
 //                      "locations/global/workforcePools/p/providers/v" },
@@ -113,6 +113,7 @@
 // over config — better to run with defaults than fail to launch.
 
 import Foundation
+import os
 
 /// A pairing of LLM provider and model name. Used to identify which
 /// backend and model should handle a given phase of LLM work (cleanup,
@@ -566,21 +567,22 @@ public struct Config: Sendable {
     /// the `projects/{project}` segment in the streamGenerateContent
     /// URL when `llmProvider == "vertex"`.
     public var vertexProject: String
-    /// Vertex AI location, e.g. "us-central1", "europe-west4". Used
-    /// as both the regional subdomain and the
-    /// `locations/{region}` segment.
+    /// Vertex AI location: "global" (the default — the only location
+    /// that serves Gemini 3+ models) or a region like "us-central1" /
+    /// "europe-west4". "global" maps to the un-prefixed
+    /// `aiplatform.googleapis.com` host; a region is used as both the
+    /// regional subdomain and the `locations/{region}` segment.
     public var vertexRegion: String
     /// Vertex AI auth mode (#23). "adc" (default) shells out to
     /// gcloud; "serviceAccount" mints OAuth tokens from a pasted
     /// SA JSON stored in the Keychain.
     public var vertexAuthMode: String
-    /// Region used for Anthropic publisher calls on Vertex AI (Claude
-    /// models). Defaults to "us-east5" — one of the few regions where
-    /// Vertex hosts the Anthropic publisher. Kept separate from
-    /// `vertexRegion` (the Gemini-call region) so users can keep their
-    /// primary Gemini region in us-central1 while routing Claude
-    /// through us-east5 without affecting cost / latency / data
-    /// residency for non-Claude calls.
+    /// Location used for Anthropic publisher calls on Vertex AI (Claude
+    /// models). Defaults to "global" — Claude Haiku 5.5 is served only
+    /// there; Sonnet 5.5 is also in "us-east5". Kept separate from
+    /// `vertexRegion` (the Gemini-call location) so an admin can route
+    /// Claude through a specific region without affecting cost /
+    /// latency / data residency for non-Claude calls.
     public var vertexAnthropicRegion: String
     /// Azure OpenAI resource name (#21 step 5) — the prefix in
     /// `https://{resource}.openai.azure.com/...`. From the "Keys
@@ -1031,15 +1033,15 @@ public struct Config: Sendable {
         recordingPulse: true,
         asrMode: "default",
         llmMode: "default",
-        llmModel: "gemini-2.5-flash",
+        llmModel: ModelCatalog.fallbackDefaultModel,
         llmProvider: "gemini",
         awsRegion: "us-east-2",
         awsProfile: nil,
         awsAuthMode: "sso",
         vertexProject: "",
-        vertexRegion: "us-central1",
+        vertexRegion: "global",
         vertexAuthMode: "adc",
-        vertexAnthropicRegion: "us-east5",
+        vertexAnthropicRegion: "global",
         azureResource: "",
         azureDeployment: "",
         azureApiVersion: "2025-04-01-preview",
@@ -1614,7 +1616,9 @@ public struct Config: Sendable {
         if let pinnedModel = ManagedConfig.managedString(forKey: "cleanupModel") {
             c.llmModel = pinnedModel
             managedKeys.insert("cleanupModel")
-        } else if let allowedModels = ManagedConfig.managedStringArray(forKey: "cleanupAllowedModels") {
+        } else if let rawAllowedModels = ManagedConfig.managedStringArray(forKey: "cleanupAllowedModels") {
+            // Retired entries gain their successor for THIS provider.
+            let allowedModels = ModelCatalog.expandingRetiredModels(rawAllowedModels, forProvider: c.llmProvider)
             // Cross-provider safety: filter the allowlist to models
             // compatible with the current (possibly pinned/snapped)
             // provider, mirroring the picker's per-provider filter.
@@ -1622,12 +1626,12 @@ public struct Config: Sendable {
             // like ["gemini-2.5-flash", "gpt-4o"] without a provider
             // lockdown could end up with provider=gemini + model=gpt-4o.
             let compatibleAllowed = allowedModels.filter { id in
-                if ModelCatalog.isCanonical(provider: c.llmProvider, model: id) {
+                if ModelCatalog.ownsModel(provider: c.llmProvider, model: id) {
                     return true
                 }
                 let belongsElsewhere = ["gemini", "vertex", "bedrock", "bedrock-bearer", "azure", "openai"]
                     .filter { $0 != c.llmProvider }
-                    .contains { ModelCatalog.isCanonical(provider: $0, model: id) }
+                    .contains { ModelCatalog.ownsModel(provider: $0, model: id) }
                 return !belongsElsewhere  // bare custom IDs allowed
             }
             if compatibleAllowed.isEmpty, let firstAllowed = allowedModels.first {
@@ -1650,8 +1654,12 @@ public struct Config: Sendable {
                     // Provider is user-controlled. Snap to the
                     // owning provider so the policy + user produce
                     // a valid runtime config.
-                    let owningProvider = ["gemini", "vertex", "bedrock", "bedrock-bearer", "azure", "openai"]
-                        .first { ModelCatalog.isCanonical(provider: $0, model: firstAllowed) }
+                    // OpenAI before Azure: Azure labels share OpenAI's model
+                    // names (ModelCatalog.ownsModel), so an OpenAI-family ID
+                    // is ambiguous. Infer the direct API, which needs no
+                    // resource/deployment the user may not have.
+                    let owningProvider = Self.providerSnapOrder
+                        .first { ModelCatalog.ownsModel(provider: $0, model: firstAllowed) }
                     if let owning = owningProvider {
                         configLogStderr("[parleq] cleanupAllowedModels: no allowed model compatible with provider '\(c.llmProvider)'; snapping provider to '\(owning)' which owns '\(firstAllowed)'")
                         c.llmProvider = owning
@@ -1681,12 +1689,12 @@ public struct Config: Sendable {
         if managedKeys.contains("cleanupProvider"),
            !managedKeys.contains("cleanupModel"),
            !managedKeys.contains("cleanupAllowedModels") {
-            let modelMatchesCurrentProvider = ModelCatalog.isCanonical(provider: c.llmProvider, model: c.llmModel)
+            let modelMatchesCurrentProvider = ModelCatalog.ownsModel(provider: c.llmProvider, model: c.llmModel)
             if !modelMatchesCurrentProvider {
                 let otherProviders = ["gemini", "vertex", "bedrock", "bedrock-bearer", "azure", "openai"]
                     .filter { $0 != c.llmProvider }
                 let modelBelongsElsewhere = otherProviders.contains {
-                    ModelCatalog.isCanonical(provider: $0, model: c.llmModel)
+                    ModelCatalog.ownsModel(provider: $0, model: c.llmModel)
                 }
                 if modelBelongsElsewhere {
                     let original = c.llmModel
@@ -1718,15 +1726,16 @@ public struct Config: Sendable {
         if let pinnedModel = ManagedConfig.managedString(forKey: "contextModel") {
             contextModelName = pinnedModel
             managedKeys.insert("contextModel")
-        } else if let allowedModels = ManagedConfig.managedStringArray(forKey: "contextAllowedModels") {
+        } else if let rawAllowedModels = ManagedConfig.managedStringArray(forKey: "contextAllowedModels") {
+            let allowedModels = ModelCatalog.expandingRetiredModels(rawAllowedModels, forProvider: contextProvider)
             // Same cross-provider filter as the cleanup tier.
             let compatibleAllowed = allowedModels.filter { id in
-                if ModelCatalog.isCanonical(provider: contextProvider, model: id) {
+                if ModelCatalog.ownsModel(provider: contextProvider, model: id) {
                     return true
                 }
                 let belongsElsewhere = ["gemini", "vertex", "bedrock", "bedrock-bearer", "azure", "openai"]
                     .filter { $0 != contextProvider }
-                    .contains { ModelCatalog.isCanonical(provider: $0, model: id) }
+                    .contains { ModelCatalog.ownsModel(provider: $0, model: id) }
                 return !belongsElsewhere
             }
             if compatibleAllowed.isEmpty, let firstAllowed = allowedModels.first {
@@ -1741,8 +1750,12 @@ public struct Config: Sendable {
                     contextModelName = ModelCatalog.defaultModel(forProvider: contextProvider)
                     configLogStderr("[parleq] contextAllowedModels: contradictory policy — no allowed model compatible with managed provider '\(contextProvider)'. Keeping provider per directive and resetting model '\(original)' to default '\(contextModelName)'. Fix the policy: either expand contextAllowedModels to include a '\(contextProvider)' model, or change contextProvider.")
                 } else {
-                    let owningProvider = ["gemini", "vertex", "bedrock", "bedrock-bearer", "azure", "openai"]
-                        .first { ModelCatalog.isCanonical(provider: $0, model: firstAllowed) }
+                    // OpenAI before Azure: Azure labels share OpenAI's model
+                    // names (ModelCatalog.ownsModel), so an OpenAI-family ID
+                    // is ambiguous. Infer the direct API, which needs no
+                    // resource/deployment the user may not have.
+                    let owningProvider = Self.providerSnapOrder
+                        .first { ModelCatalog.ownsModel(provider: $0, model: firstAllowed) }
                     if let owning = owningProvider {
                         configLogStderr("[parleq] contextAllowedModels: no allowed model compatible with provider '\(contextProvider)'; snapping provider to '\(owning)' which owns '\(firstAllowed)'")
                         contextProvider = owning
@@ -1766,12 +1779,12 @@ public struct Config: Sendable {
         if managedKeys.contains("contextProvider"),
            !managedKeys.contains("contextModel"),
            !managedKeys.contains("contextAllowedModels") {
-            let modelMatchesCurrentProvider = ModelCatalog.isCanonical(provider: contextProvider, model: contextModelName)
+            let modelMatchesCurrentProvider = ModelCatalog.ownsModel(provider: contextProvider, model: contextModelName)
             if !modelMatchesCurrentProvider {
                 let otherProviders = ["gemini", "vertex", "bedrock", "bedrock-bearer", "azure", "openai"]
                     .filter { $0 != contextProvider }
                 let modelBelongsElsewhere = otherProviders.contains {
-                    ModelCatalog.isCanonical(provider: $0, model: contextModelName)
+                    ModelCatalog.ownsModel(provider: $0, model: contextModelName)
                 }
                 if modelBelongsElsewhere {
                     let original = contextModelName
@@ -1811,7 +1824,7 @@ public struct Config: Sendable {
             // to a different provider, snap the model to the pinned
             // provider's default (mirror of the cleanup/context checks).
             if pinnedProvider != refineProvider,
-               !ModelCatalog.isCanonical(provider: pinnedProvider, model: refineModelName) {
+               !ModelCatalog.ownsModel(provider: pinnedProvider, model: refineModelName) {
                 refineModelName = ModelCatalog.defaultModel(forProvider: pinnedProvider)
             }
             refineProvider = pinnedProvider
@@ -1888,6 +1901,11 @@ public struct Config: Sendable {
 
         c.managedKeys = managedKeys
 
+        // Rewrite retired model IDs BEFORE the canonical scrub below, so a
+        // config naming e.g. gemini-2.5-pro lands on its real successor
+        // (gemini-4-argon) rather than being reset to the provider default.
+        migrateRetiredModels(&c)
+
         // Defense-in-depth: when customModelEntryEnabled is off, a
         // non-canonical model name (whether MDM-pushed, manually
         // edited into config.json, or left over from before the
@@ -1929,6 +1947,84 @@ public struct Config: Sendable {
             }
         }
     }
+
+    /// Rewrite retired / shutting-down model IDs to their successors
+    /// (`ModelCatalog.retiredModelReplacements`) on every model tier, and
+    /// move a Vertex config still on the OLD default regions to `global`
+    /// when it now uses a model that Vertex serves only from `global`.
+    ///
+    /// Applies to MDM-pinned model IDs too: a retired ID cannot serve a
+    /// single request, so keeping it would only turn every dictation into
+    /// a raw-transcript fallback. (Google itself auto-routes the retired
+    /// Gemini 2.5 IDs.) Each rewrite is logged so an admin can update the
+    /// policy. Managed REGIONS are never touched — a non-default region may
+    /// be a data-residency decision; those configs log a hint instead.
+    /// Idempotent; runs on every load path via `applyManagedOverlay`.
+    static func migrateRetiredModels(_ c: inout Config) {
+        // Config.load() runs from many call sites per process and the
+        // migration repeats until Settings next saves, so log each
+        // distinct message once per process, not once per load.
+        let configLogStderr = Self.logMigrationOnce
+        func replace(_ provider: String, _ model: String, tier: String) -> String {
+            guard let next = ModelCatalog.replacementForRetiredModel(provider: provider, model: model) else {
+                return model
+            }
+            configLogStderr("[parleq] retired model: \(tier) '\(model)' (provider=\(provider)) → '\(next)'")
+            return next
+        }
+        c.llmModel = replace(c.llmProvider, c.llmModel, tier: "cleanup")
+        if let ctx = c.contextModel {
+            c.contextModel = ModelIdentifier(provider: ctx.provider, model: replace(ctx.provider, ctx.model, tier: "context"))
+        }
+        if let rfn = c.refineModel {
+            c.refineModel = ModelIdentifier(provider: rfn.provider, model: replace(rfn.provider, rfn.model, tier: "refine"))
+        }
+
+        // Every Vertex model this config can route to (cleanup / context /
+        // refine). Context falls back to cleanup when unset; that model is
+        // already in the list.
+        var vertexModels: [String] = []
+        if c.llmProvider == "vertex" { vertexModels.append(c.llmModel) }
+        if let ctx = c.contextModel, ctx.provider == "vertex" { vertexModels.append(ctx.model) }
+        if let rfn = c.refineModel, rfn.provider == "vertex" { vertexModels.append(rfn.model) }
+
+        if vertexModels.contains(where: ModelCatalog.isVertexGlobalOnlyGeminiModel),
+           c.vertexRegion != "global" {
+            if c.vertexRegion == Self.legacyDefaultVertexRegion,
+               !c.managedKeys.contains("vertexRegion") {
+                configLogStderr("[parleq] vertex region: '\(c.vertexRegion)' (old default) → 'global' (Gemini 3+ models are served only from global)")
+                c.vertexRegion = "global"
+            } else {
+                configLogStderr("[parleq] vertex region: '\(c.vertexRegion)' does not serve Gemini 3+ models (global-only); left unchanged — set vertex.region to 'global' to use them")
+            }
+        }
+        if vertexModels.contains(where: ModelCatalog.isVertexGlobalOnlyClaudeModel),
+           c.vertexAnthropicRegion != "global" {
+            if c.vertexAnthropicRegion == Self.legacyDefaultVertexAnthropicRegion,
+               !c.managedKeys.contains("vertexAnthropicRegion") {
+                configLogStderr("[parleq] vertex anthropic region: '\(c.vertexAnthropicRegion)' (old default) → 'global' (model is served only from global)")
+                c.vertexAnthropicRegion = "global"
+            } else {
+                configLogStderr("[parleq] vertex anthropic region: '\(c.vertexAnthropicRegion)' does not serve this Claude model (global-only); left unchanged — set vertex.anthropic_region to 'global' to use it")
+            }
+        }
+    }
+
+    private static let loggedMigrationMessages = OSAllocatedUnfairLock(initialState: Set<String>())
+
+    private static func logMigrationOnce(_ message: String) {
+        let isNew = loggedMigrationMessages.withLock { $0.insert(message).inserted }
+        if isNew { configLogStderr(message) }
+    }
+
+    /// Provider order for inferring an allowlist entry's owner when the
+    /// policy snaps the provider. OpenAI precedes Azure (see call sites).
+    static let providerSnapOrder = ["gemini", "vertex", "bedrock", "bedrock-bearer", "openai", "azure"]
+
+    /// Vertex region defaults before 0.47.1 — rewritten to `global` by
+    /// `migrateRetiredModels` when the config uses a global-only model.
+    static let legacyDefaultVertexRegion = "us-central1"
+    static let legacyDefaultVertexAnthropicRegion = "us-east5"
 
     // MARK: - Test seams
 
@@ -2728,7 +2824,16 @@ public struct Config: Sendable {
         // on-disk model is not a foreign fallback worth preserving —
         // preserving it would write "" (non-nil, so the ?? never fires).
         let onDiskModelForeign = onDiskModel.map {
-            !$0.isEmpty && !ModelCatalog.isCanonical(provider: llmProviderToWrite, model: $0)
+            // ownsModel, not isCanonical: a RETIRED id of the pinned provider
+            // (gemini-2.5-flash under a gemini pin) is that provider's own
+            // model, not a foreign fallback — treating it as foreign would
+            // write it back and lose the user's pick on every restart.
+            // Known tradeoff (kept from main): one on-disk model field can't
+            // hold both the pre-MDM fallback and the pick under the pin. When
+            // the saved provider differs from the pinned one but owns its
+            // model, the pick wins, so it survives a restart; the fallback
+            // model is lost when the pin is removed.
+            !$0.isEmpty && !ModelCatalog.ownsModel(provider: llmProviderToWrite, model: $0)
         } ?? false
         let preserveModelOnDisk = modelPinned
             || (providerPinned && !modelAllowlist && onDiskModelForeign)
@@ -3146,7 +3251,7 @@ public struct Config: Sendable {
             //     picking within the pinned world: write the in-memory
             //     choice so it persists. (allowlist lands here too.)
             let ctxOnDiskModelForeign = !existingModel.isEmpty
-                && !ModelCatalog.isCanonical(provider: provider, model: existingModel)
+                && !ModelCatalog.ownsModel(provider: provider, model: existingModel)  // retired ids count as owned (see the cleanup tier)
             let preserveModel = ctxModelPinned
                 || (ctxProviderPinned && !ctxModelAllowlist && ctxOnDiskModelForeign)
             let model = preserveModel && !existingModel.isEmpty

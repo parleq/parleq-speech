@@ -30,7 +30,7 @@ import PricingNote from '../../components/PricingNote.astro';
       <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-text-subtle)]">At a glance</p>
       <ul class="mt-3 space-y-2 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
         <li><strong class="text-[color:var(--color-text)]">Auth:</strong> One API key (starts with <code class="rounded bg-[color:var(--color-bg)] px-1 font-mono text-[13px]">AIza</code>) pasted from AI Studio.</li>
-        <li><strong class="text-[color:var(--color-text)]">Default model:</strong> <code class="rounded bg-[color:var(--color-bg)] px-1 font-mono text-[13px]">gemini-2.5-flash</code> — fast enough you barely notice cleanup is running.</li>
+        <li><strong class="text-[color:var(--color-text)]">Default model:</strong> <code class="rounded bg-[color:var(--color-bg)] px-1 font-mono text-[13px]">gemini-3.5-flash-lite</code> — the fastest and cheapest of the curated models; fast enough you barely notice cleanup is running.</li>
         <li><strong class="text-[color:var(--color-text)]">Free tier:<sup>†</sup></strong> Available without a credit card. Whether it covers your usage depends on Google's current quotas and how heavily you dictate — heavy users can enable billing for higher limits.</li>
         <li><strong class="text-[color:var(--color-text)]">Setup time:</strong> ~5 minutes.</li>
         <li><strong class="text-[color:var(--color-text)]">Compliance note:</strong> Consumer terms apply. Free-tier prompts may be used to improve Google's products; paid tier is excluded. If you need IAM or audit logs, use <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/vertex/'} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Vertex AI</a> instead.</li>
@@ -71,7 +71,7 @@ import PricingNote from '../../components/PricingNote.astro';
           <div class="text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
             <p class="font-medium text-[color:var(--color-text)]">Test a dictation.</p>
             <p class="mt-2">
-              Hold <kbd class="rounded border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-2 py-0.5 font-mono text-sm">right Option</kbd>, say a sentence, release. The overlay should show your raw words being replaced by a punctuated, capitalized version within ~500–700 ms.
+              Hold <kbd class="rounded border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-2 py-0.5 font-mono text-sm">right Option</kbd>, say a sentence, release. The overlay should show your raw words being replaced by a punctuated, capitalized version within about a second.
             </p>
           </div>
         </li>
@@ -85,10 +85,10 @@ import PricingNote from '../../components/PricingNote.astro';
       </h2>
       <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
         <p>
-          <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">gemini-2.5-flash</code> is the default and is the right choice for almost every dictation use case. Cleanup is a low-stakes, low-token task — Flash matches Pro for it, at a fraction of the latency.
+          <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">gemini-3.5-flash-lite</code> is the default and is the right choice for almost every dictation use case. Cleanup is a low-stakes, low-token task, so the fastest model is usually enough.
         </p>
         <p>
-          To pick a different model, open <strong class="text-[color:var(--color-text)]">Settings → Cleanup</strong>. The <strong class="text-[color:var(--color-text)]">Model</strong> dropdown carries the recommended Gemini variants — <strong class="text-[color:var(--color-text)]">Flash</strong> (default, balanced), <strong class="text-[color:var(--color-text)]">Flash-Lite</strong> (faster + cheaper, occasionally drops detail), and <strong class="text-[color:var(--color-text)]">Pro</strong> (overkill for cleanup but available for long, technical transcripts where accuracy matters more than latency). Pick <strong class="text-[color:var(--color-text)]">Custom (enter below)</strong> to type any other Gemini model identifier, e.g. an experimental preview model. Changes take effect on the next dictation; no restart needed.
+          To pick a different model, open <strong class="text-[color:var(--color-text)]">Settings → Cleanup</strong>. The <strong class="text-[color:var(--color-text)]">Model</strong> dropdown carries three Gemini models, all of which accept images — <strong class="text-[color:var(--color-text)]">gemini-3.5-flash-lite</strong> (default, fastest + cheapest), <strong class="text-[color:var(--color-text)]">gemini-3.8-flash</strong> (recommended, a step up in quality), and <strong class="text-[color:var(--color-text)]">gemini-4-argon</strong> (highest quality, slower — for long, technical transcripts where accuracy matters more than latency). Google shuts down Gemini 2.5 Flash and Pro on 2026-12-01, so they are no longer offered; a saved 2.5 setting is moved to its successor automatically. Pick <strong class="text-[color:var(--color-text)]">Custom (enter below)</strong> to type any other Gemini model identifier, e.g. an experimental preview model. Changes take effect on the next dictation; no restart needed.
         </p>
         <p class="text-[14px] text-[color:var(--color-text-subtle)]">
           Power-user note: every Settings field maps to a key in <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">~/.parleq/config.json</code> and can also be edited there directly. Settings is the recommended path for most users.
@@ -119,7 +119,7 @@ import PricingNote from '../../components/PricingNote.astro';
       </h2>
       <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
         <p>
-          Direct Gemini API requests go to Google's consumer AI endpoints. By default, prompts and responses on the free tier may be used to improve Google's products; paid tier traffic is excluded from training per Google's terms. If you have data-residency requirements or need formal audit logging, use <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/vertex/'} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Vertex AI</a> instead — same Gemini models, on your GCP project, with regional deployment and IAM.
+          Direct Gemini API requests go to Google's consumer AI endpoints. By default, prompts and responses on the free tier may be used to improve Google's products; paid tier traffic is excluded from training per Google's terms. If you need formal audit logging or enterprise contract terms, use <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/vertex/'} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Vertex AI</a> instead — same Gemini models, on your GCP project, with IAM and audit logs. Vertex serves the current Gemini models only from its <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">global</code> location, which does not pin processing to a geography, so if you have a data-residency requirement, check the model and location against Google's Vertex documentation first.
         </p>
         <p>
           Audio never reaches Google. Only the text transcript output by the on-device speech model is sent.
@@ -146,9 +146,9 @@ import PricingNote from '../../components/PricingNote.astro';
           </p>
         </div>
         <div class="rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-5">
-          <p class="font-medium text-[color:var(--color-text)]">Cleanup feels slower than 700 ms</p>
+          <p class="font-medium text-[color:var(--color-text)]">Cleanup feels slow</p>
           <p class="mt-2 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
-            Geographic distance from a Google datacenter dominates here — the API picks an endpoint based on your IP. Typical North American + European users see 500–700 ms time-to-first-token; users far from a Google region may see 1–1.5 s. Switching to <code class="rounded bg-[color:var(--color-section-tint)] px-1.5 py-0.5 font-mono text-[13px]">gemini-2.5-flash-lite</code> shaves 100–200 ms off.
+            Geographic distance from a Google datacenter dominates here — the API picks an endpoint based on your IP. Users far from a Google region will see noticeably longer time-to-first-token. If you picked a larger model, switching to <code class="rounded bg-[color:var(--color-section-tint)] px-1.5 py-0.5 font-mono text-[13px]">gemini-3.5-flash-lite</code> (the default) is the quickest fix.
           </p>
         </div>
       </div>

@@ -96,6 +96,13 @@ struct ModelBreakdown: Sendable, Identifiable {
         case "gemini-2.5-flash":      return "Gemini 2.5 Flash"
         case "gemini-2.5-flash-lite": return "Gemini 2.5 Flash Lite"
         case "gemini-2.5-pro":        return "Gemini 2.5 Pro"
+        case "gemini-3.5-flash-lite": return "Gemini 3.5 Flash Lite"
+        case "gemini-3.8-flash":      return "Gemini 3.8 Flash"
+        case "gemini-4-argon":        return "Gemini 4 Argon"
+        case "us.anthropic.claude-haiku-5-5", "anthropic.claude-haiku-5-5":
+            return "Claude Haiku 5.5 (Bedrock)"
+        case "us.anthropic.claude-sonnet-5-5", "anthropic.claude-sonnet-5-5":
+            return "Claude Sonnet 5.5 (Bedrock)"
         case "us.anthropic.claude-haiku-4-5-20251001-v1:0",
              "anthropic.claude-haiku-4-5-20251001-v1:0":
             return "Claude Haiku 4.5 (Bedrock)"
@@ -137,13 +144,17 @@ enum Pricing {
     ///   - Gemini: https://ai.google.dev/pricing
     ///   - Bedrock: https://aws.amazon.com/bedrock/pricing/
     /// Bedrock prices below match the model's underlying rate;
-    /// cross-region inference profile prefixes (`us.*`) bill at
-    /// the same rate as the bare model IDs.
+    /// cross-region inference profile prefixes (`us.*`) billed at
+    /// the same rate as the bare model IDs through Claude 4.5; from
+    /// Claude 5.5 the `us.*` profiles bill ~1.1x (listed separately).
     static let bundledDefaults: [String: ModelPrice] = [
         // Google Gemini direct API.
         "gemini-2.5-flash":      ModelPrice(inputPerMillionUSD: 0.30, outputPerMillionUSD: 2.50),
         "gemini-2.5-flash-lite": ModelPrice(inputPerMillionUSD: 0.10, outputPerMillionUSD: 0.40),
         "gemini-2.5-pro":        ModelPrice(inputPerMillionUSD: 1.25, outputPerMillionUSD: 10.0),
+        "gemini-3.5-flash-lite": ModelPrice(inputPerMillionUSD: 0.30, outputPerMillionUSD: 2.50),
+        "gemini-3.8-flash":      ModelPrice(inputPerMillionUSD: 0.75, outputPerMillionUSD: 3.75),
+        "gemini-4-argon":        ModelPrice(inputPerMillionUSD: 2.00, outputPerMillionUSD: 10.0),
 
         // AWS Bedrock — Anthropic Claude.
         "us.anthropic.claude-haiku-4-5-20251001-v1:0":
@@ -154,6 +165,15 @@ enum Pricing {
             ModelPrice(inputPerMillionUSD: 3.00, outputPerMillionUSD: 15.00),
         "anthropic.claude-sonnet-4-5-20250929-v1:0":
             ModelPrice(inputPerMillionUSD: 3.00, outputPerMillionUSD: 15.00),
+        // Claude 5.5 (LiteLLM, 2026-11): `us.*` profiles bill ~1.1x.
+        "us.anthropic.claude-haiku-5-5":
+            ModelPrice(inputPerMillionUSD: 0.11, outputPerMillionUSD: 0.55),
+        "anthropic.claude-haiku-5-5":
+            ModelPrice(inputPerMillionUSD: 0.10, outputPerMillionUSD: 0.50),
+        "us.anthropic.claude-sonnet-5-5":
+            ModelPrice(inputPerMillionUSD: 2.20, outputPerMillionUSD: 11.00),
+        "anthropic.claude-sonnet-5-5":
+            ModelPrice(inputPerMillionUSD: 2.00, outputPerMillionUSD: 10.00),
 
         // AWS Bedrock — OpenAI open-weight family.
         "openai.gpt-oss-120b-1:0":

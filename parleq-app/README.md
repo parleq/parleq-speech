@@ -88,7 +88,7 @@ Refinement: re-press of right Option while the overlay is open cancels the in-fl
 
 Non-obvious things that are easy to forget. Documented here so they survive future refactors:
 
-1. **`thinkingConfig.thinkingBudget = 0`** on every Gemini call. Default-on thinking costs 2-3× latency, 5-7× cost, no quality gain on cleanup.
+1. **Low thinking on every Gemini call.** Gemini 3+ calls send `thinkingConfig.thinkingLevel` (`minimal` on Flash-Lite, `low` otherwise); pre-3 models send a low `thinkingBudget`. Default-on thinking costs 2-3× latency, 5-7× cost, no quality gain on cleanup.
 2. **`additionalModelRequestFields = {"reasoning_effort": "low"}`** on every Bedrock `openai.gpt-oss-*` call. Drops the 220-token hidden reasoning channel to ~30 tokens, 2.5× faster TTFT.
 3. **Fresh stateless LLM call per refinement turn.** No server-side conversation history.
 4. **Audio is memory-only end-to-end.** `AudioRecorder.stop()` returns a `Data`; no `/tmp/parleq-*.wav`, no audio cache. Required for compliance with enterprise policies on Bedrock-using apps.

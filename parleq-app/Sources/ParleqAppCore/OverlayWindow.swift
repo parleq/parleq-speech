@@ -2982,7 +2982,8 @@ private struct OverlayContent: View {
             for m in ModelCatalog.models(forProvider: provider) {
                 let id = ModelIdentifier(provider: provider, model: m)
                 guard !ids.contains(id) else { continue }
-                if let allowed = managedAllowedModels, !allowed.contains(m) { continue }
+                if let allowed = managedAllowedModels,
+                   !ModelCatalog.expandingRetiredModels(allowed, forProvider: provider).contains(m) { continue }
                 ids.append(id)
             }
         }

@@ -316,7 +316,7 @@ private let _previewTarget = PasteDestination(
         sendToEnabled: true,
         pasteTarget: _previewTarget,
         conflict: .visionRefsButNonVisionModel(refCount: 3),
-        visionFallbackOption: ModelIdentifier(provider: "gemini", model: "gemini-2.5-flash"),
+        visionFallbackOption: ModelIdentifier(provider: "gemini", model: "gemini-3.8-flash"),
         canEnterEdit: true,
         onEdit: {},
         onCopy: {},

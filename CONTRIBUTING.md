@@ -51,7 +51,7 @@ These are documented in [`CLAUDE.md`](CLAUDE.md) and are load-bearing — please
 
 1. **Audio is memory-only end-to-end** — no `/tmp/parleq-*.wav`, no audio cache files.
 2. **Transcript content never lands in stderr / log files** — only length-only diagnostics.
-3. **`thinkingConfig.thinkingBudget = 0`** on every Gemini call.
+3. **Low thinking on every Gemini call.** Gemini 3+ calls send `thinkingConfig.thinkingLevel` (`minimal` on Flash-Lite, `low` otherwise); pre-3 models send a low `thinkingBudget`.
 4. **`reasoning_effort: "low"`** on every Bedrock `gpt-oss-*` call.
 5. **Fresh stateless LLM call per refinement turn** — no server-side conversation history.
 6. **Audio never leaves the device** — only post-ASR text crosses the network boundary.

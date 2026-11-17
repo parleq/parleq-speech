@@ -52,9 +52,9 @@ Switch in **Settings → Cleanup → Provider**. The Settings restart-required b
 3. Make the key available to Parleq. Two options:
    - **Settings UI (recommended)**: open Parleq → Settings → Cleanup (with Provider = Gemini), click **Set Gemini API Key…**, paste the key, Save. Stored in the macOS Keychain — never written to plaintext config files. The Settings UI shows "•••• stored in Keychain" once a key is present.
    - **Environment variable**: add `export GEMINI_API_KEY=...` to your shell rc and launch Parleq from a terminal that has it set. Useful for CI / automated testing. Note that Finder-launched apps don't inherit shell env, so for everyday use the Keychain path is more robust.
-4. Open Settings → Cleanup, set **Provider = Google Gemini (direct API)** and **Model = gemini-2.5-flash** (or another from the picker). Quit + relaunch.
+4. Open Settings → Cleanup, set **Provider = Google Gemini (direct API)** and **Model = gemini-3.5-flash-lite** (the default; `gemini-3.8-flash` and `gemini-4-argon` are the step-up options). Quit + relaunch.
 
-Cleanup TTFT against `gemini-2.5-flash` typically lands at 500–700 ms.
+Gemini 2.5 Flash and Pro are shut down by Google on 2026-12-01, so Parleq no longer offers them; a saved 2.5 setting is moved to its successor automatically.
 
 ### Bedrock setup
 
@@ -66,7 +66,7 @@ If your organization already has an AWS account with Bedrock enabled and SSO con
 
 #### 1. Create or use an AWS account with Bedrock
 
-If you don't have an AWS account: AWS's [account-creation walkthrough](https://aws.amazon.com/getting-started/). Bedrock is a paid service; pricing is per token (a typical Parleq cleanup is well under a cent per call against Haiku 4.5). (Provider pricing and free tiers change without notice — verify current rates.)
+If you don't have an AWS account: AWS's [account-creation walkthrough](https://aws.amazon.com/getting-started/). Bedrock is a paid service; pricing is per token (a typical Parleq cleanup costs a small fraction of a cent per call). (Provider pricing and free tiers change without notice — verify current rates.)
 
 #### 2. Enable model access in Bedrock
 
@@ -74,7 +74,7 @@ This is the step most people miss and the one most likely to silently break Parl
 
 1. Go to the Bedrock console → **Model access** in the region you want to use (e.g. us-east-1, us-east-2, us-west-2). **Bedrock model access is per-region** — enabling Anthropic Haiku in us-east-1 does not enable it in us-east-2.
 2. Click **Manage model access**, check the box(es) for the models you want — at minimum:
-   - **Anthropic Claude Haiku 4.5** (recommended for balanced quality/latency).
+   - **Anthropic Claude Haiku 5.5** (recommended for balanced quality/latency).
    - or **OpenAI GPT-OSS 120B** (faster, slightly weaker on edge cases).
 3. Submit. Most models are auto-approved within minutes; Anthropic occasionally requires a brief use-case form.
 
@@ -106,8 +106,8 @@ In Parleq → Settings → Cleanup:
 
 1. **Provider** = AWS Bedrock.
 2. **Model** = pick from the dropdown:
-   - `GPT-OSS 120B (no thinking) — fastest` for ~400 ms TTFT.
-   - `Claude Haiku 4.5 — balanced` for stronger judgment, ~880 ms TTFT.
+   - `GPT-OSS 120B (no thinking) — fastest`.
+   - `Claude Haiku 5.5 — balanced` for stronger judgment.
    - Or paste any other model ID your account has enabled into the **Custom** field.
 3. **Region** = the region where you enabled model access (e.g. `us-east-1`).
 4. **AWS profile** = the profile name from step 3 above (e.g. `work`, `personal`, etc.).

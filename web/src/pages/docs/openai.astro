@@ -5,7 +5,7 @@ import PricingNote from '../../components/PricingNote.astro';
 
 ---
 
-<Layout title="OpenAI setup — Parleq" description="Set up OpenAI direct API as Parleq's cleanup provider. GPT-4o, GPT-4.1, and o-series reasoning models.">
+<Layout title="OpenAI setup — Parleq" description="Set up OpenAI direct API as Parleq's cleanup provider. GPT-6 Luna, GPT-6.1 Terra, and GPT-6.1 Sol.">
   <FloatingNav active="docs" />
 
   <article class="mx-auto max-w-2xl px-6 pt-16 pb-24 sm:pt-20">
@@ -21,7 +21,7 @@ import PricingNote from '../../components/PricingNote.astro';
         OpenAI
       </h1>
       <p class="mt-5 text-[17px] leading-[1.7] text-[color:var(--color-text-muted)]">
-        Parleq can call OpenAI's API directly at <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">api.openai.com</code> using your own API key. This gives you access to GPT-4o and GPT-4.1 for cleanup, plus the o1 / o3 / o4-mini reasoning models for context-aware reference turns. If you already have an OpenAI API key for other tools, setup takes about two minutes.
+        Parleq can call OpenAI's API directly at <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">api.openai.com</code> using your own API key. This gives you access to the GPT-6 family for cleanup. If you already have an OpenAI API key for other tools, setup takes about two minutes.
       </p>
     </div>
 
@@ -30,7 +30,7 @@ import PricingNote from '../../components/PricingNote.astro';
       <p class="text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-text-subtle)]">At a glance</p>
       <ul class="mt-3 space-y-2 text-[15px] leading-relaxed text-[color:var(--color-text-muted)]">
         <li><strong class="text-[color:var(--color-text)]">Auth:</strong> One API key (starts with <code class="rounded bg-[color:var(--color-bg)] px-1 font-mono text-[13px]">sk-</code>) pasted from platform.openai.com.</li>
-        <li><strong class="text-[color:var(--color-text)]">Default model:</strong> <code class="rounded bg-[color:var(--color-bg)] px-1 font-mono text-[13px]">gpt-4o-mini</code> — fast, cheap, capable enough for cleanup.</li>
+        <li><strong class="text-[color:var(--color-text)]">Default model:</strong> <code class="rounded bg-[color:var(--color-bg)] px-1 font-mono text-[13px]">gpt-6-luna</code> — the fastest of the curated models, capable enough for cleanup.</li>
         <li><strong class="text-[color:var(--color-text)]">Setup time:</strong> ~2 minutes if you already have an API key.</li>
         <li><strong class="text-[color:var(--color-text)]">Compliance note:</strong> Calls go to OpenAI's consumer API under your account's terms. If your organization needs Microsoft's enterprise contract or specific data-residency controls, use <a href={`${import.meta.env.BASE_URL}`.replace(/\/$/, '') + '/docs/azure/'} class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">Azure OpenAI</a> instead — same models on Microsoft's infrastructure.</li>
       </ul>
@@ -87,30 +87,18 @@ import PricingNote from '../../components/PricingNote.astro';
       </h2>
       <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
         <p>
-          <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">gpt-4o-mini</code> is the default and covers almost every dictation use case — fast, cheap, and well-calibrated for short cleanup tasks. Open <strong class="text-[color:var(--color-text)]">Settings → Cleanup</strong> to pick from the model list or enter a custom identifier.
+          <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[14px]">gpt-6-luna</code> is the default and covers almost every dictation use case — fast and well-calibrated for short cleanup tasks. Open <strong class="text-[color:var(--color-text)]">Settings → Cleanup</strong> to pick from the model list or enter a custom identifier.
         </p>
         <p>
-          Standard models (text and vision-capable are marked 👁):
+          Models (all vision-capable, marked 👁):
         </p>
         <ul class="mt-2 list-inside list-disc space-y-1 text-[15px] marker:text-[color:var(--color-text-subtle)]">
-          <li><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[13px]">gpt-4o-mini</code> — fastest (cleanup default) 👁</li>
-          <li><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[13px]">gpt-4o</code> — highest quality 👁</li>
-          <li><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[13px]">gpt-4.1</code> — current 👁</li>
-          <li><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[13px]">gpt-4.1-mini</code> — current, cheaper 👁</li>
-          <li><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[13px]">gpt-4.1-nano</code> — text-only, smallest</li>
-        </ul>
-        <p>
-          Reasoning models — slower, useful for complex reference-aware turns:
-        </p>
-        <ul class="mt-2 list-inside list-disc space-y-1 text-[15px] marker:text-[color:var(--color-text-subtle)]">
-          <li><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[13px]">o1</code> — reasoning 👁</li>
-          <li><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[13px]">o1-mini</code> — reasoning, text-only</li>
-          <li><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[13px]">o3</code> — reasoning 👁</li>
-          <li><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[13px]">o3-mini</code> — reasoning, text-only</li>
-          <li><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[13px]">o4-mini</code> — reasoning 👁</li>
+          <li><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[13px]">gpt-6-luna</code> — fastest (cleanup default) 👁</li>
+          <li><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[13px]">gpt-6.1-terra</code> — recommended 👁</li>
+          <li><code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[13px]">gpt-6.1-sol</code> — highest quality 👁</li>
         </ul>
         <p class="text-[14px] text-[color:var(--color-text-subtle)]">
-          Reasoning models send a different request shape (no <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[12px]">temperature</code>, <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[12px]">max_completion_tokens</code> instead of <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[12px]">max_tokens</code>). Parleq detects reasoning models automatically from the model name — no manual family switch needed, unlike Azure.
+          All of these are reasoning-family models, so Parleq sends the reasoning request shape (no <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[12px]">temperature</code>, <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[12px]">max_completion_tokens</code> instead of <code class="rounded bg-[color:var(--color-surface)] px-1.5 py-0.5 font-mono text-[12px]">max_tokens</code>). Parleq detects this automatically from the model name, on both OpenAI and Azure. Older models (o1, o3, GPT-4o, GPT-4.1) are no longer offered because OpenAI has shut them down or is retiring them; a saved config that names one is moved to a current model automatically.
         </p>
       </div>
     </section>
@@ -122,7 +110,7 @@ import PricingNote from '../../components/PricingNote.astro';
       </h2>
       <div class="mt-6 space-y-5 text-[16px] leading-[1.7] text-[color:var(--color-text-muted)]">
         <p>
-          Per-token<sup>†</sup> at <a href="https://platform.openai.com/docs/pricing" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">OpenAI's published rates</a>. Cleanup prompts are short (a few hundred input tokens, a few hundred output tokens), so a typical day of personal dictation runs to single-digit cents on gpt-4o-mini. <strong class="text-[color:var(--color-text)]">Settings → Usage</strong> tracks per-call token counts and rolling cost estimates.
+          Per-token<sup>†</sup> at <a href="https://platform.openai.com/docs/pricing" class="font-medium text-[color:var(--color-accent)] underline-offset-4 hover:underline">OpenAI's published rates</a>. Cleanup prompts are short (a few hundred input tokens, a few hundred output tokens), so a typical day of personal dictation runs to a small amount. <strong class="text-[color:var(--color-text)]">Settings → Usage</strong> tracks per-call token counts and rolling cost estimates.
         </p>
         <PricingNote />
       </div>
