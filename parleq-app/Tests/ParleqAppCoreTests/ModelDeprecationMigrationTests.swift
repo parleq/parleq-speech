@@ -273,6 +273,29 @@ final class ModelDeprecationMigrationTests: XCTestCase {
         XCTAssertEqual(ctx?["model"] as? String, "gemini-3.8-flash")
     }
 
+    func test_save_under_provider_pin_keeps_other_providers_saved_model() {
+        // MDM pins gemini; the saved pre-MDM choice is openai/o4-mini (retired,
+        // but openai's own). Removing the pin must restore that choice.
+        var c = Config.default
+        c.managedKeys = ["cleanupProvider"]
+        c.llmProvider = "gemini"
+        c.llmModel = "gemini-3.5-flash-lite"
+        let existing: [String: Any] = ["llm": ["provider": "openai", "model": "o4-mini"]]
+        let llm = Config.mergeForSave(c, existing: existing)["llm"] as? [String: Any]
+        XCTAssertEqual(llm?["provider"] as? String, "openai")
+        XCTAssertEqual(llm?["model"] as? String, "o4-mini")
+    }
+
+    func test_save_under_context_pin_keeps_other_providers_saved_model() {
+        var c = Config.default
+        c.managedKeys = ["contextProvider"]
+        c.contextModel = ModelIdentifier(provider: "gemini", model: "gemini-3.5-flash-lite")
+        let existing: [String: Any] = ["context_model": ["provider": "openai", "model": "gpt-6-luna"]]
+        let ctx = Config.mergeForSave(c, existing: existing)["context_model"] as? [String: Any]
+        XCTAssertEqual(ctx?["provider"] as? String, "openai")
+        XCTAssertEqual(ctx?["model"] as? String, "gpt-6-luna")
+    }
+
     func test_save_under_provider_pin_still_preserves_truly_foreign_model() {
         var c = Config.default
         c.managedKeys = ["cleanupProvider"]
