@@ -2828,10 +2828,12 @@ public struct Config: Sendable {
             // (gemini-2.5-flash under a gemini pin) is that provider's own
             // model, not a foreign fallback — treating it as foreign would
             // write it back and lose the user's pick on every restart.
-            // A saved provider that differs from the effective (pinned) one is
-            // the pre-MDM choice, so its model is kept whatever it is.
-            !$0.isEmpty && (llmProviderToWrite.lowercased() != config.llmProvider.lowercased()
-                || !ModelCatalog.ownsModel(provider: llmProviderToWrite, model: $0))
+            // Known tradeoff (kept from main): one on-disk model field can't
+            // hold both the pre-MDM fallback and the pick under the pin. When
+            // the saved provider differs from the pinned one but owns its
+            // model, the pick wins, so it survives a restart; the fallback
+            // model is lost when the pin is removed.
+            !$0.isEmpty && !ModelCatalog.ownsModel(provider: llmProviderToWrite, model: $0)
         } ?? false
         let preserveModelOnDisk = modelPinned
             || (providerPinned && !modelAllowlist && onDiskModelForeign)
@@ -3249,10 +3251,7 @@ public struct Config: Sendable {
             //     picking within the pinned world: write the in-memory
             //     choice so it persists. (allowlist lands here too.)
             let ctxOnDiskModelForeign = !existingModel.isEmpty
-                // retired ids count as owned; a saved provider other than the
-                // effective one is the pre-MDM choice (see the cleanup tier).
-                && (provider.lowercased() != (config.contextModel?.provider ?? "").lowercased()
-                    || !ModelCatalog.ownsModel(provider: provider, model: existingModel))
+                && !ModelCatalog.ownsModel(provider: provider, model: existingModel)  // retired ids count as owned (see the cleanup tier)
             let preserveModel = ctxModelPinned
                 || (ctxProviderPinned && !ctxModelAllowlist && ctxOnDiskModelForeign)
             let model = preserveModel && !existingModel.isEmpty

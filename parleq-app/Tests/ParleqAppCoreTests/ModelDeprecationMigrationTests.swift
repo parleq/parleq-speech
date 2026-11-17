@@ -273,27 +273,18 @@ final class ModelDeprecationMigrationTests: XCTestCase {
         XCTAssertEqual(ctx?["model"] as? String, "gemini-3.8-flash")
     }
 
-    func test_save_under_provider_pin_keeps_other_providers_saved_model() {
-        // MDM pins gemini; the saved pre-MDM choice is openai/o4-mini (retired,
-        // but openai's own). Removing the pin must restore that choice.
+    func test_save_under_provider_pin_persists_pick_over_other_providers_model() {
+        // One on-disk model field can't hold both the pre-MDM fallback and the
+        // pick under the pin. As on main, a model the saved provider owns
+        // (retired ones included — they can't run, and would migrate on load
+        // anyway) yields to the user's pick, so the pick survives a restart.
         var c = Config.default
         c.managedKeys = ["cleanupProvider"]
         c.llmProvider = "gemini"
-        c.llmModel = "gemini-3.5-flash-lite"
+        c.llmModel = "gemini-3.8-flash"
         let existing: [String: Any] = ["llm": ["provider": "openai", "model": "o4-mini"]]
         let llm = Config.mergeForSave(c, existing: existing)["llm"] as? [String: Any]
-        XCTAssertEqual(llm?["provider"] as? String, "openai")
-        XCTAssertEqual(llm?["model"] as? String, "o4-mini")
-    }
-
-    func test_save_under_context_pin_keeps_other_providers_saved_model() {
-        var c = Config.default
-        c.managedKeys = ["contextProvider"]
-        c.contextModel = ModelIdentifier(provider: "gemini", model: "gemini-3.5-flash-lite")
-        let existing: [String: Any] = ["context_model": ["provider": "openai", "model": "gpt-6-luna"]]
-        let ctx = Config.mergeForSave(c, existing: existing)["context_model"] as? [String: Any]
-        XCTAssertEqual(ctx?["provider"] as? String, "openai")
-        XCTAssertEqual(ctx?["model"] as? String, "gpt-6-luna")
+        XCTAssertEqual(llm?["model"] as? String, "gemini-3.8-flash")
     }
 
     func test_save_under_provider_pin_still_preserves_truly_foreign_model() {
