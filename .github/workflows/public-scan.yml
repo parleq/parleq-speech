@@ -40,4 +40,18 @@ jobs:
         env:
           BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
           HEAD: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
-        run: python3 scripts/git-hooks/push-gate.py --scan-range "$BASE" "$HEAD"
+        run: |
+          # Run the scanner and ignore list from the BASE revision, so a change
+          # can't weaken the scan it is being checked by. A change that first
+          # introduces the scanner has no base copy and uses its own.
+          if [ -n "$BASE" ] && git cat-file -e "$BASE:scripts/git-hooks/push-gate.py" 2>/dev/null; then
+            git show "$BASE:scripts/git-hooks/push-gate.py" > "$RUNNER_TEMP/push-gate.py"
+            git show "$BASE:.gitleaksignore" > "$RUNNER_TEMP/.gitleaksignore" 2>/dev/null \
+              || : > "$RUNNER_TEMP/.gitleaksignore"
+          else
+            cp scripts/git-hooks/push-gate.py "$RUNNER_TEMP/push-gate.py"
+            cp .gitleaksignore "$RUNNER_TEMP/.gitleaksignore" 2>/dev/null \
+              || : > "$RUNNER_TEMP/.gitleaksignore"
+          fi
+          PARLEQ_GITLEAKSIGNORE="$RUNNER_TEMP/.gitleaksignore" \
+            python3 "$RUNNER_TEMP/push-gate.py" --scan-range "$BASE" "$HEAD"

@@ -2,18 +2,21 @@
 # Install the Parleq push gate (scripts/git-hooks/push-gate.py) as this clone's
 # pre-push hook. Run via `make install-hooks`. Safe to rerun.
 #
-# The hook runs the gate from the MAIN checkout (on main), not from whichever
-# worktree is pushing, so a branch can't weaken the gate it is being pushed
-# through. If a stu-managed pre-push hook is present, the gate goes in
+# The gate is COPIED into the hooks directory and the hook runs that copy, not
+# the file in whichever worktree is pushing, so a branch can't weaken the gate
+# it is being pushed through. Rerun after the gate changes on main to refresh
+# the copy. If a stu-managed pre-push hook is present, the gate goes in
 # pre-push.local, which that hook runs first; otherwise it is appended to (or
 # becomes) pre-push. RoboRev's own pre-push flush section is left in place.
 set -eu
 hooks=$(git rev-parse --path-format=absolute --git-path hooks)
-main=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-gate="$main/scripts/git-hooks/push-gate.py"
+src="$(cd "$(dirname "$0")" && pwd)/push-gate.py"
+gate="$hooks/parleq-push-gate.py"
 mkdir -p "$hooks"
+cp "$src" "$gate"
+chmod +x "$gate"
+echo "copied the gate to $gate"
 marker="# parleq push gate"
-line="python3 \"$gate\" \"\$@\" || exit \$?"
 
 if [ -f "$hooks/pre-push" ] && grep -q "stu-pre-push: managed hook" "$hooks/pre-push"; then
   target="$hooks/pre-push.local"

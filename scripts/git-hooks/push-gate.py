@@ -26,10 +26,12 @@ already has, two checks run:
          lines, commit messages, file paths and ref names.
      A line that is a deliberate exception can carry the marker `push-gate:allow`.
 
-Fails closed: if roborev or gitleaks is missing or errors, the push is refused.
+Fails closed: if roborev, gitleaks or the private denylist is missing, or anything
+errors, the push is refused.
 Owner-only overrides, which agents never set:
   PARLEQ_PUSH_GATE_SKIP_REVIEW=1   skip check 1 (e.g. RoboRev is down)
   PARLEQ_PUSH_GATE_SKIP_SCAN=1     skip check 2 (a false positive you have read)
+  PARLEQ_PUSH_GATE_NO_DENYLIST=1   push without the private denylist file
 
 CI mode (no RoboRev, no private denylist; used by .github/workflows/public-scan.yml):
   push-gate.py --scan-range <base> <head>
@@ -189,9 +191,9 @@ def check_reviews(shas):
 
 def load_denylist(required):
     if not os.path.exists(DENYLIST):
-        if required:
-            say("warning: no private denylist at %s; only the generic public-content "
-                "rules ran" % DENYLIST)
+        if required and os.environ.get("PARLEQ_PUSH_GATE_NO_DENYLIST") != "1":
+            raise RuntimeError("no private denylist at %s; create it (one regex per line), "
+                               "or owner-only: PARLEQ_PUSH_GATE_NO_DENYLIST=1" % DENYLIST)
         return []
     rules = []
     with open(DENYLIST, encoding="utf-8") as f:
@@ -218,9 +220,21 @@ def path_blocked(path):
     return None
 
 
+def changed_paths(rargs):
+    """Every path a commit in the range adds or changes, merges included (a file copied
+    from an existing blob still counts, since this reads the diffs, not new objects)."""
+    names = git("log", "--format=", "--name-only", "--no-renames", "--diff-filter=ACMRT",
+                "-m", *rargs).split("\n")
+    return sorted({n for n in names if n})
+
+
 def scan_objects(rargs):
-    """New blobs in the range: blocked paths and oversized files."""
+    """Blocked paths among the changed files, and oversized new blobs."""
     out = []
+    for path in changed_paths(rargs):
+        reason = path_blocked(path)
+        if reason:
+            out.append("%s: %s" % (path, reason))
     objs = git("rev-list", "--objects", "--no-object-names", *rargs).split()
     named = {}
     for line in git("rev-list", "--objects", *rargs).splitlines():
@@ -237,26 +251,26 @@ def scan_objects(rargs):
         if typ != "blob" or sha not in named:
             continue
         path = named[sha]
-        reason = path_blocked(path)
-        if reason:
-            out.append("%s: %s" % (path, reason))
-        elif int(size) > MAX_BLOB_BYTES:
+        if int(size) > MAX_BLOB_BYTES:
             out.append("%s: %.1f MB blob (limit 5 MB)" % (path, int(size) / 1048576))
     return out
 
 
 def added_lines(rargs):
-    """-> [(commit, path, line)] for every added line in the range."""
-    out, commit, path = [], None, None
-    txt = git("log", "-p", "--format=COMMIT %H", "--unified=0", "--no-color",
+    """-> [(commit, path, line)] for every added line in the range. A merge contributes
+    its combined diff (--cc): the lines its result has that no parent had, which is
+    where a conflict resolution can introduce new text."""
+    out, commit, path, width = [], None, None, 1
+    txt = git("log", "-p", "--cc", "--format=COMMIT %H %P", "--unified=0", "--no-color",
               "--no-ext-diff", "--no-renames", *rargs)
     for line in txt.splitlines():
         if line.startswith("COMMIT "):
-            commit, path = line[7:], None
+            parts = line.split()
+            commit, path, width = parts[1], None, max(1, len(parts) - 2)
         elif line.startswith("+++ "):
             path = line[6:] if line.startswith("+++ b/") else None
-        elif line.startswith("+") and path is not None:
-            out.append((commit, path, line[1:]))
+        elif path is not None and line[:width].strip("+ ") == "" and "+" in line[:width]:
+            out.append((commit, path, line[width:]))
     return out
 
 
@@ -298,14 +312,28 @@ def gitleaks(rargs):
         raise RuntimeError("gitleaks not found (`brew install gitleaks`, or owner-only: "
                            "PARLEQ_PUSH_GATE_SKIP_SCAN=1)")
     root = git("rev-parse", "--show-toplevel").strip()
-    p = subprocess.run([exe, "git", "--no-banner", "--redact", "--exit-code", "3",
-                        "--log-opts", " ".join(rargs), root],
-                       capture_output=True, text=True)
-    if p.returncode == 3:
-        return ["gitleaks found a likely secret:\n" + (p.stdout + p.stderr).strip()[-2000:]]
-    if p.returncode != 0:
-        raise RuntimeError("gitleaks failed: " + (p.stderr or p.stdout).strip()[-500:])
-    return []
+    ignore = os.environ.get("PARLEQ_GITLEAKSIGNORE") or root
+    base = [exe, "--no-banner", "--no-color", "-v", "--redact", "--exit-code", "3", "-i", ignore]
+    runs = [(["git", *base[1:], "--log-opts", " ".join(rargs), root], None)]
+    # gitleaks reads a merge's diff against neither parent, so text a conflict
+    # resolution adds is invisible to it; feed it each merge's combined diff instead.
+    for m in git("rev-list", "--merges", *rargs).split():
+        runs.append((["stdin", *base[1:]],
+                     git("show", "--cc", "--format=", "--no-color", "--unified=0", m)))
+    out = []
+    for args, stdin in runs:
+        p = subprocess.run([exe, *args], input=stdin, capture_output=True, text=True)
+        if p.returncode == 3:
+            # Keep only where it is; the verbose report also carries author name and
+            # email, which a public CI log should not repeat.
+            keep = ("RuleID:", "File:", "Line:", "Commit:", "Fingerprint:")
+            lines = [l.strip() for l in (p.stdout + p.stderr).splitlines()
+                     if l.strip().startswith(keep)]
+            out.append("gitleaks found a likely secret: " + "; ".join(lines[:25]) +
+                       " (a fake test value goes in .gitleaksignore by fingerprint)")
+        elif p.returncode != 0:
+            raise RuntimeError("gitleaks failed: " + (p.stderr or p.stdout).strip()[-500:])
+    return out
 
 
 def scan(rargs, refname, private):
