@@ -25,8 +25,14 @@ else
 fi
 
 if [ -f "$target" ] && grep -q "$marker" "$target"; then
-  echo "push gate already installed in $target"
-  exit 0
+  # Rewrite our section (from the marker to its end line) so a rerun picks up
+  # changes to it; every other section of the hook is kept as is.
+  tmp=$(mktemp "${TMPDIR:-/tmp}/parleq-install.XXXXXX")
+  awk -v m="$marker" 'index($0, m) == 1 && $0 !~ / end$/ {skip=1}
+                      !skip {print}
+                      skip && $0 == "# parleq push gate end" {skip=0}' "$target" > "$tmp"
+  cat "$tmp" > "$target"
+  rm -f "$tmp"
 fi
 
 if [ ! -f "$target" ]; then
