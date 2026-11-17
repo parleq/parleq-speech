@@ -34,7 +34,7 @@ See CLAUDE.md → "Hard invariants" for the full list.
 
 - [ ] Audio is still memory-only end-to-end (no new disk writes).
 - [ ] No transcript content lands in stderr / log files.
-- [ ] Gemini calls still set `thinkingConfig.thinkingBudget = 0`.
+- [ ] Gemini thinking stays low: Gemini 3+ calls send `thinkingConfig.thinkingLevel` (`minimal` on Flash-Lite, `low` otherwise); pre-3 models send a low `thinkingBudget` (CLAUDE.md invariant #3).
 - [ ] Bedrock `gpt-oss-*` calls still set `reasoning_effort: "low"`.
 - [ ] No server-side conversation history added.
 - [ ] Audio still never leaves the device.

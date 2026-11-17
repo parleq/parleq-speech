@@ -12,7 +12,7 @@ Repo-specific priorities and false-positive suppressions for `commit-review`. Su
 ## Things NOT to flag (intentional — flagging these is noise)
 
 - **Memory-only audio.** `AudioRecorder.stop()` returns `Data`; there is deliberately no URL/file path. Do **not** suggest writing audio to `/tmp`, buffering WAV to disk, or any audio-on-disk persistence — it's a load-bearing compliance promise. (Flag the opposite: any new code that *does* write audio to disk.)
-- **`thinkingConfig.thinkingBudget = 0`** on Gemini calls and **`reasoning_effort: "low"`** on Bedrock `gpt-oss` calls — intentional latency/cost controls, not bugs.
+- **Low Gemini thinking** (Gemini 3+ calls send `thinkingConfig.thinkingLevel` (`minimal` on Flash-Lite, `low` otherwise); pre-3 models send a low `thinkingBudget`) and **`reasoning_effort: "low"`** on Bedrock `gpt-oss` calls — intentional latency/cost controls, not bugs.
 - **Fresh stateless LLM call per refinement turn** (no server-side conversation history) — intentional.
 - **`asr.endpoint` default `http://127.0.0.1:8767/inference`** — a magic sentinel kept verbatim for config back-compat; matching it triggers the in-process `LocalASR` path. Not dead config, not a real URL to "fix."
 - **Localhost / HTTP endpoints** (the optional user ASR endpoint, in-process ASR) — local by design.

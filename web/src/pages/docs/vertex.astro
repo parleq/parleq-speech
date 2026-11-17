@@ -19,7 +19,7 @@ import DocTabs from '../../components/DocTabs.astro';
       Google Vertex AI
     </h1>
     <p class="mt-6 text-[17px] leading-[1.7] text-[color:var(--color-text-muted)]">
-      Vertex AI is Google's enterprise-flavored access to Gemini models — and, via publisher-model routing, to Anthropic's Claude as well. The Gemini models are identical to what the direct Google AI API serves — same Gemini models, same response quality — but the calls run through your organization's Google Cloud (GCP) project instead of through a personal AI Studio account. That brings IAM controls, audit logs, regional deployment guarantees, and contract terms most companies require to actually use an AI service for work. If your team already uses GCP, Vertex is usually the right answer.
+      Vertex AI is Google's enterprise-flavored access to Gemini models — and, via publisher-model routing, to Anthropic's Claude as well. The Gemini models are identical to what the direct Google AI API serves — same Gemini models, same response quality — but the calls run through your organization's Google Cloud (GCP) project instead of through a personal AI Studio account. That brings IAM controls, audit logs, and contract terms most companies require to actually use an AI service for work. If your team already uses GCP, Vertex is usually the right answer.
     </p>
 
     <div class="mt-8 rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-6">
@@ -215,7 +215,7 @@ gcloud auth application-default set-quota-project my-team-prod-1234`}</code></pr
         Audio never reaches Google. Only the text transcript output by Parleq's on-device speech model is sent.
       </p>
       <p>
-        If you're choosing between direct Gemini and Vertex: pick Vertex when you need IAM roles, audit logs, data-residency commitments, or your org has already invested in GCP. Pick the direct API when you want zero setup overhead and the consumer terms are acceptable.
+        If you're choosing between direct Gemini and Vertex: pick Vertex when you need IAM roles, audit logs, enterprise contract terms, or your org has already invested in GCP. Pick the direct API when you want zero setup overhead and the consumer terms are acceptable.
       </p>
     </div>
 
