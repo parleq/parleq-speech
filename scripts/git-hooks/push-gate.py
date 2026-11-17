@@ -346,15 +346,20 @@ def scan_ref(lsha, rref, private, remote):
     update publishes no new commits."""
     out = []
     texts = [("ref name " + rref, rref)]
-    if git("cat-file", "-t", lsha).strip() == "tag":
-        texts.append(("tag message of " + rref,
-                      git("cat-file", "-p", lsha).split("\n\n", 1)[-1]))
+    obj, seen = lsha, set()
+    # An annotated tag (possibly a chain of tags pointing at tags): every tag object's
+    # message is published with it.
+    while git("cat-file", "-t", obj).strip() == "tag" and obj not in seen:
+        seen.add(obj)
+        head, _, msg = git("cat-file", "-p", obj).partition("\n\n")
+        texts.append(("tag message (%s) of %s" % (obj[:9], rref), msg))
+        obj = head.split("\n", 1)[0].split()[-1]  # the "object <sha>" line
     for where, text in texts:
         for rx in private:
             if rx.search(text):
                 out.append("%s matches private denylist rule /%s/" % (where, rx.pattern))
-    if len(texts) > 1:  # an annotated tag: its message can carry a secret too
-        out += gitleaks(None, remote, [texts[1][1]])
+    if len(texts) > 1:  # tag messages can carry a secret too
+        out += gitleaks(None, remote, [t for _, t in texts[1:]])
     return out
 
 

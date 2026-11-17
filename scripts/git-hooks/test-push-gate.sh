@@ -119,6 +119,12 @@ out=$(echo "refs/tags/tsecret $(git rev-parse tsecret) refs/tags/tsecret 0000000
       PARLEQ_PUSH_DENYLIST="$work/deny.txt" PARLEQ_PUSH_GATE_SKIP_REVIEW=1 \
       python3 "$gate" origin url 2>&1); rc=$?
 expect_refused "secret in an annotated tag message" "$out" "github-pat" "$rc"
+git tag -a -m "the Secret Project inner" tinner "$base"
+git tag -a -m "outer" touter tinner 2>/dev/null
+out=$(echo "refs/tags/touter $(git rev-parse touter) refs/tags/touter 0000000000000000000000000000000000000000" | \
+      PARLEQ_PUSH_DENYLIST="$work/deny.txt" PARLEQ_PUSH_GATE_SKIP_REVIEW=1 \
+      python3 "$gate" origin url 2>&1); rc=$?
+expect_refused "inner tag of a tag chain is scanned" "$out" "tag message" "$rc"
 
 # 6. installer: rerun replaces the gate in place; a later section still gets stdin
 hooks=$(git rev-parse --path-format=absolute --git-path hooks)
