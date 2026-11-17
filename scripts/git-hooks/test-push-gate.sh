@@ -93,6 +93,23 @@ chmod +x "$hooks/pre-push"
 sh "$install" >/dev/null 2>&1
 grep -q "parleq push gate (written" "$hooks/pre-push.local" && ! grep -q "parleq push gate (written" "$hooks/pre-push" \
   && pass "chaining hook gets the gate in pre-push.local" || fail "chaining hook gets the gate in pre-push.local"
+# a hook that runs pre-push.local but ignores its exit status: gate goes into pre-push
+rm -f "$hooks/pre-push" "$hooks/pre-push.local"
+printf '#!/bin/sh\n"$(dirname "$0")/pre-push.local" "$@"\nexit 0\n' > "$hooks/pre-push"
+chmod +x "$hooks/pre-push"
+sh "$install" >/dev/null 2>&1
+PARLEQ_PUSH_GATE_PROBE=1 "$hooks/pre-push" o u < /dev/null >/dev/null 2>&1 \
+  && fail "refusal not swallowed by a status-ignoring hook" \
+  || pass "refusal not swallowed by a status-ignoring hook"
+# an old install left the section after an early exit: rerun moves it up
+rm -f "$hooks/pre-push" "$hooks/pre-push.local"
+{ printf '#!/bin/sh\nexit 0\n'; printf '# parleq push gate (written by scripts/git-hooks/install.sh)\necho stale\n# parleq push gate end\n'; } > "$hooks/pre-push"
+chmod +x "$hooks/pre-push"
+sh "$install" >/dev/null 2>&1
+PARLEQ_PUSH_GATE_PROBE=1 "$hooks/pre-push" o u < /dev/null >/dev/null 2>&1 \
+  && fail "unreachable old section is moved up" || pass "unreachable old section is moved up"
+[ "$(grep -c 'parleq push gate (written' "$hooks/pre-push")" = 1 ] && pass "moved section not duplicated" \
+  || fail "moved section not duplicated"
 # the probe can't be used to skip the gate
 out=$(echo "refs/heads/x $base refs/heads/x 0000000000000000000000000000000000000000" | \
       PARLEQ_PUSH_GATE_PROBE=1 python3 "$gate" o u 2>&1); rc=$?

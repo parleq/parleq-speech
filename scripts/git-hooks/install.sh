@@ -63,25 +63,47 @@ place() {  # write or refresh our section in hook file $1
   chmod +x "$target"
 }
 
-gate_runs() {  # does git's pre-push hook actually reach the gate? (the probe always refuses)
-  PARLEQ_PUSH_GATE_PROBE=1 "$hooks/pre-push" origin probe < /dev/null 2>&1 \
-    | grep -q "push-gate: probe"
+unplace() {  # remove our section from hook file $1, if present
+  [ -f "$1" ] && grep -q "$marker" "$1" || return 0
+  tmp=$(mktemp "${TMPDIR:-/tmp}/parleq-install.XXXXXX")
+  awk -v m="$marker" '
+    index($0, m) == 1 && $0 != "# parleq push gate end" { skip=1; next }
+    skip { if ($0 == "# parleq push gate end") skip=0; next }
+    { print }' "$1" > "$tmp"
+  cat "$tmp" > "$1"
+  rm -f "$tmp"
+}
+
+gate_runs() {  # does git's pre-push hook reach the gate AND fail when it refuses?
+  # The probe always refuses, so a passing hook means the refusal was swallowed.
+  if out=$(PARLEQ_PUSH_GATE_PROBE=1 "$hooks/pre-push" origin probe < /dev/null 2>&1); then
+    return 1
+  fi
+  printf '%s\n' "$out" | grep -q "push-gate: probe"
 }
 
 # Prefer pre-push.local when the existing hook chains it (some hook managers
-# rewrite pre-push itself), but only if running the hook proves it reaches the
-# gate; otherwise the gate goes into pre-push.
+# rewrite pre-push itself), but only if probing the hook proves the gate is
+# reached and its refusal stops the push. Otherwise the gate goes into pre-push,
+# near the top.
+where=""
 if [ -f "$hooks/pre-push" ] && grep -q "pre-push\.local" "$hooks/pre-push"; then
   place "$hooks/pre-push.local"
-  where="$hooks/pre-push.local"
-  gate_runs || { place "$hooks/pre-push"; where="$hooks/pre-push"; }
-else
+  if gate_runs; then where="$hooks/pre-push.local"; else unplace "$hooks/pre-push.local"; fi
+fi
+if [ -z "$where" ]; then
   place "$hooks/pre-push"
+  if ! gate_runs; then
+    # e.g. a section left after an early `exit` by an older install: move it up
+    unplace "$hooks/pre-push"
+    place "$hooks/pre-push"
+  fi
   where="$hooks/pre-push"
 fi
 rm -f "$stanza"
 if ! gate_runs; then
-  echo "install-hooks: the pre-push hook does not reach the gate; check $hooks/pre-push" >&2
+  echo "install-hooks: the pre-push hook does not run the gate or ignores its refusal;" \
+       "check $hooks/pre-push" >&2
   exit 1
 fi
 echo "installed push gate in $where (verified)"
