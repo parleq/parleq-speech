@@ -10,8 +10,12 @@ trap 'rm -rf "$work"' EXIT
 fails=0
 pass() { echo "ok   - $1"; }
 fail() { echo "FAIL - $1"; fails=$((fails + 1)); }
-expect_refused() {  # name, output, expected substring
+expect_contains() {  # name, output, expected substring
   case "$2" in *"$3"*) pass "$1" ;; *) fail "$1 (wanted '$3' in: $2)" ;; esac
+}
+expect_refused() {  # name, output, expected substring, exit status (must be nonzero)
+  if [ "$4" = 0 ]; then fail "$1 (exit 0: the push would be allowed)"; return; fi
+  expect_contains "$1" "$2" "$3"
 }
 token() { python3 -c 'import random,string;random.seed(7);print("ghp_"+"".join(random.choice(string.ascii_letters+string.digits) for _ in range(36)))'; }
 
@@ -31,20 +35,23 @@ git checkout -q main && echo c > f && git add f && git commit -qm main
 git merge -q side >/dev/null 2>&1
 echo "token = \"$(token)\"" > f && git add f && git commit -qm merge
 out=$(python3 "$gate" --scan-range "$base" HEAD 2>&1)
-expect_refused "secret added in a merge resolution" "$out" "github-pat"
+rc=$?
+expect_refused "secret added in a merge resolution" "$out" "github-pat" "$rc"
 
 # 3. a file copied from an existing blob to a key path is caught
 git checkout -q -b copy "$base" && echo hello > a.txt && git add a.txt && git commit -qm a
 cp a.txt id.pem && git add id.pem && git commit -qm copy
 out=$(python3 "$gate" --scan-range HEAD~1 HEAD 2>&1)
-expect_refused "copied blob at a key path" "$out" "id.pem: signing key"
+rc=$?
+expect_refused "copied blob at a key path" "$out" "id.pem: signing key" "$rc"
 
 # 4. dictation audio is refused outside bench/fixtures, allowed inside
 git checkout -q -b audio "$base"
 printf 'RIFF' > clip.wav && mkdir -p bench/fixtures && printf 'RIFF' > bench/fixtures/tts.wav
 git add . && git commit -qm audio
 out=$(python3 "$gate" --scan-range "$base" HEAD 2>&1)
-expect_refused "audio outside bench/fixtures" "$out" "clip.wav: audio file"
+rc=$?
+expect_refused "audio outside bench/fixtures" "$out" "clip.wav: audio file" "$rc"
 case "$out" in *tts.wav*) fail "bench/fixtures audio allowed" ;; *) pass "bench/fixtures audio allowed" ;; esac
 
 # 5. the private denylist (hook mode) and its absence
@@ -53,10 +60,12 @@ git checkout -q -b priv "$base" && echo "about the Secret Project" > p.md && git
 line="refs/heads/priv $(git rev-parse HEAD) refs/heads/priv 0000000000000000000000000000000000000000"
 out=$(echo "$line" | PARLEQ_PUSH_DENYLIST="$work/deny.txt" PARLEQ_PUSH_GATE_SKIP_REVIEW=1 \
       python3 "$gate" origin url 2>&1)
-expect_refused "private denylist term" "$out" "private denylist rule"
+rc=$?
+expect_refused "private denylist term" "$out" "private denylist rule" "$rc"
 out=$(echo "$line" | PARLEQ_PUSH_DENYLIST="$work/none.txt" PARLEQ_PUSH_GATE_SKIP_REVIEW=1 \
       python3 "$gate" origin url 2>&1)
-expect_refused "missing denylist refuses" "$out" "no private denylist"
+rc=$?
+expect_refused "missing denylist refuses" "$out" "no private denylist" "$rc"
 
 # 6. installer: rerun replaces the gate in place; a later section still gets stdin
 hooks=$(git rev-parse --path-format=absolute --git-path hooks)
@@ -73,7 +82,7 @@ order=$(grep -n -e 'echo before' -e 'parleq push gate (written' -e 'echo "after'
 git checkout -q main
 out=$(echo "refs/heads/x $base refs/heads/x $base" | PARLEQ_PUSH_GATE_SKIP_REVIEW=1 \
       PARLEQ_PUSH_GATE_NO_DENYLIST=1 "$hooks/pre-push" origin url 2>&1)
-expect_refused "later section receives the ref lines" "$out" "after:refs/heads/x"
+expect_contains "later section receives the ref lines" "$out" "after:refs/heads/x" "$rc"
 
 echo
 [ "$fails" = 0 ] && echo "all push-gate tests passed" || { echo "$fails failed"; exit 1; }
