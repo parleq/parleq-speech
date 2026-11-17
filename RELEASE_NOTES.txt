@@ -2,4 +2,4 @@ Parleq 0.47.1
 
 Keeps cloud cleanup working as Google, Anthropic and OpenAI retire older models.
 
-Gemini now offers 3.5 Flash-Lite (the new default), 3.8 Flash and 4 Argon. Claude moves to Haiku and Sonnet 5.5, and OpenAI to GPT-6 Luna, GPT-6.1 Terra and GPT-6.1 Sol. If your settings name a retired model, Parleq switches to its replacement automatically. Vertex AI now uses the "global" location, which is the only place the new Gemini models run.
+Gemini now offers 3.5 Flash-Lite (the new default), 3.8 Flash and 4 Argon. Claude moves to Haiku and Sonnet 5.5, and OpenAI to GPT-6 Luna, GPT-6.1 Terra and GPT-6.1 Sol. Llama 3.3 70B leaves the Bedrock list, since Amazon now marks it legacy. If your settings name a retired model, Parleq switches to its replacement automatically. Vertex AI now uses the "global" location, which is the only place the new Gemini models run.
