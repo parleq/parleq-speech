@@ -233,14 +233,21 @@ def path_blocked(path):
 def changed_paths(rargs):
     """Every path a commit in the range adds or changes, merges included (a file copied
     from an existing blob still counts, since this reads the diffs, not new objects)."""
-    names = git("log", "-z", "--format=", "--name-only", "--no-renames",
-                "--diff-filter=ACMRT", "-m", *rargs).split("\0")
-    return sorted({n.strip("\n") for n in names if n.strip("\n")})
+    return tree_paths(rargs, ["--diff-filter=ACMRT"])
 
 
 def all_paths(rargs):
-    names = git("log", "-z", "--format=", "--name-only", "-m", *rargs).split("\0")
-    return sorted({n.strip("\n") for n in names if n.strip("\n")})
+    return tree_paths(rargs, [])
+
+
+def tree_paths(rargs, extra):
+    """Exact paths (bytes preserved, NUL-separated per commit; merges vs each parent)."""
+    names = set()
+    for c in commits(rargs):
+        out = git("diff-tree", "-r", "-z", "-m", "--root", "--no-commit-id", "--name-only",
+                  "--no-renames", *extra, c)
+        names.update(n for n in out.split("\0") if n)
+    return sorted(names)
 
 
 def scan_objects(rargs):
@@ -334,7 +341,7 @@ def scan_text(rargs, private):
     return sorted(set(out))
 
 
-def scan_ref(lsha, rref, private):
+def scan_ref(lsha, rref, private, remote):
     """The ref name and, for an annotated tag, its message: checked even when the
     update publishes no new commits."""
     out = []
@@ -346,6 +353,8 @@ def scan_ref(lsha, rref, private):
         for rx in private:
             if rx.search(text):
                 out.append("%s matches private denylist rule /%s/" % (where, rx.pattern))
+    if len(texts) > 1:  # an annotated tag: its message can carry a secret too
+        out += gitleaks(None, remote, [texts[1][1]])
     return out
 
 
@@ -365,7 +374,8 @@ def trusted_gitleaksignore(remote):
     return ""
 
 
-def gitleaks(rargs, remote):
+def gitleaks(rargs, remote, texts=()):
+    """Scan the commit range (None: no range) plus any extra texts, via gitleaks."""
     exe = shutil.which("gitleaks")
     if not exe:
         raise RuntimeError("gitleaks not found (`brew install gitleaks`, or owner-only: "
@@ -385,13 +395,16 @@ def gitleaks(rargs, remote):
         os.mkdir(src)
         flags = ["--no-banner", "--no-color", "-v", "--redact", "--exit-code", "3",
                  "--ignore-gitleaks-allow", "-c", config, "-i", ignore]
-        runs = [(["git", *flags, "--log-opts", " ".join(["--text", *rargs]), src], None)]
-        # gitleaks reads a merge's diff against neither parent, so text a conflict
-        # resolution adds is invisible to it; feed it each merge's combined diff instead.
-        for m in git("rev-list", "--merges", *rargs).split():
-            runs.append((["stdin", *flags],
-                         git("show", "--cc", "--text", "--format=", "--no-color",
-                             "--unified=0", m)))
+        runs = [(["stdin", *flags], t) for t in texts]
+        if rargs is not None:
+            runs.append((["git", *flags, "--log-opts", " ".join(["--text", *rargs]), src],
+                         None))
+            # gitleaks reads a merge's diff against neither parent, so text a conflict
+            # resolution adds is invisible to it; feed it each merge's combined diff.
+            for m in git("rev-list", "--merges", *rargs).split():
+                runs.append((["stdin", *flags],
+                             git("show", "--cc", "--text", "--format=", "--no-color",
+                                 "--unified=0", m)))
         env = dict(os.environ, GIT_DIR=gitdir)
         for args, stdin in runs:
             p = subprocess.run([exe, *args], input=stdin, capture_output=True,
@@ -434,7 +447,7 @@ def hook(remote):
         if lsha == ZERO:  # deleting a ref publishes nothing
             continue
         if not skip_scan:
-            refusals += ["%s: %s" % (rref, r) for r in scan_ref(lsha, rref, private)]
+            refusals += ["%s: %s" % (rref, r) for r in scan_ref(lsha, rref, private, remote)]
         rargs = range_args(lsha, rsha)
         if not commits(rargs):
             continue

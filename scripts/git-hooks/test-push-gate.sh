@@ -109,6 +109,16 @@ out=$(echo "refs/heads/x $base refs/heads/x 000000000000000000000000000000000000
       PARLEQ_PUSH_DENYLIST="$work/empty.txt" PARLEQ_PUSH_GATE_SKIP_REVIEW=1 \
       python3 "$gate" o u 2>&1); rc=$?
 expect_refused "empty denylist refuses" "$out" "has no rules" "$rc"
+git checkout -q -b nl "$base" && mkdir -p "$(printf '\nbench')/fixtures"
+printf 'RIFF' > "$(printf '\nbench')/fixtures/clip.wav" && git add . && git commit -qm nl
+out=$(python3 "$gate" --scan-range "$base" HEAD 2>&1); rc=$?
+expect_refused "leading-newline path isn't treated as bench/fixtures" "$out" "audio file" "$rc"
+git checkout -q main
+git tag -a -m "token = \"$(token)\"" tsecret "$base"
+out=$(echo "refs/tags/tsecret $(git rev-parse tsecret) refs/tags/tsecret 0000000000000000000000000000000000000000" | \
+      PARLEQ_PUSH_DENYLIST="$work/deny.txt" PARLEQ_PUSH_GATE_SKIP_REVIEW=1 \
+      python3 "$gate" origin url 2>&1); rc=$?
+expect_refused "secret in an annotated tag message" "$out" "github-pat" "$rc"
 
 # 6. installer: rerun replaces the gate in place; a later section still gets stdin
 hooks=$(git rev-parse --path-format=absolute --git-path hooks)
