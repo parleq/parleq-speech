@@ -82,7 +82,7 @@ order=$(grep -n -e 'echo before' -e 'parleq push gate (written' -e 'echo "after'
 git checkout -q main
 out=$(echo "refs/heads/x $base refs/heads/x $base" | PARLEQ_PUSH_GATE_SKIP_REVIEW=1 \
       PARLEQ_PUSH_GATE_NO_DENYLIST=1 "$hooks/pre-push" origin url 2>&1)
-expect_contains "later section receives the ref lines" "$out" "after:refs/heads/x" "$rc"
+expect_contains "later section receives the ref lines" "$out" "after:refs/heads/x"
 
 echo
 [ "$fails" = 0 ] && echo "all push-gate tests passed" || { echo "$fails failed"; exit 1; }
