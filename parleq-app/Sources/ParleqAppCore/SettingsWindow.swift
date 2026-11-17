@@ -1504,8 +1504,6 @@ struct SettingsView: View {
          "Amazon Nova Lite 👁 — fast multimodal"),
         ("us.amazon.nova-micro-v1:0",
          "Amazon Nova Micro — text-only fastest"),
-        ("us.meta.llama3-3-70b-instruct-v1:0",
-         "Llama 3.3 70B Instruct — text-only"),
         // Mistral Large removed: the 2407 SKU returns
         // "ValidationException: invalid model identifier" — that
         // version was deprecated. Mistral Large on Bedrock has
@@ -1531,8 +1529,6 @@ struct SettingsView: View {
          "Amazon Nova Lite 👁 — fast multimodal"),
         ("us.amazon.nova-micro-v1:0",
          "Amazon Nova Micro — text-only fastest"),
-        ("us.meta.llama3-3-70b-instruct-v1:0",
-         "Llama 3.3 70B Instruct — text-only"),
         // Mistral Large removed — see bedrockModelOptions for why.
     ]
 

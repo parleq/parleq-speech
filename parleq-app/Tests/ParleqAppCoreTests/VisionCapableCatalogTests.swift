@@ -58,7 +58,6 @@ final class VisionCapableCatalogTests: XCTestCase {
         XCTAssertTrue(models.contains("us.anthropic.claude-sonnet-5-5"))
         XCTAssertFalse(models.contains("openai.gpt-oss-120b-1:0"), "GPT-OSS is text-only")
         XCTAssertFalse(models.contains("us.amazon.nova-micro-v1:0"), "Nova Micro is text-only")
-        XCTAssertFalse(models.contains("us.meta.llama3-3-70b-instruct-v1:0"), "Llama is text-only")
     }
 
     func test_bedrock_bearer_matches_bedrock() {

@@ -21,6 +21,17 @@ final class ModelDeprecationMigrationTests: XCTestCase {
         }
     }
 
+    func test_bedrock_legacy_llama_migrates_to_gpt_oss() {
+        for provider in ["bedrock", "bedrock-bearer"] {
+            var c = Config.default
+            c.llmProvider = provider
+            c.llmModel = "us.meta.llama3-3-70b-instruct-v1:0"
+            Config.migrateRetiredModels(&c)
+            XCTAssertEqual(c.llmModel, "openai.gpt-oss-120b-1:0", provider)
+            XCTAssertFalse(ModelCatalog.isCanonical(provider: provider, model: "us.meta.llama3-3-70b-instruct-v1:0"))
+        }
+    }
+
     func test_every_replacement_target_is_canonical() {
         for (provider, map) in ModelCatalog.retiredModelReplacements {
             for (old, new) in map {

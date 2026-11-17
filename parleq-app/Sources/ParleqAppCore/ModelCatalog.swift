@@ -42,7 +42,6 @@ public enum ModelCatalog {
         "us.amazon.nova-pro-v1:0",
         "us.amazon.nova-lite-v1:0",
         "us.amazon.nova-micro-v1:0",
-        "us.meta.llama3-3-70b-instruct-v1:0",
     ]
 
     public static let bedrockBearerModels: [String] = [
@@ -52,7 +51,6 @@ public enum ModelCatalog {
         "us.amazon.nova-pro-v1:0",
         "us.amazon.nova-lite-v1:0",
         "us.amazon.nova-micro-v1:0",
-        "us.meta.llama3-3-70b-instruct-v1:0",
     ]
 
     /// Azure routes by DEPLOYMENT name; this label only selects the
@@ -108,6 +106,10 @@ public enum ModelCatalog {
         let bedrock: [String: String] = [
             "us.anthropic.claude-haiku-4-5-20251001-v1:0":  "us.anthropic.claude-haiku-5-5",
             "us.anthropic.claude-sonnet-4-5-20250929-v1:0": "us.anthropic.claude-sonnet-5-5",
+            // Bedrock marks every Meta Llama model LEGACY (checked 2026-11-17):
+            // calls fail with "marked by provider as Legacy" for accounts that
+            // haven't used it in 30 days. GPT-OSS is the open-weights stand-in.
+            "us.meta.llama3-3-70b-instruct-v1:0":           "openai.gpt-oss-120b-1:0",
         ]
         var vertex = gemini
         vertex["claude-haiku-4-5@20251001"]  = "claude-haiku-5-5"
