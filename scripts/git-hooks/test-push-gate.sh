@@ -101,6 +101,10 @@ sh "$install" >/dev/null 2>&1
 PARLEQ_PUSH_GATE_PROBE=1 "$hooks/pre-push" o u < /dev/null >/dev/null 2>&1 \
   && fail "refusal not swallowed by a status-ignoring hook" \
   || pass "refusal not swallowed by a status-ignoring hook"
+sh "$install" >/dev/null 2>&1
+n=$(cat "$hooks/pre-push" "$hooks/pre-push.local" 2>/dev/null | grep -c 'parleq push gate (written')
+[ "$n" = 1 ] && pass "rerun with a status-ignoring hook keeps one gate" \
+  || fail "rerun with a status-ignoring hook keeps one gate ($n)"
 # an old install left the section after an early exit: rerun moves it up
 rm -f "$hooks/pre-push" "$hooks/pre-push.local"
 { printf '#!/bin/sh\nexit 0\n'; printf '# parleq push gate (written by scripts/git-hooks/install.sh)\necho stale\n# parleq push gate end\n'; } > "$hooks/pre-push"

@@ -87,7 +87,11 @@ gate_runs() {  # does git's pre-push hook reach the gate AND fail when it refuse
 # reached and its refusal stops the push. Otherwise the gate goes into pre-push,
 # near the top.
 where=""
-if [ -f "$hooks/pre-push" ] && grep -q "pre-push\.local" "$hooks/pre-push"; then
+if [ -f "$hooks/pre-push" ] && grep -q "$marker" "$hooks/pre-push"; then
+  # An earlier install already put the gate in pre-push itself: keep it there
+  # and make sure pre-push.local doesn't run a second copy.
+  unplace "$hooks/pre-push.local"
+elif [ -f "$hooks/pre-push" ] && grep -q "pre-push\.local" "$hooks/pre-push"; then
   place "$hooks/pre-push.local"
   if gate_runs; then where="$hooks/pre-push.local"; else unplace "$hooks/pre-push.local"; fi
 fi
