@@ -75,11 +75,35 @@ printf 'echo "after:$(cat)" >&2\n' >> "$hooks/pre-push"
 sh "$install" >/dev/null
 order=$(grep -n -e 'echo before' -e 'parleq push gate (written' -e 'echo "after' "$hooks/pre-push" \
         | cut -d: -f2- | cut -c1-12 | tr '\n' '|')
-[ "$order" = 'echo before |# parleq pus|echo "after:|' ] && pass "rerun keeps section order" \
+[ "$order" = '# parleq pus|echo before |echo "after:|' ] && pass "rerun keeps section order" \
   || fail "rerun keeps section order ($order)"
 [ "$(grep -c 'parleq push gate (written' "$hooks/pre-push")" = 1 ] && pass "rerun leaves one gate section" \
   || fail "rerun leaves one gate section"
+# a hook that only MENTIONS pre-push.local (never runs it) still gets a working gate
+rm -f "$hooks/pre-push" "$hooks/pre-push.local"
+printf '#!/bin/sh\n# old backup: pre-push.local.bak\nexit 0\n' > "$hooks/pre-push"
+chmod +x "$hooks/pre-push"
+sh "$install" >/dev/null 2>&1
+out=$(PARLEQ_PUSH_GATE_PROBE=1 "$hooks/pre-push" o u < /dev/null 2>&1)
+expect_contains "gate reached when pre-push only mentions pre-push.local" "$out" "push-gate: probe"
+# a hook that really chains pre-push.local gets the gate there
+rm -f "$hooks/pre-push" "$hooks/pre-push.local"
+printf '#!/bin/sh\n[ -x "$(dirname "$0")/pre-push.local" ] && { "$(dirname "$0")/pre-push.local" "$@" || exit $?; }\nexit 0\n' > "$hooks/pre-push"
+chmod +x "$hooks/pre-push"
+sh "$install" >/dev/null 2>&1
+grep -q "parleq push gate (written" "$hooks/pre-push.local" && ! grep -q "parleq push gate (written" "$hooks/pre-push" \
+  && pass "chaining hook gets the gate in pre-push.local" || fail "chaining hook gets the gate in pre-push.local"
+# the probe can't be used to skip the gate
+out=$(echo "refs/heads/x $base refs/heads/x 0000000000000000000000000000000000000000" | \
+      PARLEQ_PUSH_GATE_PROBE=1 python3 "$gate" o u 2>&1); rc=$?
+[ "$rc" != 0 ] && pass "probe always refuses" || fail "probe always refuses"
+
 git checkout -q main
+# restore the ordered hook for the stdin passthrough check
+rm -f "$hooks/pre-push" "$hooks/pre-push.local"
+printf '#!/bin/sh\necho before >&2\n' > "$hooks/pre-push" && chmod +x "$hooks/pre-push"
+sh "$install" >/dev/null
+printf 'echo "after:$(cat)" >&2\n' >> "$hooks/pre-push"
 out=$(echo "refs/heads/x $base refs/heads/x $base" | PARLEQ_PUSH_GATE_SKIP_REVIEW=1 \
       PARLEQ_PUSH_GATE_NO_DENYLIST=1 "$hooks/pre-push" origin url 2>&1)
 expect_contains "later section receives the ref lines" "$out" "after:refs/heads/x"

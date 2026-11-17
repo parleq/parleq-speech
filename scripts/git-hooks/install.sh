@@ -6,8 +6,9 @@
 # the file in whichever worktree is pushing, so a branch can't weaken the gate
 # it is being pushed through. Rerun after the gate changes on main to refresh
 # the copy. If the existing pre-push hook chains a pre-push.local, the gate goes in
-# pre-push.local, which that hook runs first; otherwise it is appended to (or
-# becomes) pre-push. RoboRev's own pre-push flush section is left in place.
+# pre-push.local, which that hook runs first; otherwise it is inserted near the
+# top of pre-push (after RoboRev's flush section, if any). The install runs the
+# hook in a probe mode to prove the gate is reached.
 set -eu
 hooks=$(git rev-parse --path-format=absolute --git-path hooks)
 src="$(cd "$(dirname "$0")" && pwd)/push-gate.py"
@@ -17,12 +18,6 @@ cp "$src" "$gate"
 chmod +x "$gate"
 echo "copied the gate to $gate"
 marker="# parleq push gate"
-
-if [ -f "$hooks/pre-push" ] && grep -q "pre-push\.local" "$hooks/pre-push"; then
-  target="$hooks/pre-push.local"
-else
-  target="$hooks/pre-push"
-fi
 
 # Our section. The gate reads git's ref lines on stdin; it saves them so later
 # sections still get them.
@@ -37,21 +32,56 @@ rm -f "\$_pg_in"
 # parleq push gate end
 HOOK
 
-if [ -f "$target" ] && grep -q "$marker" "$target"; then
-  # Replace our section where it stands, so a rerun picks up changes to it and
-  # the order of every other section is unchanged.
-  tmp=$(mktemp "${TMPDIR:-/tmp}/parleq-install.XXXXXX")
-  awk -v m="$marker" -v f="$stanza" '
-    index($0, m) == 1 && $0 != "# parleq push gate end" {
-      while ((getline l < f) > 0) print l; close(f); skip=1; next }
-    skip { if ($0 == "# parleq push gate end") skip=0; next }
-    { print }' "$target" > "$tmp"
-  cat "$tmp" > "$target"
-  rm -f "$tmp"
+place() {  # write or refresh our section in hook file $1
+  target=$1
+  if [ -f "$target" ] && grep -q "$marker" "$target"; then
+    # Replace our section where it stands, so a rerun picks up changes to it and
+    # the order of every other section is unchanged.
+    tmp=$(mktemp "${TMPDIR:-/tmp}/parleq-install.XXXXXX")
+    awk -v m="$marker" -v f="$stanza" '
+      index($0, m) == 1 && $0 != "# parleq push gate end" {
+        while ((getline l < f) > 0) print l; close(f); skip=1; next }
+      skip { if ($0 == "# parleq push gate end") skip=0; next }
+      { print }' "$target" > "$tmp"
+    cat "$tmp" > "$target"
+    rm -f "$tmp"
+  elif [ ! -f "$target" ]; then
+    { printf '#!/bin/sh\n'; cat "$stanza"; } > "$target"
+  else
+    # Insert near the top, so an earlier `exit` in the existing hook can't skip
+    # it: after RoboRev's flush section when there is one (it enqueues the
+    # reviews the gate waits for), otherwise right after the shebang line.
+    tmp=$(mktemp "${TMPDIR:-/tmp}/parleq-install.XXXXXX")
+    if grep -q "^# roborev hook end" "$target"; then after="^# roborev hook end"; else after=""; fi
+    awk -v f="$stanza" -v a="$after" '
+      { print }
+      !done && ((a == "" && NR == 1) || (a != "" && $0 ~ a)) {
+        while ((getline l < f) > 0) print l; close(f); done=1 }' "$target" > "$tmp"
+    cat "$tmp" > "$target"
+    rm -f "$tmp"
+  fi
+  chmod +x "$target"
+}
+
+gate_runs() {  # does git's pre-push hook actually reach the gate? (the probe always refuses)
+  PARLEQ_PUSH_GATE_PROBE=1 "$hooks/pre-push" origin probe < /dev/null 2>&1 \
+    | grep -q "push-gate: probe"
+}
+
+# Prefer pre-push.local when the existing hook chains it (some hook managers
+# rewrite pre-push itself), but only if running the hook proves it reaches the
+# gate; otherwise the gate goes into pre-push.
+if [ -f "$hooks/pre-push" ] && grep -q "pre-push\.local" "$hooks/pre-push"; then
+  place "$hooks/pre-push.local"
+  where="$hooks/pre-push.local"
+  gate_runs || { place "$hooks/pre-push"; where="$hooks/pre-push"; }
 else
-  [ -f "$target" ] || printf '#!/bin/sh\n' > "$target"
-  cat "$stanza" >> "$target"
+  place "$hooks/pre-push"
+  where="$hooks/pre-push"
 fi
 rm -f "$stanza"
-chmod +x "$target"
-echo "installed push gate in $target"
+if ! gate_runs; then
+  echo "install-hooks: the pre-push hook does not reach the gate; check $hooks/pre-push" >&2
+  exit 1
+fi
+echo "installed push gate in $where (verified)"

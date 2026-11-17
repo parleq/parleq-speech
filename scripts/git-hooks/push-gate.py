@@ -343,6 +343,11 @@ def scan(rargs, refname, private):
 # ---------------------------------------------------------------- entry points
 
 def hook():
+    if os.environ.get("PARLEQ_PUSH_GATE_PROBE") == "1":
+        # install.sh checks the hook reaches the gate; a probe always refuses, so it
+        # can never be used to skip the checks.
+        say("probe")
+        return 1
     skip_review = os.environ.get("PARLEQ_PUSH_GATE_SKIP_REVIEW") == "1"
     skip_scan = os.environ.get("PARLEQ_PUSH_GATE_SKIP_SCAN") == "1"
     private = [] if skip_scan else load_denylist(required=True)
