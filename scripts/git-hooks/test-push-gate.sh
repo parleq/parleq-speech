@@ -67,6 +67,49 @@ out=$(echo "$line" | PARLEQ_PUSH_DENYLIST="$work/none.txt" PARLEQ_PUSH_GATE_SKIP
 rc=$?
 expect_refused "missing denylist refuses" "$out" "no private denylist" "$rc"
 
+# 5b. regressions from the independent audit
+hookrun() {  # ref, sha -> run the gate in hook mode with the test denylist
+  echo "refs/heads/$1 $2 refs/heads/$1 0000000000000000000000000000000000000000" | \
+    PARLEQ_PUSH_DENYLIST="$work/deny.txt" PARLEQ_PUSH_GATE_SKIP_REVIEW=1 \
+    python3 "$gate" origin url 2>&1
+}
+git checkout -q -b uni "$base" && printf 'RIFF' > "café.wav" && printf 'the Secret Project\n' > "naïve.md"
+git add . && git commit -qm uni
+out=$(hookrun uni "$(git rev-parse HEAD)"); rc=$?
+expect_refused "non-ASCII audio path" "$out" "café.wav: audio file" "$rc"
+expect_contains "non-ASCII file's added lines scanned" "$out" "naïve.md"
+git checkout -q -b upper "$base" && printf 'RIFF' > CLIP.WAV && git add . && git commit -qm upper
+out=$(python3 "$gate" --scan-range "$base" HEAD 2>&1); rc=$?
+expect_refused "upper-case extension" "$out" "CLIP.WAV: audio file" "$rc"
+git checkout -q -b cfg "$base"
+printf '[allowlist]\npaths=['"'''"'.*\\.txt'"'''"']\n' > .gitleaks.toml
+echo "token = \"$(token)\"" > s.txt && git add . && git commit -qm cfg
+out=$(python3 "$gate" --scan-range "$base" HEAD 2>&1); rc=$?
+expect_refused "branch .gitleaks.toml can't allowlist a secret" "$out" "github-pat" "$rc"
+git checkout -q -b ign "$base" && echo "token = \"$(token)\"" > s.txt && git add . && git commit -qm s
+echo "$(git rev-parse HEAD):s.txt:github-pat:1" > .gitleaksignore && git add . && git commit -qm ignore
+out=$(python3 "$gate" --scan-range "$base" HEAD 2>&1); rc=$?
+expect_refused "branch .gitleaksignore can't hide its own secret" "$out" "github-pat" "$rc"
+git checkout -q -b allowc "$base" && echo "token = \"$(token)\" # gitleaks:allow" > s.txt
+git add . && git commit -qm allow
+out=$(python3 "$gate" --scan-range "$base" HEAD 2>&1); rc=$?
+expect_refused "gitleaks:allow comment ignored" "$out" "github-pat" "$rc"
+git checkout -q -b decoy "$base" && mkdir -p web/src
+printf '++ b/zzz\nnothing leaves your Mac\n' > web/src/p.md && git add . && git commit -qm decoy
+out=$(python3 "$gate" --scan-range "$base" HEAD 2>&1); rc=$?
+expect_refused "decoy header line can't re-target the path" "$out" "web/src/p.md" "$rc"
+git checkout -q -b binattr "$base" && echo '*.md -diff' > .gitattributes
+printf 'the Secret Project\n' > b.md && git add . && git commit -qm binattr
+out=$(hookrun binattr "$(git rev-parse HEAD)"); rc=$?
+expect_refused "-diff attribute can't hide text" "$out" "b.md" "$rc"
+out=$(hookrun "secret-project" "$base"); rc=$?
+expect_refused "ref name checked with no new commits" "$out" "ref name" "$rc"
+: > "$work/empty.txt"
+out=$(echo "refs/heads/x $base refs/heads/x 0000000000000000000000000000000000000000" | \
+      PARLEQ_PUSH_DENYLIST="$work/empty.txt" PARLEQ_PUSH_GATE_SKIP_REVIEW=1 \
+      python3 "$gate" o u 2>&1); rc=$?
+expect_refused "empty denylist refuses" "$out" "has no rules" "$rc"
+
 # 6. installer: rerun replaces the gate in place; a later section still gets stdin
 hooks=$(git rev-parse --path-format=absolute --git-path hooks)
 printf '#!/bin/sh\necho before >&2\n' > "$hooks/pre-push" && chmod +x "$hooks/pre-push"

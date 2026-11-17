@@ -36,6 +36,7 @@ Owner-only overrides, which agents never set:
 CI mode (no RoboRev, no private denylist; used by .github/workflows/public-scan.yml):
   push-gate.py --scan-range <base> <head>
 """
+import codecs
 import fnmatch
 import json
 import os
@@ -43,6 +44,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 
 ZERO = "0" * 40
@@ -54,8 +56,9 @@ POLL = 10
 DENYLIST = os.path.expanduser(
     os.environ.get("PARLEQ_PUSH_DENYLIST", "~/.config/parleq/push-denylist.txt"))
 
-AUDIO = ("*.wav", "*.m4a", "*.caf", "*.flac", "*.mp3", "*.aif", "*.aiff", "*.ogg",
-         "*.opus", "*.webm")
+AUDIO = ("*.wav", "*.m4a", "*.m4b", "*.caf", "*.flac", "*.mp3", "*.aif", "*.aiff",
+         "*.ogg", "*.opus", "*.webm", "*.mp4", "*.mov", "*.aac", "*.amr", "*.pcm", "*.raw",
+         "*.wma", "*.3gp")
 # (glob on the repo path, reason, allowed-prefixes)
 BLOCKED_PATHS = (
     [(g, "audio file: dictation audio is never committed", ("bench/fixtures/",))
@@ -86,7 +89,10 @@ REPO_TEXT_RULES = [
 
 
 def git(*args, ok=(0,)):
-    p = subprocess.run(["git", *args], capture_output=True, text=True)
+    # quotepath off: non-ASCII paths come back as themselves, not "caf\303\251.wav"
+    # errors="replace": --text diffs can carry binary bytes; never crash on them
+    p = subprocess.run(["git", "-c", "core.quotepath=false", *args], capture_output=True,
+                       encoding="utf-8", errors="replace")
     if p.returncode not in ok:
         raise RuntimeError("git %s failed: %s" % (" ".join(args), p.stderr.strip()))
     return p.stdout
@@ -205,17 +211,21 @@ def load_denylist(required):
                 rules.append(re.compile(line, re.I))
             except re.error as e:
                 raise RuntimeError("bad regex on line %d of %s: %s" % (n, DENYLIST, e))
+    if not rules and required and os.environ.get("PARLEQ_PUSH_GATE_NO_DENYLIST") != "1":
+        raise RuntimeError("the private denylist at %s has no rules; add some, or "
+                           "owner-only: PARLEQ_PUSH_GATE_NO_DENYLIST=1" % DENYLIST)
     return rules
 
 
 def path_blocked(path):
-    base = os.path.basename(path)
+    low = path.lower()
+    base = os.path.basename(low)
     if base in ALLOWED_ENV_FILES:
         return None
     for glob, reason, allowed in BLOCKED_PATHS:
         if any(path.startswith(a) for a in allowed):
             continue
-        if fnmatch.fnmatch(path, glob) or fnmatch.fnmatch(base, glob):
+        if fnmatch.fnmatchcase(low, glob) or fnmatch.fnmatchcase(base, glob):
             return reason
     return None
 
@@ -223,9 +233,14 @@ def path_blocked(path):
 def changed_paths(rargs):
     """Every path a commit in the range adds or changes, merges included (a file copied
     from an existing blob still counts, since this reads the diffs, not new objects)."""
-    names = git("log", "--format=", "--name-only", "--no-renames", "--diff-filter=ACMRT",
-                "-m", *rargs).split("\n")
-    return sorted({n for n in names if n})
+    names = git("log", "-z", "--format=", "--name-only", "--no-renames",
+                "--diff-filter=ACMRT", "-m", *rargs).split("\0")
+    return sorted({n.strip("\n") for n in names if n.strip("\n")})
+
+
+def all_paths(rargs):
+    names = git("log", "-z", "--format=", "--name-only", "-m", *rargs).split("\0")
+    return sorted({n.strip("\n") for n in names if n.strip("\n")})
 
 
 def scan_objects(rargs):
@@ -256,25 +271,43 @@ def scan_objects(rargs):
     return out
 
 
+def diff_path(header):
+    """'+++ b/x' or '+++ "b/x\\tq"' -> 'x'; '+++ /dev/null' -> None."""
+    p = header[4:]
+    if p.startswith('"') and p.endswith('"'):
+        p = codecs.escape_decode(p[1:-1].encode("utf-8"))[0].decode("utf-8", "replace")
+    return p[2:] if p.startswith("b/") else None
+
+
 def added_lines(rargs):
     """-> [(commit, path, line)] for every added line in the range. A merge contributes
     its combined diff (--cc): the lines its result has that no parent had, which is
-    where a conflict resolution can introduce new text."""
-    out, commit, path, width = [], None, None, 1
-    txt = git("log", "-p", "--cc", "--format=COMMIT %H %P", "--unified=0", "--no-color",
-              "--no-ext-diff", "--no-renames", *rargs)
-    for line in txt.splitlines():
+    where a conflict resolution can introduce new text. --text so a file marked binary
+    in .gitattributes can't hide its content. The parser tracks header vs hunk state,
+    so an added line that looks like a '+++' header can't re-target later lines."""
+    out, commit, path, width, in_hunk = [], None, None, 1, False
+    txt = git("log", "-p", "--cc", "--text", "--no-textconv", "--format=COMMIT %H %P",
+              "--unified=0", "--no-color", "--no-ext-diff", "--no-renames", *rargs)
+    for line in txt.split("\n"):
         if line.startswith("COMMIT "):
             parts = line.split()
-            commit, path, width = parts[1], None, max(1, len(parts) - 2)
-        elif line.startswith("+++ "):
-            path = line[6:] if line.startswith("+++ b/") else None
-        elif path is not None and line[:width].strip("+ ") == "" and "+" in line[:width]:
+            commit, path, in_hunk = parts[1], None, False
+            width = max(1, len(parts) - 2)
+        elif line.startswith("diff "):
+            path, in_hunk = None, False
+        elif not in_hunk:
+            if line.startswith("+++ "):
+                path = diff_path(line)
+            elif line.startswith("@@"):
+                in_hunk = True
+        elif line.startswith("@@"):
+            continue
+        elif path is not None and "+" in line[:width] and line[:width].strip("+ ") == "":
             out.append((commit, path, line[width:]))
     return out
 
 
-def scan_text(rargs, refname, private):
+def scan_text(rargs, private):
     out = []
     for commit, path, line in added_lines(rargs):
         if ALLOW_MARKER in line:
@@ -293,56 +326,97 @@ def scan_text(rargs, refname, private):
                 if rx.search(msg):
                     out.append("commit message of %s matches private denylist rule /%s/"
                                % (c[:9], rx.pattern))
-        names = set(git("log", "--format=", "--name-only", *rargs).split("\n"))
-        for name in sorted(n for n in names if n):
+        for name in all_paths(rargs):
             for rx in private:
                 if rx.search(name):
                     out.append("file path %s matches private denylist rule /%s/"
                                % (name, rx.pattern))
-        for rx in private:
-            if refname and rx.search(refname):
-                out.append("ref name %s matches private denylist rule /%s/"
-                           % (refname, rx.pattern))
     return sorted(set(out))
 
 
-def gitleaks(rargs):
+def scan_ref(lsha, rref, private):
+    """The ref name and, for an annotated tag, its message: checked even when the
+    update publishes no new commits."""
+    out = []
+    texts = [("ref name " + rref, rref)]
+    if git("cat-file", "-t", lsha).strip() == "tag":
+        texts.append(("tag message of " + rref,
+                      git("cat-file", "-p", lsha).split("\n\n", 1)[-1]))
+    for where, text in texts:
+        for rx in private:
+            if rx.search(text):
+                out.append("%s matches private denylist rule /%s/" % (where, rx.pattern))
+    return out
+
+
+def trusted_gitleaksignore(remote):
+    """The ignore list a push may rely on: CI passes the base revision's copy; the hook
+    reads the remote's main, never the pushing branch's own file (a branch could
+    otherwise ignore the secret it is about to publish)."""
+    env = os.environ.get("PARLEQ_GITLEAKSIGNORE")
+    if env:
+        with open(env, encoding="utf-8") as f:
+            return f.read()
+    for ref in ("refs/remotes/%s/main" % remote, "refs/remotes/origin/main"):
+        p = subprocess.run(["git", "show", ref + ":.gitleaksignore"], capture_output=True,
+                           text=True)
+        if p.returncode == 0:
+            return p.stdout
+    return ""
+
+
+def gitleaks(rargs, remote):
     exe = shutil.which("gitleaks")
     if not exe:
         raise RuntimeError("gitleaks not found (`brew install gitleaks`, or owner-only: "
                            "PARLEQ_PUSH_GATE_SKIP_SCAN=1)")
-    root = git("rev-parse", "--show-toplevel").strip()
-    ignore = os.environ.get("PARLEQ_GITLEAKSIGNORE") or root
-    base = [exe, "--no-banner", "--no-color", "-v", "--redact", "--exit-code", "3", "-i", ignore]
-    runs = [(["git", *base[1:], "--log-opts", " ".join(rargs), root], None)]
-    # gitleaks reads a merge's diff against neither parent, so text a conflict
-    # resolution adds is invisible to it; feed it each merge's combined diff instead.
-    for m in git("rev-list", "--merges", *rargs).split():
-        runs.append((["stdin", *base[1:]],
-                     git("show", "--cc", "--format=", "--no-color", "--unified=0", m)))
+    gitdir = git("rev-parse", "--absolute-git-dir").strip()
     out = []
-    for args, stdin in runs:
-        p = subprocess.run([exe, *args], input=stdin, capture_output=True, text=True)
-        if p.returncode == 3:
-            # Keep only where it is; the verbose report also carries author name and
-            # email, which a public CI log should not repeat.
-            keep = ("RuleID:", "File:", "Line:", "Commit:", "Fingerprint:")
-            lines = [l.strip() for l in (p.stdout + p.stderr).splitlines()
-                     if l.strip().startswith(keep)]
-            out.append("gitleaks found a likely secret: " + "; ".join(lines[:25]) +
-                       " (a fake test value goes in .gitleaksignore by fingerprint)")
-        elif p.returncode != 0:
-            raise RuntimeError("gitleaks failed: " + (p.stderr or p.stdout).strip()[-500:])
+    with tempfile.TemporaryDirectory(prefix="parleq-gitleaks-") as tmp:
+        # Run from an empty directory with an explicit config (gitleaks' built-in rules)
+        # and ignore list: gitleaks otherwise reads .gitleaks.toml and .gitleaksignore
+        # from the scanned checkout, which the pushed branch controls.
+        config, ignore = os.path.join(tmp, "config.toml"), os.path.join(tmp, "ignore")
+        with open(config, "w") as f:
+            f.write("[extend]\nuseDefault = true\n")
+        with open(ignore, "w") as f:
+            f.write(trusted_gitleaksignore(remote))
+        src = os.path.join(tmp, "src")
+        os.mkdir(src)
+        flags = ["--no-banner", "--no-color", "-v", "--redact", "--exit-code", "3",
+                 "--ignore-gitleaks-allow", "-c", config, "-i", ignore]
+        runs = [(["git", *flags, "--log-opts", " ".join(["--text", *rargs]), src], None)]
+        # gitleaks reads a merge's diff against neither parent, so text a conflict
+        # resolution adds is invisible to it; feed it each merge's combined diff instead.
+        for m in git("rev-list", "--merges", *rargs).split():
+            runs.append((["stdin", *flags],
+                         git("show", "--cc", "--text", "--format=", "--no-color",
+                             "--unified=0", m)))
+        env = dict(os.environ, GIT_DIR=gitdir)
+        for args, stdin in runs:
+            p = subprocess.run([exe, *args], input=stdin, capture_output=True,
+                               encoding="utf-8", errors="replace", cwd=src, env=env)
+            if p.returncode == 3:
+                # Keep only where it is; the verbose report also carries author name and
+                # email, which a public CI log should not repeat.
+                keep = ("RuleID:", "File:", "Line:", "Commit:", "Fingerprint:")
+                lines = [l.strip() for l in (p.stdout + p.stderr).splitlines()
+                         if l.strip().startswith(keep)]
+                out.append("gitleaks found a likely secret: " + "; ".join(lines[:25]) +
+                           " (a fake test value goes in .gitleaksignore on main, by "
+                           "fingerprint)")
+            elif p.returncode != 0:
+                raise RuntimeError("gitleaks failed: " + (p.stderr or p.stdout).strip()[-500:])
     return out
 
 
-def scan(rargs, refname, private):
-    return scan_objects(rargs) + scan_text(rargs, refname, private) + gitleaks(rargs)
+def scan(rargs, private, remote):
+    return scan_objects(rargs) + scan_text(rargs, private) + gitleaks(rargs, remote)
 
 
 # ---------------------------------------------------------------- entry points
 
-def hook():
+def hook(remote):
     if os.environ.get("PARLEQ_PUSH_GATE_PROBE") == "1":
         # install.sh checks the hook reaches the gate; a probe always refuses, so it
         # can never be used to skip the checks.
@@ -359,11 +433,13 @@ def hook():
         lref, lsha, rref, rsha = parts
         if lsha == ZERO:  # deleting a ref publishes nothing
             continue
+        if not skip_scan:
+            refusals += ["%s: %s" % (rref, r) for r in scan_ref(lsha, rref, private)]
         rargs = range_args(lsha, rsha)
         if not commits(rargs):
             continue
         if not skip_scan:
-            refusals += ["%s: %s" % (rref, r) for r in scan(rargs, rref, private)]
+            refusals += ["%s: %s" % (rref, r) for r in scan(rargs, private, remote)]
         review_shas += [c for c in commits(rargs, merges=False) if c not in review_shas]
     if not skip_review:
         refusals += check_reviews(review_shas)
@@ -381,7 +457,7 @@ def hook():
 
 def ci(base, head):
     rargs = [head, "--not", base] if base and set(base) != {"0"} else [head]
-    refusals = scan(rargs, "", [])
+    refusals = scan(rargs, [], "origin")
     for r in refusals:
         print("::error::" + r.replace("\n", " "))
     if not refusals:
@@ -393,7 +469,7 @@ def main(argv):
     try:
         if len(argv) >= 1 and argv[0] == "--scan-range":
             return ci(argv[1], argv[2])
-        return hook()
+        return hook(argv[0] if argv else "origin")
     except Exception as e:  # fail closed
         say("error, refusing the push: %s" % e)
         return 1
